@@ -1,0 +1,180 @@
+# .gitignore for Wake - React Native/Expo Project
+# Created: January 2025
+
+# ============================================
+# Dependencies
+# ============================================
+node_modules/
+node_modules 2/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+# ============================================
+# Expo
+# ============================================
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# ============================================
+# Web App Build Output
+# ============================================
+web_app/build/
+web_app/dist/
+web_app/.cache/
+web_app/node_modules/
+
+# ============================================
+# Native builds
+# ============================================
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+wake.app/
+*.ipa
+*.app
+build-*.tar.gz
+
+# Android build outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+
+# iOS build outputs
+ios/build/
+ios/Pods/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad
+
+# ============================================
+# Environment variables (if you use them)
+# ============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ============================================
+# macOS
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ============================================
+# Windows
+# ============================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ============================================
+# IDEs and Editors
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ============================================
+# Testing
+# ============================================
+coverage/
+.nyc_output/
+
+# ============================================
+# Temporary files
+# ============================================
+*.tmp
+*.temp
+.cache/
+.firebase/
+*.cache
+
+# ============================================
+# Optional: Firebase OAuth files
+# Uncomment these if you want extra privacy
+# (They're needed for builds, so keep them locally)
+# ============================================
+google-services.json
+GoogleService-Info.plist
+
+# ============================================
+# Large media files (use cloud storage/CDN instead)
+# ============================================
+# Video files - all formats
+*.mov
+*.mp4
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+assets/videos/**/*
+**/*.mov
+**/*.mp4
+**/*.avi
+
+# ============================================
+# Scripts and Documentation
+# ============================================
+scripts/
+docs/
+
+# ============================================
+# React Native / Metro
+# ============================================
+.metro-health-check*
+metro.config.js.bak
+
+# ============================================
+# EAS Build
+# ============================================
+.easignore
+eas-build-*.json
+
+# ============================================
+# Large binary files
+# ============================================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# ============================================
+# Keep these files (explicitly NOT ignored)
+# ============================================
+# src/config/firebase.js - needed for app
+# app.json - needed for builds
+# package.json - needed for dependencies

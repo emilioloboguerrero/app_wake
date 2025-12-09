@@ -1,0 +1,181 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Check if user is the owner of a resource
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // Check user role (with safe fallback)
+    function getUserRole() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')
+        : 'user';
+    }
+    
+    // Check if user is admin
+    function isAdmin() {
+      return getUserRole() == 'admin';
+    }
+    
+    // Check if user is creator
+    function isCreator() {
+      return getUserRole() == 'creator' || isAdmin();
+    }
+    
+    // Check if user is creator of specific resource
+    function isResourceCreator(creatorId) {
+      return isSignedIn() && request.auth.uid == creatorId;
+    }
+    
+    // ============================================
+    // USER DATA
+    // ============================================
+    
+    // Users collection - only owner or admin can access
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin();
+      
+      // Exercise history subcollections
+      match /exerciseHistory/{exerciseKey} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Session history subcollections  
+      match /sessionHistory/{sessionId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // ============================================
+    // COURSE CONTENT
+    // ============================================
+    
+    // Courses - All authenticated users can read
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      
+      // Only creators can create courses
+      allow create: if isCreator();
+      
+      // Only course creator or admin can update/delete
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (isCreator() && resource.data.get('creator_id', '') == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+      
+      // Modules subcollection - nested under courses
+      match /modules/{moduleId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && (isCreator() || isAdmin());
+        
+        // Sessions subcollection - nested under modules
+        match /sessions/{sessionId} {
+          allow read: if isSignedIn();
+          allow write: if isSignedIn() && (isCreator() || isAdmin());
+          
+          // Exercises subcollection - nested under sessions
+          match /exercises/{exerciseId} {
+            allow read: if isSignedIn();
+            allow write: if isSignedIn() && (isCreator() || isAdmin());
+            
+            // Sets subcollection - nested under exercises
+            match /sets/{setId} {
+              allow read: if isSignedIn();
+              allow write: if isSignedIn() && (isCreator() || isAdmin());
+            }
+          }
+        }
+      }
+    }
+    
+    // ============================================
+    // USER PROGRESS & DATA (LEGACY - TO BE REMOVED)
+    // ============================================
+    
+    // User progress - supports userId_courseId pattern
+    // Allow if document ID starts with user's ID
+    match /user_progress/{docId} {
+      allow read: if isSignedIn() && (
+        docId == request.auth.uid ||
+        docId.matches('^' + request.auth.uid + '_.*')
+      );
+      allow write: if isSignedIn() && (
+        docId == request.auth.uid ||
+        docId.matches('^' + request.auth.uid + '_.*') ||
+        request.resource.data.userId == request.auth.uid
+      );
+    }
+    
+    // Completed sessions - supports userId_courseId_timestamp pattern
+    match /completed_sessions/{docId} {
+      allow read: if isSignedIn() && (
+        docId.matches('^' + request.auth.uid + '_.*') ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && (
+        docId.matches('^' + request.auth.uid + '_.*') ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        docId.matches('^' + request.auth.uid + '_.*') ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+    
+    // ============================================
+    // APP RESOURCES
+    // ============================================
+    
+    // Disciplines - all authenticated users can read
+    match /disciplines/{disciplineId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // App resources - publicly readable (needed for asset bundle initialization before auth)
+    // These are public app assets (videos/images), not sensitive user data
+    match /app_resources/{resourceId} {
+      allow read: if true; // Public read access for app assets
+      allow write: if isAdmin();
+    }
+    
+    // ============================================
+    // PURCHASES
+    // ============================================
+    
+    // Purchases - users can create their own, admins can read all
+    match /purchases/{purchaseId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.user_id == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+    
+    // ============================================
+    // DEFAULT RULE (Fallback for any other collections)
+    // ============================================
+    
+    // Allow authenticated users to access other collections
+    // This provides flexibility for development while still requiring authentication
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

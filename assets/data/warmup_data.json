@@ -1,0 +1,38 @@
+{
+  "warmup": {
+    "title": "Calentamiento",
+    "duration": "5 minutos",
+    "exercises": [
+      {
+        "name": "Cardio",
+        "duration": "5 min",
+        "video": "cardio.mp4"
+      },
+      {
+        "name": "Círculos de brazos hacia adelante",
+        "duration": "15s",
+        "video": "circulos_adelante.mp4"
+      },
+      {
+        "name": "Círculos brazos hacia atrás",
+        "duration": "15s",
+        "video": "circulos_atras.mp4"
+      },
+      {
+        "name": "Zancadas caminando",
+        "duration": "35s",
+        "video": "zancadas.mp4"
+      },
+      {
+        "name": "Balanceo pierna derecha",
+        "duration": "20s",
+        "video": "balanceo_derecha.mp4"
+      },
+      {
+        "name": "Balanceo pierna izquierda",
+        "duration": "20s",
+        "video": "balanceo_izquierda.mp4"
+      }
+    ]
+  }
+}

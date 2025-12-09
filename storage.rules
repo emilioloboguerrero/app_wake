@@ -1,0 +1,85 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile pictures
+    match /profiles/{userId}/{fileName} {
+      // Allow users to read any profile picture (for viewing other users)
+      allow read: if request.auth != null;
+      
+      // Allow users to write only their own profile picture
+      allow write: if request.auth != null 
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024  // Max 5MB
+        && request.resource.contentType.matches('image/.*');  // Only images
+    }
+    
+    // Exercise library videos
+    match /exercises_library/{libraryId}/{exerciseName}/{fileName} {
+      // Allow authenticated users to read videos
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to write videos (no size limit)
+      allow write: if request.auth != null
+        && request.resource.contentType.matches('video/.*');  // Only video files
+    }
+    
+    // Program images (e.g., courses/{programId}/image.jpg)
+    match /courses/{programId}/{fileName} {
+      // Allow authenticated users to read program images and intro videos
+      allow read: if request.auth != null;
+      
+      // Allow write for program images (image.*) or intro videos (intro_video.*)
+      allow write: if request.auth != null
+        && (
+          (fileName.matches('image\\..*')
+            && request.resource.size < 10 * 1024 * 1024  // Max 10MB
+            && request.resource.contentType.matches('image/.*'))  // Only images
+          ||
+          (fileName.matches('intro_video\\..*')
+            && request.resource.contentType.matches('video/.*'))  // Only video files (no size limit)
+        );
+    }
+    
+    // Program tutorial videos
+    match /courses/{programId}/tutorials/{screenName}/{fileName} {
+      // Allow authenticated users to read tutorial videos
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to write tutorial videos (no size limit)
+      allow write: if request.auth != null
+        && request.resource.contentType.matches('video/.*');  // Only video files
+    }
+    
+    // Session images
+    match /courses/{programId}/modules/{moduleId}/sessions/{fileName} {
+      // Allow authenticated users to read session images
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to write session images
+      allow write: if request.auth != null
+        && request.resource.size < 10 * 1024 * 1024  // Max 10MB
+        && request.resource.contentType.matches('image/.*');  // Only images
+    }
+    
+    // Creator cards (images and videos)
+    match /cards/{userId}/{fileName} {
+      // Allow authenticated users to read cards
+      allow read: if request.auth != null;
+      
+      // Allow users to write only their own cards
+      allow write: if request.auth != null 
+        && request.auth.uid == userId
+        && (
+          (request.resource.contentType.matches('image/.*') && request.resource.size < 10 * 1024 * 1024)  // Max 10MB for images
+          ||
+          (request.resource.contentType.matches('video/.*'))  // No size limit for videos
+        );
+    }
+    
+    // Deny all other access by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

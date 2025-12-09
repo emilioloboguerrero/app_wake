@@ -1,0 +1,382 @@
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: #1a1a1a;
+  padding: 16px 32px;
+  backdrop-filter: blur(10px);
+  background-color: rgba(26, 26, 26, 0.95);
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sticky-header-with-image {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: sticky;
+  top: 0;
+  height: 320px;
+  padding: 0;
+  margin: 0;
+  margin-left: -32px;
+  margin-right: -32px;
+  width: calc(100% + 64px);
+  border-bottom: none;
+  backdrop-filter: none;
+  background-color: transparent;
+  box-sizing: content-box;
+  overflow: hidden;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-with-image.sticky-header-scrolled {
+  height: 120px;
+}
+
+.main-content-sidebar-hidden .sticky-header-with-image {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+}
+
+.sticky-header-gradient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 160px;
+  background: linear-gradient(
+    to bottom,
+    rgba(26, 26, 26, 0) 0%,
+    rgba(26, 26, 26, 0.2) 60%,
+    rgba(26, 26, 26, 1) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sticky-header-with-image.sticky-header-scrolled .sticky-header-gradient {
+  height: 60px;
+  opacity: 0.8;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2;
+  padding: 16px 32px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.sticky-header-with-image .sticky-header-content {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  right: 0;
+  padding: 0 32px;
+  margin: 0 auto;
+  max-width: 1200px;
+  align-items: center;
+  justify-content: flex-start;
+  transform: translateY(0);
+  transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-with-image.sticky-header-scrolled .sticky-header-content {
+  bottom: 50%;
+  transform: translateY(50%);
+  padding: 0 32px;
+}
+
+.sticky-header-with-image .sticky-header-back-button,
+.sticky-header-with-image .sticky-header-logo,
+.sticky-header-with-image .sticky-header-title {
+  position: relative;
+  z-index: 3;
+}
+
+.sticky-header-back-button {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sticky-header-back-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.sticky-header-back-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.sticky-header-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.sticky-header-with-image .sticky-header-logo {
+  width: 80px;
+  height: 80px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-with-image.sticky-header-scrolled .sticky-header-logo {
+  width: 50px;
+  height: 50px;
+}
+
+.sticky-header-title-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.sticky-header-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.sticky-header-with-image .sticky-header-title {
+  font-size: 2.5rem;
+  transition: font-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-with-image.sticky-header-scrolled .sticky-header-title {
+  font-size: 1.5rem;
+}
+
+.sticky-header-edit-button {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.sticky-header-edit-button:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sticky-header-purchase-button-container {
+  margin-left: auto;
+  margin-right: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 0;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button {
+  background-color: rgba(191, 168, 77, 0.2);
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  height: 44px;
+  min-width: 200px;
+  max-width: 300px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button:hover {
+  background-color: rgba(191, 168, 77, 0.3);
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button:disabled {
+  background-color: #666666;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button-owned {
+  background-color: rgba(76, 175, 80, 0.2);
+  cursor: default;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button-owned:hover {
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+.sticky-header-purchase-button-container .course-detail-button-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 16px;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button-text {
+  color: rgba(191, 168, 77, 1);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.sticky-header-purchase-button-container .course-detail-button-price-text,
+.sticky-header-purchase-button-container .course-detail-trial-price-text {
+  color: rgba(191, 168, 77, 1);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+.sticky-header-purchase-button-container .course-detail-purchase-button-owned .course-detail-purchase-button-text {
+  color: rgba(76, 175, 80, 1);
+}
+
+/* Responsive styles for sidebar-hidden */
+.sticky-header-content-sidebar-hidden {
+  max-width: none;
+  width: 100%;
+}
+
+.sticky-header-with-image .sticky-header-content-sidebar-hidden {
+  max-width: none;
+  width: 100%;
+}
+
+/* Hamburger Menu Button */
+.sticky-header-menu-button {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.sticky-header-menu-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.sticky-header-menu-button:active {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.sticky-header-menu-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+  .sticky-header {
+    padding: 12px 16px;
+    min-height: 64px;
+  }
+
+  .sticky-header-content {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .sticky-header-logo {
+    width: 50px;
+    height: 50px;
+  }
+
+  .sticky-header-title {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  .sticky-header-with-image {
+    height: 240px;
+    margin-left: -16px;
+    margin-right: -16px;
+    width: calc(100% + 32px);
+  }
+
+  .sticky-header-with-image.sticky-header-scrolled {
+    height: 64px;
+  }
+
+  .sticky-header-with-image .sticky-header-content {
+    bottom: 20px;
+    padding: 0 16px;
+  }
+
+  .sticky-header-with-image.sticky-header-scrolled .sticky-header-content {
+    bottom: 50%;
+    padding: 0 16px;
+  }
+
+  .sticky-header-with-image .sticky-header-logo {
+    width: 50px;
+    height: 50px;
+  }
+
+  .sticky-header-with-image.sticky-header-scrolled .sticky-header-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sticky-header-with-image .sticky-header-title {
+    font-size: 1.25rem;
+  }
+
+  .sticky-header-with-image.sticky-header-scrolled .sticky-header-title {
+    font-size: 1.125rem;
+  }
+
+  .sticky-header-purchase-button-container .course-detail-purchase-button {
+    min-width: 160px;
+    max-width: 200px;
+    height: 40px;
+  }
+
+  .sticky-header-purchase-button-container .course-detail-purchase-button-text {
+    font-size: 14px;
+  }
+
+  .sticky-header-purchase-button-container .course-detail-button-price-text,
+  .sticky-header-purchase-button-container .course-detail-trial-price-text {
+    font-size: 11px;
+  }
+}

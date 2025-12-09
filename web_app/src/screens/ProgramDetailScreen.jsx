@@ -1,0 +1,8931 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import debounce from 'lodash/debounce';
+import DashboardLayout from '../components/DashboardLayout';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
+import Input from '../components/Input';
+import programService from '../services/programService';
+import libraryService from '../services/libraryService';
+import programAnalyticsService from '../services/programAnalyticsService';
+import { deleteField } from 'firebase/firestore';
+import {
+  useProgram,
+  useModules,
+  useSessions,
+  useExercises,
+  useCreateModule,
+  useUpdateModuleOrder,
+  useDeleteModule,
+  useCreateSession,
+  useUpdateSessionOrder,
+  useCreateExercise,
+  useUpdateExercise,
+  useDeleteExercise,
+  useUpdateExerciseOrder,
+} from '../hooks/usePrograms';
+import {
+  useProgramRealtime,
+  useModuleSessionsRealtime,
+  useSessionExercisesRealtime,
+} from '../hooks/useProgramRealtime';
+import { queryKeys, cacheConfig } from '../config/queryClient';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart, Area, LabelList, ComposedChart
+} from 'recharts';
+import { getAccessDurationLabel, getAccessTypeLabel, getStatusLabel, getDurationLabel } from '../utils/durationHelper';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import './ProgramDetailScreen.css';
+
+const TAB_CONFIG = [
+  { key: 'lab', title: 'Lab' },
+  { key: 'configuracion', title: 'Configuración' },
+  { key: 'contenido', title: 'Contenido' },
+];
+
+// Stat explanations for Lab page
+const STAT_EXPLANATIONS = {
+  'totalEnrolled': {
+    title: 'Total Inscritos',
+    description: 'Número total de usuarios que se han inscrito en este programa, incluyendo activos, expirados, cancelados y pruebas gratuitas.'
+  },
+  'activeEnrollments': {
+    title: 'Activos',
+    description: 'Usuarios con inscripción activa. Un usuario se considera activo si su estado es "active" y su fecha de expiración no ha pasado.'
+  },
+  'trialUsers': {
+    title: 'Pruebas Gratis',
+    description: 'Número de usuarios que están usando o han usado una prueba gratuita del programa.'
+  },
+  'expiredEnrollments': {
+    title: 'Expirados',
+    description: 'Usuarios cuyas inscripciones han expirado. Esto incluye usuarios cuya fecha de expiración ha pasado y no están cancelados.'
+  },
+  'cancelledEnrollments': {
+    title: 'Cancelados',
+    description: 'Usuarios que han cancelado su suscripción al programa.'
+  },
+  'recentEnrollments30Days': {
+    title: 'Últimos 30 días',
+    description: 'Número de nuevas inscripciones en los últimos 30 días.'
+  },
+  'averageEnrollmentDurationDays': {
+    title: 'Duración Promedio (días)',
+    description: 'Duración promedio de las inscripciones, calculada desde la fecha de compra hasta la fecha de expiración.'
+  },
+  'totalSessionsCompleted': {
+    title: 'Sesiones Completadas',
+    description: 'Número total de sesiones completadas por todos los usuarios inscritos en el programa.'
+  },
+  'averageSessionsPerUser': {
+    title: 'Promedio por Usuario',
+    description: 'Número promedio de sesiones completadas por usuario inscrito en el programa.'
+  },
+  'completionRate': {
+    title: 'Tasa de Finalización',
+    description: 'Porcentaje de usuarios inscritos que han completado al menos una sesión del programa.'
+  },
+  'usersWithAtLeastOneSession': {
+    title: 'Usuarios Activos',
+    description: 'Número de usuarios que han completado al menos una sesión. Un usuario se considera activo si ha completado al menos una sesión del programa.'
+  },
+  'totalCompletions': {
+    title: 'Total Completadas',
+    description: 'Número total de veces que se han completado sesiones del programa por todos los usuarios.'
+  },
+  'averageDuration': {
+    title: 'Duración Promedio',
+    description: 'Tiempo promedio que los usuarios tardan en completar una sesión, calculado en minutos y segundos.'
+  },
+  'mostCompletedSession': {
+    title: 'Más Completada',
+    description: 'La sesión que ha sido completada más veces por los usuarios del programa.'
+  },
+  'leastCompletedSession': {
+    title: 'Menos Completada',
+    description: 'La sesión que ha sido completada menos veces por los usuarios del programa.'
+  },
+  'totalUniqueExercises': {
+    title: 'Ejercicios Únicos Realizados',
+    description: 'Número total de ejercicios diferentes que han sido realizados al menos una vez por los usuarios del programa.'
+  },
+  'totalModules': {
+    title: 'Módulos',
+    description: 'Número total de módulos que contiene el programa.'
+  },
+  'totalSessions': {
+    title: 'Sesiones',
+    description: 'Número total de sesiones que contiene el programa, sumando todas las sesiones de todos los módulos.'
+  },
+  'totalExercises': {
+    title: 'Ejercicios',
+    description: 'Número total de ejercicios que contiene el programa, sumando todos los ejercicios de todas las sesiones.'
+  },
+  'averageExercisesPerSession': {
+    title: 'Promedio Ejercicios/Sesión',
+    description: 'Número promedio de ejercicios por sesión en el programa.'
+  },
+  'usersWithZeroSessions': {
+    title: '0 Sesiones',
+    description: 'Número de usuarios inscritos que no han completado ninguna sesión del programa.'
+  },
+  'usersWithOneToFiveSessions': {
+    title: '1-5 Sesiones',
+    description: 'Número de usuarios que han completado entre 1 y 5 sesiones del programa.'
+  },
+  'usersWithSixToTenSessions': {
+    title: '6-10 Sesiones',
+    description: 'Número de usuarios que han completado entre 6 y 10 sesiones del programa.'
+  },
+  'usersWithTenPlusSessions': {
+    title: '10+ Sesiones',
+    description: 'Número de usuarios que han completado 10 o más sesiones del programa.'
+  },
+  'averageWeeklyStreak': {
+    title: 'Racha Semanal Promedio',
+    description: 'Promedio de semanas consecutivas que los usuarios han completado según los requisitos de la racha semanal del programa.'
+  }
+};
+
+const getLibraryExerciseKey = (libraryId, exerciseName) => `${libraryId || ''}::${exerciseName || ''}`;
+
+const isLibraryExerciseDataComplete = (exerciseData) => {
+  if (!exerciseData) return false;
+  
+  const hasVideo = Boolean(exerciseData.video_url || exerciseData.video);
+  const hasMuscles = Boolean(exerciseData.muscle_activation && Object.keys(exerciseData.muscle_activation).length > 0);
+  const hasImplements = Boolean(exerciseData.implements && Array.isArray(exerciseData.implements) && exerciseData.implements.length > 0);
+  
+  return hasVideo && hasMuscles && hasImplements;
+};
+
+const getPrimaryReferences = (exercise) => {
+  if (!exercise || typeof exercise.primary !== 'object' || exercise.primary === null) {
+    return [];
+  }
+  
+  return Object.entries(exercise.primary)
+    .filter(([libraryId, exerciseName]) => Boolean(libraryId) && Boolean(exerciseName))
+    .map(([libraryId, exerciseName]) => ({
+      libraryId,
+      exerciseName,
+    }));
+};
+
+const getAlternativeReferences = (exercise) => {
+  if (!exercise || typeof exercise.alternatives !== 'object' || exercise.alternatives === null || Array.isArray(exercise.alternatives)) {
+    return [];
+  }
+  
+  const references = [];
+  
+  Object.entries(exercise.alternatives).forEach(([libraryId, values]) => {
+    if (!libraryId || !Array.isArray(values)) {
+      return;
+    }
+    
+    values.forEach((value) => {
+      if (typeof value === 'string' && value.trim()) {
+        references.push({ libraryId, exerciseName: value });
+      } else if (value && typeof value === 'object') {
+        const derivedName = value.name || value.title || value.id || '';
+        if (derivedName) {
+          references.push({ libraryId, exerciseName: derivedName });
+        }
+      }
+    });
+  });
+  
+  return references;
+};
+
+const getExerciseLibraryReferences = (exercise) => {
+  return [
+    ...getPrimaryReferences(exercise),
+    ...getAlternativeReferences(exercise),
+  ];
+};
+
+// Sortable Series Card Component
+const SortableSeriesCard = ({ set, setIndex, isSeriesEditMode, isExpanded, onToggleExpansion, onDeleteSet, onDuplicateSet, objectivesFields, getObjectiveDisplayName, handleUpdateSetValue, hasUnsavedChanges, onSaveSetChanges, isSavingSetChanges, parseIntensityForDisplay }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: set.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Get set number from order field, fallback to index + 1
+  const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`exercise-series-card ${isSeriesEditMode ? 'exercise-series-card-edit-mode' : ''} ${isDragging ? 'exercise-series-card-dragging' : ''}`}
+    >
+      {isSeriesEditMode && (
+        <button
+          className="exercise-series-delete-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteSet(set);
+          }}
+        >
+          <span className="exercise-series-delete-icon">−</span>
+        </button>
+      )}
+      {isSeriesEditMode && (
+        <div
+          className="exercise-series-drag-handle"
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
+      )}
+      <button
+        className="exercise-series-card-header"
+        onClick={() => onToggleExpansion(set.id)}
+      >
+        <span className="exercise-series-number">{setNumber}</span>
+        <span className="exercise-series-info">
+          {`Serie ${setNumber}`}
+        </span>
+        <div className="exercise-series-header-right">
+          {!isSeriesEditMode && (
+            <button
+              className="exercise-series-duplicate-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicateSet(set);
+              }}
+            >
+              <span className="exercise-series-duplicate-icon">⧉</span>
+            </button>
+          )}
+          {hasUnsavedChanges && (
+            <button
+              className="exercise-series-save-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSaveSetChanges(set.id);
+              }}
+              disabled={isSavingSetChanges}
+            >
+              <span className="exercise-series-save-text">
+                {isSavingSetChanges ? 'Guardando...' : 'Guardar'}
+              </span>
+            </button>
+          )}
+          <svg
+            className={`exercise-series-expand-icon ${isExpanded ? 'expanded' : ''}`}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      </button>
+      
+      {isExpanded && (
+        <div className="exercise-series-content">
+          {/* Headers row */}
+          <div className="exercise-series-inputs-row exercise-series-headers-row">
+            <div className="exercise-series-set-number-space"></div>
+            <div className="exercise-series-inputs-container">
+              {objectivesFields.map((field) => (
+                <div key={field} className="exercise-series-input-group">
+                  <span className="exercise-series-input-label">
+                    {getObjectiveDisplayName(field)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Input row for this set */}
+          <div className="exercise-series-inputs-row">
+            <div className="exercise-series-set-number-container">
+              <span className="exercise-series-set-number">{setNumber}</span>
+            </div>
+            <div className="exercise-series-inputs-container">
+              {objectivesFields.map((field) => (
+                <div key={field} className="exercise-series-input-group">
+                  {field === 'intensity' ? (
+                    <div className="exercise-series-intensity-input-wrapper">
+                      <input
+                        type="text"
+                        className="exercise-series-input exercise-series-intensity-input"
+                        placeholder="--"
+                        value={parseIntensityForDisplay(set[field])}
+                        onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                        maxLength={2}
+                      />
+                      <span className="exercise-series-intensity-suffix">/10</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      className="exercise-series-input"
+                      placeholder="--"
+                      value={set[field] !== undefined && set[field] !== null ? String(set[field]) : ''}
+                      onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Sortable Exercise Card Component
+const SortableExerciseCard = ({ exercise, isExerciseEditMode, onDeleteExercise, exerciseIndex, isExerciseIncomplete }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: exercise.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Extract title from primary field (map of library IDs to titles)
+  const getExerciseTitle = () => {
+    if (exercise.primary && typeof exercise.primary === 'object') {
+      // Get the first value from the primary map
+      const primaryValues = Object.values(exercise.primary);
+      if (primaryValues.length > 0 && primaryValues[0]) {
+        return primaryValues[0];
+      }
+    }
+    // Fallback to name, title, or id
+    return exercise.name || exercise.title || `Ejercicio ${exercise.id?.slice(0, 8) || ''}`;
+  };
+
+  // Get exercise number from order field, fallback to index + 1
+  const exerciseNumber = (exercise.order !== undefined && exercise.order !== null) ? exercise.order + 1 : exerciseIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`exercise-card ${isExerciseEditMode ? 'exercise-card-edit-mode' : ''} ${isDragging ? 'exercise-card-dragging' : ''}`}
+    >
+      {!isExerciseEditMode && isExerciseIncomplete(exercise) && (
+        <div className="exercise-incomplete-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+      <div className="exercise-card-number">{exerciseNumber}</div>
+      {isExerciseEditMode && (
+        <>
+          <button
+            className="exercise-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteExercise(exercise);
+            }}
+          >
+            <span className="exercise-delete-icon">−</span>
+          </button>
+          <div
+            className="exercise-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+        </>
+      )}
+      <div className="exercise-card-header">
+        <div className="exercise-card-title-row">
+          <h3 className="exercise-card-title">
+            {getExerciseTitle()}
+          </h3>
+        </div>
+      </div>
+      {exercise.video_url && (
+        <div className="exercise-card-video">
+          <video
+            src={exercise.video_url}
+            controls
+            className="exercise-card-video-player"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Sortable Module Card Component
+const SortableModuleCard = ({ module, isModuleEditMode, onModuleClick, onDeleteModule, moduleIndex, isModuleIncomplete }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: module.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const moduleNumber = (module.order !== undefined && module.order !== null) ? module.order + 1 : moduleIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`module-card ${isModuleEditMode ? 'module-card-edit-mode' : ''} ${isDragging ? 'module-card-dragging' : ''}`}
+      onClick={() => onModuleClick(module)}
+    >
+      <div className="module-card-number">{moduleNumber}</div>
+      {!isModuleEditMode && isModuleIncomplete && (
+        <div className="module-incomplete-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+      {isModuleEditMode && (
+        <>
+          <button
+            className="module-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteModule(module);
+            }}
+          >
+            <span className="module-delete-icon">−</span>
+          </button>
+          <div
+            className="module-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+        </>
+      )}
+      <div className="module-card-header">
+        <h3 className="module-card-title">
+          {module.title || module.name || `Módulo ${module.id.slice(0, 8)}`}
+        </h3>
+        {module.description && (
+          <p className="module-card-description">{module.description}</p>
+        )}
+      </div>
+      <div className="module-card-footer">
+        {/* TODO: Add module count or other info */}
+      </div>
+    </div>
+  );
+};
+
+// Sortable Session Card Component
+const SortableSessionCard = ({ session, isSessionEditMode, onSessionClick, onDeleteSession, sessionIndex, isSessionIncomplete }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: session.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const cardStyle = {
+    ...style,
+    ...(session.image_url ? {
+      backgroundImage: `url(${session.image_url})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    } : {})
+  };
+
+  const sessionNumber = (session.order !== undefined && session.order !== null) ? session.order + 1 : sessionIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={cardStyle}
+      className={`session-card ${isSessionEditMode ? 'session-card-edit-mode' : ''} ${isDragging ? 'session-card-dragging' : ''} ${session.image_url ? 'session-card-with-image' : ''}`}
+      onClick={() => onSessionClick(session)}
+    >
+      <div className="session-card-number">{sessionNumber}</div>
+      {!isSessionEditMode && isSessionIncomplete && (
+        <div className="session-incomplete-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+      {isSessionEditMode && (
+        <>
+          <button
+            className="session-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteSession(session);
+            }}
+          >
+            <span className="session-delete-icon">−</span>
+          </button>
+          <div
+            className="session-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+        </>
+      )}
+      <div className="session-card-header">
+        <h3 className="session-card-title">
+          {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
+        </h3>
+      </div>
+    </div>
+  );
+};
+
+const ProgramDetailScreen = () => {
+  const { programId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  const tabsScrollRef = useRef(null);
+  const isScrollingProgrammatically = useRef(false);
+  
+  // Load analytics with React Query (cached for 15 minutes)
+  // Only fetch when Lab tab is active
+  const currentTab = TAB_CONFIG[currentTabIndex];
+  const isLabTabActive = currentTab?.key === 'lab';
+  const { data: analytics, isLoading: isLoadingAnalytics, error: analyticsQueryError } = useQuery({
+    queryKey: queryKeys.analytics.program(programId),
+    queryFn: async () => {
+      if (!programId) return null;
+      return await programAnalyticsService.getProgramAnalytics(programId);
+    },
+    enabled: !!programId && isLabTabActive, // Only fetch when Lab tab is active
+    ...cacheConfig.analytics, // 15 minute cache
+  });
+  
+  // Convert error object to string for display
+  const analyticsError = analyticsQueryError ? 'Error al cargar las estadísticas' : null;
+  const [selectedUserInfo, setSelectedUserInfo] = useState(null);
+  const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
+  const [statExplanation, setStatExplanation] = useState(null);
+  const [isStatExplanationModalOpen, setIsStatExplanationModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [priceValue, setPriceValue] = useState('');
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
+  const [isDurationModalOpen, setIsDurationModalOpen] = useState(false);
+  const [durationValue, setDurationValue] = useState(0);
+  const [isUpdatingDuration, setIsUpdatingDuration] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [descriptionValue, setDescriptionValue] = useState('');
+  const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
+  const [isEditProgramModalOpen, setIsEditProgramModalOpen] = useState(false);
+  const [programNameValue, setProgramNameValue] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [isUpdatingProgram, setIsUpdatingProgram] = useState(false);
+  const [isStreakModalOpen, setIsStreakModalOpen] = useState(false);
+  const [streakEnabled, setStreakEnabled] = useState(false);
+  const [minimumSessionsPerWeek, setMinimumSessionsPerWeek] = useState(0);
+  const [isUpdatingStreak, setIsUpdatingStreak] = useState(false);
+  const [isWeightSuggestionsModalOpen, setIsWeightSuggestionsModalOpen] = useState(false);
+  const [weightSuggestionsEnabled, setWeightSuggestionsEnabled] = useState(false);
+  const [isUpdatingWeightSuggestions, setIsUpdatingWeightSuggestions] = useState(false);
+  const [isFreeTrialModalOpen, setIsFreeTrialModalOpen] = useState(false);
+  const [freeTrialActive, setFreeTrialActive] = useState(false);
+  const [freeTrialDurationDays, setFreeTrialDurationDays] = useState('0');
+  const [isUpdatingFreeTrial, setIsUpdatingFreeTrial] = useState(false);
+  const [isAuxiliaryLibrariesModalOpen, setIsAuxiliaryLibrariesModalOpen] = useState(false);
+  const [availableLibraries, setAvailableLibraries] = useState([]);
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState(new Set());
+  const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
+  const [isUpdatingAuxiliaryLibraries, setIsUpdatingAuxiliaryLibraries] = useState(false);
+  const [isAnunciosModalOpen, setIsAnunciosModalOpen] = useState(false);
+  const [selectedScreen, setSelectedScreen] = useState(null);
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
+  const [isUploadingAnuncioVideo, setIsUploadingAnuncioVideo] = useState(false);
+  const [anuncioVideoUploadProgress, setAnuncioVideoUploadProgress] = useState(0);
+  const [isAnuncioVideoEditMode, setIsAnuncioVideoEditMode] = useState(false);
+  const [isAnuncioVideoPlaying, setIsAnuncioVideoPlaying] = useState(false);
+  const [isIntroVideoModalOpen, setIsIntroVideoModalOpen] = useState(false);
+  const [isUploadingIntroVideo, setIsUploadingIntroVideo] = useState(false);
+  const [introVideoUploadProgress, setIntroVideoUploadProgress] = useState(0);
+  const [isIntroVideoEditMode, setIsIntroVideoEditMode] = useState(false);
+  const [isIntroVideoPlaying, setIsIntroVideoPlaying] = useState(false);
+  const [isModuleEditMode, setIsModuleEditMode] = useState(false);
+  const [selectedModule, setSelectedModule] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  // isLoadingSessions now comes from useSessions hook
+  const [isSessionEditMode, setIsSessionEditMode] = useState(false);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [exercises, setExercises] = useState([]);
+  // isLoadingExercises now comes from useExercises hook
+  const [exerciseSetsMap, setExerciseSetsMap] = useState({}); // Map: exerciseId -> sets array
+  const [sessionIncompleteMap, setSessionIncompleteMap] = useState({}); // Map: sessionId -> boolean
+  const [moduleIncompleteMap, setModuleIncompleteMap] = useState({}); // Map: moduleId -> boolean
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [isCopySessionModalOpen, setIsCopySessionModalOpen] = useState(false);
+  const [copySessionModalPage, setCopySessionModalPage] = useState('seleccionar'); // 'seleccionar'
+  const [allSessionsForCopy, setAllSessionsForCopy] = useState([]); // Array of { session, moduleName, moduleId }
+  const [isLoadingSessionsForCopy, setIsLoadingSessionsForCopy] = useState(false);
+  const [isCopyingSession, setIsCopyingSession] = useState(false);
+  const [sessionToEdit, setSessionToEdit] = useState(null);
+  const [sessionName, setSessionName] = useState('');
+  const [sessionImageFile, setSessionImageFile] = useState(null);
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
+  const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [deleteSessionConfirmation, setDeleteSessionConfirmation] = useState('');
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
+  const [isCopyModuleModalOpen, setIsCopyModuleModalOpen] = useState(false);
+  const [copyModuleModalPage, setCopyModuleModalPage] = useState('crear'); // 'crear' | 'seleccionar'
+  const [allModulesForCopy, setAllModulesForCopy] = useState([]); // Array of modules from all programs
+  const [isLoadingModulesForCopy, setIsLoadingModulesForCopy] = useState(false);
+  const [isCopyingModule, setIsCopyingModule] = useState(false);
+  const [selectedModuleToCopy, setSelectedModuleToCopy] = useState(null);
+  const [newModuleNameForCopy, setNewModuleNameForCopy] = useState('');
+  const [moduleName, setModuleName] = useState('');
+  const [isCreatingModule, setIsCreatingModule] = useState(false);
+  const [isDeleteModuleModalOpen, setIsDeleteModuleModalOpen] = useState(false);
+  const [moduleToDelete, setModuleToDelete] = useState(null);
+  const [deleteModuleConfirmation, setDeleteModuleConfirmation] = useState('');
+  const [isDeletingModule, setIsDeletingModule] = useState(false);
+  const [isUpdatingModuleOrder, setIsUpdatingModuleOrder] = useState(false);
+  const [isUpdatingSessionOrder, setIsUpdatingSessionOrder] = useState(false);
+  const [originalModulesOrder, setOriginalModulesOrder] = useState([]);
+  const [originalSessionsOrder, setOriginalSessionsOrder] = useState([]);
+  const [isExerciseEditMode, setIsExerciseEditMode] = useState(false);
+  const [isUpdatingExerciseOrder, setIsUpdatingExerciseOrder] = useState(false);
+  const [originalExercisesOrder, setOriginalExercisesOrder] = useState([]);
+  const [isDeleteExerciseModalOpen, setIsDeleteExerciseModalOpen] = useState(false);
+  const [exerciseToDelete, setExerciseToDelete] = useState(null);
+  const [deleteExerciseConfirmation, setDeleteExerciseConfirmation] = useState('');
+  const [isDeletingExercise, setIsDeletingExercise] = useState(false);
+  const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
+  const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
+  const [newExerciseDraft, setNewExerciseDraft] = useState(null);
+  const [newExerciseSets, setNewExerciseSets] = useState([]);
+  const [isCreatingNewExercise, setIsCreatingNewExercise] = useState(false);
+  const [isCreatingExercise, setIsCreatingExercise] = useState(false); // Track if we're creating a new exercise in the main modal
+  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [selectedExerciseTab, setSelectedExerciseTab] = useState('general');
+  const [exerciseDraft, setExerciseDraft] = useState(null);
+  const [libraryTitles, setLibraryTitles] = useState({}); // Map: libraryId -> library title
+  const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
+  const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
+  const libraryDataCacheRef = useRef(libraryDataCache);
+  const libraryExerciseCompletenessRef = useRef(libraryExerciseCompleteness);
+  // Library/Exercise selection modal state
+  const [isLibraryExerciseModalOpen, setIsLibraryExerciseModalOpen] = useState(false);
+  const [libraryExerciseModalMode, setLibraryExerciseModalMode] = useState(null); // 'primary', 'add-alternative', 'edit-alternative'
+  const [availableLibrariesForSelection, setAvailableLibrariesForSelection] = useState([]);
+  const [selectedLibraryForExercise, setSelectedLibraryForExercise] = useState(null);
+  const [exercisesFromSelectedLibrary, setExercisesFromSelectedLibrary] = useState([]);
+  const [isLoadingLibrariesForSelection, setIsLoadingLibrariesForSelection] = useState(false);
+  const [isLoadingExercisesFromLibrary, setIsLoadingExercisesFromLibrary] = useState(false);
+  const [alternativeToEdit, setAlternativeToEdit] = useState(null); // { libraryId, index } for editing alternatives
+  // Edit mode state for alternatives/objectives/measures sections
+  const [isAlternativesEditMode, setIsAlternativesEditMode] = useState(false);
+  const [isMeasuresEditMode, setIsMeasuresEditMode] = useState(false);
+  const [isObjectivesEditMode, setIsObjectivesEditMode] = useState(false);
+  // Measure selection modal
+  const [isMeasureSelectionModalOpen, setIsMeasureSelectionModalOpen] = useState(false);
+  const [measureToEditIndex, setMeasureToEditIndex] = useState(null); // null for add, number for edit
+  // Objective selection modal
+  const [isObjectiveSelectionModalOpen, setIsObjectiveSelectionModalOpen] = useState(false);
+  const [objectiveToEditIndex, setObjectiveToEditIndex] = useState(null); // null for add, number for edit
+  // Series/Sets state
+  const [expandedSeries, setExpandedSeries] = useState({}); // Map: setId -> boolean
+  const [exerciseSets, setExerciseSets] = useState([]); // Array of sets for the selected exercise
+  const [originalExerciseSets, setOriginalExerciseSets] = useState([]); // Original sets when modal opens
+  const [unsavedSetChanges, setUnsavedSetChanges] = useState({}); // Map: setId -> boolean (has unsaved changes)
+  const [isSeriesEditMode, setIsSeriesEditMode] = useState(false);
+  
+  // Determine if we're actively editing (any edit mode is active)
+  // Must be declared after all edit mode states
+  const isActivelyEditing = isModuleEditMode || isSessionEditMode || isExerciseEditMode || isSeriesEditMode;
+  
+  // Load program data with React Query
+  const { data: program, isLoading: programLoading, error: programError } = useProgram(programId, {
+    isActive: isActivelyEditing,
+  });
+  
+  // Load modules with React Query (use counts for initial load)
+  const { data: modulesData = [], isLoading: isLoadingModules } = useModules(programId, {
+    isActive: isActivelyEditing,
+    useCounts: true, // Use optimized version with counts
+  });
+  
+  // Sort and set modules (maintain local state for drag-and-drop)
+  const [modules, setModules] = useState([]);
+  
+  // Helper function to check exercise completeness (defined early to avoid initialization errors)
+  // This is used in multiple useEffects before checkExerciseIncomplete is defined
+  // Note: Library completeness check is skipped here (will be checked later when library data loads)
+  const checkExerciseCompletenessInline = useCallback((exercise, sets) => {
+    if (!exercise) return true;
+    
+    // Check primary exercise
+    let hasPrimary = false;
+    if (exercise.primary && typeof exercise.primary === 'object' && exercise.primary !== null) {
+      try {
+        const primaryValues = Object.values(exercise.primary);
+        if (primaryValues.length > 0 && primaryValues[0]) {
+          hasPrimary = true;
+        }
+      } catch (error) {}
+    }
+    if (!hasPrimary) return true;
+    // Library completeness check is done separately via isExerciseIncomplete function
+    
+    // Check alternatives
+    const alternatives = exercise.alternatives && typeof exercise.alternatives === 'object' && exercise.alternatives !== null && !Array.isArray(exercise.alternatives)
+      ? exercise.alternatives
+      : {};
+    const alternativesCount = Object.values(alternatives).reduce((sum, arr) => {
+      return sum + (Array.isArray(arr) ? arr.length : 0);
+    }, 0);
+    if (alternativesCount === 0) return true;
+    // Library completeness check is done separately via isExerciseIncomplete function
+    
+    // Check measures
+    const hasMeasures = Array.isArray(exercise.measures) && exercise.measures.length > 0;
+    if (!hasMeasures) return true;
+    
+    // Check objectives
+    const objectives = Array.isArray(exercise.objectives) ? exercise.objectives : [];
+    if (objectives.length === 0) return true;
+    
+    // Check sets
+    if (sets.length === 0) return true;
+    
+    // Check that sets have required data filled
+    const validObjectives = objectives.filter(obj => obj !== 'previous');
+    if (validObjectives.length > 0) {
+      const allSetsHaveData = sets.every(set => {
+        return validObjectives.some(obj => {
+          const value = set[obj];
+          return value !== null && value !== undefined && value !== '';
+        });
+      });
+      if (!allSetsHaveData) return true;
+    }
+    
+    return false;
+  }, []);
+  
+  // Memoize sorted modules to avoid re-sorting on every render
+  const sortedModules = useMemo(() => {
+    if (modulesData.length === 0) return [];
+    return [...modulesData].sort((a, b) => {
+      const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+      const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+      return orderA - orderB;
+    });
+  }, [modulesData]);
+
+  useEffect(() => {
+    if (sortedModules.length > 0) {
+      setModules(sortedModules);
+      
+      // Use denormalized completeness flags if available
+      const moduleStatuses = {};
+      const modulesWithFlags = sortedModules.filter(module => 
+        module.isComplete !== undefined && module.isComplete !== null
+      );
+      
+      modulesWithFlags.forEach(module => {
+        moduleStatuses[module.id] = !module.isComplete;
+      });
+      
+      if (Object.keys(moduleStatuses).length > 0) {
+        setModuleIncompleteMap(prev => ({ ...prev, ...moduleStatuses }));
+      }
+      
+      // If not all modules have denormalized flags, check completeness for modules without flags
+      // This happens in the background and doesn't block the UI
+      const modulesNeedingCheck = sortedModules.filter(module => 
+        module.isComplete === undefined || module.isComplete === null
+      );
+      
+      if (modulesNeedingCheck.length > 0) {
+        // Check completeness for modules without flags (background check)
+        // This runs asynchronously after component is fully rendered, so checkModuleIncomplete will be available
+        const checkModulesCompleteness = async () => {
+          const moduleStatusesToCheck = {};
+          
+          // Check each module that needs checking
+          for (const module of modulesNeedingCheck) {
+            try {
+              // Use checkModuleIncomplete which is defined later in the component
+              // Since this runs asynchronously, the function will be available
+              const sessionsData = await programService.getSessionsByModule(programId, module.id);
+              const sortedSessions = sessionsData.sort((a, b) => {
+                const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+                const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+                return orderA - orderB;
+              });
+              
+              // Check if any session is incomplete
+              let moduleIncomplete = false;
+              for (const session of sortedSessions) {
+                // Check session completeness by loading exercises and sets
+                const exercisesData = await programService.getExercisesBySession(programId, module.id, session.id);
+                if (exercisesData.length === 0) {
+                  moduleIncomplete = true;
+                  break;
+                }
+                
+                // Load sets for all exercises
+                const setsMap = {};
+                await Promise.all(
+                  exercisesData.map(async (exercise) => {
+                    try {
+                      const setsData = await programService.getSetsByExercise(
+                        programId,
+                        module.id,
+                        session.id,
+                        exercise.id
+                      );
+                      setsMap[exercise.id] = setsData;
+                    } catch (err) {
+                      setsMap[exercise.id] = [];
+                    }
+                  })
+                );
+                
+                // Check if any exercise is incomplete
+                const hasIncomplete = exercisesData.some(exercise => {
+                  const sets = setsMap[exercise.id] || [];
+                  return checkExerciseCompletenessInline(exercise, sets);
+                });
+                
+                if (hasIncomplete) {
+                  moduleIncomplete = true;
+                  break;
+                }
+              }
+              
+              moduleStatusesToCheck[module.id] = moduleIncomplete;
+            } catch (err) {
+              console.error(`Error checking module ${module.id} completeness:`, err);
+              moduleStatusesToCheck[module.id] = false; // Default to complete on error
+            }
+          }
+          
+          // Update module incomplete map
+          setModuleIncompleteMap(prev => ({
+            ...prev,
+            ...moduleStatuses,
+            ...moduleStatusesToCheck
+          }));
+        };
+        
+        // Run in background (don't await)
+        checkModulesCompleteness();
+      }
+    }
+  }, [sortedModules, programId, checkExerciseCompletenessInline]);
+  
+  const loading = programLoading;
+  const error = programError ? 'Error al cargar el programa' : null;
+  const [isUpdatingSeriesOrder, setIsUpdatingSeriesOrder] = useState(false);
+  const [originalSeriesOrder, setOriginalSeriesOrder] = useState([]);
+  const [isCreatingSet, setIsCreatingSet] = useState(false);
+  const [isSavingSetChanges, setIsSavingSetChanges] = useState(false);
+
+  const isLibraryExerciseIncomplete = (libraryId, exerciseName) => {
+    if (!libraryId || !exerciseName) {
+      return false;
+    }
+    const key = getLibraryExerciseKey(libraryId, exerciseName);
+    return libraryExerciseCompleteness[key] === false;
+  };
+
+  const hasIncompleteLibraryReference = (references = []) => {
+    if (!Array.isArray(references) || references.length === 0) {
+      return false;
+    }
+
+    return references.some(({ libraryId, exerciseName }) => isLibraryExerciseIncomplete(libraryId, exerciseName));
+  };
+
+  const activeExerciseForModal = exerciseDraft || selectedExercise || null;
+  const currentExerciseId = activeExerciseForModal?.id || null;
+  const draftAlternatives =
+    activeExerciseForModal &&
+    activeExerciseForModal.alternatives &&
+    typeof activeExerciseForModal.alternatives === 'object' &&
+    !Array.isArray(activeExerciseForModal.alternatives)
+      ? activeExerciseForModal.alternatives
+      : {};
+  const draftMeasures = Array.isArray(activeExerciseForModal?.measures)
+    ? activeExerciseForModal.measures
+    : [];
+  const draftObjectives = Array.isArray(activeExerciseForModal?.objectives)
+    ? activeExerciseForModal.objectives
+    : [];
+  const primaryLibraryReferences = activeExerciseForModal ? getPrimaryReferences(activeExerciseForModal) : [];
+  const primaryLibraryReference = primaryLibraryReferences.length > 0 ? primaryLibraryReferences[0] : null;
+  const isPrimaryLibraryIncomplete = primaryLibraryReference
+    ? isLibraryExerciseIncomplete(primaryLibraryReference.libraryId, primaryLibraryReference.exerciseName)
+    : false;
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  useEffect(() => {
+    libraryDataCacheRef.current = libraryDataCache;
+  }, [libraryDataCache]);
+
+  useEffect(() => {
+    libraryExerciseCompletenessRef.current = libraryExerciseCompleteness;
+  }, [libraryExerciseCompleteness]);
+
+  const fetchLibraryExerciseCompleteness = useCallback(async (references = []) => {
+    if (!Array.isArray(references) || references.length === 0) {
+      return;
+    }
+
+    const uniqueRefs = [];
+    const seenKeys = new Set();
+
+    references.forEach(({ libraryId, exerciseName }) => {
+      if (!libraryId || !exerciseName) {
+        return;
+      }
+      const key = getLibraryExerciseKey(libraryId, exerciseName);
+      if (libraryExerciseCompletenessRef.current[key] !== undefined || seenKeys.has(key)) {
+        return;
+      }
+      seenKeys.add(key);
+      uniqueRefs.push({ libraryId, exerciseName, key });
+    });
+
+    if (uniqueRefs.length === 0) {
+      return;
+    }
+
+    const librariesToFetch = Array.from(
+      new Set(
+        uniqueRefs
+          .map(({ libraryId }) => libraryId)
+          .filter((libraryId) => !Object.prototype.hasOwnProperty.call(libraryDataCacheRef.current, libraryId))
+      )
+    );
+
+    let fetchedLibraries = {};
+    if (librariesToFetch.length > 0) {
+      const results = await Promise.all(
+        librariesToFetch.map(async (libraryId) => {
+            try {
+              const library = await libraryService.getLibraryById(libraryId);
+              return { libraryId, data: library || null };
+            } catch (error) {
+              console.error('Error fetching library data:', error);
+              return { libraryId, data: null };
+            }
+        })
+      );
+
+      fetchedLibraries = results.reduce((acc, { libraryId, data }) => {
+        acc[libraryId] = data;
+        return acc;
+      }, {});
+
+      if (results.length > 0) {
+        setLibraryDataCache((prev) => {
+          let hasChange = false;
+          const next = { ...prev };
+          results.forEach(({ libraryId, data }) => {
+            if (!Object.prototype.hasOwnProperty.call(prev, libraryId)) {
+              next[libraryId] = data;
+              hasChange = true;
+            }
+          });
+          if (hasChange) {
+            libraryDataCacheRef.current = next;
+            return next;
+          }
+          return prev;
+        });
+      }
+    }
+
+    const completenessUpdates = {};
+
+    uniqueRefs.forEach(({ libraryId, exerciseName, key }) => {
+      const libraryData = Object.prototype.hasOwnProperty.call(libraryDataCacheRef.current, libraryId)
+        ? libraryDataCacheRef.current[libraryId]
+        : fetchedLibraries[libraryId];
+
+      if (!libraryData) {
+        completenessUpdates[key] = false;
+        return;
+      }
+
+      const exerciseData = libraryData[exerciseName];
+      completenessUpdates[key] = isLibraryExerciseDataComplete(exerciseData);
+    });
+
+    if (Object.keys(completenessUpdates).length > 0) {
+      setLibraryExerciseCompleteness((prev) => {
+        const next = { ...prev, ...completenessUpdates };
+        libraryExerciseCompletenessRef.current = next;
+        return next;
+      });
+    }
+  }, []);
+
+  // Verify program ownership
+  useEffect(() => {
+    if (program && user && program.creator_id !== user.uid) {
+      setError('No tienes permiso para ver este programa');
+    }
+  }, [program, user]);
+
+  // Enable real-time listeners when actively editing
+  useProgramRealtime(programId, isActivelyEditing);
+  
+  // Enable real-time listeners for selected module/session when editing
+  useModuleSessionsRealtime(programId, selectedModule?.id, isActivelyEditing && !!selectedModule);
+  useSessionExercisesRealtime(programId, selectedModule?.id, selectedSession?.id, isActivelyEditing && !!selectedSession);
+
+  useEffect(() => {
+    if (!exercises || exercises.length === 0) {
+      return;
+    }
+
+    const references = exercises.flatMap((exercise) => getExerciseLibraryReferences(exercise));
+    if (references.length === 0) {
+      return;
+    }
+
+    fetchLibraryExerciseCompleteness(references);
+  }, [exercises, fetchLibraryExerciseCompleteness]);
+
+  // Analytics are now loaded via React Query hook above
+  // They're automatically cached for 15 minutes and only refetch when stale
+
+  // Handlers for Lab page
+  const handleShowStatExplanation = (statKey) => {
+    const explanation = STAT_EXPLANATIONS[statKey];
+    if (explanation) {
+      setStatExplanation(explanation);
+      setIsStatExplanationModalOpen(true);
+    }
+  };
+
+  const handleShowUserInfo = (user) => {
+    setSelectedUserInfo(user);
+    setIsUserInfoModalOpen(true);
+  };
+
+  // Helper component for metric card with info icon
+  const MetricCard = ({ statKey, value, label, onClick, percentageChange }) => (
+    <div className="lab-metric-card" onClick={() => handleShowStatExplanation(statKey)}>
+      <button className="lab-metric-info-icon" onClick={(e) => { e.stopPropagation(); handleShowStatExplanation(statKey); }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+          <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </button>
+      <div className="lab-metric-value">{value}</div>
+      {percentageChange !== null && (
+        <div className={`lab-metric-change ${percentageChange >= 0 ? 'lab-metric-change-positive' : 'lab-metric-change-negative'}`}>
+          {percentageChange >= 0 ? '↑' : '↓'} {Math.abs(percentageChange).toFixed(1)}%
+        </div>
+      )}
+      <div className="lab-metric-label">{label}</div>
+    </div>
+  );
+
+  useEffect(() => {
+    const sourceExercise = exerciseDraft || selectedExercise;
+    if (!sourceExercise) {
+      return;
+    }
+
+    const references = getExerciseLibraryReferences(sourceExercise);
+    if (references.length === 0) {
+      return;
+    }
+
+    fetchLibraryExerciseCompleteness(references);
+  }, [exerciseDraft, selectedExercise, fetchLibraryExerciseCompleteness]);
+
+  const handleTabClick = useCallback((index) => {
+    // Prevent tab switching when in edit mode
+    if (isModuleEditMode || isSessionEditMode || isExerciseEditMode) return;
+    
+    if (index === currentTabIndex) return;
+    
+    // Clear selections when switching away from contenido tab
+    const newTab = TAB_CONFIG[index];
+    const currentTab = TAB_CONFIG[currentTabIndex];
+    if (currentTab?.key === 'contenido' && newTab?.key !== 'contenido') {
+      setSelectedModule(null);
+      setSelectedSession(null);
+      setSessions([]);
+      setExercises([]);
+      setIsSessionEditMode(false);
+    }
+    
+    // Update state immediately for instant indicator movement
+    setCurrentTabIndex(index);
+    
+    // Scroll the content
+    if (tabsScrollRef.current) {
+      isScrollingProgrammatically.current = true;
+      const containerWidth = tabsScrollRef.current.offsetWidth;
+      tabsScrollRef.current.scrollTo({ 
+        left: index * containerWidth, 
+        behavior: 'smooth' 
+      });
+      // Reset flag after scroll completes
+      setTimeout(() => {
+        isScrollingProgrammatically.current = false;
+      }, 300);
+    }
+  }, [isModuleEditMode, isSessionEditMode, isExerciseEditMode, currentTabIndex]);
+
+  // Throttled scroll handler using requestAnimationFrame for smooth performance
+  const handleTabScroll = useCallback((e) => {
+    // Prevent tab switching when in edit mode
+    if (isModuleEditMode || isSessionEditMode || isExerciseEditMode) {
+      // Reset scroll position to prevent scrolling
+      if (tabsScrollRef.current) {
+        const containerWidth = tabsScrollRef.current.offsetWidth;
+        tabsScrollRef.current.scrollTo({
+          left: currentTabIndex * containerWidth,
+          behavior: 'auto'
+        });
+      }
+      return;
+    }
+    
+    // Ignore scroll events during programmatic scrolling
+    if (isScrollingProgrammatically.current) {
+      return;
+    }
+    
+    // Use requestAnimationFrame to throttle scroll handling
+    requestAnimationFrame(() => {
+      const containerWidth = e.target.offsetWidth;
+      const scrollLeft = e.target.scrollLeft;
+      const newIndex = Math.round(scrollLeft / containerWidth);
+      
+      if (newIndex !== currentTabIndex && newIndex >= 0 && newIndex < TAB_CONFIG.length) {
+        // Use startTransition to batch non-urgent state updates
+        startTransition(() => {
+          // Clear selections when switching away from contenido tab
+          const newTab = TAB_CONFIG[newIndex];
+          const currentTab = TAB_CONFIG[currentTabIndex];
+          if (currentTab?.key === 'contenido' && newTab?.key !== 'contenido') {
+            setSelectedModule(null);
+            setSelectedSession(null);
+            setSessions([]);
+            setExercises([]);
+            setIsSessionEditMode(false);
+          }
+          setCurrentTabIndex(newIndex);
+        });
+      }
+    });
+  }, [isModuleEditMode, isSessionEditMode, isExerciseEditMode, currentTabIndex]);
+
+  const handleTabWheel = (e) => {
+    // Prevent scrolling via mouse wheel when in edit mode
+    if (isModuleEditMode || isSessionEditMode || isExerciseEditMode) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  // Set up passive scroll listener for better performance (after handleTabScroll is defined)
+  useEffect(() => {
+    const element = tabsScrollRef.current;
+    if (!element) return;
+    
+    // Use passive listener for better scroll performance
+    element.addEventListener('scroll', handleTabScroll, { passive: true });
+    
+    return () => {
+      element.removeEventListener('scroll', handleTabScroll);
+    };
+  }, [handleTabScroll]);
+
+  const handleStatusPillClick = () => {
+    setSelectedStatus(program.status);
+    setIsStatusModalOpen(true);
+  };
+
+  const handleCloseStatusModal = () => {
+    setIsStatusModalOpen(false);
+    setSelectedStatus(null);
+  };
+
+  const handleStatusChange = async () => {
+    if (!program || !selectedStatus || selectedStatus === program.status) {
+      handleCloseStatusModal();
+      return;
+    }
+
+    try {
+      setIsUpdatingStatus(true);
+      await programService.updateProgram(program.id, { status: selectedStatus });
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          status: selectedStatus
+        })
+      );
+      
+      handleCloseStatusModal();
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Error al actualizar el estado del programa');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handlePricePillClick = () => {
+    setPriceValue(program.price?.toString() || '');
+    setIsPriceModalOpen(true);
+  };
+
+  const handleClosePriceModal = () => {
+    setIsPriceModalOpen(false);
+    setPriceValue('');
+  };
+
+  const handlePriceChange = async () => {
+    if (!program) {
+      handleClosePriceModal();
+      return;
+    }
+
+    const numericPrice = priceValue === '' ? null : parseInt(priceValue, 10);
+    
+    // Validate minimum price of 2000
+    if (numericPrice !== null && numericPrice < 2000) {
+      return; // Silently prevent saving if below 2000
+    }
+
+    // If price hasn't changed, just close
+    if (numericPrice === program.price) {
+      handleClosePriceModal();
+      return;
+    }
+
+    try {
+      setIsUpdatingPrice(true);
+      await programService.updateProgram(program.id, { price: numericPrice });
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          price: numericPrice
+        })
+      );
+      
+      handleClosePriceModal();
+    } catch (err) {
+      console.error('Error updating price:', err);
+      alert('Error al actualizar el precio del programa');
+    } finally {
+      setIsUpdatingPrice(false);
+    }
+  };
+
+  const isOneTimePayment = () => {
+    if (!program || !program.access_duration) return false;
+    return program.access_duration !== 'monthly';
+  };
+
+  const handleDurationPillClick = () => {
+    if (!isOneTimePayment()) return;
+    // Extract number from duration string (e.g., "4 semanas" -> 4) or use the number directly
+    let initialValue = 1;
+    if (program.duration) {
+      if (typeof program.duration === 'string') {
+        const match = program.duration.match(/^(\d+)/);
+        initialValue = match ? parseInt(match[1], 10) : 1;
+      } else {
+        initialValue = program.duration;
+      }
+    }
+    setDurationValue(initialValue);
+    setIsDurationModalOpen(true);
+  };
+
+  const handleCloseDurationModal = () => {
+    setIsDurationModalOpen(false);
+    setDurationValue(0);
+  };
+
+  const handleEditProgramClick = () => {
+    if (!program) return;
+    setProgramNameValue(program.title || '');
+    setIsEditProgramModalOpen(true);
+  };
+
+  const handleCloseEditProgramModal = () => {
+    setIsEditProgramModalOpen(false);
+    setProgramNameValue('');
+    setImageUploadProgress(0);
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file || !program) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecciona un archivo de imagen válido');
+      return;
+    }
+
+    // Validate file size (e.g., max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      return;
+    }
+
+    try {
+      setIsUploadingImage(true);
+      setImageUploadProgress(0);
+
+      const imageURL = await programService.uploadProgramImage(
+        program.id,
+        file,
+        (progress) => {
+          setImageUploadProgress(Math.round(progress));
+        }
+      );
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          image_url: imageURL
+        })
+      );
+
+      setImageUploadProgress(100);
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      alert('Error al subir la imagen. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUploadingImage(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
+
+  const handleImageDelete = async () => {
+    if (!program || !program.image_path) {
+      return;
+    }
+
+    if (!window.confirm('¿Estás seguro de que quieres eliminar la imagen del programa?')) {
+      return;
+    }
+
+    try {
+      await programService.deleteProgramImage(program.id, program.image_path);
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          image_url: null,
+          image_path: null
+        })
+      );
+    } catch (err) {
+      console.error('Error deleting image:', err);
+      alert('Error al eliminar la imagen. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleUpdateProgram = async () => {
+    if (!program) return;
+
+    const updates = {};
+    if (programNameValue.trim() !== program.title) {
+      updates.title = programNameValue.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      handleCloseEditProgramModal();
+      return;
+    }
+
+    try {
+      setIsUpdatingProgram(true);
+      await programService.updateProgram(program.id, updates);
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          ...updates
+        })
+      );
+      
+      handleCloseEditProgramModal();
+    } catch (err) {
+      console.error('Error updating program:', err);
+      alert('Error al actualizar el programa');
+    } finally {
+      setIsUpdatingProgram(false);
+    }
+  };
+
+  const handleDurationIncrement = () => {
+    setDurationValue(prev => prev + 1);
+  };
+
+  const handleDurationDecrement = () => {
+    if (durationValue > 1) {
+      setDurationValue(prev => prev - 1);
+    }
+  };
+
+  const handleDurationChange = async () => {
+    if (!program) {
+      handleCloseDurationModal();
+      return;
+    }
+
+    const durationString = `${durationValue} semanas`;
+    const currentDurationString = typeof program.duration === 'string' 
+      ? program.duration 
+      : program.duration ? `${program.duration} semanas` : null;
+
+    // If duration hasn't changed, just close
+    if (durationString === currentDurationString) {
+      handleCloseDurationModal();
+      return;
+    }
+
+    try {
+      setIsUpdatingDuration(true);
+      await programService.updateProgram(program.id, { duration: durationString });
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          duration: durationString
+        })
+      );
+      
+      handleCloseDurationModal();
+    } catch (err) {
+      console.error('Error updating duration:', err);
+      alert('Error al actualizar la duración del programa');
+    } finally {
+      setIsUpdatingDuration(false);
+    }
+  };
+
+  const handleStreakPillClick = () => {
+    if (!program) return;
+    const programSettings = program.programSettings || {};
+    setStreakEnabled(programSettings.streakEnabled || false);
+    setMinimumSessionsPerWeek(programSettings.minimumSessionsPerWeek || 0);
+    setIsStreakModalOpen(true);
+  };
+
+  const handleCloseStreakModal = () => {
+    setIsStreakModalOpen(false);
+    setStreakEnabled(false);
+    setMinimumSessionsPerWeek(0);
+  };
+
+  const handleUpdateStreak = async () => {
+    if (!program) return;
+
+    const programSettings = {
+      ...(program.programSettings || {}),
+      streakEnabled: streakEnabled,
+      minimumSessionsPerWeek: minimumSessionsPerWeek
+    };
+
+    try {
+      setIsUpdatingStreak(true);
+      await programService.updateProgram(program.id, { programSettings });
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          programSettings
+        })
+      );
+      
+      handleCloseStreakModal();
+    } catch (err) {
+      console.error('Error updating streak settings:', err);
+      alert('Error al actualizar la configuración de racha');
+    } finally {
+      setIsUpdatingStreak(false);
+    }
+  };
+
+  const handleWeightSuggestionsPillClick = () => {
+    if (!program) return;
+    setWeightSuggestionsEnabled(program.weight_suggestions || false);
+    setIsWeightSuggestionsModalOpen(true);
+  };
+
+  const handleCloseWeightSuggestionsModal = () => {
+    setIsWeightSuggestionsModalOpen(false);
+    setWeightSuggestionsEnabled(false);
+  };
+
+  const handleUpdateWeightSuggestions = async () => {
+    if (!program) return;
+
+    try {
+      setIsUpdatingWeightSuggestions(true);
+      await programService.updateProgram(program.id, { weight_suggestions: weightSuggestionsEnabled });
+      
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          weight_suggestions: weightSuggestionsEnabled
+        })
+      );
+      
+      handleCloseWeightSuggestionsModal();
+    } catch (err) {
+      console.error('Error updating weight suggestions settings:', err);
+      alert('Error al actualizar la configuración de sugerencias de peso');
+    } finally {
+      setIsUpdatingWeightSuggestions(false);
+    }
+  };
+
+  const handleFreeTrialPillClick = () => {
+    if (!program) return;
+    const freeTrial = program.free_trial || {};
+    setFreeTrialActive(!!freeTrial.active);
+    setFreeTrialDurationDays(
+      freeTrial.duration_days !== undefined && freeTrial.duration_days !== null
+        ? String(freeTrial.duration_days)
+        : '0'
+    );
+    setIsFreeTrialModalOpen(true);
+  };
+
+  const handleCloseFreeTrialModal = () => {
+    setIsFreeTrialModalOpen(false);
+  };
+
+  const handleFreeTrialDurationInputChange = (value) => {
+    if (value === '' || /^\d*$/.test(value)) {
+      setFreeTrialDurationDays(value);
+    }
+  };
+
+  const getParsedFreeTrialDuration = () => {
+    const parsed = parseInt(freeTrialDurationDays, 10);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+  };
+
+  const incrementFreeTrialDuration = () => {
+    if (!freeTrialActive) return;
+    const newValue = getParsedFreeTrialDuration() + 1;
+    setFreeTrialDurationDays(String(newValue));
+  };
+
+  const decrementFreeTrialDuration = () => {
+    if (!freeTrialActive) return;
+    const currentValue = getParsedFreeTrialDuration();
+    if (currentValue <= 0) return;
+    setFreeTrialDurationDays(String(currentValue - 1));
+  };
+
+  const handleUpdateFreeTrial = async () => {
+    if (!program) return;
+
+    const normalizedDuration = getParsedFreeTrialDuration();
+    const free_trial = {
+      active: freeTrialActive,
+      duration_days: normalizedDuration,
+    };
+
+    try {
+      setIsUpdatingFreeTrial(true);
+      await programService.updateProgram(program.id, { free_trial });
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          free_trial
+        })
+      );
+
+      setIsFreeTrialModalOpen(false);
+    } catch (err) {
+      console.error('Error updating free trial settings:', err);
+      alert('Error al actualizar la prueba gratis');
+    } finally {
+      setIsUpdatingFreeTrial(false);
+    }
+  };
+
+  const handleAuxiliaryLibrariesPillClick = async () => {
+    if (!program || !user) return;
+
+    try {
+      setIsLoadingLibraries(true);
+      setIsAuxiliaryLibrariesModalOpen(true);
+      
+      // Load available libraries for the creator
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      setAvailableLibraries(libraries);
+      
+      // Initialize selected libraries from program
+      const currentSelected = program.availableLibraries || [];
+      setSelectedLibraryIds(new Set(currentSelected));
+    } catch (err) {
+      console.error('Error loading libraries:', err);
+      alert('Error al cargar las bibliotecas');
+      setIsAuxiliaryLibrariesModalOpen(false);
+    } finally {
+      setIsLoadingLibraries(false);
+    }
+  };
+
+  const handleCloseAuxiliaryLibrariesModal = () => {
+    setIsAuxiliaryLibrariesModalOpen(false);
+    setAvailableLibraries([]);
+    setSelectedLibraryIds(new Set());
+  };
+
+  const handleToggleLibrary = (libraryId) => {
+    setSelectedLibraryIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(libraryId)) {
+        newSet.delete(libraryId);
+      } else {
+        newSet.add(libraryId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleUpdateAuxiliaryLibraries = async () => {
+    if (!program || !program.id) {
+      console.error('Cannot update auxiliary libraries: program or program.id is missing');
+      alert('Error: No se pudo identificar el programa');
+      return;
+    }
+
+    try {
+      setIsUpdatingAuxiliaryLibraries(true);
+      // Ensure we have a valid array (even if empty)
+      const libraryIdsArray = Array.from(selectedLibraryIds).filter(id => id && (typeof id === 'string' || typeof id === 'number'));
+      console.log('[handleUpdateAuxiliaryLibraries] Starting update:', { 
+        programId: program.id, 
+        libraryIdsArray,
+        libraryIdsArrayLength: libraryIdsArray.length,
+        selectedLibraryIds: Array.from(selectedLibraryIds),
+        programAvailableLibraries: program.availableLibraries
+      });
+      
+      // Ensure we always send an array, never null or undefined
+      const updateData = { 
+        availableLibraries: libraryIdsArray.length > 0 ? libraryIdsArray : [] 
+      };
+      
+      await programService.updateProgram(program.id, updateData);
+      
+      // Update React Query cache instead of using setProgram (which doesn't exist)
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          availableLibraries: libraryIdsArray
+        })
+      );
+      
+      console.log('[handleUpdateAuxiliaryLibraries] Update successful');
+      handleCloseAuxiliaryLibrariesModal();
+    } catch (err) {
+      console.error('[handleUpdateAuxiliaryLibraries] Error updating auxiliary libraries:', err);
+      console.error('[handleUpdateAuxiliaryLibraries] Error details:', {
+        message: err.message,
+        code: err.code,
+        name: err.name,
+        programId: program?.id,
+        selectedLibraryIds: Array.from(selectedLibraryIds),
+        stack: err.stack
+      });
+      
+      // Show user-friendly error message with details for debugging
+      let errorMessage = 'Por favor, intenta de nuevo.';
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.code) {
+        errorMessage = `Error ${err.code}`;
+      }
+      
+      alert(`Error al actualizar las bibliotecas auxiliares: ${errorMessage}`);
+    } finally {
+      setIsUpdatingAuxiliaryLibraries(false);
+    }
+  };
+
+  const handleAnunciosPillClick = () => {
+    if (!program) return;
+    const tutorials = program.tutorials || {};
+    const screenNames = Object.keys(tutorials);
+    if (screenNames.length > 0) {
+      setSelectedScreen(screenNames[0]);
+      setSelectedVideoIndex(0);
+    } else {
+      setSelectedScreen(null);
+      setSelectedVideoIndex(0);
+    }
+    setIsAnunciosModalOpen(true);
+    setIsAnuncioVideoEditMode(false);
+    setIsAnuncioVideoPlaying(false);
+  };
+
+  const handleCloseAnunciosModal = () => {
+    setIsAnunciosModalOpen(false);
+    setSelectedScreen(null);
+    setSelectedVideoIndex(0);
+    setIsAnuncioVideoEditMode(false);
+    setIsAnuncioVideoPlaying(false);
+  };
+
+  const handleAnuncioVideoUpload = async (event, isReplacing = false) => {
+    const file = event.target.files[0];
+    if (!file || !selectedScreen || !program) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      alert('Por favor, selecciona un archivo de video válido');
+      return;
+    }
+
+    // No file size limit for videos
+
+    try {
+      setIsUploadingAnuncioVideo(true);
+      setAnuncioVideoUploadProgress(0);
+
+      // Upload video to Firebase Storage
+      const videoURL = await programService.uploadTutorialVideo(
+        program.id,
+        selectedScreen,
+        file,
+        (progress) => {
+          setAnuncioVideoUploadProgress(Math.round(progress));
+        }
+      );
+
+      // Update Firestore
+      const tutorials = { ...(program.tutorials || {}) };
+      if (!tutorials[selectedScreen]) {
+        tutorials[selectedScreen] = [];
+      }
+
+      if (isReplacing && tutorials[selectedScreen][selectedVideoIndex]) {
+        // Delete old video from storage
+        const oldVideoURL = tutorials[selectedScreen][selectedVideoIndex];
+        try {
+          await programService.deleteTutorialVideo(program.id, selectedScreen, oldVideoURL);
+        } catch (deleteErr) {
+          console.warn('Error deleting old video:', deleteErr);
+        }
+        // Replace video at current index
+        tutorials[selectedScreen][selectedVideoIndex] = videoURL;
+      } else {
+        // Add new video
+        tutorials[selectedScreen].push(videoURL);
+        // If adding new video, select it
+        setSelectedVideoIndex(tutorials[selectedScreen].length - 1);
+      }
+
+      await programService.updateProgram(program.id, { tutorials });
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          tutorials
+        })
+      );
+
+      setAnuncioVideoUploadProgress(100);
+      setIsAnuncioVideoEditMode(false);
+    } catch (err) {
+      console.error('Error uploading video:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        name: err.name,
+        stack: err.stack
+      });
+      const errorMessage = err.message || err.code || 'Error desconocido';
+      alert(`Error al subir el video: ${errorMessage}`);
+    } finally {
+      setIsUploadingAnuncioVideo(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleAnuncioVideoDelete = async () => {
+    if (!program || !selectedScreen) return;
+
+    const videos = program.tutorials?.[selectedScreen] || [];
+    if (selectedVideoIndex >= videos.length) return;
+
+    if (!window.confirm('¿Estás seguro de que quieres eliminar este video?')) {
+      return;
+    }
+
+    try {
+      const videoURL = videos[selectedVideoIndex];
+      
+      // Delete from Storage
+      await programService.deleteTutorialVideo(program.id, selectedScreen, videoURL);
+
+      // Update Firestore
+      const tutorials = { ...(program.tutorials || {}) };
+      tutorials[selectedScreen] = tutorials[selectedScreen].filter((_, index) => index !== selectedVideoIndex);
+      
+      if (tutorials[selectedScreen].length === 0) {
+        delete tutorials[selectedScreen];
+      }
+
+      await programService.updateProgram(program.id, { tutorials });
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          tutorials
+        })
+      );
+
+      // Adjust selected video index
+      const newLength = tutorials[selectedScreen]?.length || 0;
+      if (newLength === 0) {
+        setSelectedVideoIndex(0);
+      } else if (selectedVideoIndex >= newLength) {
+        setSelectedVideoIndex(newLength - 1);
+      }
+    } catch (err) {
+      console.error('Error deleting video:', err);
+      alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleIntroVideoCardClick = () => {
+    setIsIntroVideoModalOpen(true);
+    setIsIntroVideoEditMode(false);
+    setIsIntroVideoPlaying(false);
+  };
+
+  const handleCloseIntroVideoModal = () => {
+    setIsIntroVideoModalOpen(false);
+    setIsIntroVideoEditMode(false);
+    setIsIntroVideoPlaying(false);
+  };
+
+  const handleIntroVideoUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file || !program) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      alert('Por favor, selecciona un archivo de video válido');
+      return;
+    }
+
+    // No file size limit for videos
+
+    try {
+      setIsUploadingIntroVideo(true);
+      setIntroVideoUploadProgress(0);
+
+      // Upload video to Firebase Storage
+      const videoURL = await programService.uploadProgramIntroVideo(
+        program.id,
+        file,
+        (progress) => {
+          setIntroVideoUploadProgress(Math.round(progress));
+        }
+      );
+
+      // Update Firestore
+      await programService.updateProgram(program.id, { video_intro_url: videoURL });
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          video_intro_url: videoURL
+        })
+      );
+
+      setIntroVideoUploadProgress(100);
+      setIsIntroVideoEditMode(false);
+    } catch (err) {
+      console.error('Error uploading intro video:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        name: err.name,
+        stack: err.stack
+      });
+      const errorMessage = err.message || err.code || 'Error desconocido';
+      alert(`Error al subir el video: ${errorMessage}`);
+    } finally {
+      setIsUploadingIntroVideo(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleIntroVideoDelete = async () => {
+    if (!program || !program.video_intro_url) return;
+
+    if (!window.confirm('¿Estás seguro de que quieres eliminar el video de introducción?')) {
+      return;
+    }
+
+    try {
+      // Delete from Storage
+      await programService.deleteProgramIntroVideo(program.id, program.video_intro_url);
+
+      // Update Firestore
+      await programService.updateProgram(program.id, { video_intro_url: null });
+
+      // Update React Query cache
+      queryClient.setQueryData(
+        queryKeys.programs.detail(program.id),
+        (oldData) => ({
+          ...oldData,
+          video_intro_url: null
+        })
+      );
+    } catch (err) {
+      console.error('Error deleting intro video:', err);
+      alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleAddModule = () => {
+    setIsCopyModuleModalOpen(true);
+    setCopyModuleModalPage('crear');
+    setModuleName('');
+  };
+
+  const loadAllModulesForCopy = async () => {
+    if (!programId) return;
+    
+    try {
+      setIsLoadingModulesForCopy(true);
+      // Get all modules from the current program
+      const allModules = await programService.getModulesByProgram(programId);
+      setAllModulesForCopy(allModules);
+    } catch (error) {
+      console.error('Error loading modules for copy:', error);
+      alert('Error al cargar los módulos. Por favor, intenta de nuevo.');
+    } finally {
+      setIsLoadingModulesForCopy(false);
+    }
+  };
+
+  const handleCloseCopyModuleModal = () => {
+    setIsCopyModuleModalOpen(false);
+    setCopyModuleModalPage('crear');
+    setAllModulesForCopy([]);
+    setModuleName('');
+    setSelectedModuleToCopy(null);
+    setNewModuleNameForCopy('');
+  };
+
+  const handleSelectModuleToCopy = (moduleToCopy) => {
+    setSelectedModuleToCopy(moduleToCopy);
+    setNewModuleNameForCopy(moduleToCopy.title || moduleToCopy.name || 'Módulo');
+  };
+
+  const handleCopyModule = async () => {
+    if (!programId || !selectedModuleToCopy || !newModuleNameForCopy.trim()) return;
+
+    try {
+      setIsCopyingModule(true);
+      
+      // Create new module with the new name entered by user
+      const newModule = await programService.createModule(programId, newModuleNameForCopy.trim());
+      
+      // Get all sessions from the source module
+      const sourceSessions = await programService.getSessionsByModule(programId, selectedModuleToCopy.id);
+      
+      // Copy each session with all its exercises and sets
+      for (const session of sourceSessions) {
+        // Create new session with copied name and image
+        const newSession = await programService.createSession(
+          programId,
+          newModule.id,
+          session.title || session.name || 'Sesión',
+          null,
+          session.image_url || null
+        );
+        
+        // Get all exercises from the source session
+        const sourceExercises = await programService.getExercisesBySession(programId, selectedModuleToCopy.id, session.id);
+        
+        // Copy each exercise with all its data
+        for (const exercise of sourceExercises) {
+          // Get primary exercise name for creation
+          const primaryValues = Object.values(exercise.primary || {});
+          const primaryExerciseName = primaryValues[0] || 'Ejercicio';
+          
+          // Create the exercise
+          const newExercise = await programService.createExercise(
+            programId,
+            newModule.id,
+            newSession.id,
+            primaryExerciseName,
+            null
+          );
+          
+          // Update exercise with all data (primary, alternatives, measures, objectives)
+          // Explicitly remove name and title fields
+          const updateData = {
+            primary: exercise.primary || {},
+            alternatives: exercise.alternatives || {},
+            measures: exercise.measures || [],
+            objectives: exercise.objectives || [],
+            name: deleteField(),
+            title: deleteField()
+          };
+          
+          await programService.updateExercise(
+            programId,
+            newModule.id,
+            newSession.id,
+            newExercise.id,
+            updateData
+          );
+          
+          // Get all sets for this exercise
+          const sourceSets = await programService.getSetsByExercise(programId, selectedModuleToCopy.id, session.id, exercise.id);
+          
+          // Copy all sets
+          for (let i = 0; i < sourceSets.length; i++) {
+            const set = sourceSets[i];
+            const createdSet = await programService.createSet(
+              programId,
+              newModule.id,
+              newSession.id,
+              newExercise.id,
+              i
+            );
+            
+            // Update the created set with data from source set
+            const updateSetData = {
+              reps: set.reps || null,
+              intensity: set.intensity || null,
+              order: i,
+              title: set.title || `Serie ${i + 1}`
+            };
+            
+            await programService.updateSet(
+              programId,
+              newModule.id,
+              newSession.id,
+              newExercise.id,
+              createdSet.id,
+              updateSetData
+            );
+          }
+        }
+      }
+      
+      // Reload modules
+      const modulesData = await programService.getModulesByProgram(programId);
+      const sortedModules = modulesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setModules(sortedModules);
+      
+      handleCloseCopyModuleModal();
+    } catch (error) {
+      console.error('Error copying module:', error);
+      alert('Error al copiar el módulo. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCopyingModule(false);
+    }
+  };
+
+  const handleCloseModuleModal = () => {
+    setIsModuleModalOpen(false);
+    setModuleName('');
+  };
+
+  // Mutation hooks
+  const createModuleMutation = useCreateModule();
+  const updateModuleOrderMutation = useUpdateModuleOrder();
+  const deleteModuleMutation = useDeleteModule();
+  const createSessionMutation = useCreateSession();
+  const updateSessionOrderMutation = useUpdateSessionOrder();
+  const createExerciseMutation = useCreateExercise();
+  const updateExerciseMutation = useUpdateExercise();
+  const deleteExerciseMutation = useDeleteExercise();
+  const updateExerciseOrderMutation = useUpdateExerciseOrder();
+
+  // Debounced save for module order (Phase 1)
+  const debouncedSaveModuleOrder = useMemo(
+    () => debounce(async (moduleOrders) => {
+      try {
+        await updateModuleOrderMutation.mutateAsync({
+          programId,
+          moduleOrders,
+        });
+      } catch (error) {
+        console.error('Error saving module order:', error);
+        // Revert UI on error
+        if (originalModulesOrder.length > 0) {
+          setModules([...originalModulesOrder]);
+        }
+        alert('Error al guardar el orden de los módulos');
+      }
+    }, 1000),
+    [programId, updateModuleOrderMutation, originalModulesOrder]
+  );
+
+  // Debounced save for session order (Phase 1)
+  const debouncedSaveSessionOrder = useMemo(
+    () => debounce(async (sessionOrders) => {
+      if (!selectedModule) return;
+      try {
+        await updateSessionOrderMutation.mutateAsync({
+          programId,
+          moduleId: selectedModule.id,
+          sessionOrders,
+        });
+      } catch (error) {
+        console.error('Error saving session order:', error);
+        if (originalSessionsOrder.length > 0) {
+          setSessions([...originalSessionsOrder]);
+        }
+        alert('Error al guardar el orden de las sesiones');
+      }
+    }, 1000),
+    [programId, selectedModule, updateSessionOrderMutation, originalSessionsOrder]
+  );
+
+  // Helper to update completeness flags in Firestore (Phase 4)
+  // Note: This uses the exercises state, not exercisesData from the hook
+  const updateCompletenessFlags = useCallback(async (sessionId, moduleId) => {
+    if (!programId || !sessionId || !moduleId) return;
+    
+    try {
+      // Check if session is complete
+      // Use exercises state instead of exercisesData to avoid initialization order issues
+      const exercisesToCheck = exercises.filter(ex => ex);
+      const setsMap = exerciseSetsMap;
+      
+      let sessionComplete = true;
+      for (const exercise of exercisesToCheck) {
+        const sets = setsMap[exercise.id] || [];
+        if (checkExerciseIncomplete(exercise, sets)) {
+          sessionComplete = false;
+          break;
+        }
+      }
+      
+      // Update session completeness flag
+      await programService.updateSessionCompleteness(programId, moduleId, sessionId, sessionComplete);
+      
+      // Check all sessions in module to update module completeness
+      const allSessions = sessions;
+      let moduleComplete = true;
+      for (const session of allSessions) {
+        // For other sessions, use cached completeness if available
+        const isIncomplete = sessionIncompleteMap[session.id];
+        if (isIncomplete === undefined) {
+          // Need to check this session
+          const sessionExercises = await programService.getExercisesBySession(programId, moduleId, session.id);
+          // Simplified check - in production, you'd want to load sets too
+          const hasIncomplete = sessionExercises.some(ex => {
+            // Basic check without sets
+            return !ex.primary || !ex.alternatives || !ex.measures || !ex.objectives;
+          });
+          if (hasIncomplete) {
+            moduleComplete = false;
+            break;
+          }
+        } else if (isIncomplete) {
+          moduleComplete = false;
+          break;
+        }
+      }
+      
+      // Update module completeness flag
+      await programService.updateModuleCompleteness(programId, moduleId, moduleComplete);
+      
+      // Update local state
+      setSessionIncompleteMap(prev => ({
+        ...prev,
+        [sessionId]: !sessionComplete,
+      }));
+      setModuleIncompleteMap(prev => ({
+        ...prev,
+        [moduleId]: !moduleComplete,
+      }));
+    } catch (error) {
+      console.error('Error updating completeness flags:', error);
+      // Don't throw - this is a background update
+    }
+  }, [programId, exercises, exerciseSetsMap, sessions, sessionIncompleteMap]);
+
+  const handleCreateModule = async () => {
+    if (!moduleName.trim() || !programId) {
+      return;
+    }
+
+    try {
+      await createModuleMutation.mutateAsync({
+        programId,
+        moduleName: moduleName.trim(),
+      });
+      
+      // Close the appropriate modal
+      if (isCopyModuleModalOpen) {
+        handleCloseCopyModuleModal();
+      } else {
+      handleCloseModuleModal();
+      }
+    } catch (err) {
+      console.error('Error creating module:', err);
+      alert('Error al crear el módulo. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleEditModules = async () => {
+    if (!isModuleEditMode) {
+      // Entering edit mode: store original order
+      setOriginalModulesOrder([...modules]);
+      setIsModuleEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveModuleOrder();
+    }
+  };
+
+  const handleSaveModuleOrder = async () => {
+    if (!programId) return;
+
+    try {
+      setIsUpdatingModuleOrder(true);
+      const moduleOrders = modules.map((module, index) => ({
+        moduleId: module.id,
+        order: index,
+      }));
+      
+      // Use debounced save for better performance
+      await debouncedSaveModuleOrder(moduleOrders);
+      
+      // Flush debounce to ensure it saves immediately when exiting edit mode
+      debouncedSaveModuleOrder.flush();
+      
+      setIsModuleEditMode(false);
+      setOriginalModulesOrder([]);
+    } catch (err) {
+      console.error('Error updating module order:', err);
+      if (originalModulesOrder.length > 0) {
+        setModules([...originalModulesOrder]);
+      }
+      alert('Error al actualizar el orden de los módulos. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingModuleOrder(false);
+    }
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = modules.findIndex((module) => module.id === active.id);
+    const newIndex = modules.findIndex((module) => module.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newModules = arrayMove(modules, oldIndex, newIndex);
+    setModules(newModules);
+  };
+
+  const handleEditSessions = async () => {
+    if (!isSessionEditMode) {
+      // Entering edit mode: store original order
+      setOriginalSessionsOrder([...sessions]);
+      setIsSessionEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveSessionOrder();
+    }
+  };
+
+  const handleSaveSessionOrder = async () => {
+    if (!programId || !selectedModule) return;
+
+    try {
+      setIsUpdatingSessionOrder(true);
+      const sessionOrders = sessions.map((session, index) => ({
+        sessionId: session.id,
+        order: index,
+      }));
+      
+      // Use debounced save for better performance
+      await debouncedSaveSessionOrder(sessionOrders);
+      
+      // Flush debounce to ensure it saves immediately when exiting edit mode
+      debouncedSaveSessionOrder.flush();
+      
+      setIsSessionEditMode(false);
+      setOriginalSessionsOrder([]);
+    } catch (err) {
+      console.error('Error updating session order:', err);
+      if (originalSessionsOrder.length > 0) {
+        setSessions([...originalSessionsOrder]);
+      }
+      alert('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingSessionOrder(false);
+    }
+  };
+
+  const handleDragEndSessions = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id || !selectedModule) {
+      return;
+    }
+
+    const oldIndex = sessions.findIndex((session) => session.id === active.id);
+    const newIndex = sessions.findIndex((session) => session.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newSessions = arrayMove(sessions, oldIndex, newIndex);
+    setSessions(newSessions);
+  };
+
+  const handleDeleteModule = (module) => {
+    setModuleToDelete(module);
+    setIsDeleteModuleModalOpen(true);
+    setDeleteModuleConfirmation('');
+  };
+
+  const handleCloseDeleteModuleModal = () => {
+    setIsDeleteModuleModalOpen(false);
+    setModuleToDelete(null);
+    setDeleteModuleConfirmation('');
+  };
+
+  const handleConfirmDeleteModule = async () => {
+    if (!moduleToDelete || !deleteModuleConfirmation.trim() || !programId) {
+      return;
+    }
+
+    // Verify the confirmation matches the module title
+    const moduleTitle = moduleToDelete.title || moduleToDelete.name || `Módulo ${moduleToDelete.id?.slice(0, 8) || ''}`;
+    if (deleteModuleConfirmation.trim() !== moduleTitle) {
+      return;
+    }
+
+    try {
+      setIsDeletingModule(true);
+      console.log('[handleConfirmDeleteModule] Starting deletion:', {
+        programId,
+        moduleId: moduleToDelete.id,
+        moduleTitle: moduleTitle
+      });
+      
+      if (!programId || !moduleToDelete?.id) {
+        throw new Error('Missing programId or moduleId');
+      }
+      
+      await programService.deleteModule(programId, moduleToDelete.id);
+      
+      // Reload modules
+      const modulesData = await programService.getModulesByProgram(programId);
+      // Sort modules by order field
+      const sortedModules = modulesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setModules(sortedModules);
+      
+      // If the deleted module was selected, go back to modules list
+      if (selectedModule && selectedModule.id === moduleToDelete.id) {
+        setSelectedModule(null);
+        setSessions([]);
+      }
+      
+      // Close modal and exit edit mode if no modules left
+      handleCloseDeleteModuleModal();
+      if (modulesData.length === 0) {
+        setIsModuleEditMode(false);
+      }
+    } catch (err) {
+      console.error('[handleConfirmDeleteModule] Error deleting module:', err);
+      console.error('[handleConfirmDeleteModule] Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+      alert(`Error al eliminar el módulo. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`);
+    } finally {
+      setIsDeletingModule(false);
+    }
+  };
+
+  // Load sessions with React Query when module is selected
+  const { data: sessionsData = [], isLoading: isLoadingSessions } = useSessions(
+    programId,
+    selectedModule?.id,
+    { isActive: isActivelyEditing, enabled: !!selectedModule }
+  );
+
+  // Memoize sorted sessions to avoid re-sorting on every render
+  const sortedSessions = useMemo(() => {
+    if (sessionsData.length === 0) return [];
+    return [...sessionsData].sort((a, b) => {
+      const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+      const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+      return orderA - orderB;
+    });
+  }, [sessionsData]);
+
+  useEffect(() => {
+    if (sortedSessions.length > 0) {
+      setSessions(sortedSessions);
+      
+      // Use denormalized completeness flags if available (Phase 4 optimization)
+      const sessionStatuses = {};
+      const sessionsWithFlags = sortedSessions.filter(session => 
+        session.isComplete !== undefined && session.isComplete !== null
+      );
+      
+      sessionsWithFlags.forEach(session => {
+        sessionStatuses[session.id] = !session.isComplete;
+      });
+      
+      if (Object.keys(sessionStatuses).length > 0) {
+        setSessionIncompleteMap(prev => ({ ...prev, ...sessionStatuses }));
+      }
+      
+      // If not all sessions have denormalized flags, check completeness for all sessions
+      // This ensures completeness icons appear automatically when module is clicked
+      const sessionsNeedingCheck = sortedSessions.filter(session => 
+        session.isComplete === undefined || session.isComplete === null
+      );
+      
+      if (sessionsNeedingCheck.length > 0 && selectedModule) {
+        // Check completeness for sessions without flags
+        const checkSessionsCompleteness = async () => {
+          const sessionStatusesToCheck = {};
+          
+          await Promise.all(
+            sessionsNeedingCheck.map(async (session) => {
+              try {
+                // Load exercises for this session
+                const exercisesData = await programService.getExercisesBySession(
+                  programId,
+                  selectedModule.id,
+                  session.id
+                );
+                
+                if (exercisesData.length === 0) {
+                  sessionStatusesToCheck[session.id] = true; // No exercises = incomplete
+                  return;
+                }
+                
+                // Load sets for all exercises in this session
+                const setsMap = {};
+                await Promise.all(
+                  exercisesData.map(async (exercise) => {
+                    try {
+                      const setsData = await programService.getSetsByExercise(
+                        programId,
+                        selectedModule.id,
+                        session.id,
+                        exercise.id
+                      );
+                      setsMap[exercise.id] = setsData;
+                    } catch (err) {
+                      console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+                      setsMap[exercise.id] = [];
+                    }
+                  })
+                );
+                
+                // Check if any exercise is incomplete
+                const hasIncomplete = exercisesData.some(exercise => {
+                  const sets = setsMap[exercise.id] || [];
+                  return checkExerciseCompletenessInline(exercise, sets);
+                });
+                
+                sessionStatusesToCheck[session.id] = hasIncomplete;
+              } catch (err) {
+                console.error(`Error checking session ${session.id} completeness:`, err);
+                sessionStatusesToCheck[session.id] = false; // Default to complete on error
+              }
+            })
+          );
+          
+          // Update session incomplete map
+          setSessionIncompleteMap(prev => ({
+            ...prev,
+            ...sessionStatuses,
+            ...sessionStatusesToCheck
+          }));
+          
+          // Update module incomplete status
+          const allSessionStatuses = { ...sessionStatuses, ...sessionStatusesToCheck };
+          const hasIncompleteSession = Object.values(allSessionStatuses).some(status => status === true);
+          setModuleIncompleteMap(prev => ({
+            ...prev,
+            [selectedModule.id]: hasIncompleteSession
+          }));
+        };
+        
+        checkSessionsCompleteness();
+      } else if (Object.keys(sessionStatuses).length > 0) {
+        // All sessions have flags, just update module status
+        const hasIncompleteSession = Object.values(sessionStatuses).some(status => status === true);
+        setModuleIncompleteMap(prev => ({
+          ...prev,
+          [selectedModule.id]: hasIncompleteSession
+        }));
+      }
+    }
+  }, [sortedSessions, selectedModule, programId]);
+
+  const handleModuleClick = useCallback((module) => {
+    if (isModuleEditMode) {
+      return;
+    }
+
+    setSelectedModule(module);
+    // Sessions will be loaded automatically via React Query hook
+  }, [isModuleEditMode]);
+
+  const handleBackToModules = () => {
+    setSelectedModule(null);
+    setSessions([]);
+    setIsSessionEditMode(false);
+    setSelectedSession(null);
+    setExercises([]);
+  };
+
+  // Load exercises with React Query when session is selected
+  const { data: exercisesData = [], isLoading: isLoadingExercises } = useExercises(
+    programId,
+    selectedModule?.id,
+    selectedSession?.id,
+    { isActive: isActivelyEditing, enabled: !!selectedModule && !!selectedSession }
+  );
+
+  // Memoize sorted exercises to avoid re-sorting on every render
+  const sortedExercises = useMemo(() => {
+    if (exercisesData.length === 0) return [];
+    return [...exercisesData].sort((a, b) => {
+      const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+      const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+      return orderA - orderB;
+    });
+  }, [exercisesData]);
+
+  useEffect(() => {
+    if (sortedExercises.length > 0) {
+      setExercises(sortedExercises);
+    }
+  }, [sortedExercises]);
+
+  // checkExerciseCompletenessInline is now defined earlier (moved to avoid initialization errors)
+
+  // Load sets for all exercises when session is selected (needed for completeness checking)
+  useEffect(() => {
+    const loadSetsForAllExercises = async () => {
+      if (!programId || !selectedModule || !selectedSession || exercises.length === 0) {
+        return;
+      }
+
+      try {
+        // Load sets for all exercises in parallel
+        const setsMap = {};
+        await Promise.all(
+          exercises.map(async (exercise) => {
+            try {
+              const setsData = await programService.getSetsByExercise(
+                programId,
+                selectedModule.id,
+                selectedSession.id,
+                exercise.id
+              );
+              setsMap[exercise.id] = setsData;
+            } catch (err) {
+              console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+              setsMap[exercise.id] = [];
+            }
+          })
+        );
+        
+        // Update exerciseSetsMap with all sets
+        setExerciseSetsMap(prev => ({
+          ...prev,
+          ...setsMap
+        }));
+
+        // Check session completeness after sets are loaded
+        const hasIncompleteExercise = exercises.some(exercise => {
+          const sets = setsMap[exercise.id] || [];
+          return checkExerciseCompletenessInline(exercise, sets);
+        });
+
+        // Update session incomplete status
+        setSessionIncompleteMap(prev => ({
+          ...prev,
+          [selectedSession.id]: hasIncompleteExercise
+        }));
+
+        // Update module incomplete status if this session is incomplete
+        if (hasIncompleteExercise && selectedModule) {
+          setModuleIncompleteMap(prev => ({
+            ...prev,
+            [selectedModule.id]: true
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading sets for exercises:', error);
+      }
+    };
+
+    loadSetsForAllExercises();
+  }, [programId, selectedModule?.id, selectedSession?.id, exercises]);
+
+  const handleSessionClick = useCallback((session) => {
+    if (isSessionEditMode) {
+      return;
+    }
+
+    setSelectedSession(session);
+    // Exercises will be loaded automatically via React Query hook
+    // Completeness checking is now handled via denormalized flags or on-demand
+  }, [isSessionEditMode]);
+
+  const handleBackToSessions = () => {
+    setSelectedSession(null);
+    setExercises([]);
+    setIsExerciseEditMode(false);
+    setExerciseSetsMap({});
+    setSelectedExercise(null);
+    setExerciseDraft(null);
+  };
+
+  const applyExercisePatch = async (exerciseId, patch) => {
+    if (!exerciseId || !patch) {
+      return;
+    }
+
+    setExercises((prev) =>
+      prev.map((exercise) =>
+        exercise.id === exerciseId ? { ...exercise, ...patch } : exercise
+      )
+    );
+
+    setSelectedExercise((prev) =>
+      prev && prev.id === exerciseId ? { ...prev, ...patch } : prev
+    );
+
+    setExerciseDraft((prev) =>
+      prev && prev.id === exerciseId ? { ...prev, ...patch } : prev
+    );
+  };
+
+  const handleExerciseClick = async (exercise) => {
+    if (isExerciseEditMode) {
+      return;
+    }
+    try {
+      const normalizedExercise = {
+        ...exercise,
+        alternatives:
+          exercise.alternatives && typeof exercise.alternatives === 'object' && exercise.alternatives !== null && !Array.isArray(exercise.alternatives)
+            ? exercise.alternatives
+            : {},
+        measures: Array.isArray(exercise.measures) ? exercise.measures : [],
+        objectives: Array.isArray(exercise.objectives) ? exercise.objectives : [],
+      };
+
+      setSelectedExercise(normalizedExercise);
+      setExerciseDraft(JSON.parse(JSON.stringify(normalizedExercise)));
+      setSelectedExerciseTab('general');
+      setIsExerciseModalOpen(true);
+      
+      // Load exercise data for primary and alternatives (titles + completeness)
+      const referenceLibrariesMap = {};
+      getPrimaryReferences(normalizedExercise).forEach(({ libraryId, exerciseName }) => {
+        if (!libraryId || !exerciseName) return;
+        if (!referenceLibrariesMap[libraryId]) {
+          referenceLibrariesMap[libraryId] = new Set();
+        }
+        referenceLibrariesMap[libraryId].add(exerciseName);
+      });
+
+      if (normalizedExercise.alternatives && Object.keys(normalizedExercise.alternatives).length > 0) {
+        Object.entries(normalizedExercise.alternatives).forEach(([libraryId, values]) => {
+          if (!libraryId || !Array.isArray(values)) return;
+          values.forEach((value) => {
+            const exerciseName = typeof value === 'string' ? value : value?.name || value?.title || value?.id;
+            if (!exerciseName) return;
+            if (!referenceLibrariesMap[libraryId]) {
+              referenceLibrariesMap[libraryId] = new Set();
+            }
+            referenceLibrariesMap[libraryId].add(exerciseName);
+          });
+        });
+      }
+
+      const libraryIds = Object.keys(referenceLibrariesMap);
+      if (libraryIds.length > 0) {
+        const titlesMap = {};
+        const libraryDataUpdates = {};
+        const completenessUpdates = {};
+        
+        await Promise.all(
+          libraryIds.map(async (libraryId) => {
+            try {
+              let libraryData = libraryDataCache[libraryId];
+              if (!libraryData) {
+                libraryData = await libraryService.getLibraryById(libraryId);
+                if (libraryData) {
+                  libraryDataUpdates[libraryId] = libraryData;
+                }
+              }
+
+              if (libraryData && libraryData.title) {
+                titlesMap[libraryId] = libraryData.title;
+              } else {
+                titlesMap[libraryId] = libraryId;
+              }
+
+              referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+                if (!exerciseName) return;
+                const key = getLibraryExerciseKey(libraryId, exerciseName);
+                if (libraryData) {
+                  completenessUpdates[key] = isLibraryExerciseDataComplete(libraryData[exerciseName]);
+                } else {
+                  completenessUpdates[key] = false;
+                }
+              });
+            } catch (error) {
+              console.error(`Error fetching library ${libraryId}:`, error);
+              titlesMap[libraryId] = libraryId;
+              referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+                if (!exerciseName) return;
+                completenessUpdates[getLibraryExerciseKey(libraryId, exerciseName)] = false;
+              });
+            }
+          })
+        );
+
+        setLibraryTitles(titlesMap);
+
+        if (Object.keys(libraryDataUpdates).length > 0) {
+          setLibraryDataCache((prev) => ({
+            ...prev,
+            ...libraryDataUpdates,
+          }));
+        }
+
+        if (Object.keys(completenessUpdates).length > 0) {
+          setLibraryExerciseCompleteness((prev) => ({
+            ...prev,
+            ...completenessUpdates,
+          }));
+        }
+      } else {
+        setLibraryTitles({});
+      }
+      // Load sets/series from subcollection
+      if (programId && selectedModule && selectedSession) {
+        const setsData = await programService.getSetsByExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          exercise.id
+        );
+        setExerciseSets(setsData);
+        // Store original sets for comparison
+        setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+        // Reset unsaved changes
+        setUnsavedSetChanges({});
+      } else {
+        setExerciseSets([]);
+        setOriginalExerciseSets([]);
+        setUnsavedSetChanges({});
+      }
+      setExpandedSeries({}); // Reset expanded state
+    } catch (error) {
+      console.error('Error opening exercise modal:', error);
+      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleCloseCreateExerciseModal = () => {
+    setNewExerciseDraft(null);
+    setNewExerciseSets([]);
+    setIsCreateExerciseModalOpen(false);
+  };
+
+  const handleSelectPrimaryForNewExercise = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoadingLibrariesForSelection(true);
+      setLibraryExerciseModalMode('primary');
+      setAlternativeToEdit(null);
+      setSelectedLibraryForExercise(null);
+      setExercisesFromSelectedLibrary([]);
+      
+      // Load available libraries
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      setAvailableLibrariesForSelection(libraries);
+      setIsLibraryExerciseModalOpen(true);
+    } catch (err) {
+      console.error('Error loading libraries:', err);
+      alert('Error al cargar las bibliotecas');
+    } finally {
+      setIsLoadingLibrariesForSelection(false);
+    }
+  };
+
+  const handleSelectExerciseForNew = async (exerciseName) => {
+    if (!selectedLibraryForExercise || !exerciseName) {
+      return;
+    }
+
+    try {
+      if (libraryExerciseModalMode === 'primary') {
+        // Update primary exercise for new exercise
+        const primaryUpdate = {
+          [selectedLibraryForExercise]: exerciseName
+        };
+        
+        setNewExerciseDraft(prev => ({
+          ...prev,
+          primary: primaryUpdate
+        }));
+        
+        // Update library titles if needed
+        if (!libraryTitles[selectedLibraryForExercise]) {
+          const library = await libraryService.getLibraryById(selectedLibraryForExercise);
+          if (library && library.title) {
+            setLibraryTitles(prev => ({
+              ...prev,
+              [selectedLibraryForExercise]: library.title
+            }));
+          }
+        }
+      }
+      
+      handleCloseLibraryExerciseModal();
+    } catch (err) {
+      console.error('Error updating exercise:', err);
+      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleAddSetToNewExercise = () => {
+    setNewExerciseSets(prev => [...prev, {
+      reps: null,
+      intensity: null
+    }]);
+  };
+
+  const handleUpdateNewExerciseSet = (index, field, value) => {
+    setNewExerciseSets(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]: value
+      };
+      return updated;
+    });
+  };
+
+  const handleRemoveSetFromNewExercise = (index) => {
+    setNewExerciseSets(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCreateNewExercise = async () => {
+    if (!programId || !selectedModule || !selectedSession || !newExerciseDraft) {
+      return;
+    }
+
+    // Validate requirements
+    const hasPrimary = newExerciseDraft.primary && 
+      typeof newExerciseDraft.primary === 'object' && 
+      Object.values(newExerciseDraft.primary).length > 0 &&
+      Object.values(newExerciseDraft.primary)[0];
+    
+    if (!hasPrimary) {
+      alert('Por favor selecciona un ejercicio principal');
+      return;
+    }
+
+    if (newExerciseSets.length === 0) {
+      alert('Por favor crea al menos una serie');
+      return;
+    }
+
+    try {
+      setIsCreatingNewExercise(true);
+      
+      // Get primary exercise name
+      const primaryValues = Object.values(newExerciseDraft.primary);
+      const primaryExerciseName = primaryValues[0];
+      
+      // Create exercise
+      const newExercise = await programService.createExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        primaryExerciseName
+      );
+
+      // Update exercise with primary, alternatives, measures, and objectives
+      // Explicitly remove name and title fields that were automatically created
+      const updateData = {
+        primary: newExerciseDraft.primary,
+        alternatives: newExerciseDraft.alternatives || {},
+        measures: newExerciseDraft.measures || [],
+        objectives: newExerciseDraft.objectives || [],
+        name: deleteField(),
+        title: deleteField()
+      };
+      
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        newExercise.id,
+        updateData
+      );
+
+      // Create sets
+      for (let i = 0; i < newExerciseSets.length; i++) {
+        const set = newExerciseSets[i];
+        await programService.createSet(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id
+        );
+        
+        // Update set with data
+        const setsData = await programService.getSetsByExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id
+        );
+        
+        if (setsData.length > 0) {
+          const createdSet = setsData[setsData.length - 1];
+          const setUpdateData = {
+            order: i,
+            title: `Serie ${i + 1}`,
+            reps: set.reps || null,
+            intensity: set.intensity || null
+          };
+          
+          await programService.updateSet(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id,
+            createdSet.id,
+            setUpdateData
+          );
+        }
+      }
+
+      // Reload exercises
+      const exercisesData = await programService.getExercisesBySession(programId, selectedModule.id, selectedSession.id);
+      const sortedExercises = exercisesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setExercises(sortedExercises);
+
+      // Refresh incomplete status
+      await refreshIncompleteStatus();
+
+      // Close modal
+      handleCloseCreateExerciseModal();
+    } catch (err) {
+      console.error('Error creating exercise:', err);
+      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCreatingNewExercise(false);
+    }
+  };
+
+  // Check if new exercise can be saved
+  const canSaveNewExercise = () => {
+    if (!newExerciseDraft) return false;
+    
+    const hasPrimary = newExerciseDraft.primary && 
+      typeof newExerciseDraft.primary === 'object' && 
+      Object.values(newExerciseDraft.primary).length > 0 &&
+      Object.values(newExerciseDraft.primary)[0];
+    
+    return hasPrimary && newExerciseSets.length > 0;
+  };
+
+  // Check if we can save the exercise being created in the main modal
+  const canSaveCreatingExercise = () => {
+    if (!isCreatingExercise || !exerciseDraft) return false;
+    
+    // Check for primary exercise
+    const hasPrimary = exerciseDraft.primary && 
+      typeof exerciseDraft.primary === 'object' && 
+      exerciseDraft.primary !== null &&
+      Object.values(exerciseDraft.primary).length > 0 &&
+      Object.values(exerciseDraft.primary)[0];
+    
+    // Check for at least one set
+    const hasSets = exerciseSets.length > 0;
+    
+    return hasPrimary && hasSets;
+  };
+
+  // Save the exercise being created
+  const handleSaveCreatingExercise = async () => {
+    if (!canSaveCreatingExercise() || !programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      setIsCreatingNewExercise(true);
+      
+      // Get primary exercise name
+      const primaryValues = Object.values(exerciseDraft.primary);
+      const primaryExerciseName = primaryValues[0];
+      
+      // Create exercise
+      const newExercise = await programService.createExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        primaryExerciseName
+      );
+
+      // Update exercise with primary, alternatives, measures, and objectives
+      // Explicitly remove name and title fields that were automatically created
+      const updateData = {
+        primary: exerciseDraft.primary,
+        alternatives: exerciseDraft.alternatives || {},
+        measures: exerciseDraft.measures || [],
+        objectives: exerciseDraft.objectives || [],
+        name: deleteField(),
+        title: deleteField()
+      };
+      
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        newExercise.id,
+        updateData
+      );
+
+      // Create sets (filter out temporary sets and create real ones)
+      const tempSets = exerciseSets.filter(set => set.id && set.id.startsWith('temp-'));
+      for (let i = 0; i < tempSets.length; i++) {
+        const tempSet = tempSets[i];
+        await programService.createSet(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id
+        );
+        
+        // Get the created set and update it with data
+        const setsData = await programService.getSetsByExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id
+        );
+        
+        if (setsData.length > 0) {
+          const createdSet = setsData[setsData.length - 1];
+          const updateSetData = {
+            reps: tempSet.reps || null,
+            intensity: tempSet.intensity || null,
+            order: i,
+            title: `Serie ${i + 1}`
+          };
+          
+          await programService.updateSet(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id,
+            createdSet.id,
+            updateSetData
+          );
+        }
+      }
+
+      // Reload exercises and sets
+      const exercisesData = await programService.getExercisesBySession(programId, selectedModule.id, selectedSession.id);
+      const sortedExercises = exercisesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setExercises(sortedExercises);
+      
+      // Load sets for the new exercise
+      const setsData = await programService.getSetsByExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        newExercise.id
+      );
+      setExerciseSets(setsData);
+      setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+      
+      // Update sets map
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [newExercise.id]: setsData
+      }));
+      
+      // Refresh incomplete status
+      await refreshIncompleteStatus();
+      
+      // Close modal and reset
+      setIsExerciseModalOpen(false);
+      setIsCreatingExercise(false);
+      setSelectedExercise(null);
+      setExerciseDraft(null);
+      setExerciseSets([]);
+      setOriginalExerciseSets([]);
+      setUnsavedSetChanges({});
+    } catch (err) {
+      console.error('Error creating exercise:', err);
+      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCreatingNewExercise(false);
+    }
+  };
+
+  const handleCloseExerciseModal = () => {
+    // Check if there are unsaved changes
+    const hasUnsavedChanges = Object.values(unsavedSetChanges).some(hasChanges => hasChanges);
+    
+    if (hasUnsavedChanges || isCreatingExercise) {
+      if (!window.confirm('¿Quieres salir sin guardar?')) {
+        return; // User cancelled, don't close modal
+      }
+    }
+    
+    setIsExerciseModalOpen(false);
+    setSelectedExercise(null);
+    setSelectedExerciseTab('general');
+    setExerciseDraft(null);
+    setLibraryTitles({});
+    setExerciseSets([]);
+    setOriginalExerciseSets([]);
+    setUnsavedSetChanges({});
+    setExpandedSeries({});
+    setIsSeriesEditMode(false);
+    setOriginalSeriesOrder([]);
+    setIsCreatingExercise(false);
+  };
+
+  // Toggle series expansion
+  const handleToggleSeriesExpansion = (setId) => {
+    setExpandedSeries(prev => ({
+      ...prev,
+      [setId]: !prev[setId]
+    }));
+  };
+
+  // Parse intensity value from "x/10" format to just the number for display
+  const parseIntensityForDisplay = (value) => {
+    if (!value || value === null || value === undefined || value === '') {
+      return '';
+    }
+    const strValue = String(value);
+    // If it's in "x/10" format, extract the number
+    if (strValue.includes('/10')) {
+      return strValue.replace('/10', '').trim();
+    }
+    // If it's just a number, return it
+    return strValue;
+  };
+
+  // Format reps value to "x-y" format
+  const formatRepsValue = (value) => {
+    // Remove all spaces and keep only numbers and "-"
+    let cleaned = value.replace(/[^0-9-]/g, '');
+    
+    // Remove multiple consecutive dashes (keep only single dashes)
+    cleaned = cleaned.replace(/-+/g, '-');
+    
+    // Remove leading dashes (but allow trailing dash while typing)
+    cleaned = cleaned.replace(/^-+/, '');
+    
+    // If empty, return empty string
+    if (cleaned === '') {
+      return '';
+    }
+    
+    // Split by dash to get parts
+    const parts = cleaned.split('-');
+    
+    // If only one part (no dash or trailing dash), return as is
+    if (parts.length === 1) {
+      return parts[0];
+    }
+    
+    // If there's a trailing dash (like "10-"), allow it for now
+    if (cleaned.endsWith('-') && parts.length === 2 && parts[1] === '') {
+      return cleaned; // Allow "10-" format while typing
+    }
+    
+    // If more than 2 parts, take first two
+    if (parts.length > 2) {
+      return `${parts[0]}-${parts[1]}`;
+    }
+    
+    // Return formatted as "x-y"
+    return cleaned;
+  };
+
+  // Update set value for a specific objective (only local state, not DB)
+  const handleUpdateSetValue = (setIndex, objectiveField, value) => {
+    if (!currentExerciseId || !programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    const set = exerciseSets[setIndex];
+    if (!set || !set.id) {
+      console.error('Set not found or missing ID');
+      return;
+    }
+
+    let processedValue = value;
+
+    // For intensity field, validate and restrict to 1-10
+    if (objectiveField === 'intensity') {
+      // Remove any non-numeric characters
+      const numericValue = value.replace(/[^0-9]/g, '');
+      
+      // If empty, allow it
+      if (numericValue === '') {
+        processedValue = '';
+      } else {
+        // Parse and clamp to 1-10
+        const numValue = parseInt(numericValue, 10);
+        if (numValue < 1) {
+          processedValue = '1';
+        } else if (numValue > 10) {
+          processedValue = '10';
+        } else {
+          processedValue = String(numValue);
+        }
+      }
+    } else if (objectiveField === 'reps') {
+      // For reps field, only allow numbers and "-", format to "x-y"
+      processedValue = formatRepsValue(value);
+    }
+
+    // Update local state only (not DB)
+    const updatedSets = [...exerciseSets];
+    const originalSet = originalExerciseSets.find(s => s.id === set.id);
+    
+    // For intensity, store as "x/10" format in local state
+    let valueToStore = processedValue === '' ? null : processedValue;
+    if (objectiveField === 'intensity' && processedValue !== '') {
+      valueToStore = `${processedValue}/10`;
+    }
+    
+    updatedSets[setIndex] = {
+      ...updatedSets[setIndex],
+      [objectiveField]: valueToStore
+    };
+    setExerciseSets(updatedSets);
+    
+    // Check all fields for this set to determine if it has any unsaved changes
+    let setHasChanges = false;
+    if (originalSet) {
+      for (const field of ['reps', 'intensity']) {
+        const current = updatedSets[setIndex][field];
+        const original = originalSet[field];
+        // Normalize comparison (handle null/undefined/empty string)
+        // For intensity, both should be in "x/10" format, so compare as strings
+        const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
+        const originalNormalized = original === null || original === undefined || original === '' ? null : String(original);
+        if (currentNormalized !== originalNormalized) {
+          setHasChanges = true;
+          break;
+        }
+      }
+    }
+    
+    setUnsavedSetChanges(prev => ({
+      ...prev,
+      [set.id]: setHasChanges
+    }));
+  };
+
+  // Save all changes for a specific set
+  const handleSaveSetChanges = async (setId) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    // If creating exercise, sets are already in local state, no need to save
+    if (isCreatingExercise) {
+      // Just mark as saved by updating original sets
+      const setIndex = exerciseSets.findIndex(s => s.id === setId);
+      if (setIndex !== -1) {
+        const updatedOriginalSets = [...originalExerciseSets];
+        updatedOriginalSets[setIndex] = { ...exerciseSets[setIndex] };
+        setOriginalExerciseSets(updatedOriginalSets);
+        setUnsavedSetChanges(prev => {
+          const newState = { ...prev };
+          delete newState[setId];
+          return newState;
+        });
+      }
+      return;
+    }
+
+    if (!currentExerciseId) {
+      return;
+    }
+
+    const setIndex = exerciseSets.findIndex(s => s.id === setId);
+    if (setIndex === -1) {
+      return;
+    }
+
+    const set = exerciseSets[setIndex];
+    const originalSet = originalExerciseSets.find(s => s.id === setId);
+    
+    if (!set || !originalSet) {
+      return;
+    }
+
+    // Build update data with only changed fields
+    const updateData = {};
+    let hasChanges = false;
+    
+    for (const field of ['reps', 'intensity']) {
+      const current = set[field];
+      const original = originalSet[field];
+      // Normalize comparison (handle null/undefined/empty string)
+      const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
+      const originalNormalized = original === null || original === undefined || original === '' ? null : String(original);
+      if (currentNormalized !== originalNormalized) {
+        // For intensity, save as "x/10" format
+        if (field === 'intensity' && current !== null && current !== '') {
+          updateData[field] = current; // Already in "x/10" format from local state
+        } else {
+          updateData[field] = current === null || current === '' ? null : current;
+        }
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      return; // No changes to save
+    }
+
+    try {
+      setIsSavingSetChanges(true);
+      
+      await programService.updateSet(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        setId,
+        updateData
+      );
+      
+      // Update original sets to reflect saved state
+      const updatedOriginalSets = [...originalExerciseSets];
+      const originalSetIndex = updatedOriginalSets.findIndex(s => s.id === setId);
+      if (originalSetIndex !== -1) {
+        updatedOriginalSets[originalSetIndex] = {
+          ...updatedOriginalSets[originalSetIndex],
+          ...updateData
+        };
+      }
+      setOriginalExerciseSets(updatedOriginalSets);
+      
+      // Update sets map for incomplete check
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [currentExerciseId]: exerciseSets
+      }));
+      
+      // Clear unsaved changes flag for this set
+      setUnsavedSetChanges(prev => {
+        const newState = { ...prev };
+        delete newState[setId];
+        return newState;
+      });
+      
+      // Refresh incomplete status after set update
+      await refreshIncompleteStatus();
+    } catch (err) {
+      console.error('Error saving set changes:', err);
+      alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
+    } finally {
+      setIsSavingSetChanges(false);
+    }
+  };
+
+  // Handle edit series mode
+  const handleEditSeries = async () => {
+    if (!isSeriesEditMode) {
+      // Entering edit mode: store original order
+      setOriginalSeriesOrder([...exerciseSets]);
+      setIsSeriesEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveSeriesOrder();
+    }
+  };
+
+  // Save series order
+  const handleSaveSeriesOrder = async () => {
+    if (!programId || !selectedModule || !selectedSession || !currentExerciseId) return;
+
+    try {
+      setIsUpdatingSeriesOrder(true);
+      const seriesOrders = exerciseSets.map((set, index) => ({
+        setId: set.id,
+        order: index,
+        title: `Serie ${index + 1}`,
+      }));
+      
+      // Update each set's order and title
+      await Promise.all(
+        seriesOrders.map(({ setId, order, title }) =>
+          programService.updateSet(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            currentExerciseId,
+            setId,
+            { order, title }
+          )
+        )
+      );
+      
+      // Update local state with new titles
+      const updatedSets = exerciseSets.map((set, index) => ({
+        ...set,
+        order: index,
+        title: `Serie ${index + 1}`,
+      }));
+      setExerciseSets(updatedSets);
+      // Update original sets
+      setOriginalExerciseSets(JSON.parse(JSON.stringify(updatedSets)));
+      // Clear unsaved changes
+      setUnsavedSetChanges({});
+      // Update sets map for incomplete check
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [currentExerciseId]: updatedSets
+      }));
+      
+      // Refresh incomplete status after series order update
+      await refreshIncompleteStatus();
+      
+      setIsSeriesEditMode(false);
+      setOriginalSeriesOrder([]);
+    } catch (err) {
+      console.error('Error updating series order:', err);
+      // Revert to original order on error
+      if (originalSeriesOrder.length > 0) {
+        setExerciseSets([...originalSeriesOrder]);
+      }
+      alert('Error al actualizar el orden de las series. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingSeriesOrder(false);
+    }
+  };
+
+  // Handle drag end for series
+  const handleDragEndSeries = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = exerciseSets.findIndex((set) => set.id === active.id);
+    const newIndex = exerciseSets.findIndex((set) => set.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newSets = arrayMove(exerciseSets, oldIndex, newIndex);
+    setExerciseSets(newSets);
+  };
+
+  // Handle create set
+  const handleCreateSet = async () => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    // If creating a new exercise, just add a temporary set to the list
+    if (isCreatingExercise) {
+      const tempSet = {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        reps: null,
+        intensity: null,
+        order: exerciseSets.length,
+        title: `Serie ${exerciseSets.length + 1}`
+      };
+      setExerciseSets(prev => [...prev, tempSet]);
+      setOriginalExerciseSets(prev => [...prev, { ...tempSet }]);
+      return tempSet;
+    }
+
+    // Otherwise, create set normally for existing exercise
+    if (!currentExerciseId) {
+      return;
+    }
+
+    try {
+      setIsCreatingSet(true);
+      const newSet = await programService.createSet(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId
+      );
+      
+      // Reload sets
+      const setsData = await programService.getSetsByExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId
+      );
+      setExerciseSets(setsData);
+      // Update original sets
+      setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+      // Clear unsaved changes
+      setUnsavedSetChanges({});
+      // Update sets map for incomplete check
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [currentExerciseId]: setsData
+      }));
+      
+      // Refresh incomplete status after set creation
+      await refreshIncompleteStatus();
+      
+      return newSet;
+    } catch (err) {
+      console.error('Error creating set:', err);
+      alert('Error al crear la serie. Por favor, intenta de nuevo.');
+      throw err;
+    } finally {
+      setIsCreatingSet(false);
+    }
+  };
+
+  const handleDuplicateSet = async (setToDuplicate) => {
+    if (!setToDuplicate || !currentExerciseId || !programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const newSet = await handleCreateSet();
+      if (!newSet || !newSet.id) return;
+
+      const updateData = {
+        reps: setToDuplicate.reps || null,
+        intensity: setToDuplicate.intensity || null,
+        order: exerciseSets.length, // place at end in local state; will be normalized later
+        title: `Serie ${exerciseSets.length + 1}`,
+      };
+
+      await programService.updateSet(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        newSet.id,
+        updateData
+      );
+
+      // Reload sets after update
+      const setsData = await programService.getSetsByExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId
+      );
+      const sortedSets = setsData
+        .map((set, index) => ({
+          ...set,
+          order: index,
+          title: `Serie ${index + 1}`,
+        }));
+
+      setExerciseSets(sortedSets);
+      setOriginalExerciseSets(JSON.parse(JSON.stringify(sortedSets)));
+      setUnsavedSetChanges({});
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [currentExerciseId]: sortedSets
+      }));
+      
+      // Refresh incomplete status after set duplication
+      await refreshIncompleteStatus();
+    } catch (err) {
+      console.error('Error duplicando serie:', err);
+      alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
+    }
+  };
+
+  // Handle delete set
+  const handleDeleteSet = async (set) => {
+    if (!programId || !selectedModule || !selectedSession || !set || !set.id) {
+      return;
+    }
+
+    if (!window.confirm('¿Estás seguro de que quieres eliminar esta serie?')) {
+      return;
+    }
+
+    // If creating a new exercise, just remove from local state
+    if (isCreatingExercise && set.id.startsWith('temp-')) {
+      setExerciseSets(prev => prev.filter(s => s.id !== set.id));
+      setOriginalExerciseSets(prev => prev.filter(s => s.id !== set.id));
+      setUnsavedSetChanges(prev => {
+        const newState = { ...prev };
+        delete newState[set.id];
+        return newState;
+      });
+      return;
+    }
+
+    // Otherwise, delete from database
+    if (!currentExerciseId) {
+      return;
+    }
+
+    try {
+      await programService.deleteSet(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        set.id
+      );
+      
+      // Reload sets
+      const setsData = await programService.getSetsByExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId
+      );
+      setExerciseSets(setsData);
+      // Update original sets
+      setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+      // Clear unsaved changes
+      setUnsavedSetChanges({});
+      // Update sets map for incomplete check
+      setExerciseSetsMap(prev => ({
+        ...prev,
+        [currentExerciseId]: setsData
+      }));
+      
+      // Refresh incomplete status after set deletion
+      await refreshIncompleteStatus();
+    } catch (err) {
+      console.error('Error deleting set:', err);
+      alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
+    }
+  };
+
+  // Helper function to check if an exercise is incomplete
+  const isExerciseIncomplete = (exercise) => {
+    if (!exercise) return true;
+    
+    // Check primary exercise - must have a value
+    let hasPrimary = false;
+    if (exercise.primary && typeof exercise.primary === 'object' && exercise.primary !== null) {
+      try {
+        const primaryValues = Object.values(exercise.primary);
+        if (primaryValues.length > 0 && primaryValues[0]) {
+          hasPrimary = true;
+        }
+      } catch (error) {
+        // If error accessing primary, consider it incomplete
+      }
+    }
+    if (!hasPrimary) return true;
+    if (hasIncompleteLibraryReference(getPrimaryReferences(exercise))) return true;
+    
+    // Check alternatives - must have at least one
+    const alternatives = exercise.alternatives && typeof exercise.alternatives === 'object' && exercise.alternatives !== null && !Array.isArray(exercise.alternatives)
+      ? exercise.alternatives
+      : {};
+    const alternativesCount = Object.values(alternatives).reduce((sum, arr) => {
+      return sum + (Array.isArray(arr) ? arr.length : 0);
+    }, 0);
+    if (alternativesCount === 0) return true;
+    if (hasIncompleteLibraryReference(getAlternativeReferences(exercise))) return true;
+    
+    // Check measures - must have at least one
+    const hasMeasures = Array.isArray(exercise.measures) && exercise.measures.length > 0;
+    if (!hasMeasures) return true;
+    
+    // Check objectives - must have at least one
+    // "previous" CAN be in objectives, but its value in sets should be empty
+    const objectives = Array.isArray(exercise.objectives) ? exercise.objectives : [];
+    if (objectives.length === 0) return true;
+    
+    // Check sets - must have at least one set
+    const sets = exerciseSetsMap[exercise.id] || [];
+    if (sets.length === 0) return true;
+    
+    // Check that sets have required data filled (excluding "previous" which can be empty)
+    // For each set, check that all objectives (except "previous") have values
+    const validObjectives = objectives.filter(obj => obj !== 'previous');
+    if (validObjectives.length > 0) {
+      // Check if all sets have at least one valid objective filled
+      const allSetsHaveData = sets.every(set => {
+        // Check if at least one valid objective has a value
+        return validObjectives.some(obj => {
+          const value = set[obj];
+          return value !== null && value !== undefined && value !== '';
+        });
+      });
+      if (!allSetsHaveData) return true;
+    }
+    
+    return false;
+  };
+
+  // Helper function to check if an exercise is incomplete (given exercise data and sets)
+  const checkExerciseIncomplete = (exercise, sets = []) => {
+    if (!exercise) return true;
+    
+    // Check primary exercise
+    let hasPrimary = false;
+    if (exercise.primary && typeof exercise.primary === 'object' && exercise.primary !== null) {
+      try {
+        const primaryValues = Object.values(exercise.primary);
+        if (primaryValues.length > 0 && primaryValues[0]) {
+          hasPrimary = true;
+        }
+      } catch (error) {}
+    }
+    if (!hasPrimary) return true;
+    if (hasIncompleteLibraryReference(getPrimaryReferences(exercise))) return true;
+    
+    // Check alternatives
+    const alternatives = exercise.alternatives && typeof exercise.alternatives === 'object' && exercise.alternatives !== null && !Array.isArray(exercise.alternatives)
+      ? exercise.alternatives
+      : {};
+    const alternativesCount = Object.values(alternatives).reduce((sum, arr) => {
+      return sum + (Array.isArray(arr) ? arr.length : 0);
+    }, 0);
+    if (alternativesCount === 0) return true;
+    if (hasIncompleteLibraryReference(getAlternativeReferences(exercise))) return true;
+    
+    // Check measures
+    const hasMeasures = Array.isArray(exercise.measures) && exercise.measures.length > 0;
+    if (!hasMeasures) return true;
+    
+    // Check objectives
+    const objectives = Array.isArray(exercise.objectives) ? exercise.objectives : [];
+    if (objectives.length === 0) return true;
+    
+    // Check sets
+    if (sets.length === 0) return true;
+    
+    // Check that sets have required data filled
+    const validObjectives = objectives.filter(obj => obj !== 'previous');
+    if (validObjectives.length > 0) {
+      const allSetsHaveData = sets.every(set => {
+        return validObjectives.some(obj => {
+          const value = set[obj];
+          return value !== null && value !== undefined && value !== '';
+        });
+      });
+      if (!allSetsHaveData) return true;
+    }
+    
+    return false;
+  };
+
+  // Helper function to check if a session is incomplete by loading all exercises and sets
+  const checkSessionIncomplete = async (sessionId, moduleId) => {
+    if (!sessionId || !moduleId || !programId) return false;
+    
+    try {
+      const exercisesData = await programService.getExercisesBySession(programId, moduleId, sessionId);
+      const sortedExercises = exercisesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      
+      // Load sets for all exercises
+      const setsMap = {};
+      await Promise.all(
+        sortedExercises.map(async (exercise) => {
+          try {
+            const setsData = await programService.getSetsByExercise(
+              programId,
+              moduleId,
+              sessionId,
+              exercise.id
+            );
+            setsMap[exercise.id] = setsData;
+          } catch (err) {
+            console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+            setsMap[exercise.id] = [];
+          }
+        })
+      );
+      
+      // Check if any exercise is incomplete
+      return sortedExercises.some(exercise => {
+        const sets = setsMap[exercise.id] || [];
+        return checkExerciseIncomplete(exercise, sets);
+      });
+    } catch (err) {
+      console.error(`Error checking session ${sessionId} completeness:`, err);
+      return false;
+    }
+  };
+
+  // Helper function to check if a module is incomplete by checking all sessions
+  const checkModuleIncomplete = async (moduleId) => {
+    if (!moduleId || !programId) return false;
+    
+    try {
+      const sessionsData = await programService.getSessionsByModule(programId, moduleId);
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      
+      // Check if any session is incomplete
+      for (const session of sortedSessions) {
+        const isIncomplete = await checkSessionIncomplete(session.id, moduleId);
+        if (isIncomplete) return true;
+      }
+      
+      return false;
+    } catch (err) {
+      console.error(`Error checking module ${moduleId} completeness:`, err);
+      return false;
+    }
+  };
+
+  // Helper function to check if a session is incomplete (synchronous, uses state map)
+  const isSessionIncomplete = (session) => {
+    if (!session || !session.id) return false;
+    return sessionIncompleteMap[session.id] === true;
+  };
+
+  // Helper function to check if a module is incomplete (synchronous, uses state map)
+  const isModuleIncomplete = (module) => {
+    if (!module || !module.id) return false;
+    return moduleIncompleteMap[module.id] === true;
+  };
+
+  // Helper function to refresh incomplete status for current session and module
+  const refreshIncompleteStatus = async () => {
+    if (!selectedSession || !selectedModule || !programId) return;
+    
+    try {
+      // Check current session completeness
+      const sessionIncomplete = await checkSessionIncomplete(selectedSession.id, selectedModule.id);
+      
+      // Update session incomplete status
+      setSessionIncompleteMap(prev => ({
+        ...prev,
+        [selectedSession.id]: sessionIncomplete
+      }));
+      
+      // Check all sessions in module to update module incomplete status
+      const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      
+      // Check each session's incomplete status
+      const sessionStatuses = {};
+      for (const session of sortedSessions) {
+        if (session.id === selectedSession.id) {
+          sessionStatuses[session.id] = sessionIncomplete;
+        } else {
+          // Check other sessions
+          const isIncomplete = await checkSessionIncomplete(session.id, selectedModule.id);
+          sessionStatuses[session.id] = isIncomplete;
+        }
+      }
+      
+      // Update session incomplete map
+      setSessionIncompleteMap(prev => ({
+        ...prev,
+        ...sessionStatuses
+      }));
+      
+      // Update module incomplete status
+      const hasIncompleteSession = Object.values(sessionStatuses).some(status => status === true);
+      setModuleIncompleteMap(prev => ({
+        ...prev,
+        [selectedModule.id]: hasIncompleteSession
+      }));
+    } catch (err) {
+      console.error('Error refreshing incomplete status:', err);
+    }
+  };
+
+  // Helper function to get primary exercise name
+  const getPrimaryExerciseName = () => {
+    const source = exerciseDraft || selectedExercise;
+    if (!source) return 'Sin ejercicio';
+    if (source.primary && typeof source.primary === 'object' && source.primary !== null) {
+      try {
+        const primaryValues = Object.values(source.primary);
+        if (primaryValues.length > 0 && primaryValues[0]) {
+          return primaryValues[0];
+        }
+      } catch (error) {
+        console.error('Error extracting primary exercise name:', error);
+      }
+    }
+    return source.name || source.title || `Ejercicio ${source.id?.slice(0, 8) || ''}`;
+  };
+
+  const handleAddAlternative = async () => {
+    if (!user) return;
+    
+    // Allow adding alternatives even when creating (no currentExerciseId needed)
+    if (!isCreatingExercise && !currentExerciseId) return;
+    
+    try {
+      setIsLoadingLibrariesForSelection(true);
+      setLibraryExerciseModalMode('add-alternative');
+      setAlternativeToEdit(null);
+      setSelectedLibraryForExercise(null);
+      setExercisesFromSelectedLibrary([]);
+      
+      // Load available libraries
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      setAvailableLibrariesForSelection(libraries);
+      setIsLibraryExerciseModalOpen(true);
+    } catch (err) {
+      console.error('Error loading libraries:', err);
+      alert('Error al cargar las bibliotecas');
+    } finally {
+      setIsLoadingLibrariesForSelection(false);
+    }
+  };
+
+  const handleAddMeasure = () => {
+    setMeasureToEditIndex(null);
+    setIsMeasureSelectionModalOpen(true);
+  };
+
+  const handleEditMeasure = (index) => {
+    setMeasureToEditIndex(index);
+    setIsMeasureSelectionModalOpen(true);
+  };
+
+  const handleSelectMeasure = async (measureValue) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const updatedMeasures = [...draftMeasures];
+      
+      if (measureToEditIndex !== null && measureToEditIndex >= 0 && measureToEditIndex < updatedMeasures.length) {
+        // Edit existing measure - check if new value already exists elsewhere
+        if (updatedMeasures.includes(measureValue) && updatedMeasures.indexOf(measureValue) !== measureToEditIndex) {
+          alert('Esta medida ya está agregada.');
+          return;
+        }
+        // Edit existing measure
+        updatedMeasures[measureToEditIndex] = measureValue;
+      } else {
+        // Add new measure - check if it already exists
+        if (updatedMeasures.includes(measureValue)) {
+          alert('Esta medida ya está agregada.');
+          setIsMeasureSelectionModalOpen(false);
+          setMeasureToEditIndex(null);
+          return;
+        }
+        // Add new measure
+        updatedMeasures.push(measureValue);
+      }
+
+      // If creating exercise, just update the draft
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setIsMeasureSelectionModalOpen(false);
+        setMeasureToEditIndex(null);
+        return;
+      }
+
+      // Otherwise, save to database
+      if (!currentExerciseId) return;
+
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        { measures: updatedMeasures }
+      );
+
+      applyExercisePatch(currentExerciseId, { measures: updatedMeasures });
+      await refreshIncompleteStatus();
+
+      setIsMeasureSelectionModalOpen(false);
+      setMeasureToEditIndex(null);
+    } catch (err) {
+      console.error('Error updating measure:', err);
+      alert('Error al actualizar la medida. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleDeleteMeasure = async (index) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const updatedMeasures = draftMeasures.filter((_, i) => i !== index);
+
+      // If creating exercise, just update the draft
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        return;
+      }
+
+      // Otherwise, save to database
+      if (!currentExerciseId) return;
+
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        { measures: updatedMeasures }
+      );
+
+      applyExercisePatch(currentExerciseId, { measures: updatedMeasures });
+      await refreshIncompleteStatus();
+    } catch (err) {
+      console.error('Error deleting measure:', err);
+      alert('Error al eliminar la medida. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleAddObjective = () => {
+    setObjectiveToEditIndex(null);
+    setIsObjectiveSelectionModalOpen(true);
+  };
+
+  const handleSelectObjective = async (objectiveValue) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const updatedObjectives = [...draftObjectives];
+      
+      if (objectiveToEditIndex !== null && objectiveToEditIndex >= 0 && objectiveToEditIndex < updatedObjectives.length) {
+        // Edit existing objective - check if new value already exists elsewhere
+        if (updatedObjectives.includes(objectiveValue) && updatedObjectives.indexOf(objectiveValue) !== objectiveToEditIndex) {
+          alert('Este objetivo ya está agregado.');
+          return;
+        }
+        // Edit existing objective
+        updatedObjectives[objectiveToEditIndex] = objectiveValue;
+      } else {
+        // Add new objective - check if it already exists
+        if (updatedObjectives.includes(objectiveValue)) {
+          alert('Este objetivo ya está agregado.');
+          setIsObjectiveSelectionModalOpen(false);
+          setObjectiveToEditIndex(null);
+          return;
+        }
+        // Add new objective
+        updatedObjectives.push(objectiveValue);
+      }
+
+      // If creating exercise, just update the draft
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setIsObjectiveSelectionModalOpen(false);
+        setObjectiveToEditIndex(null);
+        return;
+      }
+
+      // Otherwise, save to database
+      if (!currentExerciseId) return;
+
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        { objectives: updatedObjectives }
+      );
+
+      applyExercisePatch(currentExerciseId, { objectives: updatedObjectives });
+      await refreshIncompleteStatus();
+
+      setIsObjectiveSelectionModalOpen(false);
+      setObjectiveToEditIndex(null);
+    } catch (err) {
+      console.error('Error updating objective:', err);
+      alert('Error al actualizar el objetivo. Por favor, intenta de nuevo.');
+    }
+  };
+
+  // Helper function to get objective display name
+  const getObjectiveDisplayName = (objective) => {
+    const translations = {
+      'reps': 'Repeticiones',
+      'intensity': 'Intensidad',
+      'previous': 'Anterior'
+    };
+    return translations[objective] || objective;
+  };
+
+  const handleDeleteAlternative = async (libraryId, index) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
+      if (currentAlternatives[libraryId] && Array.isArray(currentAlternatives[libraryId])) {
+        currentAlternatives[libraryId] = currentAlternatives[libraryId].filter((_, i) => i !== index);
+        
+        if (currentAlternatives[libraryId].length === 0) {
+          delete currentAlternatives[libraryId];
+        }
+
+        // If creating exercise, just update the draft
+        if (isCreatingExercise) {
+          setExerciseDraft(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          setSelectedExercise(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          return;
+        }
+
+        // Otherwise, save to database
+        if (!currentExerciseId) return;
+
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          currentExerciseId,
+          { alternatives: currentAlternatives }
+        );
+
+        applyExercisePatch(currentExerciseId, { alternatives: currentAlternatives });
+        await refreshIncompleteStatus();
+      }
+    } catch (err) {
+      console.error('Error deleting alternative:', err);
+      alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleDeleteObjective = async (index) => {
+    if (!programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    try {
+      const updatedObjectives = draftObjectives.filter((_, i) => i !== index);
+
+      // If creating exercise, just update the draft
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        return;
+      }
+
+      // Otherwise, save to database
+      if (!currentExerciseId) return;
+
+      await programService.updateExercise(
+        programId,
+        selectedModule.id,
+        selectedSession.id,
+        currentExerciseId,
+        { objectives: updatedObjectives }
+      );
+
+      applyExercisePatch(currentExerciseId, { objectives: updatedObjectives });
+      await refreshIncompleteStatus();
+    } catch (err) {
+      console.error('Error deleting objective:', err);
+      alert('Error al eliminar el objetivo. Por favor, intenta de nuevo.');
+    }
+  };
+
+  // Helper function to get measure display name
+  const getMeasureDisplayName = (measure) => {
+    if (measure === 'reps') return 'Repeticiones';
+    if (measure === 'weight') return 'Peso';
+    return measure;
+  };
+
+  const handleEditPrimary = async () => {
+    if (!user) return;
+    
+    // Allow editing primary even when creating (no currentExerciseId needed)
+    if (!isCreatingExercise && !currentExerciseId) return;
+    
+    try {
+      setIsLoadingLibrariesForSelection(true);
+      setLibraryExerciseModalMode('primary');
+      setAlternativeToEdit(null);
+      setSelectedLibraryForExercise(null);
+      setExercisesFromSelectedLibrary([]);
+      
+      // Load available libraries
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      setAvailableLibrariesForSelection(libraries);
+      setIsLibraryExerciseModalOpen(true);
+    } catch (err) {
+      console.error('Error loading libraries:', err);
+      alert('Error al cargar las bibliotecas');
+    } finally {
+      setIsLoadingLibrariesForSelection(false);
+    }
+  };
+
+  const handleEditAlternative = async (libraryId, index) => {
+    if (!user) return;
+    
+    // Allow editing alternatives even when creating (no currentExerciseId needed)
+    if (!isCreatingExercise && !currentExerciseId) return;
+    
+    try {
+      setIsLoadingLibrariesForSelection(true);
+      setLibraryExerciseModalMode('edit-alternative');
+      setAlternativeToEdit({ libraryId, index });
+      setSelectedLibraryForExercise(null);
+      setExercisesFromSelectedLibrary([]);
+      
+      // Load available libraries
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      setAvailableLibrariesForSelection(libraries);
+      setIsLibraryExerciseModalOpen(true);
+    } catch (err) {
+      console.error('Error loading libraries:', err);
+      alert('Error al cargar las bibliotecas');
+    } finally {
+      setIsLoadingLibrariesForSelection(false);
+    }
+  };
+
+  const handleCloseLibraryExerciseModal = () => {
+    setIsLibraryExerciseModalOpen(false);
+    setLibraryExerciseModalMode(null);
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection([]);
+    setAlternativeToEdit(null);
+  };
+
+  const handleSelectLibrary = async (libraryId) => {
+    if (!libraryId) return;
+    
+    try {
+      setIsLoadingExercisesFromLibrary(true);
+      setSelectedLibraryForExercise(libraryId);
+      
+      // Load library data
+      const library = await libraryService.getLibraryById(libraryId);
+      if (library) {
+        // Get exercises from library and sort by name
+        const exercises = libraryService.getExercisesFromLibrary(library);
+        exercises.sort((a, b) => a.name.localeCompare(b.name));
+        setExercisesFromSelectedLibrary(exercises);
+      }
+    } catch (err) {
+      console.error('Error loading exercises from library:', err);
+      alert('Error al cargar los ejercicios de la biblioteca');
+    } finally {
+      setIsLoadingExercisesFromLibrary(false);
+    }
+  };
+
+  const handleSelectExercise = async (exerciseName) => {
+    // If creating new exercise in the create modal, use the new handler
+    if (isCreateExerciseModalOpen && libraryExerciseModalMode === 'primary') {
+      await handleSelectExerciseForNew(exerciseName);
+      return;
+    }
+    
+    // If creating exercise in the main modal, update the draft directly
+    if (isCreatingExercise && libraryExerciseModalMode === 'primary') {
+      const exerciseId = 'new'; // Temporary ID
+      const primaryUpdate = {
+        [selectedLibraryForExercise]: exerciseName
+      };
+      
+      setExerciseDraft(prev => ({
+        ...prev,
+        primary: primaryUpdate
+      }));
+      
+      setSelectedExercise(prev => ({
+        ...prev,
+        primary: primaryUpdate
+      }));
+      
+      handleCloseLibraryExerciseModal();
+      return;
+    }
+
+    const exerciseId = currentExerciseId;
+    if (!exerciseId || !programId || !selectedModule || !selectedSession || !selectedLibraryForExercise || !exerciseName) {
+      return;
+    }
+
+    try {
+      if (libraryExerciseModalMode === 'primary') {
+        // Update primary exercise
+        const primaryUpdate = {
+          [selectedLibraryForExercise]: exerciseName
+        };
+        
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          exerciseId,
+          { primary: primaryUpdate }
+        );
+        
+        applyExercisePatch(exerciseId, { primary: primaryUpdate });
+        await refreshIncompleteStatus();
+        
+      } else if (libraryExerciseModalMode === 'add-alternative') {
+        // Add alternative exercise - check if it already exists in any library
+        const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
+        let exerciseExists = false;
+        
+        // Check all libraries for this exercise name
+        for (const libraryId in currentAlternatives) {
+          if (Array.isArray(currentAlternatives[libraryId]) && currentAlternatives[libraryId].includes(exerciseName)) {
+            exerciseExists = true;
+            break;
+          }
+        }
+        
+        if (exerciseExists) {
+          alert('Esta alternativa ya está agregada.');
+          handleCloseLibraryExerciseModal();
+          return;
+        }
+        
+        if (!currentAlternatives[selectedLibraryForExercise]) {
+          currentAlternatives[selectedLibraryForExercise] = [];
+        }
+        
+        currentAlternatives[selectedLibraryForExercise].push(exerciseName);
+        
+        // If creating exercise, just update the draft
+        if (isCreatingExercise) {
+          setExerciseDraft(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          setSelectedExercise(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          
+          // Update library titles if needed
+          if (!libraryTitles[selectedLibraryForExercise]) {
+            const library = await libraryService.getLibraryById(selectedLibraryForExercise);
+            if (library && library.title) {
+              setLibraryTitles({
+                ...libraryTitles,
+                [selectedLibraryForExercise]: library.title
+              });
+            }
+          }
+          
+          handleCloseLibraryExerciseModal();
+          return;
+        }
+        
+        // Otherwise, save to database
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          exerciseId,
+          { alternatives: currentAlternatives }
+        );
+        
+        applyExercisePatch(exerciseId, { alternatives: currentAlternatives });
+        await refreshIncompleteStatus();
+        
+        // Update library titles if needed
+        if (!libraryTitles[selectedLibraryForExercise]) {
+          const library = await libraryService.getLibraryById(selectedLibraryForExercise);
+          if (library && library.title) {
+            setLibraryTitles({
+              ...libraryTitles,
+              [selectedLibraryForExercise]: library.title
+            });
+          }
+        }
+        
+      } else if (libraryExerciseModalMode === 'edit-alternative' && alternativeToEdit) {
+        // Replace alternative exercise - check if new value already exists elsewhere
+        const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
+        if (currentAlternatives[alternativeToEdit.libraryId] && 
+            Array.isArray(currentAlternatives[alternativeToEdit.libraryId]) &&
+            alternativeToEdit.index < currentAlternatives[alternativeToEdit.libraryId].length) {
+          
+          // Check if exercise already exists in any library (excluding current index)
+          let exerciseExists = false;
+          for (const libraryId in currentAlternatives) {
+            if (Array.isArray(currentAlternatives[libraryId])) {
+              const indexInLibrary = currentAlternatives[libraryId].indexOf(exerciseName);
+              if (indexInLibrary !== -1 && !(libraryId === alternativeToEdit.libraryId && indexInLibrary === alternativeToEdit.index)) {
+                exerciseExists = true;
+                break;
+              }
+            }
+          }
+          
+          if (exerciseExists) {
+            alert('Esta alternativa ya está agregada.');
+            handleCloseLibraryExerciseModal();
+            return;
+          }
+          
+          // Replace at the specific index
+          currentAlternatives[alternativeToEdit.libraryId][alternativeToEdit.index] = exerciseName;
+          
+          // If creating exercise, just update the draft
+          if (isCreatingExercise) {
+            setExerciseDraft(prev => ({
+              ...prev,
+              alternatives: currentAlternatives
+            }));
+            setSelectedExercise(prev => ({
+              ...prev,
+              alternatives: currentAlternatives
+            }));
+            handleCloseLibraryExerciseModal();
+            return;
+          }
+          
+          // Otherwise, save to database
+          await programService.updateExercise(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            exerciseId,
+            { alternatives: currentAlternatives }
+          );
+          
+          applyExercisePatch(exerciseId, { alternatives: currentAlternatives });
+          await refreshIncompleteStatus();
+        }
+      }
+      
+      handleCloseLibraryExerciseModal();
+    } catch (err) {
+      console.error('Error updating exercise:', err);
+      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleEditExercises = async () => {
+    if (!isExerciseEditMode) {
+      // Entering edit mode: store original order
+      setOriginalExercisesOrder([...exercises]);
+      setIsExerciseEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveExerciseOrder();
+    }
+  };
+
+  const handleSaveExerciseOrder = async () => {
+    if (!programId || !selectedModule || !selectedSession) return;
+
+    try {
+      setIsUpdatingExerciseOrder(true);
+      const exerciseOrders = exercises.map((exercise, index) => ({
+        exerciseId: exercise.id,
+        order: index,
+      }));
+      await programService.updateExerciseOrder(programId, selectedModule.id, selectedSession.id, exerciseOrders);
+      setIsExerciseEditMode(false);
+      setOriginalExercisesOrder([]);
+    } catch (err) {
+      console.error('Error updating exercise order:', err);
+      // Revert to original order on error
+      if (originalExercisesOrder.length > 0) {
+        setExercises([...originalExercisesOrder]);
+      }
+      alert('Error al actualizar el orden de los ejercicios. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingExerciseOrder(false);
+    }
+  };
+
+  const handleDragEndExercises = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id || !selectedSession) {
+      return;
+    }
+
+    const oldIndex = exercises.findIndex((exercise) => exercise.id === active.id);
+    const newIndex = exercises.findIndex((exercise) => exercise.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newExercises = arrayMove(exercises, oldIndex, newIndex);
+    setExercises(newExercises);
+  };
+
+  const handleDeleteExercise = (exercise) => {
+    setExerciseToDelete(exercise);
+    setIsDeleteExerciseModalOpen(true);
+    setDeleteExerciseConfirmation('');
+  };
+
+  const handleCloseDeleteExerciseModal = () => {
+    setIsDeleteExerciseModalOpen(false);
+    setExerciseToDelete(null);
+    setDeleteExerciseConfirmation('');
+  };
+
+  const handleConfirmDeleteExercise = async () => {
+    if (!exerciseToDelete || !deleteExerciseConfirmation.trim() || !programId || !selectedModule || !selectedSession) {
+      return;
+    }
+
+    // Extract title from primary field for confirmation
+    const getExerciseTitle = () => {
+      if (exerciseToDelete.primary && typeof exerciseToDelete.primary === 'object') {
+        const primaryValues = Object.values(exerciseToDelete.primary);
+        if (primaryValues.length > 0 && primaryValues[0]) {
+          return primaryValues[0];
+        }
+      }
+      return exerciseToDelete.name || exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8) || ''}`;
+    };
+
+    const exerciseTitle = getExerciseTitle();
+    if (deleteExerciseConfirmation.trim() !== exerciseTitle) {
+      return;
+    }
+
+    try {
+      setIsDeletingExercise(true);
+      console.log('[handleConfirmDeleteExercise] Starting deletion:', {
+        programId,
+        moduleId: selectedModule?.id,
+        sessionId: selectedSession?.id,
+        exerciseId: exerciseToDelete?.id,
+        exerciseTitle: exerciseTitle
+      });
+      
+      if (!programId || !selectedModule?.id || !selectedSession?.id || !exerciseToDelete?.id) {
+        throw new Error('Missing required IDs for exercise deletion');
+      }
+      
+      await programService.deleteExercise(programId, selectedModule.id, selectedSession.id, exerciseToDelete.id);
+      
+      // Reload exercises
+      const exercisesData = await programService.getExercisesBySession(programId, selectedModule.id, selectedSession.id);
+      // Sort exercises by order field
+      const sortedExercises = exercisesData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setExercises(sortedExercises);
+      
+      // Close modal and exit edit mode if no exercises left
+      handleCloseDeleteExerciseModal();
+      if (exercisesData.length === 0) {
+        setIsExerciseEditMode(false);
+      }
+    } catch (err) {
+      console.error('[handleConfirmDeleteExercise] Error deleting exercise:', err);
+      console.error('[handleConfirmDeleteExercise] Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+      alert(`Error al eliminar el ejercicio. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`);
+    } finally {
+      setIsDeletingExercise(false);
+    }
+  };
+
+  const handleAddSession = () => {
+    setIsCopySessionModalOpen(true);
+    setCopySessionModalPage('crear');
+    setSessionName('');
+    setSessionImageFile(null);
+    setSessionImagePreview(null);
+    setSessionToEdit(null);
+  };
+
+  const loadAllSessionsForCopy = async () => {
+    if (!programId) return;
+    
+    try {
+      setIsLoadingSessionsForCopy(true);
+      // Get all modules
+      const allModules = await programService.getModulesByProgram(programId);
+      
+      // Get all sessions from all modules
+      const sessionsWithModules = [];
+      for (const module of allModules) {
+        const moduleSessions = await programService.getSessionsByModule(programId, module.id);
+        moduleSessions.forEach(session => {
+          sessionsWithModules.push({
+            session,
+            moduleName: module.title || module.name || `Módulo ${module.id?.slice(0, 8)}`,
+            moduleId: module.id
+          });
+        });
+      }
+      
+      setAllSessionsForCopy(sessionsWithModules);
+    } catch (error) {
+      console.error('Error loading sessions for copy:', error);
+      alert('Error al cargar las sesiones. Por favor, intenta de nuevo.');
+    } finally {
+      setIsLoadingSessionsForCopy(false);
+    }
+  };
+
+  const handleCloseCopySessionModal = () => {
+    setIsCopySessionModalOpen(false);
+    setCopySessionModalPage('crear');
+    setAllSessionsForCopy([]);
+    if (!sessionToEdit) {
+      setSessionName('');
+      setSessionImageFile(null);
+      setSessionImagePreview(null);
+    }
+  };
+
+  const handleCopySession = async (sessionToCopy, sourceModuleId) => {
+    if (!programId || !selectedModule || !sessionToCopy) return;
+
+    try {
+      setIsCopyingSession(true);
+      
+      // Create new session with copied name and image
+      const newSessionName = sessionToCopy.title || sessionToCopy.name || 'Sesión';
+      const newSession = await programService.createSession(
+        programId,
+        selectedModule.id,
+        newSessionName,
+        null,
+        sessionToCopy.image_url || null
+      );
+      
+      // Get all exercises from the source session
+      const sourceExercises = await programService.getExercisesBySession(programId, sourceModuleId, sessionToCopy.id);
+      
+      // Copy each exercise with all its data
+      for (const exercise of sourceExercises) {
+        // Get primary exercise name for creation
+        const primaryValues = Object.values(exercise.primary || {});
+        const primaryExerciseName = primaryValues[0] || 'Ejercicio';
+        
+        // Create the exercise
+        const newExercise = await programService.createExercise(
+          programId,
+          selectedModule.id,
+          newSession.id,
+          primaryExerciseName,
+          null
+        );
+        
+        // Update exercise with all data (primary, alternatives, measures, objectives)
+        // Explicitly remove name and title fields
+        const updateData = {
+          primary: exercise.primary || {},
+          alternatives: exercise.alternatives || {},
+          measures: exercise.measures || [],
+          objectives: exercise.objectives || [],
+          name: deleteField(),
+          title: deleteField()
+        };
+        
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          newSession.id,
+          newExercise.id,
+          updateData
+        );
+        
+        // Get all sets for this exercise
+        const sourceSets = await programService.getSetsByExercise(programId, sourceModuleId, sessionToCopy.id, exercise.id);
+        
+        // Copy all sets
+        for (let i = 0; i < sourceSets.length; i++) {
+          const set = sourceSets[i];
+          const createdSet = await programService.createSet(
+            programId,
+            selectedModule.id,
+            newSession.id,
+            newExercise.id,
+            i
+          );
+          
+          // Update the created set with data from source set
+          const updateSetData = {
+            reps: set.reps || null,
+            intensity: set.intensity || null,
+            order: i,
+            title: set.title || `Serie ${i + 1}`
+          };
+          
+          await programService.updateSet(
+            programId,
+            selectedModule.id,
+            newSession.id,
+            newExercise.id,
+            createdSet.id,
+            updateSetData
+          );
+        }
+      }
+      
+      // Reload sessions
+      const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setSessions(sortedSessions);
+      
+      handleCloseCopySessionModal();
+    } catch (error) {
+      console.error('Error copying session:', error);
+      alert('Error al copiar la sesión. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCopyingSession(false);
+    }
+  };
+
+  const handleCloseSessionModal = () => {
+    setIsSessionModalOpen(false);
+    setSessionToEdit(null);
+    setSessionName('');
+    setSessionImageFile(null);
+    setSessionImagePreview(null);
+    setSessionImageUploadProgress(0);
+  };
+
+  const handleEditSessionClick = () => {
+    if (!selectedSession) return;
+    setSessionToEdit(selectedSession);
+    setSessionName(selectedSession.title || selectedSession.name || '');
+    setSessionImagePreview(selectedSession.image_url || null);
+    setSessionImageFile(null);
+    setIsSessionModalOpen(true);
+  };
+
+  const handleSessionImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecciona un archivo de imagen válido');
+      return;
+    }
+
+    // Validate file size (e.g., max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      return;
+    }
+
+    setSessionImageFile(file);
+    
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setSessionImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSessionImageDelete = () => {
+    setSessionImageFile(null);
+    setSessionImagePreview(null);
+    setSessionImageUploadProgress(0);
+    // If editing, mark that we want to remove the image
+    if (sessionToEdit) {
+      setSessionImagePreview(null);
+    }
+  };
+
+  const handleCreateSession = async () => {
+    if (!sessionName.trim() || !programId || !selectedModule) {
+      return;
+    }
+
+    try {
+      setIsCreatingSession(true);
+      
+      console.log('Creating session with:', {
+        programId,
+        moduleId: selectedModule.id,
+        sessionName: sessionName.trim(),
+        hasImageFile: !!sessionImageFile
+      });
+      
+      let imageUrl = null;
+      
+      // Upload image if provided
+      if (sessionImageFile) {
+        try {
+          setIsUploadingSessionImage(true);
+          setSessionImageUploadProgress(0);
+          
+          imageUrl = await programService.uploadSessionImage(
+            programId,
+            selectedModule.id,
+            sessionImageFile,
+            (progress) => {
+              setSessionImageUploadProgress(Math.round(progress));
+            }
+          );
+          
+          setSessionImageUploadProgress(100);
+        } catch (uploadErr) {
+          console.error('Error uploading session image - Full error:', uploadErr);
+          console.error('Error code:', uploadErr.code);
+          console.error('Error message:', uploadErr.message);
+          console.error('Error stack:', uploadErr.stack);
+          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          return;
+        } finally {
+          setIsUploadingSessionImage(false);
+        }
+      }
+      
+      await programService.createSession(programId, selectedModule.id, sessionName.trim(), null, imageUrl);
+      
+      // Reload sessions
+      const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
+      // Sort sessions by order field
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setSessions(sortedSessions);
+      
+      // Close the appropriate modal
+      if (isCopySessionModalOpen) {
+        handleCloseCopySessionModal();
+      } else {
+      handleCloseSessionModal();
+      }
+    } catch (err) {
+      console.error('Error creating session - Full error:', err);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      console.error('Error stack:', err.stack);
+      alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  const handleUpdateSession = async () => {
+    if (!sessionName.trim() || !programId || !selectedModule || !sessionToEdit) {
+      return;
+    }
+
+    try {
+      setIsUpdatingSession(true);
+      
+      console.log('Updating session with:', {
+        programId,
+        moduleId: selectedModule.id,
+        sessionId: sessionToEdit.id,
+        sessionName: sessionName.trim(),
+        hasImageFile: !!sessionImageFile,
+        hasImagePreview: !!sessionImagePreview,
+        currentImageUrl: sessionToEdit.image_url
+      });
+      
+      let imageUrl = sessionToEdit.image_url || null;
+      let shouldRemoveImage = false;
+      
+      // Upload new image if provided
+      if (sessionImageFile) {
+        try {
+          setIsUploadingSessionImage(true);
+          setSessionImageUploadProgress(0);
+          
+          imageUrl = await programService.uploadSessionImage(
+            programId,
+            selectedModule.id,
+            sessionImageFile,
+            (progress) => {
+              setSessionImageUploadProgress(Math.round(progress));
+            }
+          );
+          
+          setSessionImageUploadProgress(100);
+        } catch (uploadErr) {
+          console.error('Error uploading session image - Full error:', uploadErr);
+          console.error('Error code:', uploadErr.code);
+          console.error('Error message:', uploadErr.message);
+          console.error('Error stack:', uploadErr.stack);
+          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          return;
+        } finally {
+          setIsUploadingSessionImage(false);
+        }
+      } else if (!sessionImagePreview && sessionToEdit.image_url) {
+        // Image was deleted (no preview and had image before)
+        shouldRemoveImage = true;
+        imageUrl = null;
+      }
+      
+      // Update session
+      const updateData = {
+        title: sessionName.trim()
+      };
+      
+      if (shouldRemoveImage) {
+        updateData.image_url = null;
+      } else if (imageUrl !== null) {
+        updateData.image_url = imageUrl;
+      }
+      
+      await programService.updateSession(programId, selectedModule.id, sessionToEdit.id, updateData);
+      
+      // Reload sessions
+      const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
+      // Sort sessions by order field
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setSessions(sortedSessions);
+      
+      // Update selectedSession if it's the one being edited
+      if (selectedSession && selectedSession.id === sessionToEdit.id) {
+        const updatedSession = sortedSessions.find(s => s.id === sessionToEdit.id);
+        if (updatedSession) {
+          setSelectedSession(updatedSession);
+        }
+      }
+      
+      handleCloseSessionModal();
+    } catch (err) {
+      console.error('Error updating session - Full error:', err);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      console.error('Error stack:', err.stack);
+      alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+    } finally {
+      setIsUpdatingSession(false);
+    }
+  };
+
+  const handleDeleteSession = (session) => {
+    setSessionToDelete(session);
+    setIsDeleteSessionModalOpen(true);
+    setDeleteSessionConfirmation('');
+  };
+
+  const handleCloseDeleteSessionModal = () => {
+    setIsDeleteSessionModalOpen(false);
+    setSessionToDelete(null);
+    setDeleteSessionConfirmation('');
+  };
+
+  const handleConfirmDeleteSession = async () => {
+    if (!sessionToDelete || !deleteSessionConfirmation.trim() || !programId || !selectedModule) {
+      console.error('Missing required data for deletion:', {
+        hasSessionToDelete: !!sessionToDelete,
+        hasConfirmation: !!deleteSessionConfirmation.trim(),
+        hasProgramId: !!programId,
+        hasSelectedModule: !!selectedModule,
+        sessionToDelete,
+        programId,
+        selectedModuleId: selectedModule?.id
+      });
+      return;
+    }
+
+    // Verify the confirmation matches the session title
+    const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
+    if (deleteSessionConfirmation.trim() !== sessionTitle) {
+      console.error('Confirmation mismatch:', {
+        entered: deleteSessionConfirmation.trim(),
+        expected: sessionTitle
+      });
+      return;
+    }
+
+    try {
+      setIsDeletingSession(true);
+      
+      console.log('Attempting to delete session with:', {
+        programId,
+        moduleId: selectedModule.id,
+        sessionId: sessionToDelete.id,
+        session: sessionToDelete
+      });
+      
+      await programService.deleteSession(programId, selectedModule.id, sessionToDelete.id);
+      
+      // Reload sessions
+      const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
+      // Sort sessions by order field
+      const sortedSessions = sessionsData.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setSessions(sortedSessions);
+      
+      // If the deleted session was selected, go back to sessions list
+      if (selectedSession && selectedSession.id === sessionToDelete.id) {
+        setSelectedSession(null);
+        setExercises([]);
+      }
+      
+      // Close modal and exit edit mode if no sessions left
+      handleCloseDeleteSessionModal();
+      if (sessionsData.length === 0) {
+        setIsSessionEditMode(false);
+      }
+    } catch (err) {
+      console.error('Error deleting session - Full error:', err);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      console.error('Error stack:', err.stack);
+      alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+    } finally {
+      setIsDeletingSession(false);
+    }
+  };
+
+  // Memoize tab content rendering to prevent unnecessary re-renders
+  const renderTabContent = useCallback(() => {
+    if (loading) {
+      return (
+        <div className="program-detail-loading">
+          <p>Cargando programa...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="program-detail-error">
+          <p>{error}</p>
+        </div>
+      );
+    }
+
+    if (!program) {
+      return null;
+    }
+
+    const currentTab = TAB_CONFIG[currentTabIndex];
+
+    switch (currentTab.key) {
+      case 'lab':
+        return (
+          <div className="program-tab-content">
+            <div className="lab-content">
+              {isLoadingAnalytics ? (
+                <div className="lab-loading">
+                  <p>Cargando estadísticas...</p>
+                </div>
+              ) : analyticsError ? (
+                <div className="lab-error">
+                  <p>{analyticsError}</p>
+                </div>
+              ) : analytics ? (
+                <>
+                  {/* Enrollment Metrics */}
+                  <div className="lab-section">
+                    <h3 className="lab-section-title">Inscripciones</h3>
+                    <div className="lab-enrollment-container">
+                      <div className="lab-metrics-grid">
+                        <MetricCard 
+                          statKey="totalEnrolled"
+                          value={analytics.enrollment.totalEnrolled}
+                          label="Total Inscritos"
+                        />
+                        <MetricCard 
+                          statKey="activeEnrollments"
+                          value={analytics.enrollment.activeEnrollments}
+                          label="Activos"
+                        />
+                        <MetricCard 
+                          statKey="trialUsers"
+                          value={analytics.enrollment.trialUsers}
+                          label="Pruebas Gratis"
+                        />
+                        <MetricCard 
+                          statKey="expiredEnrollments"
+                          value={analytics.enrollment.expiredEnrollments}
+                          label="Expirados"
+                        />
+                        <MetricCard 
+                          statKey="cancelledEnrollments"
+                          value={analytics.enrollment.cancelledEnrollments}
+                          label="Cancelados"
+                        />
+                      <MetricCard 
+                        statKey="recentEnrollments30Days"
+                        value={analytics.enrollment.recentEnrollments30Days}
+                        label="Últimos 30 días"
+                        percentageChange={analytics.enrollment.recentEnrollmentsPercentageChange}
+                      />
+                        <MetricCard 
+                          statKey="averageEnrollmentDurationDays"
+                          value={analytics.enrollment.averageEnrollmentDurationDays}
+                          label="Duración Promedio (días)"
+                        />
+                      </div>
+                      
+                      {/* Enrollment Status Pie Chart */}
+                      {analytics.enrollment.totalEnrolled > 0 && (
+                        <div className="lab-chart-container">
+                          <h4 className="lab-subsection-title">Distribución de Inscripciones</h4>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: 'Activos', value: analytics.enrollment.activeEnrollments, color: 'rgba(150, 130, 60, 1)' },
+                                  { name: 'Pruebas Gratis', value: analytics.enrollment.trialUsers, color: 'rgba(191, 168, 77, 1)' },
+                                  { name: 'Expirados', value: analytics.enrollment.expiredEnrollments, color: 'rgba(100, 100, 100, 1)' },
+                                  { name: 'Cancelados', value: analytics.enrollment.cancelledEnrollments, color: 'rgba(191, 168, 77, 0.7)' }
+                                ].filter(item => item.value > 0)}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                stroke="none"
+                                label={false}
+                                outerRadius={100}
+                                fill="#8884d8"
+                                dataKey="value"
+                              >
+                                {[
+                                  { name: 'Activos', value: analytics.enrollment.activeEnrollments, color: 'rgba(150, 130, 60, 1)' },
+                                  { name: 'Pruebas Gratis', value: analytics.enrollment.trialUsers, color: 'rgba(191, 168, 77, 1)' },
+                                  { name: 'Expirados', value: analytics.enrollment.expiredEnrollments, color: 'rgba(100, 100, 100, 1)' },
+                                  { name: 'Cancelados', value: analytics.enrollment.cancelledEnrollments, color: 'rgba(191, 168, 77, 0.7)' }
+                                ].filter(item => item.value > 0).map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend 
+                                formatter={(value, entry) => {
+                                  // Calculate total for percentage calculation
+                                  const total = [
+                                    analytics.enrollment.activeEnrollments,
+                                    analytics.enrollment.trialUsers,
+                                    analytics.enrollment.expiredEnrollments,
+                                    analytics.enrollment.cancelledEnrollments
+                                  ].reduce((sum, val) => sum + val, 0);
+                                  
+                                  // Get the value for this legend item
+                                  const itemValue = entry.payload?.value || 0;
+                                  const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
+                                  
+                                  // Return name with percentage
+                                  return `${value} ${percent}%`;
+                                }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Demographics Section */}
+                    {analytics.enrollment.demographics && (
+                      <div className="lab-demographics-section">
+                        <h4 className="lab-subsection-title">Demografía de Usuarios</h4>
+                        
+                        {/* Most Common Customer Profile */}
+                        {/* Customer Profile and Age Distribution */}
+                        {((analytics.enrollment.mostCommonCustomer) || 
+                          (analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution)) && (
+                          <div className="lab-profile-age-container">
+                            {/* Customer Profile */}
+                            {analytics.enrollment.mostCommonCustomer && (
+                              <div className="lab-customer-profile">
+                                <h5 className="lab-profile-title">Perfil del Cliente Más Común</h5>
+                                <div className="lab-profile-cards-scrollable">
+                                  {analytics.enrollment.mostCommonCustomer.age && (
+                                    <div className="lab-profile-card">
+                                      <span className="lab-profile-card-label">Edad</span>
+                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.age} años</span>
+                                    </div>
+                                  )}
+                                  {analytics.enrollment.mostCommonCustomer.gender && (
+                                    <div className="lab-profile-card">
+                                      <span className="lab-profile-card-label">Género</span>
+                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.gender}</span>
+                                    </div>
+                                  )}
+                                  {analytics.enrollment.mostCommonCustomer.city && (
+                                    <div className="lab-profile-card">
+                                      <span className="lab-profile-card-label">Ciudad</span>
+                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.city}</span>
+                                    </div>
+                                  )}
+                                  {Object.keys(analytics.enrollment.mostCommonCustomer.onboardingAnswers || {}).length > 0 && (
+                                    <>
+                                      {Object.entries(analytics.enrollment.mostCommonCustomer.onboardingAnswers)
+                                        .filter(([key]) => key.toLowerCase() !== 'completedat' && key.toLowerCase() !== 'completed_at')
+                                        .map(([key, value]) => (
+                                        <div key={key} className="lab-profile-card">
+                                          <span className="lab-profile-card-label">{key}</span>
+                                          <span className="lab-profile-card-value">{value}</span>
+                                        </div>
+                                      ))}
+                                    </>
+                                  )}
+                                </div>
+                                <p className="lab-profile-sample-size">Basado en {analytics.enrollment.mostCommonCustomer.sampleSize} usuarios con datos completos</p>
+                              </div>
+                            )}
+                            
+                            {/* Age Distribution */}
+                            {analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution && (
+                              <div className="lab-chart-container">
+                                <h5 className="lab-chart-title">Distribución por Edad</h5>
+                                <ResponsiveContainer width="100%" height={300}>
+                                  <BarChart data={Object.entries(analytics.enrollment.demographics.age.distribution).map(([age, count]) => ({ age, count }))}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="age" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                                {analytics.enrollment.demographics.age.average && (
+                                  <p className="lab-chart-note">Edad promedio: {analytics.enrollment.demographics.age.average} años</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Gender Distribution and Top Cities */}
+                        {(analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0) || 
+                         (analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0) ? (
+                          <div className="lab-demographics-container">
+                            {/* Gender Distribution */}
+                            {analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0 && (
+                              <div className="lab-chart-container">
+                                <h5 className="lab-chart-title">Distribución por Género</h5>
+                                <ResponsiveContainer width="100%" height={300}>
+                                  <PieChart>
+                                    <Pie
+                                      data={Object.entries(analytics.enrollment.demographics.gender).map(([gender, count]) => ({ name: gender, value: count }))}
+                                      cx="50%"
+                                      cy="50%"
+                                      labelLine={false}
+                                      stroke="none"
+                                      label={false}
+                                      outerRadius={100}
+                                      fill="#8884d8"
+                                      dataKey="value"
+                                    >
+                                      {Object.entries(analytics.enrollment.demographics.gender).map((entry, index) => {
+                                        // Use brand colors: darker gold for first item, current gold for others, dark gray for last
+                                        const colors = [
+                                          'rgba(150, 130, 60, 1)', // Darker gold (main)
+                                          'rgba(191, 168, 77, 1)', // Current gold (secondary)
+                                          'rgba(100, 100, 100, 1)' // Dark gray
+                                        ];
+                                        const colorIndex = index < colors.length ? index : index % colors.length;
+                                        return <Cell key={`cell-${index}`} fill={colors[colorIndex]} stroke="none" />;
+                                      })}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend 
+                                      formatter={(value, entry) => {
+                                        // Calculate total for percentage calculation
+                                        const genderData = Object.entries(analytics.enrollment.demographics.gender);
+                                        const total = genderData.reduce((sum, [, count]) => sum + count, 0);
+                                        
+                                        // Get the value for this legend item
+                                        const itemValue = entry.payload?.value || 0;
+                                        const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
+                                        
+                                        // Return name with percentage
+                                        return `${value} ${percent}%`;
+                                      }}
+                                    />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )}
+                            
+                            {/* Top Cities */}
+                            {analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0 && (
+                              <div className="lab-chart-container">
+                                <h5 className="lab-chart-title">Top 10 Ciudades</h5>
+                                <ResponsiveContainer width="100%" height={300}>
+                                  <BarChart data={analytics.enrollment.demographics.topCities} layout="vertical">
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis type="number" />
+                                    <YAxis dataKey="city" type="category" width={100} />
+                                    <Tooltip />
+                                    <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Engagement Metrics */}
+                  <div className="lab-section">
+                    <h3 className="lab-section-title">Compromiso</h3>
+                    <div className="lab-engagement-container">
+                      <div className="lab-metrics-grid">
+                        <MetricCard 
+                          statKey="totalSessionsCompleted"
+                          value={analytics.engagement.totalSessionsCompleted}
+                          label="Sesiones Completadas"
+                        />
+                        <MetricCard 
+                          statKey="averageSessionsPerUser"
+                          value={analytics.engagement.averageSessionsPerUser}
+                          label="Promedio por Usuario"
+                        />
+                        <MetricCard 
+                          statKey="completionRate"
+                          value={`${analytics.engagement.completionRate}%`}
+                          label="Tasa de Finalización"
+                        />
+                        <MetricCard 
+                          statKey="usersWithAtLeastOneSession"
+                          value={analytics.engagement.usersWithAtLeastOneSession}
+                          label="Usuarios Activos"
+                        />
+                      </div>
+                      
+                      {/* Completion Rate Gauge */}
+                      <div className="lab-chart-container">
+                        <h4 className="lab-subsection-title">Tasa de Finalización</h4>
+                        <div className="lab-gauge-container">
+                          <div className="lab-gauge-circle" style={{
+                            background: `conic-gradient(rgba(150, 130, 60, 1) 0% ${analytics.engagement.completionRate}%, rgba(255, 255, 255, 0.1) ${analytics.engagement.completionRate}% 100%)`
+                          }}>
+                            <div className="lab-gauge-inner">
+                              <span className="lab-gauge-value">{analytics.engagement.completionRate}%</span>
+                              <span className="lab-gauge-label">Completación</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Sessions Completed Over Time */}
+                    {analytics.sessions.sessionsCompletedOverTime && analytics.sessions.sessionsCompletedOverTime.length > 0 && (
+                      <div className="lab-chart-container">
+                        <h4 className="lab-subsection-title">Sesiones Completadas en el Tiempo (Últimos 30 días)</h4>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <AreaChart data={analytics.sessions.sessionsCompletedOverTime}>
+                            <defs>
+                              <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis />
+                            <Tooltip />
+                            <Area type="monotone" dataKey="count" stroke="rgba(150, 130, 60, 1)" fillOpacity={1} fill="url(#colorSessions)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                    
+                    {/* Top Active Users Bar Chart */}
+                    {analytics.engagement.topActiveUsers.length > 0 && (
+                      <div className="lab-top-users-container">
+                        <div className="lab-chart-container">
+                          <h4 className="lab-subsection-title">Top 10 Usuarios Más Activos</h4>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={analytics.engagement.topActiveUsers.map((user, index) => ({
+                              name: user.userName.length > 15 ? user.userName.substring(0, 15) + '...' : user.userName,
+                              sessions: user.sessionsCompleted
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="sessions" fill="rgba(150, 130, 60, 1)" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="lab-top-users-list-container">
+                          <h4 className="lab-subsection-title">Lista de Usuarios</h4>
+                          <div className="lab-top-users-list">
+                            {analytics.engagement.topActiveUsers.map((user, index) => (
+                              <div key={user.userId} className="lab-top-user-item" onClick={() => handleShowUserInfo(user)}>
+                                <span className="lab-top-user-rank">#{index + 1}</span>
+                                <span className="lab-top-user-name lab-top-user-name-clickable">{user.userName}</span>
+                                <span className="lab-top-user-sessions">{user.sessionsCompleted} sesiones</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Session Performance */}
+                  <div className="lab-section">
+                    <h3 className="lab-section-title">Rendimiento de Sesiones</h3>
+                    {analytics.sessions.allSessionsWithCounts && analytics.sessions.allSessionsWithCounts.length > 0 ? (
+                      <div className="lab-session-performance-container">
+                        <div className="lab-metrics-grid">
+                          <MetricCard 
+                            statKey="totalCompletions"
+                            value={analytics.sessions.totalCompletions}
+                            label="Total Completadas"
+                          />
+                          <MetricCard 
+                            statKey="averageDuration"
+                            value={analytics.sessions.averageDuration > 0 
+                              ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
+                              : 'N/A'}
+                            label="Duración Promedio"
+                          />
+                          {analytics.sessions.mostCompletedSession && (
+                            <MetricCard 
+                              statKey="mostCompletedSession"
+                              value={analytics.sessions.mostCompletedSession.count}
+                              label={`Más Completada: ${analytics.sessions.mostCompletedSession.sessionName}`}
+                            />
+                          )}
+                          {analytics.sessions.leastCompletedSession && (
+                            <MetricCard 
+                              statKey="leastCompletedSession"
+                              value={analytics.sessions.leastCompletedSession.count}
+                              label={`Menos Completada: ${analytics.sessions.leastCompletedSession.sessionName}`}
+                            />
+                          )}
+                        </div>
+                        
+                        {/* Session Completion Comparison */}
+                        <div className="lab-chart-container">
+                          <h4 className="lab-subsection-title">Completaciones por Sesión</h4>
+                          <ResponsiveContainer width="100%" height={400}>
+                            <BarChart data={analytics.sessions.allSessionsWithCounts.slice(0, 20)} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis type="number" />
+                              <YAxis dataKey="name" type="category" width={150} angle={0} />
+                              <Tooltip />
+                              <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="lab-metrics-grid">
+                        <MetricCard 
+                          statKey="totalCompletions"
+                          value={analytics.sessions.totalCompletions}
+                          label="Total Completadas"
+                        />
+                        <MetricCard 
+                          statKey="averageDuration"
+                          value={analytics.sessions.averageDuration > 0 
+                            ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
+                            : 'N/A'}
+                          label="Duración Promedio"
+                        />
+                        {analytics.sessions.mostCompletedSession && (
+                          <MetricCard 
+                            statKey="mostCompletedSession"
+                            value={analytics.sessions.mostCompletedSession.count}
+                            label={`Más Completada: ${analytics.sessions.mostCompletedSession.sessionName}`}
+                          />
+                        )}
+                        {analytics.sessions.leastCompletedSession && (
+                          <MetricCard 
+                            statKey="leastCompletedSession"
+                            value={analytics.sessions.leastCompletedSession.count}
+                            label={`Menos Completada: ${analytics.sessions.leastCompletedSession.sessionName}`}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* User Progression */}
+                  <div className="lab-section">
+                    <h3 className="lab-section-title">Progresión de Usuarios</h3>
+                    <div className="lab-progression-container">
+                      <div className="lab-metrics-grid">
+                        <MetricCard 
+                          statKey="usersWithZeroSessions"
+                          value={analytics.progression.usersWithZeroSessions}
+                          label="0 Sesiones"
+                        />
+                        <MetricCard 
+                          statKey="usersWithOneToFiveSessions"
+                          value={analytics.progression.usersWithOneToFiveSessions}
+                          label="1-5 Sesiones"
+                        />
+                        <MetricCard 
+                          statKey="usersWithSixToTenSessions"
+                          value={analytics.progression.usersWithSixToTenSessions}
+                          label="6-10 Sesiones"
+                        />
+                        <MetricCard 
+                          statKey="usersWithTenPlusSessions"
+                          value={analytics.progression.usersWithTenPlusSessions}
+                          label="10+ Sesiones"
+                        />
+                        <MetricCard 
+                          statKey="averageWeeklyStreak"
+                          value={analytics.progression.averageWeeklyStreak}
+                          label="Racha Semanal Promedio"
+                        />
+                      </div>
+                      
+                      {/* User Progression Distribution */}
+                      <div className="lab-chart-container">
+                        <h4 className="lab-subsection-title">Distribución de Progresión de Usuarios</h4>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
+                                { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
+                                { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
+                                { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
+                              ].filter(item => item.value > 0)}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              stroke="none"
+                              label={false}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {[
+                                { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
+                                { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
+                                { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
+                                { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
+                              ].filter(item => item.value > 0).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend 
+                              formatter={(value, entry) => {
+                                // Calculate total for percentage calculation
+                                const total = [
+                                  analytics.progression.usersWithZeroSessions,
+                                  analytics.progression.usersWithOneToFiveSessions,
+                                  analytics.progression.usersWithSixToTenSessions,
+                                  analytics.progression.usersWithTenPlusSessions
+                                ].reduce((sum, val) => sum + val, 0);
+                                
+                                // Get the value for this legend item
+                                const itemValue = entry.payload?.value || 0;
+                                const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
+                                
+                                // Return name with percentage
+                                return `${value} ${percent}%`;
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="lab-empty">
+                  <p>No hay datos disponibles</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      case 'configuracion':
+        return (
+          <div className="program-tab-content">
+            <div className="program-config-section">
+              <h3 className="program-config-section-title">General</h3>
+              <div className="program-config-cards">
+                {/* Pills Section */}
+                <div className="program-config-pills">
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleIntroVideoCardClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.video_intro_url ? 'Sí' : 'No'}
+                      </span>
+                      <span className="program-config-pill-label">VIDEO INTRO</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handlePricePillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.price ? `$${program.price}` : 'Gratis'}
+                      </span>
+                      <span className="program-config-pill-label">PRECIO</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleFreeTrialPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.free_trial?.active ? 'Activa' : 'Inactiva'}
+                      </span>
+                      <span className="program-config-pill-label">PRUEBA GRATIS</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="program-config-pill">
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.discipline || 'No especificada'}
+                      </span>
+                      <span className="program-config-pill-label">DISCIPLINA</span>
+                    </div>
+                  </div>
+                  <div className="program-config-pill">
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {getAccessTypeLabel(program.access_duration)}
+                      </span>
+                      <span className="program-config-pill-label">TIPO</span>
+                    </div>
+                  </div>
+                  <div 
+                    className={`program-config-pill ${isOneTimePayment() ? 'program-config-pill-clickable' : ''}`}
+                    onClick={isOneTimePayment() ? handleDurationPillClick : undefined}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {isOneTimePayment() ? getDurationLabel(program.duration) : 'Mensual'}
+                      </span>
+                      <span className="program-config-pill-label">DURACIÓN</span>
+                    </div>
+                    {isOneTimePayment() && (
+                      <div className="program-config-pill-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div 
+                    className={`program-config-pill program-config-pill-right program-config-pill-clickable ${program.status === 'draft' ? 'program-config-pill-draft' : program.status === 'published' ? 'program-config-pill-published' : ''}`}
+                    onClick={handleStatusPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {getStatusLabel(program.status)}
+                      </span>
+                      <span className="program-config-pill-label">ESTADO</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description Card */}
+                <div 
+                  className={`program-config-card program-config-card-full ${!isEditingDescription ? 'program-config-card-clickable' : ''}`}
+                  onClick={!isEditingDescription ? () => {
+                    setIsEditingDescription(true);
+                    setDescriptionValue(program.description || '');
+                  } : undefined}
+                >
+                  <div className="program-config-card-header">
+                    <span className="program-config-card-label">Descripción</span>
+                    {!isEditingDescription && (
+                      <button
+                        className="program-config-card-edit-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsEditingDescription(true);
+                          setDescriptionValue(program.description || '');
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="program-config-card-content">
+                    {isEditingDescription ? (
+                      <div className="program-config-description-edit">
+                        <textarea
+                          className="program-config-description-textarea"
+                          value={descriptionValue}
+                          onChange={(e) => setDescriptionValue(e.target.value)}
+                          placeholder="Escribe la descripción del programa..."
+                          rows={6}
+                        />
+                        <div className="program-config-description-actions">
+                          <Button
+                            title={isUpdatingDescription ? 'Guardando...' : 'Guardar'}
+                            onClick={async () => {
+                              if (!program) return;
+                              
+                              try {
+                                setIsUpdatingDescription(true);
+                                await programService.updateProgram(program.id, { description: descriptionValue });
+                                
+                                // Update React Query cache
+                                queryClient.setQueryData(
+                                  queryKeys.programs.detail(program.id),
+                                  (oldData) => ({
+                                    ...oldData,
+                                    description: descriptionValue
+                                  })
+                                );
+                                
+                                setIsEditingDescription(false);
+                              } catch (err) {
+                                console.error('Error updating description:', err);
+                                alert('Error al actualizar la descripción');
+                              } finally {
+                                setIsUpdatingDescription(false);
+                              }
+                            }}
+                            disabled={isUpdatingDescription}
+                            loading={isUpdatingDescription}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="program-config-description">
+                        {program.description || 'Sin descripción'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Ejecución Section */}
+            <div className="program-config-section">
+              <h3 className="program-config-section-title">Ejecución</h3>
+              <div className="program-config-cards">
+                <div className="program-config-pills">
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleStreakPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.programSettings?.streakEnabled ? 'Activa' : 'Inactiva'}
+                      </span>
+                      <span className="program-config-pill-label">RACHA</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleWeightSuggestionsPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.weight_suggestions ? 'Activa' : 'Inactiva'}
+                      </span>
+                      <span className="program-config-pill-label">SUGERENCIAS DE PESO</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleAuxiliaryLibrariesPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {program.availableLibraries && program.availableLibraries.length > 0 
+                          ? `${program.availableLibraries.length}` 
+                          : '0'}
+                      </span>
+                      <span className="program-config-pill-label">BIBLIOTECAS AUXILIARES</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div 
+                    className="program-config-pill program-config-pill-clickable"
+                    onClick={handleAnunciosPillClick}
+                  >
+                    <div className="program-config-pill-content">
+                      <span className="program-config-pill-value">
+                        {(() => {
+                          if (!program.tutorials) return '0';
+                          const totalVideos = Object.values(program.tutorials).reduce((sum, videos) => {
+                            return sum + (Array.isArray(videos) ? videos.length : 0);
+                          }, 0);
+                          return totalVideos > 0 ? `${totalVideos}` : '0';
+                        })()}
+                      </span>
+                      <span className="program-config-pill-label">ANUNCIOS</span>
+                    </div>
+                    <div className="program-config-pill-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'contenido':
+        // If a session is selected, show exercises view
+        if (selectedSession && selectedModule) {
+        return (
+          <div className="program-tab-content">
+              <div className="exercises-content">
+                <div className="exercises-legend">
+                  <div className="exercises-legend-item">
+                    <div className="exercise-incomplete-icon-small">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="exercises-legend-text">Ejercicio incompleto</span>
+                  </div>
+                </div>
+                <h2 className="page-section-title">Ejercicios</h2>
+                <div className="exercises-actions">
+                  <button 
+                    className={`exercise-action-pill ${isExerciseEditMode ? 'exercise-action-pill-disabled' : ''}`}
+                    disabled={isExerciseEditMode}
+                    onClick={() => {
+                      if (!isExerciseEditMode) {
+                        // Create a new empty exercise draft
+                        const newExercise = {
+                          id: 'new', // Temporary ID
+                          primary: null,
+                          alternatives: {},
+                          measures: [],
+                          objectives: []
+                        };
+                        setSelectedExercise(newExercise);
+                        setExerciseDraft(JSON.parse(JSON.stringify(newExercise)));
+                        setSelectedExerciseTab('general');
+                        setIsCreatingExercise(true);
+                        setExerciseSets([]);
+                        setOriginalExerciseSets([]);
+                        setUnsavedSetChanges({});
+                        setIsExerciseModalOpen(true);
+                      }
+                    }}
+                  >
+                    <span className="exercise-action-icon">+</span>
+                  </button>
+                  <button 
+                    className="exercise-action-pill"
+                    onClick={handleEditExercises}
+                  >
+                    <span className="exercise-action-text">{isExerciseEditMode ? 'Guardar' : 'Editar'}</span>
+                  </button>
+                </div>
+                
+                {/* Exercises List */}
+                {isLoadingExercises ? (
+                  <div className="exercises-loading">
+                    <p>Cargando ejercicios...</p>
+                  </div>
+                ) : exercises.length === 0 ? (
+                  <div className="exercises-empty">
+                    <p>No hay ejercicios en esta sesión aún.</p>
+                  </div>
+                ) : (
+                  <>
+                    {isExerciseEditMode ? (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEndExercises}
+                      >
+                        <SortableContext
+                          items={exercises.map((exercise) => exercise.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="exercises-list">
+                            {exercises.map((exercise, index) => (
+                              <SortableExerciseCard
+                                key={exercise.id}
+                                exercise={exercise}
+                                isExerciseEditMode={isExerciseEditMode}
+                                onDeleteExercise={handleDeleteExercise}
+                                exerciseIndex={index}
+                                isExerciseIncomplete={isExerciseIncomplete}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    ) : (
+                      <div className="exercises-list">
+                        {exercises.map((exercise, index) => {
+                          // Extract title from primary field (map of library IDs to titles)
+                          const getExerciseTitle = () => {
+                            if (exercise.primary && typeof exercise.primary === 'object') {
+                              // Get the first value from the primary map
+                              const primaryValues = Object.values(exercise.primary);
+                              if (primaryValues.length > 0 && primaryValues[0]) {
+                                return primaryValues[0];
+                              }
+                            }
+                            // Fallback to name, title, or id
+                            return exercise.name || exercise.title || `Ejercicio ${exercise.id?.slice(0, 8) || ''}`;
+                          };
+
+                          // Get exercise number from order field, fallback to index + 1
+                          const exerciseNumber = (exercise.order !== undefined && exercise.order !== null) ? exercise.order + 1 : index + 1;
+
+                          return (
+                            <div 
+                              key={exercise.id} 
+                              className="exercise-card"
+                              onClick={() => handleExerciseClick(exercise)}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <div className="exercise-card-number">{exerciseNumber}</div>
+                              {!isExerciseEditMode && isExerciseIncomplete(exercise) && (
+                                <div className="exercise-incomplete-icon">
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                              )}
+                              <div className="exercise-card-header">
+                                <div className="exercise-card-title-row">
+                                <h3 className="exercise-card-title">
+                                  {getExerciseTitle()}
+                                </h3>
+                                </div>
+                              </div>
+                              {exercise.description && (
+                                <p className="exercise-card-description">{exercise.description}</p>
+                              )}
+                              {exercise.video_url && (
+                                <div className="exercise-card-video">
+                                  <video
+                                    src={exercise.video_url}
+                                    controls
+                                    className="exercise-card-video-player"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        }
+        
+        // If a module is selected, show sessions view
+        if (selectedModule) {
+          const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
+        return (
+          <div className="program-tab-content">
+              <div className="sessions-content">
+                <div className="sessions-legend">
+                  <div className="sessions-legend-item">
+                    <div className="session-incomplete-icon-small">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="sessions-legend-text">Sesión incompleta</span>
+                  </div>
+                </div>
+                <h2 className="page-section-title">Sesiones</h2>
+                <div className="sessions-actions">
+                  <button 
+                    className={`session-action-pill ${isSessionEditMode ? 'session-action-pill-disabled' : ''}`}
+                    onClick={handleAddSession}
+                    disabled={isSessionEditMode}
+                  >
+                    <span className="session-action-icon">+</span>
+                  </button>
+                  <button 
+                    className="session-action-pill"
+                    onClick={handleEditSessions}
+                  >
+                    <span className="session-action-text">{isSessionEditMode ? 'Guardar' : 'Editar'}</span>
+                  </button>
+                </div>
+                
+                {/* Sessions List */}
+                {isLoadingSessions ? (
+                  <div className="sessions-loading">
+                    <p>Cargando sesiones...</p>
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <div className="sessions-empty">
+                    <p>No hay sesiones aún en este módulo. Crea una nueva sesión para comenzar.</p>
+                  </div>
+                ) : (
+                  <>
+                    {isSessionEditMode ? (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEndSessions}
+                      >
+                        <SortableContext
+                          items={sessions.map((session) => session.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="sessions-list">
+                            {sessions.map((session, index) => (
+                              <SortableSessionCard
+                                key={session.id}
+                                session={session}
+                                isSessionEditMode={isSessionEditMode}
+                                onSessionClick={handleSessionClick}
+                                onDeleteSession={handleDeleteSession}
+                                sessionIndex={index}
+                                isSessionIncomplete={isSessionIncomplete(session)}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    ) : (
+                      <div className="sessions-list">
+                        {sessions.map((session, index) => {
+                          const sessionNumber = (session.order !== undefined && session.order !== null) ? session.order + 1 : index + 1;
+                          return (
+                          <div
+                            key={session.id}
+                            className={`session-card ${session.image_url ? 'session-card-with-image' : ''}`}
+                            style={session.image_url ? {
+                              backgroundImage: `url(${session.image_url})`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center',
+                              backgroundRepeat: 'no-repeat',
+                            } : {}}
+                            onClick={() => handleSessionClick(session)}
+                          >
+                              <div className="session-card-number">{sessionNumber}</div>
+                              {isSessionIncomplete(session) && (
+                                <div className="session-incomplete-icon">
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                              )}
+                            <div className="session-card-header">
+                              <h3 className="session-card-title">
+                                {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
+                              </h3>
+                              {session.description && (
+                                <p className="session-card-description">{session.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        }
+        
+        // Otherwise, show modules list
+        return (
+          <div className="program-tab-content">
+            <div className="modules-content">
+              <div className="modules-legend">
+                <div className="modules-legend-item">
+                  <div className="module-incomplete-icon-small">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <span className="modules-legend-text">Módulo incompleto</span>
+                </div>
+              </div>
+              <h2 className="page-section-title">Módulos</h2>
+              <div className="modules-actions">
+                <button 
+                  className={`module-action-pill ${isModuleEditMode ? 'module-action-pill-disabled' : ''}`}
+                  onClick={handleAddModule}
+                  disabled={isModuleEditMode}
+                >
+                  <span className="module-action-icon">+</span>
+                </button>
+                <button 
+                  className="module-action-pill"
+                  onClick={handleEditModules}
+                >
+                  <span className="module-action-text">{isModuleEditMode ? 'Guardar' : 'Editar'}</span>
+                </button>
+              </div>
+              
+              {/* Modules List */}
+              {isLoadingModules ? (
+                <div className="modules-loading">
+                  <p>Cargando módulos...</p>
+                </div>
+              ) : modules.length === 0 ? (
+                <div className="modules-empty">
+                  <p>No tienes módulos aún. Crea un nuevo módulo para comenzar.</p>
+                </div>
+              ) : (
+                <>
+                  {isModuleEditMode ? (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={modules.map((module) => module.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="modules-list">
+                          {modules.map((module, index) => (
+                            <SortableModuleCard
+                              key={module.id}
+                              module={module}
+                              isModuleEditMode={isModuleEditMode}
+                              onModuleClick={handleModuleClick}
+                              onDeleteModule={handleDeleteModule}
+                              moduleIndex={index}
+                              isModuleIncomplete={isModuleIncomplete(module)}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  ) : (
+                    <div className="modules-list">
+                      {modules.map((module, index) => {
+                        const moduleNumber = (module.order !== undefined && module.order !== null) ? module.order + 1 : index + 1;
+                        return (
+                        <div
+                          key={module.id}
+                          className="module-card"
+                          onClick={() => handleModuleClick(module)}
+                        >
+                            <div className="module-card-number">{moduleNumber}</div>
+                            {isModuleIncomplete(module) && (
+                              <div className="module-incomplete-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            )}
+                          <div className="module-card-header">
+                            <h3 className="module-card-title">
+                              {module.title || module.name || `Módulo ${module.id.slice(0, 8)}`}
+                            </h3>
+                            {module.description && (
+                              <p className="module-card-description">{module.description}</p>
+                            )}
+                          </div>
+                          <div className="module-card-footer">
+                            {/* TODO: Add module count or other info */}
+                          </div>
+                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }, [loading, error, program, currentTabIndex, isLoadingAnalytics, analyticsError, analytics, selectedModule, selectedSession, modules, sessions, exercises, isModuleEditMode, isSessionEditMode, isExerciseEditMode, moduleIncompleteMap, sessionIncompleteMap, handleModuleClick, handleSessionClick, handleExerciseClick, handleCreateModule, handleCreateSession, handleCreateNewExercise, handleDeleteModule, handleDeleteSession, handleDeleteExercise, handleSaveModuleOrder, handleSaveSessionOrder, handleSaveExerciseOrder, isExerciseIncomplete]);
+
+  // Determine screen name based on selected module or session
+  const getScreenName = () => {
+    if (selectedSession && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
+      const sessionName = selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8) || ''}`;
+      return sessionName;
+    }
+    if (selectedModule && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
+      const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
+      return `Sesiones - ${moduleName}`;
+    }
+    return program?.title || 'Programa';
+  };
+
+  // Determine if back button should be shown
+  const shouldShowBackButton = selectedSession || selectedModule;
+  const getBackPath = () => {
+    if (selectedSession) return null; // Use onBack handler instead
+    if (selectedModule) return null; // Use onBack handler instead
+    return '/programs'; // Default back to programs list
+  };
+
+  return (
+    <DashboardLayout 
+      screenName={getScreenName()}
+      headerBackgroundImage={selectedSession?.image_url || program?.image_url || null}
+      onHeaderEditClick={selectedSession ? handleEditSessionClick : handleEditProgramClick}
+      onBack={selectedSession ? handleBackToSessions : selectedModule ? handleBackToModules : null}
+      showBackButton={shouldShowBackButton}
+      backPath={getBackPath()}
+    >
+      <div className="program-detail-container">
+        {/* Tab Bar */}
+        <div className="program-tab-bar">
+          <div className="program-tab-header-container">
+            <div className="program-tab-indicator-wrapper">
+              {TAB_CONFIG.map((tab, index) => (
+                <button
+                  key={tab.key}
+                  className={`program-tab-button ${currentTabIndex === index ? 'program-tab-button-active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-button-disabled' : ''}`}
+                  onClick={() => handleTabClick(index)}
+                  disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
+                >
+                  <span className="program-tab-title-text">{tab.title}</span>
+                </button>
+              ))}
+              <div 
+                className="program-tab-indicator"
+                style={{
+                  transform: `translateX(${currentTabIndex * 100}%)`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Breadcrumb Navigation - Always render to reserve space */}
+        <div className={`program-breadcrumb ${currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido') ? 'program-breadcrumb-visible' : 'program-breadcrumb-hidden'}`}>
+          {currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido') && (
+            <>
+              <button
+                className="program-breadcrumb-item program-breadcrumb-item-clickable"
+                onClick={() => navigate('/programs')}
+              >
+                {program?.title || 'Programa'}
+              </button>
+              {selectedModule && (
+                <>
+                  <span className="program-breadcrumb-separator">→</span>
+                  <button
+                    className="program-breadcrumb-item program-breadcrumb-item-clickable"
+                    onClick={() => {
+                      // Navigate to modules page - clear module selection
+                      setSelectedModule(null);
+                      setSessions([]);
+                      setSelectedSession(null);
+                      setExercises([]);
+                    }}
+                  >
+                    {selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8)}`}
+                  </button>
+                </>
+              )}
+              {selectedSession && (
+                <>
+                  <span className="program-breadcrumb-separator">→</span>
+                  <button
+                    className="program-breadcrumb-item program-breadcrumb-item-clickable"
+                    onClick={() => {
+                      // Navigate to sessions page - go back to sessions list
+                      setSelectedSession(null);
+                      setExercises([]);
+                    }}
+                  >
+                    {selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8)}`}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Tab Content Pager */}
+        <div 
+          className={`program-tab-pager ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-pager-disabled' : ''}`}
+          ref={tabsScrollRef}
+          onWheel={handleTabWheel}
+        >
+          {TAB_CONFIG.map((tab, index) => (
+            <div 
+              key={tab.key}
+              className="program-tab-page"
+            >
+              {index === currentTabIndex && renderTabContent()}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Status Change Modal */}
+      <Modal
+        isOpen={isStatusModalOpen}
+        onClose={handleCloseStatusModal}
+        title="Cambiar Estado"
+      >
+        <div className="status-modal-content">
+          <div className="status-options">
+            <button
+              className={`status-option ${selectedStatus === 'draft' ? 'status-option-selected status-option-draft' : ''}`}
+              onClick={() => setSelectedStatus('draft')}
+            >
+              <span className="status-option-label">Borrador</span>
+            </button>
+            <button
+              className={`status-option ${selectedStatus === 'published' ? 'status-option-selected status-option-published' : ''}`}
+              onClick={() => setSelectedStatus('published')}
+            >
+              <span className="status-option-label">Publicado</span>
+            </button>
+          </div>
+          <div className="status-modal-actions">
+            <Button
+              title={isUpdatingStatus ? 'Guardando...' : 'Guardar'}
+              onClick={handleStatusChange}
+              disabled={isUpdatingStatus || selectedStatus === program?.status}
+              loading={isUpdatingStatus}
+            />
+          </div>
+          </div>
+        </Modal>
+
+      {/* Price Change Modal */}
+      <Modal
+        isOpen={isPriceModalOpen}
+        onClose={handleClosePriceModal}
+        title="Cambiar Precio"
+      >
+        <div className="price-modal-content">
+          <div className="price-input-container">
+            <Input
+              type="number"
+              placeholder="Precio"
+              value={priceValue}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Allow empty or numeric values
+                if (value === '' || /^\d+$/.test(value)) {
+                  setPriceValue(value);
+                }
+              }}
+              min="2000"
+              light={true}
+            />
+            <p className="price-modal-info-text">
+              Este cambio solo aplicará a compras futuras y no afectará suscripciones en curso.
+            </p>
+          </div>
+          <div className="price-modal-actions">
+            <Button
+              title={isUpdatingPrice ? 'Guardando...' : 'Guardar'}
+              onClick={handlePriceChange}
+              disabled={isUpdatingPrice || (priceValue !== '' && parseInt(priceValue, 10) < 2000) || (priceValue === '' && program?.price === null) || (priceValue !== '' && parseInt(priceValue, 10) === program?.price)}
+              loading={isUpdatingPrice}
+            />
+          </div>
+          </div>
+        </Modal>
+
+      {/* Duration Change Modal */}
+      <Modal
+        isOpen={isDurationModalOpen}
+        onClose={handleCloseDurationModal}
+        title="Cambiar duración (semanas)"
+      >
+        <div className="duration-modal-content">
+          <div className="duration-input-container">
+            <div className="duration-input-wrapper">
+              <input
+                type="number"
+                className="duration-input"
+                value={durationValue}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10) || 1;
+                  if (value >= 1) {
+                    setDurationValue(value);
+                  }
+                }}
+                min="1"
+              />
+              <div className="duration-arrows">
+                <button
+                  type="button"
+                  className="duration-spinner-button duration-spinner-up"
+                  onClick={handleDurationIncrement}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="duration-spinner-button duration-spinner-down"
+                  disabled={durationValue <= 1}
+                  onClick={handleDurationDecrement}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <p className="duration-modal-info-text">
+              Semanas
+            </p>
+          </div>
+          <div className="duration-modal-actions">
+            <Button
+              title={isUpdatingDuration ? 'Guardando...' : 'Guardar'}
+              onClick={handleDurationChange}
+              disabled={isUpdatingDuration || (() => {
+                const durationString = `${durationValue} semanas`;
+                const currentDurationString = typeof program?.duration === 'string' 
+                  ? program.duration 
+                  : program?.duration ? `${program.duration} semanas` : null;
+                return durationString === currentDurationString;
+              })()}
+              loading={isUpdatingDuration}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Program Modal */}
+      <Modal
+        isOpen={isEditProgramModalOpen}
+        onClose={handleCloseEditProgramModal}
+        title="Editar Programa"
+      >
+        <div className="edit-program-modal-content">
+          <div className="edit-program-modal-body">
+            {/* Left Side - Inputs */}
+            <div className="edit-program-modal-left">
+              <div className="edit-program-input-group">
+                <label className="edit-program-input-label">Nombre del Programa</label>
+                <Input
+                  placeholder="Nombre del programa"
+                  value={programNameValue}
+                  onChange={(e) => setProgramNameValue(e.target.value)}
+                  type="text"
+                  light={true}
+                />
+              </div>
+            </div>
+
+            {/* Right Side - Image */}
+            <div className="edit-program-modal-right">
+              <div className="edit-program-image-section">
+                {program?.image_url ? (
+                  <div className="edit-program-image-container">
+                    <img
+                      src={program.image_url}
+                      alt="Programa"
+                      className="edit-program-image"
+                    />
+                    <div className="edit-program-image-overlay">
+                      <div className="edit-program-image-actions">
+                        <label className="edit-program-image-action-pill">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            disabled={isUploadingImage}
+                            style={{ display: 'none' }}
+                          />
+                          <span className="edit-program-image-action-text">
+                            {isUploadingImage ? 'Subiendo...' : 'Cambiar'}
+                          </span>
+                        </label>
+                        {isUploadingImage && (
+                          <div className="edit-program-image-progress">
+                            <div className="edit-program-image-progress-bar">
+                              <div 
+                                className="edit-program-image-progress-fill"
+                                style={{ width: `${imageUploadProgress}%` }}
+                              />
+                            </div>
+                            <span className="edit-program-image-progress-text">
+                              {imageUploadProgress}%
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          className="edit-program-image-action-pill edit-program-image-delete-pill"
+                          onClick={handleImageDelete}
+                          disabled={isUploadingImage}
+                        >
+                          <span className="edit-program-image-action-text">Eliminar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="edit-program-no-image">
+                    <p>No hay imagen disponible</p>
+                    <label className="edit-program-image-upload-button">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={isUploadingImage}
+                        style={{ display: 'none' }}
+                      />
+                      {isUploadingImage ? 'Subiendo...' : 'Subir Imagen'}
+                    </label>
+                    {isUploadingImage && (
+                      <div className="edit-program-image-progress">
+                        <div className="edit-program-image-progress-bar">
+                          <div 
+                            className="edit-program-image-progress-fill"
+                            style={{ width: `${imageUploadProgress}%` }}
+                          />
+                        </div>
+                        <span className="edit-program-image-progress-text">
+                          {imageUploadProgress}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="edit-program-modal-actions">
+            <Button
+              title={isUpdatingProgram ? 'Guardando...' : 'Guardar'}
+              onClick={handleUpdateProgram}
+              disabled={isUpdatingProgram || !programNameValue.trim() || programNameValue.trim() === (program?.title || '')}
+              loading={isUpdatingProgram}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Streak Modal */}
+      <Modal
+        isOpen={isStreakModalOpen}
+        onClose={handleCloseStreakModal}
+        title="Configurar Racha"
+      >
+        <div className="streak-modal-content">
+          <div className="streak-modal-body">
+            <div className="streak-row">
+              <div className="streak-toggle-section">
+                <label className="streak-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                  <span>Activar Racha</span>
+                  <label className="elegant-toggle">
+                  <input
+                    type="checkbox"
+                    checked={streakEnabled}
+                    onChange={(e) => setStreakEnabled(e.target.checked)}
+                  />
+                    <span className="elegant-toggle-slider"></span>
+                  </label>
+                </label>
+              </div>
+              {streakEnabled && (
+                <div className="streak-input-section">
+                  <label className="streak-input-label">
+                    Cantidad mínima de sesiones en la semana para mantener la racha
+                  </label>
+                  <div className="streak-input-wrapper">
+                    <input
+                      type="number"
+                      className="streak-input"
+                      value={minimumSessionsPerWeek}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10) || 0;
+                        if (value >= 0) {
+                          setMinimumSessionsPerWeek(value);
+                        }
+                      }}
+                      min="0"
+                    />
+                    <div className="streak-arrows">
+                      <button
+                        type="button"
+                        className="streak-spinner-button streak-spinner-up"
+                        onClick={() => setMinimumSessionsPerWeek(prev => prev + 1)}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="streak-spinner-button streak-spinner-down"
+                        disabled={minimumSessionsPerWeek <= 0}
+                        onClick={() => setMinimumSessionsPerWeek(prev => Math.max(0, prev - 1))}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="streak-modal-actions">
+            <Button
+              title={isUpdatingStreak ? 'Guardando...' : 'Guardar'}
+              onClick={handleUpdateStreak}
+              disabled={isUpdatingStreak || (streakEnabled && minimumSessionsPerWeek <= 0)}
+              loading={isUpdatingStreak}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Weight Suggestions Modal */}
+      <Modal
+        isOpen={isWeightSuggestionsModalOpen}
+        onClose={handleCloseWeightSuggestionsModal}
+        title="Configurar Sugerencias de Peso"
+      >
+        <div className="weight-suggestions-modal-content">
+          <div className="weight-suggestions-modal-body">
+            <div className="weight-suggestions-toggle-section">
+              <label className="weight-suggestions-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <span>Activar Sugerencias de Peso</span>
+                <label className="elegant-toggle">
+                <input
+                  type="checkbox"
+                  checked={weightSuggestionsEnabled}
+                  onChange={(e) => setWeightSuggestionsEnabled(e.target.checked)}
+                />
+                  <span className="elegant-toggle-slider"></span>
+                </label>
+              </label>
+            </div>
+          </div>
+          <div className="weight-suggestions-modal-actions">
+            <Button
+              title={isUpdatingWeightSuggestions ? 'Guardando...' : 'Guardar'}
+              onClick={handleUpdateWeightSuggestions}
+              disabled={isUpdatingWeightSuggestions}
+              loading={isUpdatingWeightSuggestions}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Free Trial Modal */}
+      <Modal
+        isOpen={isFreeTrialModalOpen}
+        onClose={handleCloseFreeTrialModal}
+        title="Configurar Prueba Gratis"
+      >
+        <div className="free-trial-modal-content">
+          <div className="free-trial-modal-body">
+            <div className="free-trial-toggle-section">
+              <label className="free-trial-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <span>Activar prueba gratis</span>
+                <label className="elegant-toggle">
+                <input
+                  type="checkbox"
+                  checked={freeTrialActive}
+                  onChange={(e) => setFreeTrialActive(e.target.checked)}
+                />
+                  <span className="elegant-toggle-slider"></span>
+                </label>
+              </label>
+            </div>
+            <div className="free-trial-duration-section">
+              <label className="free-trial-duration-label">Duración de la prueba (días)</label>
+              <div className="free-trial-duration-input-wrapper">
+                <input
+                  type="number"
+                  min="0"
+                  className="free-trial-duration-input"
+                  value={freeTrialDurationDays}
+                  onChange={(e) => handleFreeTrialDurationInputChange(e.target.value)}
+                  disabled={!freeTrialActive}
+                />
+                <div className="free-trial-duration-arrows">
+                  <button
+                    type="button"
+                    className="free-trial-duration-spinner-button"
+                    onClick={incrementFreeTrialDuration}
+                    disabled={!freeTrialActive}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="free-trial-duration-spinner-button"
+                    onClick={decrementFreeTrialDuration}
+                    disabled={!freeTrialActive || getParsedFreeTrialDuration() <= 0}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p className="free-trial-duration-helper">
+                Define cuántos días podrá usar el programa antes de pagar.
+              </p>
+            </div>
+          </div>
+          <div className="free-trial-modal-actions">
+            <Button
+              title={isUpdatingFreeTrial ? 'Guardando...' : 'Guardar'}
+              onClick={handleUpdateFreeTrial}
+              disabled={isUpdatingFreeTrial}
+              loading={isUpdatingFreeTrial}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Auxiliary Libraries Modal */}
+      <Modal
+        isOpen={isAuxiliaryLibrariesModalOpen}
+        onClose={handleCloseAuxiliaryLibrariesModal}
+        title="Bibliotecas Auxiliares"
+      >
+        <div className="auxiliary-libraries-modal-content">
+          {isLoadingLibraries ? (
+            <div className="auxiliary-libraries-loading">
+              <p>Cargando bibliotecas...</p>
+            </div>
+          ) : (
+            <>
+              <div className="auxiliary-libraries-body">
+                {availableLibraries.length === 0 ? (
+                  <div className="auxiliary-libraries-empty">
+                    <p>No tienes bibliotecas disponibles. Crea una biblioteca primero.</p>
+                  </div>
+                ) : (
+                  <div className="auxiliary-libraries-grid">
+                    {availableLibraries.map((library) => (
+                      <div
+                        key={library.id}
+                        className={`auxiliary-library-card ${selectedLibraryIds.has(library.id) ? 'auxiliary-library-card-selected' : ''}`}
+                      >
+                        <div className="auxiliary-library-card-content" onClick={() => handleToggleLibrary(library.id)} style={{ cursor: 'pointer', flex: 1 }}>
+                          <h4 className="auxiliary-library-card-title">{library.title || 'Sin título'}</h4>
+                          {library.description && (
+                            <p className="auxiliary-library-card-description">{library.description}</p>
+                          )}
+                        </div>
+                        <div className="auxiliary-library-card-checkbox" onClick={(e) => e.stopPropagation()}>
+                          <label className="elegant-toggle" style={{ cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedLibraryIds.has(library.id)}
+                              onChange={() => handleToggleLibrary(library.id)}
+                            />
+                            <span className="elegant-toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="auxiliary-libraries-modal-actions">
+                <Button
+                  title={isUpdatingAuxiliaryLibraries ? 'Guardando...' : 'Guardar'}
+                  onClick={handleUpdateAuxiliaryLibraries}
+                  disabled={isUpdatingAuxiliaryLibraries || isLoadingLibraries}
+                  loading={isUpdatingAuxiliaryLibraries}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Anuncios Modal */}
+      <Modal
+        isOpen={isAnunciosModalOpen}
+        onClose={handleCloseAnunciosModal}
+        title="Anuncios"
+      >
+        <div className="anuncios-modal-content">
+          <div className="anuncios-modal-body">
+            {/* Left Side - Screen List */}
+            <div className="anuncios-modal-left">
+              <div className="anuncios-screens-list">
+                <label className="anuncios-screens-label">Pantallas</label>
+                {program?.tutorials && Object.keys(program.tutorials).length > 0 ? (
+                  <div className="anuncios-screens-container">
+                    {Object.keys(program.tutorials).map((screenName) => (
+                      <button
+                        key={screenName}
+                        className={`anuncios-screen-item ${selectedScreen === screenName ? 'anuncios-screen-item-active' : ''}`}
+                        onClick={() => {
+                          setSelectedScreen(screenName);
+                          setSelectedVideoIndex(0);
+                          setIsAnuncioVideoEditMode(false);
+                          setIsAnuncioVideoPlaying(false);
+                        }}
+                      >
+                        <span className="anuncios-screen-name">{screenName}</span>
+                        <span className="anuncios-screen-count">
+                          {program.tutorials[screenName]?.length || 0} videos
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="anuncios-no-screens">
+                    <p>No hay pantallas disponibles. Agrega pantallas al mapa de tutoriales primero.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Side - Video Display */}
+            <div className="anuncios-modal-right">
+              {selectedScreen ? (
+                <div className="anuncios-video-section">
+                  <div className="anuncios-video-header">
+                    <h3 className="anuncios-video-title">{selectedScreen}</h3>
+                    {program.tutorials?.[selectedScreen] && program.tutorials[selectedScreen].length > 1 && (
+                      <div className="anuncios-video-selector">
+                        <label className="anuncios-video-selector-label">Video:</label>
+                        <select
+                          className="anuncios-video-select"
+                          value={selectedVideoIndex}
+                          onChange={(e) => {
+                            setSelectedVideoIndex(parseInt(e.target.value, 10));
+                            setIsAnuncioVideoEditMode(false);
+                            setIsAnuncioVideoPlaying(false);
+                          }}
+                        >
+                          {program.tutorials[selectedScreen].map((_, index) => (
+                            <option key={index} value={index}>
+                              Video {index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div className={`anuncios-video-content ${isAnuncioVideoEditMode ? 'anuncios-video-content-edit' : ''}`}>
+                    {program.tutorials?.[selectedScreen] && program.tutorials[selectedScreen].length > 0 ? (
+                      <div className="anuncios-video-container">
+                        <video
+                          className="anuncios-video-player"
+                          src={program.tutorials[selectedScreen][selectedVideoIndex]}
+                          controls={!isAnuncioVideoEditMode}
+                          style={{ pointerEvents: isAnuncioVideoEditMode ? 'none' : 'auto' }}
+                          onPlay={() => setIsAnuncioVideoPlaying(true)}
+                          onPause={() => setIsAnuncioVideoPlaying(false)}
+                          onEnded={() => setIsAnuncioVideoPlaying(false)}
+                        />
+                        {!isAnuncioVideoEditMode && !isAnuncioVideoPlaying ? (
+                          <div className="anuncios-video-actions-overlay">
+                            <button
+                              className="anuncios-video-action-pill"
+                              onClick={() => setIsAnuncioVideoEditMode(true)}
+                              disabled={isUploadingAnuncioVideo}
+                            >
+                              <span className="anuncios-video-action-text">Editar</span>
+                            </button>
+                          </div>
+                        ) : !isAnuncioVideoEditMode ? null : (
+                          <div className="anuncios-video-edit-overlay">
+                            <div className="anuncios-video-edit-buttons">
+                              <div className="anuncios-video-edit-row">
+                                <div className="anuncios-video-action-group">
+                                  <label className="anuncios-video-action-pill">
+                                    <input
+                                      type="file"
+                                      accept="video/*"
+                                      onChange={(e) => handleAnuncioVideoUpload(e, true)}
+                                      disabled={isUploadingAnuncioVideo}
+                                      style={{ display: 'none' }}
+                                    />
+                                    <span className="anuncios-video-action-text">
+                                      {isUploadingAnuncioVideo ? 'Subiendo...' : 'Cambiar'}
+                                    </span>
+                                  </label>
+                                  {isUploadingAnuncioVideo && (
+                                    <div className="anuncios-video-progress">
+                                      <div className="anuncios-video-progress-bar">
+                                        <div 
+                                          className="anuncios-video-progress-fill"
+                                          style={{ width: `${anuncioVideoUploadProgress}%` }}
+                                        />
+                                      </div>
+                                      <span className="anuncios-video-progress-text">
+                                        {anuncioVideoUploadProgress}%
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  className="anuncios-video-action-pill anuncios-video-delete-pill"
+                                  onClick={handleAnuncioVideoDelete}
+                                  disabled={isUploadingAnuncioVideo}
+                                >
+                                  <span className="anuncios-video-action-text">Eliminar</span>
+                                </button>
+                              </div>
+                              <button
+                                className="anuncios-video-action-pill anuncios-video-save-pill"
+                                onClick={() => setIsAnuncioVideoEditMode(false)}
+                                disabled={isUploadingAnuncioVideo}
+                              >
+                                <span className="anuncios-video-action-text">Guardar</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="anuncios-no-video">
+                        <p>No hay videos para esta pantalla</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="anuncios-video-footer">
+                    {program.tutorials?.[selectedScreen] && program.tutorials[selectedScreen].length > 0 && (
+                      <div className="anuncios-video-selector-footer">
+                        <label className="anuncios-video-selector-label">Video:</label>
+                        <select
+                          className="anuncios-video-select"
+                          value={selectedVideoIndex}
+                          onChange={(e) => {
+                            setSelectedVideoIndex(parseInt(e.target.value, 10));
+                            setIsAnuncioVideoEditMode(false);
+                            setIsAnuncioVideoPlaying(false);
+                          }}
+                        >
+                          {program.tutorials[selectedScreen].map((_, index) => (
+                            <option key={index} value={index}>
+                              Video {index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <label className="anuncios-video-add-button">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => handleAnuncioVideoUpload(e, false)}
+                        disabled={isUploadingAnuncioVideo}
+                        style={{ display: 'none' }}
+                      />
+                      <span className="anuncios-video-add-icon">+</span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="anuncios-no-screen-selected">
+                  <p>Selecciona una pantalla para ver sus videos</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Intro Video Modal */}
+      <Modal
+        isOpen={isIntroVideoModalOpen}
+        onClose={handleCloseIntroVideoModal}
+        title="Video Introducción al Programa"
+      >
+        <div className="intro-video-modal-content">
+          <div className="intro-video-modal-body">
+            {/* Left Side - Hidden */}
+            <div className="intro-video-modal-left" style={{ display: 'none' }}>
+            </div>
+
+            {/* Right Side - Video Display */}
+            <div className="intro-video-modal-right">
+              <div className={`intro-video-right-content ${isIntroVideoEditMode ? 'intro-video-right-content-edit' : ''}`}>
+                {program?.video_intro_url ? (
+                  <div className="intro-video-view">
+                    <div className="intro-video-container">
+                      <video
+                        className="intro-video-player"
+                        src={program.video_intro_url}
+                        controls={!isIntroVideoEditMode}
+                        style={{ pointerEvents: isIntroVideoEditMode ? 'none' : 'auto' }}
+                        onPlay={() => setIsIntroVideoPlaying(true)}
+                        onPause={() => setIsIntroVideoPlaying(false)}
+                        onEnded={() => setIsIntroVideoPlaying(false)}
+                      />
+                      {!isIntroVideoEditMode && !isIntroVideoPlaying ? (
+                        <div className="intro-video-actions-overlay">
+                          <button
+                            className="intro-video-action-pill"
+                            onClick={() => setIsIntroVideoEditMode(true)}
+                            disabled={isUploadingIntroVideo}
+                          >
+                            <span className="intro-video-action-text">Editar</span>
+                          </button>
+                        </div>
+                      ) : !isIntroVideoEditMode ? null : (
+                        <div className="intro-video-edit-overlay">
+                          <div className="intro-video-edit-buttons">
+                            <div className="intro-video-edit-row">
+                              <div className="intro-video-action-group">
+                                <label className="intro-video-action-pill">
+                                  <input
+                                    type="file"
+                                    accept="video/*"
+                                    onChange={handleIntroVideoUpload}
+                                    disabled={isUploadingIntroVideo}
+                                    style={{ display: 'none' }}
+                                  />
+                                  <span className="intro-video-action-text">
+                                    {isUploadingIntroVideo ? 'Subiendo...' : 'Cambiar'}
+                                  </span>
+                                </label>
+                                {isUploadingIntroVideo && (
+                                  <div className="intro-video-progress">
+                                    <div className="intro-video-progress-bar">
+                                      <div 
+                                        className="intro-video-progress-fill"
+                                        style={{ width: `${introVideoUploadProgress}%` }}
+                                      />
+                                    </div>
+                                    <span className="intro-video-progress-text">
+                                      {introVideoUploadProgress}%
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                className="intro-video-action-pill intro-video-delete-pill"
+                                onClick={handleIntroVideoDelete}
+                                disabled={isUploadingIntroVideo}
+                              >
+                                <span className="intro-video-action-text">Eliminar</span>
+                              </button>
+                            </div>
+                            <button
+                              className="intro-video-action-pill intro-video-save-pill"
+                              onClick={() => setIsIntroVideoEditMode(false)}
+                              disabled={isUploadingIntroVideo}
+                            >
+                              <span className="intro-video-action-text">Guardar</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="intro-video-no-video">
+                    <p>No hay video disponible para este programa</p>
+                    <div className="intro-video-upload-group">
+                      <label className="intro-video-upload-button">
+                        <input
+                          type="file"
+                          accept="video/*"
+                          onChange={handleIntroVideoUpload}
+                          disabled={isUploadingIntroVideo}
+                          style={{ display: 'none' }}
+                        />
+                        {isUploadingIntroVideo ? 'Subiendo...' : 'Subir Video'}
+                      </label>
+                      {isUploadingIntroVideo && (
+                        <div className="intro-video-progress">
+                          <div className="intro-video-progress-bar">
+                            <div 
+                              className="intro-video-progress-fill"
+                              style={{ width: `${introVideoUploadProgress}%` }}
+                            />
+                          </div>
+                          <span className="intro-video-progress-text">
+                            {introVideoUploadProgress}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create/Copy Module Modal */}
+      <Modal
+        isOpen={isCopyModuleModalOpen}
+        onClose={handleCloseCopyModuleModal}
+        title="Nuevo Módulo"
+      >
+        <div className="anuncios-modal-content">
+          <div className="anuncios-modal-body">
+            {/* Left Side - Menu */}
+            <div className="anuncios-modal-left">
+              <div className="anuncios-screens-list">
+                <label className="anuncios-screens-label">Opciones</label>
+                <div className="anuncios-screens-container">
+                  <button
+                    className={`anuncios-screen-item ${copyModuleModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setCopyModuleModalPage('crear')}
+                  >
+                    <span className="anuncios-screen-name">Crear</span>
+                  </button>
+                  <button
+                    className={`anuncios-screen-item ${copyModuleModalPage === 'seleccionar' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => {
+                      setCopyModuleModalPage('seleccionar');
+                      if (allModulesForCopy.length === 0) {
+                        loadAllModulesForCopy();
+                      }
+                    }}
+                  >
+                    <span className="anuncios-screen-name">Seleccionar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Content */}
+            <div className="anuncios-modal-right">
+              {copyModuleModalPage === 'crear' && (
+                <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                  <div className="edit-program-input-group">
+                    <label className="edit-program-input-label">Nombre del Módulo</label>
+                    <Input
+                      placeholder="Nombre del módulo"
+                      value={moduleName}
+                      onChange={(e) => setModuleName(e.target.value)}
+                      type="text"
+                      light={true}
+                    />
+                  </div>
+                  <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px' }}>
+                    <Button
+                      title={isCreatingModule ? 'Creando...' : 'Crear'}
+                      onClick={handleCreateModule}
+                      disabled={!moduleName.trim() || isCreatingModule}
+                      loading={isCreatingModule}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {copyModuleModalPage === 'seleccionar' && (
+                <div className="copy-session-selection-section">
+                  {!selectedModuleToCopy ? (
+                    <>
+                      {isLoadingModulesForCopy ? (
+                        <div className="copy-session-loading">
+                          <p>Cargando módulos...</p>
+                        </div>
+                      ) : allModulesForCopy.length === 0 ? (
+                        <div className="copy-session-empty">
+                          <p>No hay módulos disponibles para copiar.</p>
+                        </div>
+                      ) : (
+                        <div className="copy-session-list">
+                          {allModulesForCopy.map((module) => (
+                            <div key={module.id} className="copy-session-item">
+                              <div className="copy-session-item-info">
+                                <h4 className="copy-session-item-name">
+                                  {module.title || module.name || `Módulo ${module.id?.slice(0, 8)}`}
+                                </h4>
+                              </div>
+                              <button
+                                className="copy-session-item-button"
+                                onClick={() => handleSelectModuleToCopy(module)}
+                                disabled={isCopyingModule}
+                              >
+                                Seleccionar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                      <div className="edit-program-input-group">
+                        <label className="edit-program-input-label">
+                          Módulo seleccionado: {selectedModuleToCopy.title || selectedModuleToCopy.name || `Módulo ${selectedModuleToCopy.id?.slice(0, 8)}`}
+                        </label>
+                        <label className="edit-program-input-label" style={{ marginTop: '16px' }}>
+                          Nombre del nuevo módulo
+                        </label>
+                        <Input
+                          placeholder="Nombre del nuevo módulo"
+                          value={newModuleNameForCopy}
+                          onChange={(e) => setNewModuleNameForCopy(e.target.value)}
+                          type="text"
+                          light={true}
+                        />
+                      </div>
+                      <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px', display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                        <button
+                          className="cancel-button-onboarding"
+                          onClick={() => {
+                            setSelectedModuleToCopy(null);
+                            setNewModuleNameForCopy('');
+                          }}
+                          disabled={isCopyingModule}
+                        >
+                          <span className="cancel-button-onboarding-text">Cancelar</span>
+                        </button>
+                        <Button
+                          title={isCopyingModule ? 'Copiando...' : 'Copiar'}
+                          onClick={handleCopyModule}
+                          disabled={!newModuleNameForCopy.trim() || isCopyingModule}
+                          loading={isCopyingModule}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create Module Modal (for edit mode, if needed) */}
+      <Modal
+        isOpen={isModuleModalOpen}
+        onClose={handleCloseModuleModal}
+        title="Nuevo módulo"
+      >
+        <div className="modal-library-content">
+          <Input
+            placeholder="Nombre del módulo"
+            value={moduleName}
+            onChange={(e) => setModuleName(e.target.value)}
+            type="text"
+            light={true}
+          />
+          <div className="modal-actions">
+            <Button
+              title="Crear"
+              onClick={handleCreateModule}
+              disabled={!moduleName.trim() || isCreatingModule}
+              loading={isCreatingModule}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Module Modal */}
+      <Modal
+        isOpen={isDeleteModuleModalOpen}
+        onClose={handleCloseDeleteModuleModal}
+        title={moduleToDelete?.title || moduleToDelete?.name || 'Eliminar módulo'}
+      >
+        <div className="modal-library-content">
+          <p className="delete-instruction-text">
+            Para confirmar, escribe el nombre del módulo:
+          </p>
+          <div className="delete-input-button-row">
+            <Input
+              placeholder={(() => {
+                if (!moduleToDelete) return 'Nombre del módulo';
+                return moduleToDelete.title || moduleToDelete.name || `Módulo ${moduleToDelete.id?.slice(0, 8) || ''}`;
+              })()}
+              value={deleteModuleConfirmation}
+              onChange={(e) => setDeleteModuleConfirmation(e.target.value)}
+              type="text"
+              light={true}
+            />
+            <button
+              className={`delete-library-button ${(() => {
+                if (!moduleToDelete) return true;
+                const moduleTitle = moduleToDelete.title || moduleToDelete.name || `Módulo ${moduleToDelete.id?.slice(0, 8) || ''}`;
+                return deleteModuleConfirmation.trim() !== moduleTitle;
+              })() ? 'delete-library-button-disabled' : ''}`}
+              onClick={handleConfirmDeleteModule}
+              disabled={(() => {
+                if (!moduleToDelete) return true;
+                const moduleTitle = moduleToDelete.title || moduleToDelete.name || `Módulo ${moduleToDelete.id?.slice(0, 8) || ''}`;
+                return deleteModuleConfirmation.trim() !== moduleTitle || isDeletingModule;
+              })()}
+            >
+              {isDeletingModule ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+          <p className="delete-warning-text">
+            Esta acción es irreversible. Todo el contenido de este módulo se eliminará permanentemente.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Create/Edit Session Modal */}
+      <Modal
+        isOpen={isSessionModalOpen}
+        onClose={handleCloseSessionModal}
+        title={sessionToEdit ? "Editar sesión" : "Nueva sesión"}
+      >
+        <div className="edit-program-modal-content">
+          <div className="edit-program-modal-body">
+            {/* Left Side - Inputs */}
+            <div className="edit-program-modal-left">
+              <div className="edit-program-input-group">
+                <label className="edit-program-input-label">Nombre de la Sesión</label>
+                <Input
+                  placeholder="Nombre de la sesión"
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                  type="text"
+                  light={true}
+                />
+              </div>
+            </div>
+
+            {/* Right Side - Image */}
+            <div className="edit-program-modal-right">
+              <div className="edit-program-image-section">
+                {(sessionImagePreview || (sessionToEdit && sessionToEdit.image_url)) ? (
+                  <div className="edit-program-image-container">
+                    <img
+                      src={sessionImagePreview || sessionToEdit?.image_url}
+                      alt="Sesión"
+                      className="edit-program-image"
+                    />
+                    <div className="edit-program-image-overlay">
+                      <div className="edit-program-image-actions">
+                        <label className="edit-program-image-action-pill">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleSessionImageUpload}
+                            disabled={isUploadingSessionImage || isCreatingSession}
+                            style={{ display: 'none' }}
+                          />
+                          <span className="edit-program-image-action-text">
+                            {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
+                          </span>
+                        </label>
+                        {isUploadingSessionImage && (
+                          <div className="edit-program-image-progress">
+                            <div className="edit-program-image-progress-bar">
+                              <div 
+                                className="edit-program-image-progress-fill"
+                                style={{ width: `${sessionImageUploadProgress}%` }}
+                              />
+                            </div>
+                            <span className="edit-program-image-progress-text">
+                              {sessionImageUploadProgress}%
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          className="edit-program-image-action-pill edit-program-image-delete-pill"
+                          onClick={handleSessionImageDelete}
+                          disabled={isUploadingSessionImage || isCreatingSession}
+                        >
+                          <span className="edit-program-image-action-text">Eliminar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="edit-program-no-image">
+                    <p>No hay imagen disponible</p>
+                    <label className="edit-program-image-upload-button">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSessionImageUpload}
+                        disabled={isUploadingSessionImage || isCreatingSession}
+                        style={{ display: 'none' }}
+                      />
+                      {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
+                    </label>
+                    {isUploadingSessionImage && (
+                      <div className="edit-program-image-progress">
+                        <div className="edit-program-image-progress-bar">
+                          <div 
+                            className="edit-program-image-progress-fill"
+                            style={{ width: `${sessionImageUploadProgress}%` }}
+                          />
+                        </div>
+                        <span className="edit-program-image-progress-text">
+                          {sessionImageUploadProgress}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="edit-program-modal-actions">
+            <Button
+              title={
+                sessionToEdit 
+                  ? (isUpdatingSession || isUploadingSessionImage ? 'Guardando...' : 'Guardar')
+                  : (isCreatingSession || isUploadingSessionImage ? 'Creando...' : 'Crear')
+              }
+              onClick={sessionToEdit ? handleUpdateSession : handleCreateSession}
+              disabled={
+                !sessionName.trim() || 
+                (sessionToEdit ? (isUpdatingSession || isUploadingSessionImage) : (isCreatingSession || isUploadingSessionImage))
+              }
+              loading={sessionToEdit ? (isUpdatingSession || isUploadingSessionImage) : (isCreatingSession || isUploadingSessionImage)}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create/Copy Session Modal */}
+      <Modal
+        isOpen={isCopySessionModalOpen}
+        onClose={handleCloseCopySessionModal}
+        title="Nueva Sesión"
+      >
+        <div className="anuncios-modal-content">
+          <div className="anuncios-modal-body">
+            {/* Left Side - Menu */}
+            <div className="anuncios-modal-left">
+              <div className="anuncios-screens-list">
+                <label className="anuncios-screens-label">Opciones</label>
+                <div className="anuncios-screens-container">
+                  <button
+                    className={`anuncios-screen-item ${copySessionModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setCopySessionModalPage('crear')}
+                  >
+                    <span className="anuncios-screen-name">Crear</span>
+                  </button>
+                  <button
+                    className={`anuncios-screen-item ${copySessionModalPage === 'seleccionar' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => {
+                      setCopySessionModalPage('seleccionar');
+                      if (allSessionsForCopy.length === 0) {
+                        loadAllSessionsForCopy();
+                      }
+                    }}
+                  >
+                    <span className="anuncios-screen-name">Seleccionar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Content */}
+            <div className="anuncios-modal-right">
+              {copySessionModalPage === 'crear' && (
+                <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                  <div className="edit-program-input-group">
+                    <label className="edit-program-input-label">Nombre de la Sesión</label>
+                    <Input
+                      placeholder="Nombre de la sesión"
+                      value={sessionName}
+                      onChange={(e) => setSessionName(e.target.value)}
+                      type="text"
+                      light={true}
+                    />
+                  </div>
+                  <div className="edit-program-image-section" style={{ flex: '0 1 auto', minHeight: '300px', maxHeight: '400px' }}>
+                    {sessionImagePreview ? (
+                      <div className="edit-program-image-container">
+                        <img
+                          src={sessionImagePreview}
+                          alt="Sesión"
+                          className="edit-program-image"
+                        />
+                        <div className="edit-program-image-overlay">
+                          <div className="edit-program-image-actions">
+                            <label className="edit-program-image-action-pill">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleSessionImageUpload}
+                                disabled={isUploadingSessionImage || isCreatingSession}
+                                style={{ display: 'none' }}
+                              />
+                              <span className="edit-program-image-action-text">
+                                {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
+                              </span>
+                            </label>
+                            {isUploadingSessionImage && (
+                              <div className="edit-program-image-progress">
+                                <div className="edit-program-image-progress-bar">
+                                  <div 
+                                    className="edit-program-image-progress-fill"
+                                    style={{ width: `${sessionImageUploadProgress}%` }}
+                                  />
+                                </div>
+                                <span className="edit-program-image-progress-text">
+                                  {sessionImageUploadProgress}%
+                                </span>
+                              </div>
+                            )}
+                            <button
+                              className="edit-program-image-action-pill edit-program-image-delete-pill"
+                              onClick={handleSessionImageDelete}
+                              disabled={isUploadingSessionImage || isCreatingSession}
+                            >
+                              <span className="edit-program-image-action-text">Eliminar</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="edit-program-no-image">
+                        <p>No hay imagen disponible</p>
+                        <label className="edit-program-image-upload-button">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleSessionImageUpload}
+                            disabled={isUploadingSessionImage || isCreatingSession}
+                            style={{ display: 'none' }}
+                          />
+                          {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
+                        </label>
+                        {isUploadingSessionImage && (
+                          <div className="edit-program-image-progress">
+                            <div className="edit-program-image-progress-bar">
+                              <div 
+                                className="edit-program-image-progress-fill"
+                                style={{ width: `${sessionImageUploadProgress}%` }}
+                              />
+                            </div>
+                            <span className="edit-program-image-progress-text">
+                              {sessionImageUploadProgress}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px' }}>
+            <Button
+              title={isCreatingSession || isUploadingSessionImage ? 'Creando...' : 'Crear'}
+              onClick={handleCreateSession}
+              disabled={!sessionName.trim() || isCreatingSession || isUploadingSessionImage}
+              loading={isCreatingSession || isUploadingSessionImage}
+            />
+                  </div>
+                </div>
+              )}
+
+              {copySessionModalPage === 'seleccionar' && (
+                <div className="copy-session-selection-section">
+                  {isLoadingSessionsForCopy ? (
+                    <div className="copy-session-loading">
+                      <p>Cargando sesiones...</p>
+                    </div>
+                  ) : allSessionsForCopy.length === 0 ? (
+                    <div className="copy-session-empty">
+                      <p>No hay sesiones disponibles para copiar.</p>
+                    </div>
+                  ) : (
+                    <div className="copy-session-list">
+                      {allSessionsForCopy.map(({ session, moduleName, moduleId }) => (
+                        <div key={`${moduleId}-${session.id}`} className="copy-session-item">
+                          <div className="copy-session-item-info">
+                            <h4 className="copy-session-item-name">
+                              {session.title || session.name || `Sesión ${session.id?.slice(0, 8)}`}
+                            </h4>
+                            <p className="copy-session-item-module">
+                              Módulo: {moduleName}
+                            </p>
+                          </div>
+                          <button
+                            className="copy-session-item-button"
+                            onClick={() => handleCopySession(session, moduleId)}
+                            disabled={isCopyingSession}
+                          >
+                            {isCopyingSession ? 'Copiando...' : 'Seleccionar'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Session Modal */}
+      <Modal
+        isOpen={isDeleteSessionModalOpen}
+        onClose={handleCloseDeleteSessionModal}
+        title={sessionToDelete?.title || sessionToDelete?.name || 'Eliminar sesión'}
+      >
+        <div className="modal-library-content">
+          <p className="delete-instruction-text">
+            Para confirmar, escribe el nombre de la sesión:
+          </p>
+          <div className="delete-input-button-row">
+            <Input
+              placeholder={(() => {
+                if (!sessionToDelete) return 'Nombre de la sesión';
+                return sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
+              })()}
+              value={deleteSessionConfirmation}
+              onChange={(e) => setDeleteSessionConfirmation(e.target.value)}
+              type="text"
+              light={true}
+            />
+            <button
+              className={`delete-library-button ${(() => {
+                if (!sessionToDelete) return true;
+                const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
+                return deleteSessionConfirmation.trim() !== sessionTitle;
+              })() ? 'delete-library-button-disabled' : ''}`}
+              onClick={handleConfirmDeleteSession}
+              disabled={(() => {
+                if (!sessionToDelete) return true;
+                const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
+                return deleteSessionConfirmation.trim() !== sessionTitle || isDeletingSession;
+              })()}
+            >
+              {isDeletingSession ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+          <p className="delete-warning-text">
+            Esta acción es irreversible. Todo el contenido de esta sesión se eliminará permanentemente.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Delete Exercise Modal */}
+      <Modal
+        isOpen={isDeleteExerciseModalOpen}
+        onClose={handleCloseDeleteExerciseModal}
+        title={(() => {
+          if (!exerciseToDelete) return 'Eliminar ejercicio';
+          // Extract title from primary field
+          if (exerciseToDelete.primary && typeof exerciseToDelete.primary === 'object') {
+            const primaryValues = Object.values(exerciseToDelete.primary);
+            if (primaryValues.length > 0 && primaryValues[0]) {
+              return primaryValues[0];
+            }
+          }
+          return exerciseToDelete.name || exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8) || ''}`;
+        })()}
+      >
+        <div className="modal-library-content">
+          <p className="delete-instruction-text">
+            Para confirmar, escribe el nombre del ejercicio:
+          </p>
+          <div className="delete-input-button-row">
+            <Input
+              placeholder={(() => {
+                if (!exerciseToDelete) return 'Nombre del ejercicio';
+                // Extract title from primary field
+                if (exerciseToDelete.primary && typeof exerciseToDelete.primary === 'object') {
+                  const primaryValues = Object.values(exerciseToDelete.primary);
+                  if (primaryValues.length > 0 && primaryValues[0]) {
+                    return primaryValues[0];
+                  }
+                }
+                return exerciseToDelete.name || exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8) || ''}`;
+              })()}
+              value={deleteExerciseConfirmation}
+              onChange={(e) => setDeleteExerciseConfirmation(e.target.value)}
+              type="text"
+              light={true}
+            />
+            <button
+              className={`delete-library-button ${(() => {
+                if (!exerciseToDelete) return true;
+                // Extract title from primary field
+                const getExerciseTitle = () => {
+                  if (exerciseToDelete.primary && typeof exerciseToDelete.primary === 'object') {
+                    const primaryValues = Object.values(exerciseToDelete.primary);
+                    if (primaryValues.length > 0 && primaryValues[0]) {
+                      return primaryValues[0];
+                    }
+                  }
+                  return exerciseToDelete.name || exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8) || ''}`;
+                };
+                const exerciseTitle = getExerciseTitle();
+                return deleteExerciseConfirmation.trim() !== exerciseTitle;
+              })() ? 'delete-library-button-disabled' : ''}`}
+              onClick={handleConfirmDeleteExercise}
+              disabled={(() => {
+                if (!exerciseToDelete) return true;
+                // Extract title from primary field
+                const getExerciseTitle = () => {
+                  if (exerciseToDelete.primary && typeof exerciseToDelete.primary === 'object') {
+                    const primaryValues = Object.values(exerciseToDelete.primary);
+                    if (primaryValues.length > 0 && primaryValues[0]) {
+                      return primaryValues[0];
+                    }
+                  }
+                  return exerciseToDelete.name || exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8) || ''}`;
+                };
+                const exerciseTitle = getExerciseTitle();
+                return deleteExerciseConfirmation.trim() !== exerciseTitle || isDeletingExercise;
+              })()}
+            >
+              {isDeletingExercise ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+          <p className="delete-warning-text">
+            Esta acción es irreversible. El ejercicio se eliminará permanentemente.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Exercise Modal */}
+      <Modal
+        isOpen={isExerciseModalOpen}
+        onClose={handleCloseExerciseModal}
+        title={(() => {
+          const source = exerciseDraft || selectedExercise;
+          if (!source) return 'Ejercicio';
+          if (source.primary && typeof source.primary === 'object' && source.primary !== null) {
+            try {
+              const primaryValues = Object.values(source.primary);
+              if (primaryValues.length > 0 && primaryValues[0]) {
+                return primaryValues[0];
+              }
+            } catch (error) {
+              console.error('Error extracting exercise title:', error);
+            }
+          }
+          return source.name || source.title || `Ejercicio ${source.id?.slice(0, 8) || ''}`;
+        })()}
+      >
+        <div className="anuncios-modal-content">
+          {/* Requirements Announcement - Always at top when creating */}
+          {isCreatingExercise && !canSaveCreatingExercise() && (
+            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)', borderRadius: '8px' }}>
+              <p className="create-exercise-requirements-text">
+                Para crear el ejercicio, necesitas:
+                {(!exerciseDraft?.primary || Object.values(exerciseDraft.primary || {}).length === 0) && (
+                  <span className="create-exercise-requirement-item"> • Ejercicio principal</span>
+                )}
+                {exerciseSets.length === 0 && (
+                  <span className="create-exercise-requirement-item"> • Al menos una serie</span>
+                )}
+              </p>
+            </div>
+          )}
+          <div className="anuncios-modal-body">
+            {/* Left Side - Tab List */}
+            <div className="anuncios-modal-left">
+              <div className="anuncios-screens-list">
+                <label className="anuncios-screens-label">Opciones</label>
+                <div className="anuncios-screens-container">
+                  <button
+                    className={`anuncios-screen-item ${selectedExerciseTab === 'general' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setSelectedExerciseTab('general')}
+                  >
+                    <span className="anuncios-screen-name">General</span>
+                  </button>
+                  <button
+                    className={`anuncios-screen-item ${selectedExerciseTab === 'series' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setSelectedExerciseTab('series')}
+                  >
+                    <span className="anuncios-screen-name">Series</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Content Display */}
+            <div className="anuncios-modal-right">
+              {!selectedExercise ? (
+                <div className="exercise-tab-content">
+                  <div className="exercise-tab-empty">
+                    <p>Cargando ejercicio...</p>
+                  </div>
+                </div>
+              ) : selectedExerciseTab === 'general' ? (
+                <div className="exercise-tab-content">
+                  <div className="exercise-general-content">
+                    {/* Primary Exercise */}
+                    <div className="exercise-general-section">
+                      <h4 className="exercise-general-subtitle">Ejercicio Principal</h4>
+                      <div className="exercise-horizontal-card">
+                        <span className="exercise-horizontal-card-name">
+                          {getPrimaryExerciseName()}
+                          {isPrimaryLibraryIncomplete && (
+                            <span
+                              className="exercise-incomplete-icon-small exercise-incomplete-icon-inline"
+                              title="Este ejercicio de la biblioteca está incompleto"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
+                        </span>
+                        <button 
+                          className="exercise-horizontal-card-edit"
+                          onClick={handleEditPrimary}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Alternatives */}
+                    <div className="exercise-general-section">
+                      <div className="exercise-general-subtitle-row">
+                        <h4 className="exercise-general-subtitle">Alternativas</h4>
+                        <div className="exercise-general-actions-container">
+                          {isAlternativesEditMode ? (
+                            <div className="exercise-general-actions-dropdown">
+                              <button 
+                                className="exercise-general-action-button"
+                                onClick={handleAddAlternative}
+                              >
+                                <span className="exercise-general-action-icon">+</span>
+                              </button>
+                              <button 
+                                className="exercise-general-action-button exercise-general-action-button-save"
+                                onClick={() => setIsAlternativesEditMode(false)}
+                              >
+                                <span className="exercise-general-action-text">Guardar</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              className="exercise-general-edit-button"
+                              onClick={() => setIsAlternativesEditMode(true)}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {Object.keys(draftAlternatives).length === 0 ? (
+                        <p className="exercise-general-empty">No hay alternativas agregadas</p>
+                      ) : (
+                        <div className="exercise-alternatives-list">
+                          {Object.entries(draftAlternatives).map(([libraryId, alternativesArray]) => (
+                            <div key={libraryId} className="exercise-alternatives-group">
+                              <h5 className="exercise-alternatives-library-title">
+                                {libraryTitles[libraryId] || libraryId}
+                              </h5>
+                              {Array.isArray(alternativesArray) && alternativesArray.length > 0 ? (
+                                <div className="exercise-horizontal-cards-list">
+                                  {alternativesArray.map((alternativeName, index) => (
+                                    <div key={`${libraryId}-${index}`} className="exercise-horizontal-card">
+                                      {(() => {
+                                        const alternativeLabel = typeof alternativeName === 'string'
+                                          ? alternativeName
+                                          : alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`;
+                                        const alternativeKeyName = typeof alternativeName === 'string'
+                                          ? alternativeName
+                                          : alternativeName?.name || alternativeName?.title || alternativeName?.id;
+                                        const alternativeIncomplete = isLibraryExerciseIncomplete(
+                                          libraryId,
+                                          alternativeKeyName
+                                        );
+
+                                        return (
+                                      <span className="exercise-horizontal-card-name">
+                                            {alternativeLabel}
+                                            {alternativeIncomplete && (
+                                              <span
+                                                className="exercise-incomplete-icon-small exercise-incomplete-icon-inline"
+                                                title="Esta alternativa de la biblioteca está incompleta"
+                                              >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                  <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                                </svg>
+                                      </span>
+                                            )}
+                                          </span>
+                                        );
+                                      })()}
+                                      {isAlternativesEditMode && (
+                                        <button 
+                                          className="exercise-horizontal-card-delete"
+                                          onClick={() => handleDeleteAlternative(libraryId, index)}
+                                        >
+                                          <span className="exercise-horizontal-card-delete-icon">−</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="exercise-general-empty">No hay alternativas para esta biblioteca</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Measures */}
+                    <div className="exercise-general-section">
+                      <div className="exercise-general-subtitle-row">
+                        <h4 className="exercise-general-subtitle">Qué mide</h4>
+                        <div className="exercise-general-actions-container">
+                          {isMeasuresEditMode ? (
+                            <div className="exercise-general-actions-dropdown">
+                              <button 
+                                className="exercise-general-action-button"
+                                onClick={handleAddMeasure}
+                              >
+                                <span className="exercise-general-action-icon">+</span>
+                              </button>
+                              <button 
+                                className="exercise-general-action-button exercise-general-action-button-save"
+                                onClick={() => setIsMeasuresEditMode(false)}
+                              >
+                                <span className="exercise-general-action-text">Guardar</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              className="exercise-general-edit-button"
+                              onClick={() => setIsMeasuresEditMode(true)}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {draftMeasures.length === 0 ? (
+                        <p className="exercise-general-empty">No hay medidas agregadas</p>
+                      ) : (
+                        <div className="exercise-horizontal-cards-list">
+                          {draftMeasures.map((measure, index) => (
+                            <div key={index} className="exercise-horizontal-card">
+                              <span className="exercise-horizontal-card-name">
+                                {getMeasureDisplayName(measure)}
+                              </span>
+                              {isMeasuresEditMode && (
+                                <button 
+                                  className="exercise-horizontal-card-delete"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteMeasure(index);
+                                  }}
+                                >
+                                  <span className="exercise-horizontal-card-delete-icon">−</span>
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Objectives */}
+                    <div className="exercise-general-section">
+                      <div className="exercise-general-subtitle-row">
+                        <h4 className="exercise-general-subtitle">Objetivos</h4>
+                        <div className="exercise-general-actions-container">
+                          {isObjectivesEditMode ? (
+                            <div className="exercise-general-actions-dropdown">
+                              <button 
+                                className="exercise-general-action-button"
+                                onClick={handleAddObjective}
+                              >
+                                <span className="exercise-general-action-icon">+</span>
+                              </button>
+                              <button 
+                                className="exercise-general-action-button exercise-general-action-button-save"
+                                onClick={() => setIsObjectivesEditMode(false)}
+                              >
+                                <span className="exercise-general-action-text">Guardar</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              className="exercise-general-edit-button"
+                              onClick={() => setIsObjectivesEditMode(true)}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {draftObjectives.length === 0 ? (
+                        <p className="exercise-general-empty">No hay objetivos agregados</p>
+                      ) : (
+                        <div className="exercise-horizontal-cards-list">
+                          {draftObjectives.map((objective, index) => (
+                            <div key={index} className="exercise-horizontal-card">
+                              <span className="exercise-horizontal-card-name">
+                                {getObjectiveDisplayName(typeof objective === 'string' ? objective : objective.name || objective.title || `Objetivo ${index + 1}`)}
+                              </span>
+                              {isObjectivesEditMode && (
+                                <button 
+                                  className="exercise-horizontal-card-delete"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteObjective(index);
+                                  }}
+                                >
+                                  <span className="exercise-horizontal-card-delete-icon">−</span>
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : selectedExerciseTab === 'series' ? (
+                <div className="exercise-tab-content">
+                  <div className="exercises-content">
+                    <div className="exercises-actions">
+                      <button 
+                        className={`exercise-action-pill ${isSeriesEditMode ? 'exercise-action-pill-disabled' : ''}`}
+                        onClick={handleCreateSet}
+                        disabled={isSeriesEditMode || isCreatingSet}
+                      >
+                        <span className="exercise-action-icon">+</span>
+                      </button>
+                      {!isCreatingExercise && (
+                      <button 
+                        className="exercise-action-pill"
+                        onClick={handleEditSeries}
+                        disabled={isUpdatingSeriesOrder}
+                      >
+                        <span className="exercise-action-text">{isSeriesEditMode ? 'Guardar' : 'Editar'}</span>
+                      </button>
+                      )}
+                      {isCreatingExercise && (
+                        <button 
+                          className="exercise-action-pill"
+                          onClick={handleSaveCreatingExercise}
+                          disabled={!canSaveCreatingExercise() || isCreatingNewExercise}
+                        >
+                          <span className="exercise-action-text">{isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}</span>
+                        </button>
+                      )}
+                    </div>
+                    
+                    {exerciseSets.length === 0 ? (
+                      <div className="exercises-empty">
+                        <p>No hay series configuradas para este ejercicio.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {isSeriesEditMode ? (
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEndSeries}
+                          >
+                            <SortableContext
+                              items={exerciseSets.map((set) => set.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div className="exercises-list">
+                                {exerciseSets.map((set, setIndex) => {
+                                  const isExpanded = expandedSeries[set.id] || false;
+                                  // Get objectives fields to display (excluding 'previous')
+                                  const objectivesFields = draftObjectives.filter(obj => 
+                                    ['reps', 'intensity'].includes(obj)
+                                  );
+                                  
+                                  // Get set number from order field, fallback to index + 1
+                                  const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
+                                  
+                                  return (
+                                    <SortableSeriesCard
+                                      key={set.id}
+                                      set={set}
+                                      setIndex={setIndex}
+                                      isSeriesEditMode={isSeriesEditMode}
+                                      isExpanded={isExpanded}
+                                      onToggleExpansion={handleToggleSeriesExpansion}
+                                      onDeleteSet={handleDeleteSet}
+                                      onDuplicateSet={handleDuplicateSet}
+                                      objectivesFields={objectivesFields}
+                                      getObjectiveDisplayName={getObjectiveDisplayName}
+                                      handleUpdateSetValue={handleUpdateSetValue}
+                                      hasUnsavedChanges={unsavedSetChanges[set.id] || false}
+                                      onSaveSetChanges={handleSaveSetChanges}
+                                      isSavingSetChanges={isSavingSetChanges}
+                                      parseIntensityForDisplay={parseIntensityForDisplay}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </SortableContext>
+                          </DndContext>
+                        ) : (
+                          <div className="exercises-list">
+                            {exerciseSets.map((set, setIndex) => {
+                              const isExpanded = expandedSeries[set.id] || false;
+                              // Get objectives fields to display (excluding 'previous')
+                              const objectivesFields = draftObjectives.filter(obj => 
+                                ['reps', 'intensity'].includes(obj)
+                              );
+                              
+                              // Get set number from order field, fallback to index + 1
+                              const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
+                              
+                              return (
+                                <div key={set.id} className="exercise-series-card">
+                                  <button
+                                    className="exercise-series-card-header"
+                                    onClick={() => handleToggleSeriesExpansion(set.id)}
+                                  >
+                                    <span className="exercise-series-number">{setNumber}</span>
+                                    <span className="exercise-series-info">
+                                      {`Serie ${setNumber}`}
+                                    </span>
+                                    <div className="exercise-series-header-right">
+                                      {!isSeriesEditMode && (
+                                        <button
+                                          className="exercise-series-duplicate-button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDuplicateSet(set);
+                                          }}
+                                        >
+                                          <span className="exercise-series-duplicate-icon">⧉</span>
+                                        </button>
+                                      )}
+                                      {unsavedSetChanges[set.id] && (
+                                        <button
+                                          className="exercise-series-save-button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSaveSetChanges(set.id);
+                                          }}
+                                          disabled={isSavingSetChanges}
+                                        >
+                                          <span className="exercise-series-save-text">
+                                            {isSavingSetChanges ? 'Guardando...' : 'Guardar'}
+                                          </span>
+                                        </button>
+                                      )}
+                                      <svg
+                                        className={`exercise-series-expand-icon ${isExpanded ? 'expanded' : ''}`}
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                      >
+                                        <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    </div>
+                                  </button>
+                                  
+                                  {isExpanded && (
+                                    <div className="exercise-series-content">
+                                      {/* Headers row */}
+                                      <div className="exercise-series-inputs-row exercise-series-headers-row">
+                                        <div className="exercise-series-set-number-space"></div>
+                                        <div className="exercise-series-inputs-container">
+                                          {objectivesFields.map((field) => (
+                                            <div key={field} className="exercise-series-input-group">
+                                              <span className="exercise-series-input-label">
+                                                {getObjectiveDisplayName(field)}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Input row for this set */}
+                                      <div className="exercise-series-inputs-row">
+                                        <div className="exercise-series-set-number-container">
+                                          <span className="exercise-series-set-number">{setNumber}</span>
+                                        </div>
+                                        <div className="exercise-series-inputs-container">
+                                          {objectivesFields.map((field) => (
+                                            <div key={field} className="exercise-series-input-group">
+                                              {field === 'intensity' ? (
+                                                <div className="exercise-series-intensity-input-wrapper">
+                                                  <input
+                                                    type="text"
+                                                    className="exercise-series-input exercise-series-intensity-input"
+                                                    placeholder="--"
+                                                    value={parseIntensityForDisplay(set[field])}
+                                                    onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                                                    maxLength={2}
+                                                  />
+                                                  <span className="exercise-series-intensity-suffix">/10</span>
+                                                </div>
+                                              ) : (
+                                                <input
+                                                  type="text"
+                                                  className="exercise-series-input"
+                                                  placeholder="--"
+                                                  value={set[field] !== undefined && set[field] !== null ? String(set[field]) : ''}
+                                                  onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                                                />
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Measure Selection Modal */}
+      <Modal
+        isOpen={isMeasureSelectionModalOpen}
+        onClose={() => {
+          setIsMeasureSelectionModalOpen(false);
+          setMeasureToEditIndex(null);
+        }}
+        title={measureToEditIndex !== null ? 'Editar Medida' : 'Agregar Medida'}
+      >
+        <div className="measure-selection-modal-content">
+          <div className="measure-selection-list">
+            <button
+              className="measure-selection-item"
+              onClick={() => handleSelectMeasure('reps')}
+              disabled={measureToEditIndex === null && draftMeasures.includes('reps')}
+            >
+              <span className="measure-selection-item-name">Repeticiones</span>
+            </button>
+            <button
+              className="measure-selection-item"
+              onClick={() => handleSelectMeasure('weight')}
+              disabled={measureToEditIndex === null && draftMeasures.includes('weight')}
+            >
+              <span className="measure-selection-item-name">Peso</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Objective Selection Modal */}
+      <Modal
+        isOpen={isObjectiveSelectionModalOpen}
+        onClose={() => {
+          setIsObjectiveSelectionModalOpen(false);
+          setObjectiveToEditIndex(null);
+        }}
+        title={objectiveToEditIndex !== null ? 'Editar Objetivo' : 'Agregar Objetivo'}
+      >
+        <div className="measure-selection-modal-content">
+          <div className="measure-selection-list">
+            <button
+              className="measure-selection-item"
+              onClick={() => handleSelectObjective('reps')}
+              disabled={objectiveToEditIndex === null && draftObjectives.includes('reps')}
+            >
+              <span className="measure-selection-item-name">Repeticiones</span>
+            </button>
+            <button
+              className="measure-selection-item"
+              onClick={() => handleSelectObjective('intensity')}
+              disabled={objectiveToEditIndex === null && draftObjectives.includes('intensity')}
+            >
+              <span className="measure-selection-item-name">Intensidad</span>
+            </button>
+            <button
+              className="measure-selection-item"
+              onClick={() => handleSelectObjective('previous')}
+              disabled={objectiveToEditIndex === null && draftObjectives.includes('previous')}
+            >
+              <span className="measure-selection-item-name">Anterior</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Library/Exercise Selection Modal */}
+      <Modal
+        isOpen={isLibraryExerciseModalOpen}
+        onClose={handleCloseLibraryExerciseModal}
+        title={(() => {
+          if (libraryExerciseModalMode === 'primary') return 'Seleccionar Ejercicio Principal';
+          if (libraryExerciseModalMode === 'add-alternative') return 'Agregar Alternativa';
+          if (libraryExerciseModalMode === 'edit-alternative') return 'Editar Alternativa';
+          return 'Seleccionar Ejercicio';
+        })()}
+      >
+        <div className="library-exercise-selection-modal-content">
+          {isLoadingLibrariesForSelection ? (
+            <div className="library-exercise-selection-loading">
+              <p>Cargando bibliotecas...</p>
+            </div>
+          ) : !selectedLibraryForExercise ? (
+            <div className="library-exercise-selection-body">
+              <h4 className="library-exercise-selection-step-title">Paso 1: Selecciona una biblioteca</h4>
+              {availableLibrariesForSelection.length === 0 ? (
+                <div className="library-exercise-selection-empty">
+                  <p>No tienes bibliotecas disponibles. Crea una biblioteca primero.</p>
+                </div>
+              ) : (
+                <div className="library-exercise-selection-list">
+                  {availableLibrariesForSelection.map((library) => (
+                    <button
+                      key={library.id}
+                      className="library-exercise-selection-item"
+                      onClick={() => handleSelectLibrary(library.id)}
+                    >
+                      <span className="library-exercise-selection-item-name">{library.title || 'Sin título'}</span>
+                      <span className="library-exercise-selection-item-count">
+                        {libraryService.getExerciseCount(library)} ejercicios
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="library-exercise-selection-body">
+              <div className="library-exercise-selection-header">
+                <button
+                  className="library-exercise-selection-back-button"
+                  onClick={() => {
+                    setSelectedLibraryForExercise(null);
+                    setExercisesFromSelectedLibrary([]);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Volver
+                </button>
+                <h4 className="library-exercise-selection-step-title">
+                  Paso 2: Selecciona un ejercicio de "{libraryTitles[selectedLibraryForExercise] || availableLibrariesForSelection.find(l => l.id === selectedLibraryForExercise)?.title || selectedLibraryForExercise}"
+                </h4>
+              </div>
+              {isLoadingExercisesFromLibrary ? (
+                <div className="library-exercise-selection-loading">
+                  <p>Cargando ejercicios...</p>
+                </div>
+              ) : exercisesFromSelectedLibrary.length === 0 ? (
+                <div className="library-exercise-selection-empty">
+                  <p>Esta biblioteca no tiene ejercicios disponibles.</p>
+                </div>
+              ) : (
+                <div className="library-exercise-selection-list">
+                  {exercisesFromSelectedLibrary.map((exercise) => (
+                    <button
+                      key={exercise.name}
+                      className="library-exercise-selection-item"
+                      onClick={() => handleSelectExercise(exercise.name)}
+                    >
+                      <span className="library-exercise-selection-item-name">{exercise.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Create New Exercise Modal */}
+      <Modal
+        isOpen={isCreateExerciseModalOpen}
+        onClose={handleCloseCreateExerciseModal}
+        title="Crear Nuevo Ejercicio"
+      >
+        <div className="create-exercise-modal-content">
+          <div className="create-exercise-section">
+            <h4 className="create-exercise-section-title">Ejercicio Principal *</h4>
+            {newExerciseDraft?.primary && Object.values(newExerciseDraft.primary).length > 0 ? (
+              <div className="exercise-horizontal-card">
+                <span className="exercise-horizontal-card-name">
+                  {Object.values(newExerciseDraft.primary)[0]}
+                </span>
+                <button 
+                  className="exercise-horizontal-card-edit"
+                  onClick={handleSelectPrimaryForNewExercise}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  className="create-exercise-select-button"
+                  onClick={handleSelectPrimaryForNewExercise}
+                >
+                  <span className="create-exercise-select-button-text">Seleccionar Ejercicio Principal</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <p className="create-exercise-requirement-message">Requerido: Debes seleccionar un ejercicio principal</p>
+              </>
+            )}
+          </div>
+
+          <div className="create-exercise-section">
+            <div className="create-exercise-section-header">
+              <h4 className="create-exercise-section-title">Series *</h4>
+              <button
+                className="create-exercise-add-set-button"
+                onClick={handleAddSetToNewExercise}
+              >
+                <span className="create-exercise-add-set-icon">+</span>
+                <span className="create-exercise-add-set-text">Agregar Serie</span>
+              </button>
+            </div>
+            {newExerciseSets.length === 0 ? (
+              <>
+                <p className="create-exercise-empty">No hay series. Agrega al menos una serie.</p>
+                <p className="create-exercise-requirement-message">Requerido: Debes agregar al menos una serie</p>
+              </>
+            ) : (
+              <div className="create-exercise-sets-list">
+                {newExerciseSets.map((set, index) => (
+                  <div key={index} className="create-exercise-set-item">
+                    <div className="create-exercise-set-header">
+                      <span className="create-exercise-set-number">Serie {index + 1}</span>
+                      {newExerciseSets.length > 1 && (
+                        <button
+                          className="create-exercise-set-remove"
+                          onClick={() => handleRemoveSetFromNewExercise(index)}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <div className="create-exercise-set-fields">
+                      <div className="create-exercise-set-field">
+                        <label className="create-exercise-set-label">Repeticiones</label>
+                        <Input
+                          type="text"
+                          placeholder="Ej: 10 o 8-12"
+                          value={set.reps || ''}
+                          onChange={(e) => handleUpdateNewExerciseSet(index, 'reps', e.target.value)}
+                          light={true}
+                        />
+                      </div>
+                      <div className="create-exercise-set-field">
+                        <label className="create-exercise-set-label">Intensidad</label>
+                        <Input
+                          type="text"
+                          placeholder="Ej: 8/10"
+                          value={set.intensity || ''}
+                          onChange={(e) => handleUpdateNewExerciseSet(index, 'intensity', e.target.value)}
+                          light={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="create-exercise-modal-actions">
+            {!canSaveNewExercise() && (
+              <div className="create-exercise-requirements-summary">
+                <p className="create-exercise-requirements-text">
+                  Para crear el ejercicio, necesitas:
+                  {(!newExerciseDraft?.primary || Object.values(newExerciseDraft.primary || {}).length === 0) && (
+                    <span className="create-exercise-requirement-item"> • Ejercicio principal</span>
+                  )}
+                  {newExerciseSets.length === 0 && (
+                    <span className="create-exercise-requirement-item"> • Al menos una serie</span>
+                  )}
+                </p>
+              </div>
+            )}
+            <Button
+              title={isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}
+              onClick={handleCreateNewExercise}
+              disabled={!canSaveNewExercise() || isCreatingNewExercise}
+              loading={isCreatingNewExercise}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Stat Explanation Modal */}
+      <Modal
+        isOpen={isStatExplanationModalOpen}
+        onClose={() => setIsStatExplanationModalOpen(false)}
+        title={statExplanation?.title || 'Información'}
+      >
+        <div className="stat-explanation-modal-content">
+          <p className="stat-explanation-text">{statExplanation?.description || ''}</p>
+        </div>
+      </Modal>
+
+      {/* User Info Modal */}
+      <Modal
+        isOpen={isUserInfoModalOpen}
+        onClose={() => setIsUserInfoModalOpen(false)}
+        title="Información del Usuario"
+      >
+        <div className="user-info-modal-content">
+          {selectedUserInfo && (
+            <>
+              <div className="user-info-field">
+                <span className="user-info-label">Nombre:</span>
+                <span className="user-info-value">{selectedUserInfo.userName || 'N/A'}</span>
+              </div>
+              {selectedUserInfo.userEmail && (
+                <div className="user-info-field">
+                  <span className="user-info-label">Email:</span>
+                  <span className="user-info-value">{selectedUserInfo.userEmail}</span>
+                </div>
+              )}
+              {selectedUserInfo.userCity && (
+                <div className="user-info-field">
+                  <span className="user-info-label">Ciudad:</span>
+                  <span className="user-info-value">{selectedUserInfo.userCity}</span>
+                </div>
+              )}
+              {selectedUserInfo.userAge && (
+                <div className="user-info-field">
+                  <span className="user-info-label">Edad:</span>
+                  <span className="user-info-value">{selectedUserInfo.userAge} años</span>
+                </div>
+              )}
+              <div className="user-info-field">
+                <span className="user-info-label">Sesiones Completadas:</span>
+                <span className="user-info-value">{selectedUserInfo.sessionsCompleted || 0}</span>
+              </div>
+              {selectedUserInfo.courseData && (
+                <>
+                  <div className="user-info-field">
+                    <span className="user-info-label">Estado:</span>
+                    <span className="user-info-value">{selectedUserInfo.courseData.status || 'N/A'}</span>
+                  </div>
+                  {selectedUserInfo.courseData.purchased_at && (
+                    <div className="user-info-field">
+                      <span className="user-info-label">Fecha de Compra:</span>
+                      <span className="user-info-value">
+                        {new Date(selectedUserInfo.courseData.purchased_at).toLocaleDateString('es-ES')}
+                      </span>
+                    </div>
+                  )}
+                  {selectedUserInfo.courseData.expires_at && (
+                    <div className="user-info-field">
+                      <span className="user-info-label">Fecha de Expiración:</span>
+                      <span className="user-info-value">
+                        {new Date(selectedUserInfo.courseData.expires_at).toLocaleDateString('es-ES')}
+                      </span>
+                    </div>
+                  )}
+                  {selectedUserInfo.courseData.is_trial && (
+                    <div className="user-info-field">
+                      <span className="user-info-label">Tipo:</span>
+                      <span className="user-info-value">Prueba Gratis</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+    </DashboardLayout>
+  );
+};
+
+export default ProgramDetailScreen;
+

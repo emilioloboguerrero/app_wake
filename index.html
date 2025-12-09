@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wake - Documentos Legales</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px 0;
+        }
+        
+        .wake-logo {
+            font-size: 48px;
+            font-weight: 700;
+            color: rgba(191, 168, 77, 1);
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 16px;
+        }
+        
+        .welcome-text {
+            font-size: 18px;
+            color: #cccccc;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        .policy-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 40px 0;
+            flex: 1;
+        }
+        
+        .policy-card {
+            background-color: #2a2a2a;
+            border-radius: 16px;
+            padding: 32px 24px;
+            text-align: center;
+            border: 1px solid #333;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .policy-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, rgba(191, 168, 77, 1), rgba(191, 168, 77, 0.6));
+        }
+        
+        .policy-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(191, 168, 77, 0.5);
+            box-shadow: 0 8px 32px rgba(191, 168, 77, 0.1);
+        }
+        
+        .policy-card h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 16px;
+        }
+        
+        .policy-card p {
+            color: #cccccc;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+        
+        .policy-card a {
+            display: inline-block;
+            background-color: rgba(191, 168, 77, 0.2);
+            color: rgba(191, 168, 77, 1);
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(191, 168, 77, 0.3);
+        }
+        
+        .policy-card a:hover {
+            background-color: rgba(191, 168, 77, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid #333;
+            color: #cccccc;
+        }
+        
+        .footer h4 {
+            color: #ffffff;
+            margin-bottom: 16px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .contact-info {
+            background-color: #2a2a2a;
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            margin-top: 24px;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .contact-info p {
+            margin-bottom: 8px;
+        }
+        
+        .contact-info strong {
+            color: rgba(191, 168, 77, 1);
+        }
+        
+        .contact-info em {
+            color: #999;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+            
+            .wake-logo {
+                font-size: 36px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .welcome-text {
+                font-size: 16px;
+            }
+            
+            .policy-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            
+            .policy-card {
+                padding: 24px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="wake-logo">WAKE</div>
+            <h1>Documentos Legales</h1>
+            <p class="welcome-text">
+                Bienvenido al centro de documentación legal de Wake. Aquí puedes encontrar todas nuestras políticas importantes y términos de uso.
+            </p>
+        </div>
+        
+        <div class="policy-grid">
+            <div class="policy-card">
+                <h3>Términos y Condiciones</h3>
+                <p>Nuestros términos y condiciones para el uso de la aplicación de fitness Wake.</p>
+                <a href="terms.html">Leer Términos</a>
+            </div>
+            
+            <div class="policy-card">
+                <h3>Política de Privacidad</h3>
+                <p>Cómo recopilamos, usamos y protegemos tu información personal.</p>
+                <a href="privacy.html">Leer Política</a>
+            </div>
+            
+            <div class="policy-card">
+                <h3>Política de Reembolsos</h3>
+                <p>Nuestra política respecto a reembolsos y cancelaciones.</p>
+                <a href="refund.html">Leer Política</a>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <h4>Wake - Tu Aplicación de Entrenamiento Personal</h4>
+            <p>Para preguntas sobre estos documentos, contáctanos en:</p>
+            
+            <div class="contact-info">
+                <p><strong>📩 emilioloboguerrero@gmail.com</strong></p>
+                <p><em>Última actualización: Octubre 2025</em></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

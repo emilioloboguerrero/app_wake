@@ -1,0 +1,58 @@
+.dashboard-content {
+  width: 100%;
+  max-width: 1200px;
+}
+
+.dashboard-welcome {
+  margin-top: 32px;
+  margin-bottom: 40px;
+}
+
+.welcome-text {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+}
+
+.welcome-subtext {
+  font-size: 1rem;
+  color: #cccccc;
+  margin: 0;
+}
+
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.stat-card {
+  background-color: #2a2a2a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: rgba(191, 168, 77, 0.3);
+  transform: translateY(-2px);
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: rgba(191, 168, 77, 1);
+  margin: 0 0 8px 0;
+}
+
+.stat-label {
+  font-size: 1rem;
+  color: #cccccc;
+  margin: 0;
+  font-weight: 400;
+}
+

@@ -1,0 +1,139 @@
+.button {
+  width: 100%;
+  max-width: 400px;
+  min-width: 280px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+  border: none;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.button-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.button-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.button-primary {
+  background-color: rgba(191, 168, 77, 0.2);
+}
+
+.button-secondary {
+  background-color: #007AFF;
+}
+
+.button-social {
+  background-color: #333333;
+}
+
+.button-outline {
+  background-color: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.button-active {
+  background-color: rgba(191, 168, 77, 0.2);
+  border: none;
+}
+
+.button-disabled {
+  background-color: #666666;
+  opacity: 0.7;
+}
+
+.button-text {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.button-text-primary {
+  color: rgba(191, 168, 77, 1);
+}
+
+.button-text-secondary {
+  color: #ffffff;
+}
+
+.button-text-social {
+  color: #ffffff;
+}
+
+.button-text-outline {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.button-text-active {
+  color: rgba(191, 168, 77, 1);
+  font-weight: 700;
+}
+
+.button-text-disabled {
+  color: #ffffff;
+}
+
+.button-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(191, 168, 77, 0.3);
+  border-top-color: rgba(191, 168, 77, 1);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+  .button {
+    min-width: 100%;
+    max-width: 100%;
+    height: 48px;
+    min-height: 44px; /* Minimum touch target size */
+    margin-bottom: 12px;
+  }
+
+  .button-text {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .button {
+    height: 44px;
+    margin-bottom: 10px;
+  }
+
+  .button-text {
+    font-size: 15px;
+  }
+}
+

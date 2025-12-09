@@ -1,0 +1,965 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Image,
+  Dimensions,
+  FlatList,
+} from 'react-native';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+import { useAuth } from '../contexts/AuthContext';
+import sessionManager from '../services/sessionManager';
+import sessionService from '../services/sessionService';
+import workoutProgressService from '../data-management/workoutProgressService';
+import exerciseLibraryService from '../services/exerciseLibraryService';
+import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import LoadingSpinner from '../components/LoadingSpinner';
+import { Image as ExpoImage } from 'expo-image';
+
+import logger from '../utils/logger.js';
+
+// Field name translation function (copied from WorkoutExecutionScreen)
+const getFieldDisplayName = (field) => {
+  const fieldNames = {
+    'reps': 'Reps',
+    'weight': 'Peso (kg)',
+    'rir': 'RIR',
+    'time': 'Tiempo (min)',
+    'distance': 'Distancia (km)',
+    'pace': 'Ritmo (min/km)',
+    'speed': 'Velocidad (km/h)',
+    'heart_rate': 'FC (bpm)',
+    'calories': 'Calorías',
+    'rest_time': 'Descanso (seg)',
+    'sets': 'Series',
+    'duration': 'Duración (min)',
+    'intensity': 'Intensidad',
+    'previous': 'Anterior'
+  };
+  return fieldNames[field] || field.charAt(0).toUpperCase() + field.slice(1);
+};
+
+// Calculate even gaps between columns (copied from WorkoutExecutionScreen)
+const calculateEvenGaps = (set) => {
+  const skipFields = [
+    'id', 'order', 'notes', 'description', 'title', 'name',
+    'created_at', 'updated_at', 'createdAt', 'updatedAt',
+    'type', 'status', 'category', 'tags', 'metadata'
+  ];
+  
+  const measurableFields = Object.keys(set).filter(field => 
+    !skipFields.includes(field)
+  );
+  
+  const fieldsToShow = measurableFields.sort().slice(0, 3);
+  
+  // Calculate total width needed for all boxes
+  let totalBoxWidth = 0;
+  fieldsToShow.forEach(field => {
+    const fieldName = getFieldDisplayName(field);
+    const fieldValue = set[field]?.toString() || '';
+    const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : 'NO DATA';
+    const titleWidth = fieldName.length * 8;
+    const contentWidth = placeholderText.length * 8;
+    const maxWidth = Math.max(titleWidth, contentWidth);
+    const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
+    const minWidth = fieldsToShow.length === 2 ? 80 : 60; // Higher minimum for 2 metrics
+    const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+    totalBoxWidth += boxWidth;
+  });
+  
+  // Calculate available space (container width - padding)
+  const containerWidth = 300; // Approximate available width
+  const padding = 40; // Left padding (setNumber) + right padding
+  const availableSpace = containerWidth - padding;
+  
+  // Calculate even gaps with minimum 8px
+  const numberOfGaps = fieldsToShow.length + 1; // Gaps between boxes + gaps at borders
+  const totalGapSpace = availableSpace - totalBoxWidth;
+  const evenGap = Math.max(totalGapSpace / numberOfGaps, 8); // Minimum 8px gap
+  
+  return { evenGap };
+};
+
+// Memoized Exercise Item Component for better performance
+const ExerciseItem = React.memo(({ exercise, index, isExpanded, onToggleExpansion }) => {
+  // Get objectives from the first set to determine what fields to show
+  const firstSet = exercise.sets?.[0];
+  const objectivesFields = firstSet ? Object.keys(firstSet).filter(field => {
+    const skipFields = [
+      'id', 'order', 'notes', 'description', 'title', 'name',
+      'created_at', 'updated_at', 'createdAt', 'updatedAt',
+      'type', 'status', 'category', 'tags', 'metadata'
+    ];
+    return !skipFields.includes(field) && firstSet[field] !== undefined && firstSet[field] !== null && firstSet[field] !== '';
+  }).sort() : [];
+
+  // Calculate even gaps for proper spacing
+  const { evenGap } = firstSet ? calculateEvenGaps(firstSet) : { evenGap: 8 };
+
+  return (
+    <View style={styles.exerciseCardWrapper}>
+      <View style={styles.exerciseCardContainer}>
+        <TouchableOpacity 
+          style={styles.exerciseCard}
+          onPress={() => onToggleExpansion(index)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.exerciseNumber}>{index + 1}</Text>
+          <View style={styles.exerciseContent}>
+            <Text style={styles.exerciseTitle}>{exercise.name}</Text>
+            <Text style={styles.exerciseInfo}>
+              {exercise.sets ? exercise.sets.length : 0} series
+            </Text>
+          </View>
+        </TouchableOpacity>
+        
+        {/* Expanded Objectives Section */}
+        {isExpanded && (
+          <View style={styles.setsContainer}>
+            {/* Headers row */}
+            <View style={styles.setTrackingRow}>
+              <View style={styles.setNumberSpace} />
+              <View style={styles.setInputsContainer}>
+                {objectivesFields.map((field, fieldIndex) => {
+                  const fieldName = getFieldDisplayName(field);
+                  const fieldValue = firstSet[field]?.toString() || '';
+                  const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : 'NO DATA';
+                  const titleWidth = fieldName.length * 8;
+                  const contentWidth = placeholderText.length * 8;
+                  const maxWidth = Math.max(titleWidth, contentWidth);
+                  const extraWidth = objectivesFields.length === 2 ? 20 : 0;
+                  const minWidth = objectivesFields.length === 2 ? 80 : 60;
+                  const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+                  
+                  return (
+                    <View key={field} style={[styles.inputGroup, { 
+                      width: boxWidth, 
+                      marginLeft: fieldIndex === 0 ? evenGap : 0,
+                      marginRight: fieldIndex < objectivesFields.length - 1 ? evenGap : 0 
+                    }]}>
+                      <Text style={styles.headerLabel} numberOfLines={1} ellipsizeMode="tail">
+                        {fieldName}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+            
+            {/* Data rows */}
+            {exercise.sets?.map((set, setIndex) => (
+              <View key={setIndex} style={styles.setTrackingRow}>
+                <View style={styles.setNumberContainer}>
+                  <Text style={styles.setNumber}>{setIndex + 1}</Text>
+                </View>
+                <View style={styles.setInputsContainer}>
+                  {objectivesFields.map((field, fieldIndex) => {
+                    const fieldName = getFieldDisplayName(field);
+                    const fieldValue = set[field]?.toString() || '';
+                    const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : 'NO DATA';
+                    const titleWidth = fieldName.length * 8;
+                    const contentWidth = placeholderText.length * 8;
+                    const maxWidth = Math.max(titleWidth, contentWidth);
+                    const extraWidth = objectivesFields.length === 2 ? 20 : 0;
+                    const minWidth = objectivesFields.length === 2 ? 80 : 60;
+                    const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+                    
+                    return (
+                      <View key={field} style={[styles.inputGroup, { 
+                        width: boxWidth, 
+                        marginLeft: fieldIndex === 0 ? evenGap : 0,
+                        marginRight: fieldIndex < objectivesFields.length - 1 ? evenGap : 0 
+                      }]}>
+                        <Text style={styles.objectiveValue}>
+                          {set[field]?.toString() || '--'}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+});
+const WorkoutExercisesScreen = ({ navigation, route }) => {
+  const { course, sessionData, workoutData, sessionState } = route.params || {};
+  const { user } = useAuth();
+  const [todayWorkout, setTodayWorkout] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedExercises, setExpandedExercises] = useState({});
+
+  // Handle exercise expansion
+  const handleToggleExpansion = (exerciseIndex) => {
+    setExpandedExercises(prev => ({
+      ...prev,
+      [exerciseIndex]: !prev[exerciseIndex]
+    }));
+  };
+
+  // Cache for service calls to prevent redundant requests
+  const serviceCache = useRef({
+    courseData: null,
+    sessionData: null,
+    lastFetch: 0
+  });
+
+  useEffect(() => {
+    // Use passed data but still resolve exercises for muscle activation
+    if (workoutData && sessionData) {
+      logger.log('✅ Using passed workout data, but resolving exercises for muscle activation:', workoutData.title);
+      
+      // Resolve exercises to get muscle activation data
+      const resolveExercises = async () => {
+        try {
+          const resolvedExercises = await Promise.all(
+            workoutData.exercises.map(async (exercise) => {
+              try {
+                // Resolve primary exercise data from library
+                logger.log(`🔍 WorkoutExercisesScreen: Resolving exercise:`, exercise.primary);
+                const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
+                logger.log(`🔍 WorkoutExercisesScreen: Got resolved data:`, {
+                  title: primaryExerciseData.title,
+                  muscle_activation: primaryExerciseData.muscle_activation,
+                  implements: primaryExerciseData.implements ?? null,
+                  hasImplements: Array.isArray(primaryExerciseData.implements),
+                  implementsLength: Array.isArray(primaryExerciseData.implements)
+                    ? primaryExerciseData.implements.length
+                    : 'n/a',
+                });
+                
+                // Extract libraryId from primary reference
+                const libraryId = Object.keys(exercise.primary)[0];
+                
+                return {
+                  id: exercise.id,
+                  name: primaryExerciseData.title,
+                  description: primaryExerciseData.description,
+                  video_url: primaryExerciseData.video_url,
+                  muscle_activation: primaryExerciseData.muscle_activation,
+                  implements: Array.isArray(primaryExerciseData.implements)
+                    ? primaryExerciseData.implements
+                    : [],
+                  libraryId: libraryId, // Include libraryId for proper exercise identification
+                  sets: exercise.sets || [],
+                  objectives: exercise.objectives || [],
+                  measures: exercise.measures || [],
+                  order: exercise.order || 0,
+                  // Keep original references for alternatives (not used yet)
+                  primary: exercise.primary,
+                  alternatives: exercise.alternatives || {}
+                };
+              } catch (error) {
+                logger.error('❌ Error resolving exercise:', exercise.primary, error);
+                
+                // Extract libraryId from primary reference even in error case
+                const libraryId = exercise.primary ? Object.keys(exercise.primary)[0] : 'unknown';
+                
+                // Return fallback data if resolution fails
+                return {
+                  id: exercise.id,
+                  name: exercise.primary || 'Exercise',
+                  description: 'Exercise description not available',
+                  video_url: null,
+                  muscle_activation: {}, // Empty muscle activation as fallback
+                  implements: [],
+                  libraryId: libraryId, // Include libraryId even in error case
+                  sets: exercise.sets || [],
+                  objectives: exercise.objectives || [],
+                  measures: exercise.measures || [],
+                  order: exercise.order || 0,
+                  primary: exercise.primary,
+                  alternatives: exercise.alternatives || {}
+                };
+              }
+            })
+          );
+          
+          const resolvedWorkout = {
+            ...workoutData,
+            exercises: resolvedExercises
+          };
+          
+          logger.log('✅ Workout created with', resolvedWorkout.exercises.length, 'exercises');
+          
+          // Debug: Log the workout object structure
+          logger.log('🔍 WorkoutExercisesScreen: Created workout object:', {
+            hasWorkout: !!resolvedWorkout,
+            hasExercises: !!resolvedWorkout?.exercises,
+            exercisesLength: resolvedWorkout?.exercises?.length,
+            firstExerciseHasMuscleActivation: !!resolvedWorkout?.exercises?.[0]?.muscle_activation,
+            firstExerciseMuscleActivationKeys: resolvedWorkout?.exercises?.[0]?.muscle_activation
+              ? Object.keys(resolvedWorkout.exercises[0].muscle_activation)
+              : 'none',
+            firstExerciseStructure: resolvedWorkout?.exercises?.[0]
+              ? Object.keys(resolvedWorkout.exercises[0])
+              : 'no exercises',
+            firstExerciseImplements: resolvedWorkout?.exercises?.[0]?.implements ?? null,
+            firstExerciseHasImplements: Array.isArray(resolvedWorkout?.exercises?.[0]?.implements)
+              ? resolvedWorkout.exercises[0].implements.length
+              : 'not-array-or-missing',
+          });
+          
+          setTodayWorkout(resolvedWorkout);
+          setLoading(false);
+          setError(null);
+          
+          // Preload images
+          preloadImages(resolvedWorkout);
+        } catch (error) {
+          logger.error('❌ Error resolving exercises:', error);
+          setError('Error loading workout exercises');
+          setLoading(false);
+        }
+      };
+      
+      resolveExercises();
+    } else {
+      // Fallback to fetching if no data passed
+      fetchTodayWorkout();
+    }
+  }, [workoutData, sessionData]);
+
+  // Preload images for better performance
+  const preloadImages = async (workoutData) => {
+    try {
+      const imageUrls = [];
+      
+      // Collect all image URLs
+      if (workoutData?.image_url) {
+        imageUrls.push(workoutData.image_url);
+      }
+      
+      if (workoutData?.exercises) {
+        const exerciseImages = workoutData.exercises
+          .map(exercise => exercise.image_url)
+          .filter(Boolean);
+        imageUrls.push(...exerciseImages);
+      }
+      
+      if (imageUrls.length > 0) {
+        logger.log('🖼️ Preloading images in parallel...');
+        // Preload all images in parallel for maximum speed
+        await Promise.all(imageUrls.map(url => ExpoImage.prefetch(url)));
+        logger.log('✅ All images preloaded');
+      }
+    } catch (error) {
+      logger.error('❌ Error preloading images:', error);
+    }
+  };
+
+  const fetchTodayWorkout = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!user) {
+        setError('Usuario no autenticado');
+        return;
+      }
+
+      logger.log('🏋️ Getting today\'s workout for course:', course.courseId);
+      const totalStartTime = Date.now();
+
+      // Check cache first (5 minute TTL)
+      const now = Date.now();
+      const cacheAge = now - serviceCache.current.lastFetch;
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+      
+      let courseData = serviceCache.current.courseData;
+      let sessionData = serviceCache.current.sessionData;
+      
+      if (!courseData || cacheAge > CACHE_TTL) {
+        logger.log('📥 Fetching fresh course data...');
+        const userId = user?.uid || null;
+        courseData = await workoutProgressService.getCourseDataForWorkout(course.courseId, userId);
+        serviceCache.current.courseData = courseData;
+        serviceCache.current.lastFetch = now;
+      } else {
+        logger.log('✅ Using cached course data');
+      }
+      
+      // Get session data using new session service
+      if (!sessionData || cacheAge > CACHE_TTL) {
+        logger.log('📥 Fetching fresh session data...');
+        const sessionStartTime = Date.now();
+        
+        // Use new session service to get current session
+        // Don't force refresh to respect manual selections
+        const sessionState = await sessionService.getCurrentSession(user.uid, course.courseId);
+        
+        // Convert to expected format for compatibility
+        sessionData = {
+          nextSession: sessionState.workout,
+          sessionState: sessionState
+        };
+        
+        const sessionTime = Date.now() - sessionStartTime;
+        logger.log(`⏱️ Session data fetch took ${sessionTime}ms`);
+        
+        serviceCache.current.sessionData = sessionData;
+      } else {
+        logger.log('✅ Using cached session data');
+      }
+      
+      if (!courseData) {
+        setError('No se pudo cargar la información del curso');
+        return;
+      }
+      
+      // Check if we have course structure
+      if (!courseData.courseData || !courseData.courseData.modules) {
+        setError('El curso no tiene contenido disponible. Contacta al creador del curso.');
+        return;
+      }
+      
+      const nextSession = sessionData.nextSession;
+
+      if (!nextSession) {
+        setError('¡Felicidades! Has completado todas las sesiones de este curso.');
+        return;
+      }
+      
+      logger.log('🎯 Next session to do:', nextSession.title);
+      
+      // Check if session has exercises
+      if (!nextSession.exercises || nextSession.exercises.length === 0) {
+        logger.log('⚠️ Session has no exercises, showing empty workout:', nextSession);
+        // Create workout with no exercises but show the session
+        const todayWorkout = {
+          id: nextSession.id,
+          title: nextSession.title || 'Sesión de entrenamiento',
+          description: nextSession.description || '',
+          moduleId: nextSession.moduleId,
+          moduleTitle: nextSession.moduleTitle || 'Módulo',
+          sessionId: nextSession.id,
+          image_url: nextSession.image_url,
+          exercises: [] // Empty exercises array
+        };
+        
+        setTodayWorkout(todayWorkout);
+        setError(null);
+        logger.log('✅ Empty workout created for session without exercises');
+        return;
+      }
+      
+      // Create workout from session data with optimized exercise library resolution
+      const exerciseResolutionStartTime = Date.now();
+      
+      // Resolve all exercises in parallel for better performance
+      const resolvedExercises = await Promise.all(
+        nextSession.exercises.map(async (exercise) => {
+          try {
+            // Resolve primary exercise data from library
+            logger.log(`🔍 WorkoutExercisesScreen: Resolving exercise:`, exercise.primary);
+            const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
+            logger.log(`🔍 WorkoutExercisesScreen: Got resolved data:`, {
+              title: primaryExerciseData.title,
+              muscle_activation: primaryExerciseData.muscle_activation,
+              implements: primaryExerciseData.implements ?? null,
+              hasImplements: Array.isArray(primaryExerciseData.implements),
+              implementsLength: Array.isArray(primaryExerciseData.implements)
+                ? primaryExerciseData.implements.length
+                : 'n/a',
+            });
+            
+            // Extract libraryId from primary reference
+            const libraryId = Object.keys(exercise.primary)[0];
+            
+            return {
+              id: exercise.id,
+              name: primaryExerciseData.title,
+              description: primaryExerciseData.description,
+              video_url: primaryExerciseData.video_url,
+              muscle_activation: primaryExerciseData.muscle_activation,
+              implements: Array.isArray(primaryExerciseData.implements)
+                ? primaryExerciseData.implements
+                : [],
+              libraryId: libraryId, // Include libraryId for proper exercise identification
+              sets: exercise.sets || [],
+              objectives: exercise.objectives || [],
+              measures: exercise.measures || [],
+              order: exercise.order || 0,
+              // Keep original references for alternatives (not used yet)
+              primary: exercise.primary,
+              alternatives: exercise.alternatives || {}
+            };
+          } catch (error) {
+            logger.error('❌ Error resolving exercise:', exercise.primary, error);
+            
+            // Extract libraryId from primary reference even in error case
+            const libraryId = exercise.primary ? Object.keys(exercise.primary)[0] : 'unknown';
+            
+            // Return fallback data if resolution fails
+            return {
+              id: exercise.id,
+              name: exercise.primary || 'Exercise',
+              description: 'Exercise description not available',
+              video_url: null,
+              muscle_activation: {}, // Empty muscle activation as fallback
+              libraryId: libraryId, // Include libraryId even in error case
+              sets: exercise.sets || [],
+              objectives: exercise.objectives || [],
+              measures: exercise.measures || [],
+              order: exercise.order || 0,
+              primary: exercise.primary,
+              alternatives: exercise.alternatives || {}
+            };
+          }
+        })
+      );
+      
+      const exerciseResolutionTime = Date.now() - exerciseResolutionStartTime;
+      logger.log(`⏱️ Exercise resolution took ${exerciseResolutionTime}ms`);
+      
+      const todayWorkout = {
+        id: nextSession.id,
+        title: nextSession.title || 'Sesión de entrenamiento',
+        description: nextSession.description || '',
+        moduleId: nextSession.moduleId,
+        moduleTitle: nextSession.moduleTitle || 'Módulo',
+        sessionId: nextSession.id,
+        image_url: nextSession.image_url,
+        exercises: resolvedExercises
+      };
+      
+      logger.log('✅ Workout created with', todayWorkout.exercises.length, 'exercises');
+      
+      // Debug: Log the workout object structure
+      logger.log('🔍 WorkoutExercisesScreen: Created workout object:', {
+        hasWorkout: !!todayWorkout,
+        hasExercises: !!todayWorkout?.exercises,
+        exercisesLength: todayWorkout?.exercises?.length,
+        firstExerciseHasMuscleActivation: !!todayWorkout?.exercises?.[0]?.muscle_activation,
+        firstExerciseMuscleActivationKeys: todayWorkout?.exercises?.[0]?.muscle_activation
+          ? Object.keys(todayWorkout.exercises[0].muscle_activation)
+          : 'none',
+        firstExerciseStructure: todayWorkout?.exercises?.[0]
+          ? Object.keys(todayWorkout.exercises[0])
+          : 'no exercises',
+        firstExerciseImplements: todayWorkout?.exercises?.[0]?.implements ?? null,
+        firstExerciseHasImplements: Array.isArray(todayWorkout?.exercises?.[0]?.implements)
+          ? todayWorkout.exercises[0].implements.length
+          : 'not-array-or-missing',
+      });
+      
+      setTodayWorkout(todayWorkout);
+      setError(null);
+      logger.log('✅ Today\'s workout loaded successfully:', todayWorkout);
+      
+      // Preload images for better performance (async, non-blocking)
+      preloadImages(todayWorkout).catch(error => 
+        logger.error('❌ Error preloading images:', error)
+      );
+      
+      const totalTime = Date.now() - totalStartTime;
+      logger.log(`🚀 TOTAL WORKOUT LOADING TIME: ${totalTime}ms`);
+      
+    } catch (error) {
+      logger.error('❌ Error fetching today\'s workout:', error);
+      setError('Error al cargar el entrenamiento: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartWorkout = async () => {
+    try {
+      logger.log('🚀 Starting workout:', todayWorkout.id);
+      
+      // Start workout session using sessionManager
+      const session = await sessionManager.startSession(
+        user.uid,
+        course.courseId,
+        todayWorkout.sessionId,
+        todayWorkout.title
+      );
+      
+      logger.log('✅ Workout session started:', session.sessionId);
+      
+      // Navigate to warmup screen first
+      navigation.navigate('Warmup', {
+        course: course,
+        workout: todayWorkout,
+        sessionId: session.sessionId
+      });
+      
+    } catch (error) {
+      logger.error('❌ Failed to start workout:', error);
+      alert('Error al iniciar el entrenamiento. Inténtalo de nuevo.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <FixedWakeHeader 
+          showBackButton={true}
+          onBackPress={() => navigation.goBack()}
+          title="Ejercicios de Hoy"
+        />
+        <View style={styles.loadingContainer}>
+          <LoadingSpinner />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <FixedWakeHeader 
+          showBackButton={true}
+          onBackPress={() => navigation.goBack()}
+          title="Ejercicios de Hoy"
+        />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Top background filler to cover notch/status bar behind header */}
+      <View style={styles.topBackground} />
+      <FixedWakeHeader 
+        showBackButton={true}
+        onBackPress={() => navigation.goBack()}
+        title="Ejercicios de Hoy"
+      />
+      
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={{ overflow: 'visible' }}
+        contentInsetAdjustmentBehavior="never"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <WakeHeaderSpacer />
+
+          {/* Title Section */}
+          <View style={styles.titleSection}>
+            <Text style={styles.screenTitle}>
+              {todayWorkout ? todayWorkout.title : 'Ejercicios de Hoy'}
+            </Text>
+            {todayWorkout && todayWorkout.moduleTitle && (
+              <Text style={styles.moduleTitle}>
+                {todayWorkout.moduleTitle}
+              </Text>
+            )}
+          </View>
+
+
+          {/* Exercises List */}
+          {todayWorkout.exercises && todayWorkout.exercises.length > 0 ? (
+            <View style={styles.exercisesContainer}>
+              {todayWorkout.exercises.map((exercise, index) => (
+                <ExerciseItem 
+                  key={exercise.id || index} 
+                  exercise={exercise} 
+                  index={index}
+                  isExpanded={expandedExercises[index] || false}
+                  onToggleExpansion={handleToggleExpansion}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.noExercisesContainer}>
+              <Text style={styles.noExercisesText}>NO HAY EJERCICIOS</Text>
+              <Text style={styles.noExercisesSubtext}>
+                Esta sesión no tiene ejercicios configurados
+              </Text>
+            </View>
+          )}
+
+        </View>
+      </ScrollView>
+      
+      {/* Start Workout Button - Fixed at bottom */}
+      <View style={styles.bottomButtonContainer}>
+        <TouchableOpacity 
+          style={[
+            styles.primaryButton, 
+            (!todayWorkout?.exercises || todayWorkout.exercises.length === 0) && styles.primaryButtonDisabled
+          ]} 
+          onPress={handleStartWorkout}
+          disabled={!todayWorkout?.exercises || todayWorkout.exercises.length === 0}
+        >
+          <Text style={[
+            styles.primaryButtonText,
+            (!todayWorkout?.exercises || todayWorkout.exercises.length === 0) && styles.primaryButtonTextDisabled
+          ]}>
+            Comenzar
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+    overflow: 'visible',
+  },
+  topBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: Math.max(60, screenHeight * 0.08),
+    backgroundColor: '#1A1A1A',
+    zIndex: 999,
+    pointerEvents: 'none',
+  },
+  scrollView: {
+    flex: 1,
+    overflow: 'visible',
+  },
+  content: {
+    paddingTop: 10,
+    paddingBottom: Math.max(120, screenHeight * 0.15), // Extra padding to clear bottom button
+    overflow: 'visible',
+  },
+  titleSection: {
+    paddingTop: 0,
+    marginTop: 0,
+    marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
+  },
+  screenTitle: {
+    fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
+    fontWeight: '600', // Match ProfileScreen weight
+    color: '#ffffff',
+    textAlign: 'left',
+    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
+    marginBottom: 8,
+  },
+  moduleTitle: {
+    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'left',
+    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
+    marginBottom: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    color: '#ff6b6b',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  exercisesContainer: {
+    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+    gap: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
+    overflow: 'visible', // Allow visual effects to show
+  },
+  exerciseCardWrapper: {
+    overflow: 'visible', // Allow visual effects to show
+  },
+  exerciseCardContainer: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'visible',
+  },
+  exerciseCard: {
+    flexDirection: 'row',
+    paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
+    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
+    alignItems: 'center',
+    minHeight: Math.max(80, screenHeight * 0.1), // Responsive height
+  },
+  exerciseNumber: {
+    fontSize: Math.min(screenWidth * 0.06, 26), // Responsive font size
+    fontWeight: '700',
+    color: '#ffffff',
+    marginRight: Math.max(20, screenWidth * 0.05), // Responsive margin
+    alignSelf: 'center',
+  },
+  exerciseContent: {
+    flex: 1,
+  },
+  exerciseTitle: {
+    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: Math.max(8, screenHeight * 0.01), // Responsive margin
+  },
+  exerciseInfo: {
+    fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
+    fontWeight: '400',
+    color: '#ffffff',
+    opacity: 0.8,
+  },
+  exerciseDetails: {
+    marginBottom: 8,
+  },
+  exerciseDetail: {
+    fontSize: 16,
+    color: '#BFA84D',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  setDetail: {
+    fontSize: 12,
+    color: '#CCCCCC',
+    marginLeft: 8,
+    marginBottom: 2,
+  },
+  exerciseMuscles: {
+    fontSize: 12,
+    color: '#999999',
+    marginBottom: 4,
+  },
+  exerciseImplements: {
+    fontSize: 12,
+    color: '#999999',
+    marginBottom: 4,
+  },
+  exerciseNotes: {
+    fontSize: 12,
+    color: '#CCCCCC',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  noExercisesContainer: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    padding: Math.max(20, screenWidth * 0.05), // Responsive padding
+    alignItems: 'center',
+    marginBottom: Math.max(20, screenHeight * 0.025), // Responsive margin
+    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+  },
+  noExercisesText: {
+    fontSize: Math.min(screenWidth * 0.045, 18), // Responsive font size
+    fontWeight: '600',
+    color: '#ff6b6b',
+    marginBottom: Math.max(8, screenHeight * 0.01), // Responsive margin
+  },
+  noExercisesSubtext: {
+    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+    color: '#999999',
+    textAlign: 'center',
+  },
+  bottomButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1A1A1A',
+    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
+    paddingTop: Math.max(20, screenHeight * 0.025), // Responsive padding
+    paddingBottom: Math.max(30, screenHeight * 0.04), // Responsive padding
+    alignItems: 'center',
+    minHeight: Math.max(60, screenHeight * 0.075), // Responsive height
+  },
+  primaryButton: {
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    height: Math.max(50, screenHeight * 0.06), // Responsive height
+    width: Math.max(200, screenWidth * 0.5), // Responsive width
+    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    color: 'rgba(191, 168, 77, 1)',
+    fontSize: Math.min(screenWidth * 0.045, 18), // Responsive font size
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  primaryButtonDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  primaryButtonTextDisabled: {
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  // Expansion styles - matching WorkoutExecutionScreen
+  setsContainer: {
+    paddingTop: 0,
+    paddingBottom: Math.max(16, screenHeight * 0.02),
+  },
+  setTrackingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Math.max(16, screenWidth * 0.04),
+    paddingVertical: Math.max(4, screenHeight * 0.005),
+    position: 'relative',
+  },
+  setNumberSpace: {
+    width: Math.max(20, screenWidth * 0.05),
+    marginRight: Math.max(20, screenWidth * 0.05),
+    marginLeft: Math.max(26, screenWidth * 0.065),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setNumberContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Math.max(8, screenHeight * 0.01),
+    paddingHorizontal: Math.max(4, screenWidth * 0.01),
+    marginLeft: Math.max(26, screenWidth * 0.065),
+  },
+  setNumber: {
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+    color: '#ffffff',
+    marginRight: Math.max(20, screenWidth * 0.05),
+    minWidth: Math.max(20, screenWidth * 0.05),
+    textAlign: 'left',
+  },
+  setInputsContainer: {
+    flexDirection: 'row',
+    flex: 1,
+    paddingRight: Math.max(20, screenWidth * 0.05),
+  },
+  inputGroup: {
+    // No padding - boxes should touch each other
+  },
+  headerLabel: {
+    fontSize: Math.min(screenWidth * 0.035, 14),
+    fontWeight: '600',
+    color: '#ffffff',
+    opacity: 0.8,
+    textAlign: 'center',
+  },
+  objectiveValue: {
+    fontSize: Math.min(screenWidth * 0.035, 14),
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+});
+
+export default WorkoutExercisesScreen;
