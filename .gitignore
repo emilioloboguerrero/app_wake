@@ -145,6 +145,9 @@ assets/videos/**/*
 **/*.mp4
 **/*.avi
 
+# Exception: Allow bundled preset videos (small fallback files)
+!assets/videos/warmup/*_preset.mp4
+
 # ============================================
 # Scripts and Documentation
 # ============================================

@@ -72,15 +72,7 @@ const WarmupScreen = ({ navigation, route }) => {
     const fileName = currentExercise.video; // e.g. "cardio.mp4"
     const logicalKey = fileName.replace('.mp4', ''); // e.g. "cardio"
 
-    // Try to use local bundled file downloaded by AssetBundleService
-    const localPath = assetBundleService.getWarmupLocalPath(logicalKey);
-    if (localPath) {
-      setLocalVideoSource(localPath);
-      return;
-    }
-
-    // Fallback to compressed preset videos (bundled in app, ~90% smaller than originals)
-    // These are used only if Firebase download fails or hasn't completed yet
+    // Use bundled preset videos only (cloud downloads disabled)
     const fallbackMap = {
       'cardio.mp4': require('../../assets/videos/warmup/bici_preset.mp4'),
       'circulos_adelante.mp4': require('../../assets/videos/warmup/c_adelante_preset.mp4'),
@@ -88,9 +80,11 @@ const WarmupScreen = ({ navigation, route }) => {
       'zancadas.mp4': require('../../assets/videos/warmup/zanca_preset.mp4'),
       'balanceo_derecha.mp4': require('../../assets/videos/warmup/p_derecha_preset.mp4'),
       'balanceo_izquierda.mp4': require('../../assets/videos/warmup/p_izq_preset.mp4'),
+      // Generic fallback to avoid blanks if a new filename appears
+      default: require('../../assets/videos/warmup/bici_preset.mp4'),
     };
 
-    setLocalVideoSource(fallbackMap[fileName] || null);
+    setLocalVideoSource(fallbackMap[fileName] || fallbackMap.default);
   }, [currentExercise]);
   
   // Video player setup - memoized callback to avoid recreation

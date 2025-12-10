@@ -501,8 +501,8 @@ const LoginScreen = () => {
         {!isExpoGo && Platform.OS === 'ios' && AppleButtonComponent && (
           <View style={styles.appleButtonContainer}>
             <AppleButtonComponent
-              buttonType={AppleButtonComponent.ButtonType.CONTINUE}
-              buttonStyle={AppleButtonComponent.ButtonStyle.BLACK}
+              buttonType={AppleButtonComponent.Type.SIGN_IN}
+              buttonStyle={AppleButtonComponent.Style.BLACK}
               cornerRadius={8}
               onPress={handleAppleLogin}
               style={styles.appleButton}

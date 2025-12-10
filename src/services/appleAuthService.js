@@ -1,6 +1,6 @@
 // Apple Authentication Service for Wake
 // Expo-compatible Apple Sign-In with Firebase Web SDK
-import { OAuthProvider, signInWithCredential } from 'firebase/auth';
+import { OAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { createUserDocument } from './firestoreService';
 import firestoreService from './firestoreService';
@@ -194,6 +194,21 @@ class AppleAuthService {
       // Sign the user in with the credential
       const userCredential = await signInWithCredential(auth, appleCredential);
       const firebaseUser = userCredential.user;
+
+      // Set displayName from Apple full name if provided (avoids re-prompting)
+      if (!firebaseUser.displayName && appleAuthRequestResponse.fullName) {
+        const givenName = appleAuthRequestResponse.fullName.givenName || '';
+        const familyName = appleAuthRequestResponse.fullName.familyName || '';
+        const fullName = `${givenName} ${familyName}`.trim();
+        if (fullName) {
+          try {
+            await updateProfile(firebaseUser, { displayName: fullName });
+            await firebaseUser.reload();
+          } catch (profileError) {
+            logger.warn('Failed to set Apple displayName:', profileError);
+          }
+        }
+      }
       
       logger.log('Apple sign-in successful:', firebaseUser.uid);
       

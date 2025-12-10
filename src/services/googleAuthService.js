@@ -198,8 +198,13 @@ class GoogleAuthService {
       }
       
       const GoogleSigninModule = await this.loadGoogleSignIn();
-      const isSignedIn = await GoogleSigninModule.isSignedIn();
-      return isSignedIn;
+      // isSignedIn was removed in v16; use hasPreviousSignIn + getCurrentUser
+      const hasSession = await GoogleSigninModule.hasPreviousSignIn();
+      if (!hasSession) {
+        return false;
+      }
+      const currentUser = await GoogleSigninModule.getCurrentUser();
+      return Boolean(currentUser);
     } catch (error) {
       logger.error('Error checking sign-in status:', error);
       return false;

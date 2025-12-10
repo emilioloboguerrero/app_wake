@@ -35,7 +35,6 @@ import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
-import appResourcesService from '../services/appResourcesService';
 import assetBundleService from '../services/assetBundleService';
 
 import logger from '../utils/logger.js';
@@ -96,20 +95,14 @@ const MainScreen = ({ navigation, route }) => {
 
     const loadLibraryImage = async () => {
       try {
-        // 1) Prefer local file downloaded once per version
+        // Prefer local file downloaded once per version; otherwise keep bundled fallback
         const localPath = assetBundleService.getLibraryLocalPath();
         if (isMounted && localPath) {
           setLibraryImageUri(localPath);
           logger.log('✅ Loaded library image from local asset bundle:', localPath);
           return;
         }
-
-        // 2) Fallback to Firestore URL (streamed)
-        const url = await appResourcesService.getLibraryImageUrl();
-        if (isMounted && url) {
-          setLibraryImageUri(url);
-          logger.log('✅ Loaded library image URL from app_resources:', url);
-        }
+        logger.log('ℹ️ Using bundled library image fallback (no local asset yet)');
       } catch (error) {
         logger.error('❌ Error loading library image from app_resources:', error);
       }
@@ -1249,17 +1242,12 @@ const MainScreen = ({ navigation, route }) => {
         </Animated.View>
       );
     } else if (item.type === 'library') {
-      logger.log('📚 Rendering library card with image:', libraryImageUri || library);
+      logger.log('📚 Rendering library card with image:', libraryImageUri || libraryImage);
       return (
         <Animated.View style={[styles.swipeableCard, cardStyle]}>
           <ImageBackground
-            source={
-              libraryImageUri
-                ? (libraryImageUri.startsWith('file://')
-                    ? { uri: libraryImageUri }
-                    : { uri: libraryImageUri })
-                : libraryImage
-            }
+            // Cloud/remote download disabled: always use bundled fallback
+            source={libraryImage}
             style={styles.cardContent}
             imageStyle={styles.cardBackgroundImage}
             resizeMode="cover"

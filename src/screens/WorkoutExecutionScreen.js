@@ -524,47 +524,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // These are used only if Firebase download fails or hasn't completed yet
   // Preset videos are ~90% smaller than originals, reducing app bundle size
   const intensityVideoMap = useMemo(() => ({
+    // Use bundled preset videos only (cloud downloads disabled)
     7: require('../../assets/videos/warmup/7_de_10_preset.mp4'),
     8: require('../../assets/videos/warmup/8_de_10_preset.mp4'),
     9: require('../../assets/videos/warmup/9_de_10_preset.mp4'),
     10: require('../../assets/videos/warmup/10_de_10_preset.mp4'),
   }), []);
 
-  // Load intensity videos from Firestore (app_resources.intensity)
+  // Disable remote intensity loading; rely solely on bundled presets
   useEffect(() => {
-    let isMounted = true;
-
-    const loadIntensityVideos = async () => {
-      try {
-        const resources = await appResourcesService.getAppResources();
-        const intensityMap = resources?.intensityVideos || {};
-
-        if (!isMounted) return;
-
-        const mapped = {};
-        [7, 8, 9, 10].forEach((score) => {
-          const key = `${score}/10`; // e.g. "7/10"
-          if (intensityMap[key]) {
-            mapped[score] = intensityMap[key];
-          }
-        });
-
-        setRemoteIntensityVideos(mapped);
-
-        logger.log('✅ Loaded remote intensity videos from app_resources:', {
-          keys: Object.keys(intensityMap || {}),
-          mappedKeys: Object.keys(mapped || {}),
-        });
-      } catch (error) {
-        logger.error('❌ Error loading intensity videos from app_resources:', error);
-      }
-    };
-
-    loadIntensityVideos();
-
-    return () => {
-      isMounted = false;
-    };
+    setRemoteIntensityVideos({});
   }, []);
   
   // Expanded card state (null = current exercise, number = alternative index)
@@ -1495,12 +1464,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Intensity video tap handler
   const handleIntensityVideoTap = (intensity) => {
     // Load the selected intensity video:
-    // 1) Prefer local file downloaded by AssetBundleService
-    // 2) Then remote URL (if any)
-    // 3) Finally bundled asset as last resort
-    const localPath = assetBundleService.getIntensityLocalPath(intensity);
-    const remoteUrl = remoteIntensityVideos[intensity] || null;
-    const videoUri = localPath || remoteUrl || intensityVideoMap[intensity];
+    // Use bundled preset only (cloud/remote/local download disabled)
+    const videoUri = intensityVideoMap[intensity];
     setIntensityVideoUri(videoUri);
     setCurrentIntensity(intensity);
     intensityVideoPlayer.replace(videoUri);
@@ -1523,11 +1488,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       intensityVideoPlayer.pause();
       setIsIntensityVideoPaused(true);
     } else {
-      // Expand the card and load video (prefer local file, then remote, then bundled)
+      // Expand the card and load video (bundled preset only)
       setSelectedIntensity(intensity);
-      const localPath = assetBundleService.getIntensityLocalPath(intensity);
-      const remoteUrl = remoteIntensityVideos[intensity] || null;
-      const videoUri = localPath || remoteUrl || intensityVideoMap[intensity];
+      const videoUri = intensityVideoMap[intensity];
       setIntensityVideoUri(videoUri);
       setCurrentIntensity(intensity);
       intensityVideoPlayer.replace(videoUri);
