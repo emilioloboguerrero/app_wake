@@ -108,25 +108,39 @@ class CardService {
         throw new Error('No se proporcionó ningún archivo');
       }
 
-      // Validate file type
-      if (!videoFile.type.startsWith('video/')) {
-        throw new Error('El archivo debe ser un video');
+      // STANDARD FORMAT: Validate MP4 format
+      const allowedMimeTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime']; // QuickTime .mov files
+      const allowedExtensions = ['mp4', 'm4v', 'mov'];
+      
+      const fileExtension = (videoFile.name.split('.').pop() || '').toLowerCase();
+      const isValidMimeType = videoFile.type && allowedMimeTypes.includes(videoFile.type);
+      const isValidExtension = allowedExtensions.includes(fileExtension);
+      
+      if (!isValidMimeType && !isValidExtension) {
+        throw new Error(
+          'El video debe estar en formato MP4. ' +
+          'Por favor convierte el video a MP4 antes de subirlo. ' +
+          'Formatos aceptados: MP4, M4V, MOV'
+        );
       }
 
       // No file size limit for videos (as per existing patterns)
 
-      // Get file extension
-      const fileExtension = videoFile.name.split('.').pop() || 'mp4';
-      
-      // Create storage reference: cards/{userId}/{timestamp}.{ext}
-      // Note: userId is not sanitized because storage rules check request.auth.uid == userId
+      // STANDARD FORMAT: Force MP4 extension and content type
+      const standardExtension = 'mp4';
       const timestamp = Date.now();
-      const fileName = `${timestamp}.${fileExtension}`;
+      const fileName = `${timestamp}.${standardExtension}`;
       const storagePath = `cards/${userId}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Upload file with progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, videoFile);
+      // Set metadata with cache headers and standard MP4 content type
+      const metadata = {
+        contentType: 'video/mp4', // Always MP4
+        cacheControl: 'public, max-age=31536000' // Cache for 1 year
+      };
+
+      // Upload file with progress tracking and cache headers
+      const uploadTask = uploadBytesResumable(storageRef, videoFile, metadata);
 
       return new Promise((resolve, reject) => {
         uploadTask.on(

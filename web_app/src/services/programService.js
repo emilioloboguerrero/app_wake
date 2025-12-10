@@ -310,9 +310,20 @@ class ProgramService {
   // Upload tutorial video
   async uploadTutorialVideo(programId, screenName, videoFile, onProgress = null) {
     try {
-      // Validate file type
-      if (!videoFile.type.startsWith('video/')) {
-        throw new Error('El archivo debe ser un video');
+      // STANDARD FORMAT: Validate MP4 format
+      const allowedMimeTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime']; // QuickTime .mov files
+      const allowedExtensions = ['mp4', 'm4v', 'mov'];
+      
+      const fileExtension = (videoFile.name.split('.').pop() || '').toLowerCase();
+      const isValidMimeType = videoFile.type && allowedMimeTypes.includes(videoFile.type);
+      const isValidExtension = allowedExtensions.includes(fileExtension);
+      
+      if (!isValidMimeType && !isValidExtension) {
+        throw new Error(
+          'El video debe estar en formato MP4. ' +
+          'Por favor convierte el video a MP4 antes de subirlo. ' +
+          'Formatos aceptados: MP4, M4V, MOV'
+        );
       }
 
       // No file size limit for videos
@@ -321,17 +332,21 @@ class ProgramService {
       const sanitizedProgramId = programId.replace(/[^a-zA-Z0-9_-]/g, '_');
       const sanitizedScreenName = screenName.replace(/[^a-zA-Z0-9_-]/g, '_');
       
-      // Get file extension
-      const fileExtension = videoFile.name.split('.').pop() || 'mp4';
-      
-      // Create storage reference: courses/{programId}/tutorials/{screenName}/video_{timestamp}.{ext}
+      // STANDARD FORMAT: Force MP4 extension and content type
+      const standardExtension = 'mp4';
       const timestamp = Date.now();
-      const fileName = `video_${timestamp}.${fileExtension}`;
+      const fileName = `video_${timestamp}.${standardExtension}`;
       const storagePath = `courses/${sanitizedProgramId}/tutorials/${sanitizedScreenName}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Upload file with progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, videoFile);
+      // Set metadata with cache headers and standard MP4 content type
+      const metadata = {
+        contentType: 'video/mp4', // Always MP4
+        cacheControl: 'public, max-age=31536000' // Cache for 1 year
+      };
+
+      // Upload file with progress tracking and cache headers
+      const uploadTask = uploadBytesResumable(storageRef, videoFile, metadata);
 
       return new Promise((resolve, reject) => {
         uploadTask.on(
@@ -391,9 +406,20 @@ class ProgramService {
   // Upload program intro video
   async uploadProgramIntroVideo(programId, videoFile, onProgress = null) {
     try {
-      // Validate file type
-      if (!videoFile.type.startsWith('video/')) {
-        throw new Error('El archivo debe ser un video');
+      // STANDARD FORMAT: Validate MP4 format
+      const allowedMimeTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime']; // QuickTime .mov files
+      const allowedExtensions = ['mp4', 'm4v', 'mov'];
+      
+      const fileExtension = (videoFile.name.split('.').pop() || '').toLowerCase();
+      const isValidMimeType = videoFile.type && allowedMimeTypes.includes(videoFile.type);
+      const isValidExtension = allowedExtensions.includes(fileExtension);
+      
+      if (!isValidMimeType && !isValidExtension) {
+        throw new Error(
+          'El video debe estar en formato MP4. ' +
+          'Por favor convierte el video a MP4 antes de subirlo. ' +
+          'Formatos aceptados: MP4, M4V, MOV'
+        );
       }
 
       // No file size limit for videos
@@ -401,16 +427,20 @@ class ProgramService {
       // Sanitize program ID for storage path
       const sanitizedProgramId = programId.replace(/[^a-zA-Z0-9_-]/g, '_');
       
-      // Get file extension
-      const fileExtension = videoFile.name.split('.').pop() || 'mp4';
-      
-      // Create storage reference: courses/{programId}/intro_video.{ext}
-      const fileName = `intro_video.${fileExtension}`;
+      // STANDARD FORMAT: Force MP4 extension and content type
+      const standardExtension = 'mp4';
+      const fileName = `intro_video.${standardExtension}`;
       const storagePath = `courses/${sanitizedProgramId}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Upload file with progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, videoFile);
+      // Set metadata with cache headers and standard MP4 content type
+      const metadata = {
+        contentType: 'video/mp4', // Always MP4
+        cacheControl: 'public, max-age=31536000' // Cache for 1 year
+      };
+
+      // Upload file with progress tracking and cache headers
+      const uploadTask = uploadBytesResumable(storageRef, videoFile, metadata);
 
       return new Promise((resolve, reject) => {
         uploadTask.on(

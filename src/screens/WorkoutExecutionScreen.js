@@ -520,12 +520,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [selectedIntensity, setSelectedIntensity] = useState(null);
   const [remoteIntensityVideos, setRemoteIntensityVideos] = useState({});
 
-  // Intensity video mapping (bundled assets as safe fallback)
+  // Intensity video mapping (compressed preset videos as safe fallback)
+  // These are used only if Firebase download fails or hasn't completed yet
+  // Preset videos are ~90% smaller than originals, reducing app bundle size
   const intensityVideoMap = useMemo(() => ({
-    7: require('../../assets/videos/warmup/7 de 10.mov'),
-    8: require('../../assets/videos/warmup/8 de 10.mov'),
-    9: require('../../assets/videos/warmup/9 de 10.mov'),
-    10: require('../../assets/videos/warmup/10 de 10.mov'),
+    7: require('../../assets/videos/warmup/7_de_10_preset.mp4'),
+    8: require('../../assets/videos/warmup/8_de_10_preset.mp4'),
+    9: require('../../assets/videos/warmup/9_de_10_preset.mp4'),
+    10: require('../../assets/videos/warmup/10_de_10_preset.mp4'),
   }), []);
 
   // Load intensity videos from Firestore (app_resources.intensity)

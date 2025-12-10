@@ -79,14 +79,15 @@ const WarmupScreen = ({ navigation, route }) => {
       return;
     }
 
-    // Fallback to original bundled asset if no local file is available
+    // Fallback to compressed preset videos (bundled in app, ~90% smaller than originals)
+    // These are used only if Firebase download fails or hasn't completed yet
     const fallbackMap = {
-      'cardio.mp4': require('../../assets/videos/warmup/bici.mov'),
-      'circulos_adelante.mp4': require('../../assets/videos/warmup/c_adelante.mov'),
-      'circulos_atras.mp4': require('../../assets/videos/warmup/c_atras.mov'),
-      'zancadas.mp4': require('../../assets/videos/warmup/zanca.mov'),
-      'balanceo_derecha.mp4': require('../../assets/videos/warmup/p_derecha.mov'),
-      'balanceo_izquierda.mp4': require('../../assets/videos/warmup/p_izq.mov'),
+      'cardio.mp4': require('../../assets/videos/warmup/bici_preset.mp4'),
+      'circulos_adelante.mp4': require('../../assets/videos/warmup/c_adelante_preset.mp4'),
+      'circulos_atras.mp4': require('../../assets/videos/warmup/c_atras_preset.mp4'),
+      'zancadas.mp4': require('../../assets/videos/warmup/zanca_preset.mp4'),
+      'balanceo_derecha.mp4': require('../../assets/videos/warmup/p_derecha_preset.mp4'),
+      'balanceo_izquierda.mp4': require('../../assets/videos/warmup/p_izq_preset.mp4'),
     };
 
     setLocalVideoSource(fallbackMap[fileName] || null);

@@ -4,20 +4,15 @@ import { Text as RNText, Platform } from 'react-native';
 const Text = ({ style, children, ...props }) => {
   const getFontFamily = (fontWeight) => {
     switch (fontWeight) {
+      // Removed unused weights (100, 200, 300, 800, 900) to reduce app size
+      // Fallback to closest available weight if removed weight is requested
       case '100':
-        return Platform.select({
-          ios: 'Montserrat-Thin',
-          android: 'Montserrat-Thin',
-        });
       case '200':
-        return Platform.select({
-          ios: 'Montserrat-ExtraLight',
-          android: 'Montserrat-ExtraLight',
-        });
       case '300':
+        // Fallback to Regular (400) for thin/light weights
         return Platform.select({
-          ios: 'Montserrat-Light',
-          android: 'Montserrat-Light',
+          ios: 'Montserrat-Regular',
+          android: 'Montserrat-Regular',
         });
       case '400':
         return Platform.select({
@@ -40,14 +35,11 @@ const Text = ({ style, children, ...props }) => {
           android: 'Montserrat-Bold',
         });
       case '800':
-        return Platform.select({
-          ios: 'Montserrat-ExtraBold',
-          android: 'Montserrat-ExtraBold',
-        });
       case '900':
+        // Fallback to Bold (700) for extra bold/black weights
         return Platform.select({
-          ios: 'Montserrat-Black',
-          android: 'Montserrat-Black',
+          ios: 'Montserrat-Bold',
+          android: 'Montserrat-Bold',
         });
       default:
         return Platform.select({

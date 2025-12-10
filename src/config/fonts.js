@@ -1,29 +1,20 @@
 import { Platform } from 'react-native';
 import { 
   useFonts, 
-  Montserrat_100Thin,
-  Montserrat_200ExtraLight,
-  Montserrat_300Light, 
   Montserrat_400Regular, 
   Montserrat_500Medium,
   Montserrat_600SemiBold, 
-  Montserrat_700Bold,
-  Montserrat_800ExtraBold,
-  Montserrat_900Black
+  Montserrat_700Bold
 } from '@expo-google-fonts/montserrat';
 
-// Load Montserrat fonts
+// Load Montserrat fonts - Only loading used weights to reduce app size
+// Removed: 100Thin, 200ExtraLight, 300Light, 800ExtraBold, 900Black (not used in app)
 export const useMontserratFonts = () => {
   const [fontsLoaded] = useFonts({
-    Montserrat_100Thin,
-    Montserrat_200ExtraLight,
-    Montserrat_300Light,
     Montserrat_400Regular,
     Montserrat_500Medium,
     Montserrat_600SemiBold,
     Montserrat_700Bold,
-    Montserrat_800ExtraBold,
-    Montserrat_900Black,
   });
   return fontsLoaded;
 };

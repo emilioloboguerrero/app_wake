@@ -635,11 +635,12 @@ const MainScreen = ({ navigation, route }) => {
       // Clear consolidated cache to force fresh data
       consolidatedDataService.clearUserCache(user.uid);
       
-      // Force sync courses from Firestore to update cache
-      await hybridDataService.syncCourses(user.uid);
-      
-      // Use consolidated service to get fresh data
-      const { courses, downloadedData } = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
+      // OPTIMIZED: Run sync and get courses in parallel (they're independent operations)
+      const [_, coursesResult] = await Promise.all([
+        hybridDataService.syncCourses(user.uid),
+        consolidatedDataService.getUserCoursesWithDetails(user.uid)
+      ]);
+      const { courses, downloadedData } = coursesResult;
       
       logger.log('✅ Pull-to-refresh: Fresh courses loaded:', courses.length);
       
@@ -739,11 +740,12 @@ const MainScreen = ({ navigation, route }) => {
       // Clear consolidated cache to force fresh data
       consolidatedDataService.clearUserCache(user.uid);
       
-      // Force sync courses from Firestore to update cache
-      await hybridDataService.syncCourses(user.uid);
-      
-      // Use consolidated service to get fresh data
-      const { courses, downloadedData } = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
+      // OPTIMIZED: Run sync and get courses in parallel (they're independent operations)
+      const [_, coursesResult] = await Promise.all([
+        hybridDataService.syncCourses(user.uid),
+        consolidatedDataService.getUserCoursesWithDetails(user.uid)
+      ]);
+      const { courses, downloadedData } = coursesResult;
       
       logger.log('✅ Fresh courses loaded:', courses.length);
       

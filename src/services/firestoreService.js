@@ -219,79 +219,79 @@ class FirestoreService {
       );
       const modulesSnapshot = await getDocs(modulesQuery);
       
-      const modules = [];
-      
-      // For each module, get its sessions
-      for (const moduleDoc of modulesSnapshot.docs) {
-        const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
-        
-        // Get sessions for this module
-        try {
-          const sessionsQuery = query(
-            collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions'),
-            orderBy('order', 'asc')
-          );
-          const sessionsSnapshot = await getDocs(sessionsQuery);
+      // OPTIMIZED: Fetch all modules in parallel instead of sequential
+      const modules = await Promise.all(
+        modulesSnapshot.docs.map(async (moduleDoc) => {
+          const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
           
-          const sessions = [];
-          
-          // For each session, get its exercises
-          for (const sessionDoc of sessionsSnapshot.docs) {
-            const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
+          // Get sessions for this module
+          try {
+            const sessionsQuery = query(
+              collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions'),
+              orderBy('order', 'asc')
+            );
+            const sessionsSnapshot = await getDocs(sessionsQuery);
             
-            // Get exercises for this session
-            try {
-              const exercisesQuery = query(
-                collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises'),
-                orderBy('order', 'asc')
-              );
-              const exercisesSnapshot = await getDocs(exercisesQuery);
-              
-              const exercises = [];
-              
-              // For each exercise, get its sets
-              for (const exerciseDoc of exercisesSnapshot.docs) {
-                const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
+            // OPTIMIZED: Fetch all sessions in parallel
+            const sessions = await Promise.all(
+              sessionsSnapshot.docs.map(async (sessionDoc) => {
+                const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
                 
-                // Get sets for this exercise
+                // Get exercises for this session
                 try {
-                  const setsQuery = query(
-                    collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises', exerciseDoc.id, 'sets'),
+                  const exercisesQuery = query(
+                    collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises'),
                     orderBy('order', 'asc')
                   );
-                  const setsSnapshot = await getDocs(setsQuery);
+                  const exercisesSnapshot = await getDocs(exercisesQuery);
                   
-                  const sets = setsSnapshot.docs.map(setDoc => ({
-                    id: setDoc.id,
-                    ...setDoc.data()
-                  }));
+                  // OPTIMIZED: Fetch all exercises in parallel
+                  const exercises = await Promise.all(
+                    exercisesSnapshot.docs.map(async (exerciseDoc) => {
+                      const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
+                      
+                      // Get sets for this exercise
+                      try {
+                        const setsQuery = query(
+                          collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises', exerciseDoc.id, 'sets'),
+                          orderBy('order', 'asc')
+                        );
+                        const setsSnapshot = await getDocs(setsQuery);
+                        
+                        const sets = setsSnapshot.docs.map(setDoc => ({
+                          id: setDoc.id,
+                          ...setDoc.data()
+                        }));
+                        
+                        exerciseData.sets = sets;
+                      } catch (error) {
+                        console.warn(`No sets found for exercise ${exerciseDoc.id}:`, error.message);
+                        exerciseData.sets = [];
+                      }
+                      
+                      return exerciseData;
+                    })
+                  );
                   
-                  exerciseData.sets = sets;
+                  sessionData.exercises = exercises;
                 } catch (error) {
-                  console.warn(`No sets found for exercise ${exerciseDoc.id}:`, error.message);
-                  exerciseData.sets = [];
+                  console.warn(`No exercises found for session ${sessionDoc.id}:`, error.message);
+                  sessionData.exercises = [];
                 }
                 
-                exercises.push(exerciseData);
-              }
-              
-              sessionData.exercises = exercises;
-            } catch (error) {
-              console.warn(`No exercises found for session ${sessionDoc.id}:`, error.message);
-              sessionData.exercises = [];
-            }
+                return sessionData;
+              })
+            );
             
-            sessions.push(sessionData);
+            moduleData.sessions = sessions;
+          } catch (error) {
+            console.warn(`No sessions found for module ${moduleDoc.id}:`, error.message);
+            moduleData.sessions = [];
           }
           
-          moduleData.sessions = sessions;
-        } catch (error) {
-          console.warn(`No sessions found for module ${moduleDoc.id}:`, error.message);
-          moduleData.sessions = [];
-        }
-        
-        modules.push(moduleData);
-      }
+          return moduleData;
+        })
+      );
       
       return modules;
     } catch (error) {

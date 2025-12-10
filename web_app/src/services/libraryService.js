@@ -144,17 +144,39 @@ class LibraryService {
   // Upload video for an exercise with progress callback
   async uploadExerciseVideo(libraryId, exerciseName, videoFile, onProgress) {
     try {
+      // STANDARD FORMAT: Validate MP4 format
+      const allowedMimeTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime']; // QuickTime .mov files
+      const allowedExtensions = ['mp4', 'm4v', 'mov'];
+      
+      const fileExtension = (videoFile.name.split('.').pop() || '').toLowerCase();
+      const isValidMimeType = videoFile.type && allowedMimeTypes.includes(videoFile.type);
+      const isValidExtension = allowedExtensions.includes(fileExtension);
+      
+      if (!isValidMimeType && !isValidExtension) {
+        throw new Error(
+          'El video debe estar en formato MP4. ' +
+          'Por favor convierte el video a MP4 antes de subirlo. ' +
+          'Formatos aceptados: MP4, M4V, MOV'
+        );
+      }
+
       // Sanitize exercise name for use in file path (remove invalid characters)
       const sanitizedExerciseName = exerciseName.replace(/[^a-zA-Z0-9_-]/g, '_');
       
-      // Create storage reference: exercises_library/{libraryId}/{exerciseName}/video.{ext}
-      const fileExtension = videoFile.name.split('.').pop() || 'mp4';
-      const fileName = `video.${fileExtension}`;
+      // STANDARD FORMAT: Force MP4 extension and content type
+      const standardExtension = 'mp4';
+      const fileName = `video.${standardExtension}`;
       const storagePath = `exercises_library/${libraryId}/${sanitizedExerciseName}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Use uploadBytesResumable for progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, videoFile);
+      // Set metadata with cache headers and standard MP4 content type
+      const metadata = {
+        contentType: 'video/mp4', // Always MP4
+        cacheControl: 'public, max-age=31536000' // Cache for 1 year
+      };
+
+      // Use uploadBytesResumable for progress tracking with cache headers
+      const uploadTask = uploadBytesResumable(storageRef, videoFile, metadata);
 
       // Return a promise that resolves when upload completes
       return new Promise((resolve, reject) => {
