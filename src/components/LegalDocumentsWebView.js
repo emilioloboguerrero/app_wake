@@ -1,5 +1,5 @@
 // Legal Documents WebView Component
-// Opens wakelab.co website for legal documents (Terms, Privacy, Refund)
+// Opens wakelab.co/legal for legal documents (Terms, Privacy, Refund)
 
 import React, { useState } from 'react';
 import {
@@ -94,7 +94,7 @@ const LegalDocumentsWebView = ({
           )}
 
           <WebView
-            source={{ uri: 'https://www.wakelab.co' }}
+            source={{ uri: 'https://wakelab.co/legal' }}
             style={styles.webview}
             onNavigationStateChange={handleNavigationStateChange}
             onLoad={handleWebViewLoad}

@@ -76,6 +76,17 @@ service firebase.storage {
         );
     }
     
+    // Legal documents (publicly readable, admin-only write)
+    match /legal-documents/{fileName} {
+      // Allow anyone to read legal documents (no authentication required)
+      allow read: if true;
+      
+      // Only authenticated users can write (you can add admin check later)
+      allow write: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024  // Max 5MB
+        && request.resource.contentType == 'application/pdf';  // Only PDF files
+    }
+    
     // Deny all other access by default
     match /{allPaths=**} {
       allow read, write: if false;

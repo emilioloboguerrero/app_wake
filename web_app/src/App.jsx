@@ -11,6 +11,7 @@ import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import CoursePurchaseScreen from './screens/CoursePurchaseScreen';
 import BibliotecaScreen from './screens/BibliotecaScreen';
+import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -92,6 +93,7 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+            <Route path="/legal" element={<LegalDocumentsScreen />} />
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
