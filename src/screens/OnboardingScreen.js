@@ -93,10 +93,14 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     extrapolate: 'clamp',
   });
   
-  // Form state
+  // Check if user signed in with Apple
+  const isAppleUser = user?.providerData?.some(provider => provider.providerId === 'apple.com') || false;
+  const hasAppleProvidedData = isAppleUser && (user?.displayName || user?.email);
+
+  // Form state - pre-fill with Apple-provided data if available
   const [formData, setFormData] = useState({
     profilePicture: null, // Profile picture URI
-    displayName: '',
+    displayName: user?.displayName || '',
     username: '',
     phoneNumber: '',
     email: user?.email || '',
@@ -390,8 +394,11 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   };
 
   const isFormComplete = () => {
+    // Check if displayName is provided (either from form or Apple)
+    const hasDisplayName = formData.displayName.trim() || (hasAppleProvidedData && user?.displayName);
+    
     return (
-      formData.displayName.trim() &&
+      hasDisplayName &&
       formData.username.trim() &&
       formData.username.trim().length >= 3 &&
       usernameAvailable === true &&
@@ -407,8 +414,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   const validateForm = () => {
     const newErrors = {};
 
-    // Required fields
-    if (!formData.displayName.trim()) {
+    // Required fields - displayName is optional if provided by Apple
+    if (!formData.displayName.trim() && !hasAppleProvidedData) {
       newErrors.displayName = 'El nombre completo es requerido';
     }
     if (!formData.username.trim()) {
@@ -497,7 +504,11 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     try {
       // Validate inputs before processing
       try {
-        validateDisplayName(formData.displayName);
+        // Only validate displayName if it was manually entered (not from Apple)
+        const displayNameToValidate = formData.displayName.trim() || (hasAppleProvidedData && user?.displayName ? user.displayName : '');
+        if (!hasAppleProvidedData || formData.displayName.trim()) {
+          validateDisplayName(displayNameToValidate);
+        }
         validateUsernameFormat(formData.username);
         if (formData.phoneNumber?.trim()) {
           validatePhoneNumber(formData.phoneNumber);
@@ -518,9 +529,13 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       const userData = {};
       
       // Required fields - sanitized
-      if (formData.displayName?.trim()) userData.displayName = sanitizeInput.text(formData.displayName.trim());
+      // Use displayName from form, or fall back to Apple-provided displayName
+      const finalDisplayName = formData.displayName?.trim() || (hasAppleProvidedData && user?.displayName ? user.displayName : '');
+      if (finalDisplayName) userData.displayName = sanitizeInput.text(finalDisplayName);
       if (formData.username?.trim()) userData.username = sanitizeInput.text(formData.username.trim().toLowerCase());
-      if (formData.email) userData.email = sanitizeInput.html(formData.email).toLowerCase();
+      // Use email from form, or fall back to Apple-provided email
+      const finalEmail = formData.email || (hasAppleProvidedData && user?.email ? user.email : '');
+      if (finalEmail) userData.email = sanitizeInput.html(finalEmail).toLowerCase();
       if (birthDateString) userData.birthDate = birthDateString;
       if (age !== undefined && age !== null) userData.age = age;
       if (formData.gender) userData.gender = sanitizeInput.text(formData.gender);
@@ -722,16 +737,21 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                     style={[
                       styles.input, 
                       errors.displayName && styles.inputError,
-                      formData.displayName.trim() && styles.inputSuccess
+                      (formData.displayName.trim() || (hasAppleProvidedData && user?.displayName)) && styles.inputSuccess,
+                      hasAppleProvidedData && user?.displayName && styles.inputDisabled
                     ]}
-                    value={formData.displayName}
+                    value={formData.displayName || (hasAppleProvidedData && user?.displayName ? user.displayName : '') || ''}
                     onChangeText={(value) => handleInputChange('displayName', value)}
                     placeholder="Nombre Completo"
                     placeholderTextColor="#777"
                     autoCapitalize="words"
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
+                    editable={!hasAppleProvidedData || !user?.displayName || !!formData.displayName.trim()}
                   />
+                  {hasAppleProvidedData && user?.displayName && !formData.displayName.trim() && (
+                    <Text style={styles.helperText}>Proporcionado por Apple</Text>
+                  )}
                   {errors.displayName && <Text style={styles.errorText}>{errors.displayName}</Text>}
 
                   <TextInput
@@ -1161,6 +1181,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                 editable={false}
                 placeholderTextColor="#777"
               />
+              {hasAppleProvidedData && user?.email && (
+                <Text style={styles.helperText}>Proporcionado por Apple</Text>
+              )}
             </View>
 
             {/* Objectives removed for now */}
@@ -1389,6 +1412,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     marginTop: 5,
+  },
+  helperText: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 5,
+    fontStyle: 'italic',
   },
   validationContainer: {
     flexDirection: 'row',

@@ -6,7 +6,7 @@ import { createUserDocument } from './firestoreService';
 import firestoreService from './firestoreService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import logger from '../utils/logger';
+import logger from '../utils/logger'; 
 import * as Crypto from 'expo-crypto';
 
 // Check if running in Expo Go

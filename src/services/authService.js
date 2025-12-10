@@ -6,7 +6,12 @@ import {
   signOut, 
   updateProfile,
   sendPasswordResetEmail,
-  onAuthStateChanged
+  onAuthStateChanged,
+  deleteUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  GoogleAuthProvider,
+  OAuthProvider
 } from 'firebase/auth';
 import { authStorage } from '../utils/authStorage';
 import profilePictureService from './profilePictureService';
@@ -134,6 +139,82 @@ class AuthService {
     try {
       await sendPasswordResetEmail(auth, email);
     } catch (error) {
+      throw error;
+    }
+  }
+
+  // Delete user account (requires reauthentication)
+  async deleteAccount(credential = null) {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('No user is currently signed in');
+      }
+
+      const userId = currentUser.uid;
+      
+      // Reauthenticate if credential is provided
+      if (credential) {
+        await reauthenticateWithCredential(currentUser, credential);
+      }
+
+      // Import firestoreService here to avoid circular dependency
+      const firestoreService = (await import('./firestoreService')).default;
+      
+      // Delete profile picture from Storage FIRST (before deleting user document)
+      // This ensures we still have permissions to access Storage
+      try {
+        await profilePictureService.deleteProfilePicture(userId);
+      } catch (error) {
+        // Ignore errors if picture doesn't exist or permission denied
+        // This is not critical - continue with account deletion
+        if (error.code === 'storage/object-not-found' || 
+            error.code === 'storage/unauthorized' ||
+            error.message?.includes('does not exist')) {
+          console.log('Profile picture does not exist or already deleted, continuing...');
+        } else {
+          console.warn('Failed to delete profile picture (non-critical):', error.message || error);
+        }
+      }
+
+      // Delete all user data from Firestore (except purchases as per requirements)
+      await firestoreService.deleteAllUserData(userId);
+
+      // Revoke OAuth tokens (if applicable)
+      if (!isExpoGo) {
+        try {
+          const isGoogleSignedIn = await googleAuthService.isSignedIn();
+          if (isGoogleSignedIn) {
+            await googleAuthService.signOut();
+          }
+        } catch (error) {
+          console.warn('Failed to revoke Google token:', error);
+        }
+
+        try {
+          const isAppleSignedIn = await appleAuthService.isSignedIn();
+          if (isAppleSignedIn) {
+            await appleAuthService.revokeToken();
+          }
+        } catch (error) {
+          console.warn('Failed to revoke Apple token:', error);
+        }
+      }
+
+      // Clear all local caches before deleting account
+      await Promise.all([
+        profilePictureService.clearUserCache(userId),
+        hybridDataService.clearUserCache(userId),
+        sessionManager.clearUserCache(userId),
+        authStorage.clearAuthState()
+      ]);
+
+      // Delete Firebase Auth account
+      await deleteUser(currentUser);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting account:', error);
       throw error;
     }
   }

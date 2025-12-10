@@ -21,7 +21,9 @@ import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import firestoreService from '../services/firestoreService';
 import { auth, firestore } from '../config/firebase';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import googleAuthService from '../services/googleAuthService';
+import appleAuthService from '../services/appleAuthService';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import hybridDataService from '../services/hybridDataService';
 import tutorialManager from '../services/tutorialManager';
@@ -51,6 +53,26 @@ const ProfileScreen = ({ navigation }) => {
   // Settings modal state
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  
+  // Delete account state
+  const [isDeleteAccountModalVisible, setIsDeleteAccountModalVisible] = useState(false);
+  const [isDeleteConfirmModalVisible, setIsDeleteConfirmModalVisible] = useState(false);
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteAccountFeedback, setDeleteAccountFeedback] = useState('');
+  const [selectedDeleteReason, setSelectedDeleteReason] = useState(null);
+  const [showFinalDeleteButton, setShowFinalDeleteButton] = useState(false);
+  const [wasSettingsModalOpen, setWasSettingsModalOpen] = useState(false); // Track if settings modal was open before opening delete modal
+
+  // Preset deletion reasons
+  const deletionReasons = [
+    'Ya no uso la aplicación',
+    'Encontré una alternativa mejor',
+    'Problemas técnicos',
+    'No me gusta el contenido',
+    'Muy caro',
+    'Otros'
+  ];
   
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
@@ -357,6 +379,198 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
+  // Handle delete account request
+  const handleDeleteAccountRequest = () => {
+    console.log('🗑️ Delete account button pressed');
+    // Remember that settings modal was open
+    setWasSettingsModalOpen(isSettingsModalVisible);
+    // Close settings modal and open delete account modal
+    setIsSettingsModalVisible(false);
+    setDeleteAccountFeedback('');
+    setSelectedDeleteReason(null);
+    setShowFinalDeleteButton(false);
+    setDeletePassword('');
+    // Small delay to ensure smooth transition
+    setTimeout(() => {
+      setIsDeleteAccountModalVisible(true);
+    }, 100);
+  };
+
+  // Handle close delete account modal
+  const handleCloseDeleteAccountModal = () => {
+    setIsDeleteAccountModalVisible(false);
+    setDeleteAccountFeedback('');
+    setSelectedDeleteReason(null);
+    setShowFinalDeleteButton(false);
+    setDeletePassword('');
+    // Reopen settings modal if it was open before
+    if (wasSettingsModalOpen) {
+      setTimeout(() => {
+        setIsSettingsModalVisible(true);
+        setWasSettingsModalOpen(false);
+      }, 100);
+    }
+  };
+
+  // Handle reason selection
+  const handleReasonSelect = (reason) => {
+    setSelectedDeleteReason(reason);
+    if (reason !== 'Otros') {
+      setDeleteAccountFeedback(reason);
+    } else {
+      setDeleteAccountFeedback(''); // Clear feedback when selecting "Otros" to show text input
+    }
+  };
+
+  // Save feedback and proceed to final deletion step
+  const handleSaveFeedbackAndProceed = async () => {
+    // Validate feedback
+    let feedbackToSave = '';
+    if (selectedDeleteReason === 'Otros') {
+      if (!deleteAccountFeedback.trim()) {
+        Alert.alert('Campo requerido', 'Por favor, cuéntanos por qué deseas eliminar tu cuenta.');
+        return;
+      }
+      feedbackToSave = deleteAccountFeedback.trim();
+    } else if (selectedDeleteReason) {
+      feedbackToSave = selectedDeleteReason;
+    } else {
+      Alert.alert('Campo requerido', 'Por favor, selecciona una razón para eliminar tu cuenta.');
+      return;
+    }
+
+    if (!auth.currentUser) {
+      Alert.alert('Error', 'No hay un usuario autenticado');
+      return;
+    }
+
+    try {
+      setDeleteAccountLoading(true);
+      
+      // Save feedback to Firestore before deletion
+      await firestoreService.saveAccountDeletionFeedback(
+        auth.currentUser.uid,
+        feedbackToSave
+      );
+
+      // Show final delete button
+      setShowFinalDeleteButton(true);
+    } catch (error) {
+      console.error('Error saving feedback:', error);
+      Alert.alert('Error', 'No se pudo guardar el feedback. Por favor intenta de nuevo.');
+    } finally {
+      setDeleteAccountLoading(false);
+    }
+  };
+
+  // Handle delete account confirmation
+  const handleDeleteAccountConfirm = async () => {
+    if (!auth.currentUser) {
+      Alert.alert('Error', 'No hay un usuario autenticado');
+      return;
+    }
+
+    if (!showFinalDeleteButton) {
+      Alert.alert('Error', 'Por favor completa el feedback primero');
+      return;
+    }
+
+    try {
+      setDeleteAccountLoading(true);
+      let credential = null;
+
+      // Determine auth provider and get credential
+      const providerId = auth.currentUser.providerData[0]?.providerId;
+      
+      if (providerId === 'password') {
+        // Email/password authentication - need password
+        if (!deletePassword.trim()) {
+          Alert.alert('Error', 'Por favor ingresa tu contraseña para confirmar');
+          setDeleteAccountLoading(false);
+          return;
+        }
+        credential = EmailAuthProvider.credential(
+          auth.currentUser.email,
+          deletePassword
+        );
+      } else if (providerId === 'google.com') {
+        // Google authentication - reauthenticate with Google
+        try {
+          const GoogleSigninModule = await googleAuthService.loadGoogleSignIn();
+          await GoogleSigninModule.hasPlayServices({ showPlayServicesUpdateDialog: true });
+          const signInResult = await GoogleSigninModule.signIn();
+          const idToken = signInResult.data?.idToken || signInResult.idToken;
+          if (idToken) {
+            credential = GoogleAuthProvider.credential(idToken);
+          } else {
+            throw new Error('No se obtuvo el token de Google');
+          }
+        } catch (error) {
+          console.error('Google reauthentication error:', error);
+          throw new Error('No se pudo reautenticar con Google. Por favor intenta de nuevo.');
+        }
+      } else if (providerId === 'apple.com') {
+        // Apple authentication - reauthenticate with Apple
+        try {
+          const { appleAuth: appleAuthModule } = await appleAuthService.loadAppleSignIn();
+          const { identityToken } = await appleAuthModule.performRequest({
+            requestedOperation: appleAuthModule.Operation.REFRESH,
+          });
+          if (identityToken) {
+            credential = OAuthProvider.credential('apple.com', identityToken);
+          } else {
+            throw new Error('No se obtuvo el token de Apple');
+          }
+        } catch (error) {
+          console.error('Apple reauthentication error:', error);
+          throw new Error('No se pudo reautenticar con Apple. Por favor intenta de nuevo.');
+        }
+      }
+
+      // Delete the account
+      await authService.deleteAccount(credential);
+      
+      // Close modals and clear all state
+      setIsDeleteAccountModalVisible(false);
+      setIsDeleteConfirmModalVisible(false);
+      setDeletePassword('');
+      setDeleteAccountFeedback('');
+      setShowFinalDeleteButton(false);
+      setWasSettingsModalOpen(false);
+      
+      // Show success message (user will be signed out automatically)
+      Alert.alert(
+        'Cuenta eliminada',
+        'Tu cuenta ha sido eliminada permanentemente. Todos tus datos han sido eliminados.',
+        [
+          {
+            text: 'Entendido',
+            onPress: () => {
+              // Navigation will be handled by AuthContext
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      
+      let errorMessage = 'No se pudo eliminar la cuenta.';
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Contraseña incorrecta. Por favor intenta de nuevo.';
+      } else if (error.code === 'auth/requires-recent-login') {
+        errorMessage = 'Por seguridad, necesitas iniciar sesión nuevamente antes de eliminar tu cuenta.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Error', errorMessage);
+      setDeletePassword('');
+      // Don't reset showFinalDeleteButton or feedback on error - let user try again
+    } finally {
+      setDeleteAccountLoading(false);
+    }
+  };
+
   // Check for tutorials to show
   const checkForTutorials = async () => {
     if (!user?.uid) return;
@@ -423,7 +637,7 @@ const ProfileScreen = ({ navigation }) => {
                   
                   <ScrollView 
                     style={styles.settingsModalContent}
-                    contentContainerStyle={{flexGrow: 1, paddingBottom: 300}}
+                    contentContainerStyle={{flexGrow: 1, paddingBottom: 100}}
                     showsVerticalScrollIndicator={false} 
                     keyboardShouldPersistTaps="handled"
                   >
@@ -612,6 +826,16 @@ const ProfileScreen = ({ navigation }) => {
                   <TouchableOpacity style={styles.signOutButtonInModal} onPress={handleSignOut}>
                     <Text style={styles.signOutTextInModal}>Cerrar Sesión</Text>
                   </TouchableOpacity>
+
+                  {/* Delete Account Button */}
+                  <TouchableOpacity 
+                    style={styles.deleteAccountButtonInModal} 
+                    onPress={handleDeleteAccountRequest}
+                    activeOpacity={0.7}
+                    delayPressIn={0}
+                  >
+                    <Text style={styles.deleteAccountTextInModal}>Eliminar Cuenta</Text>
+                  </TouchableOpacity>
                 </ScrollView>
                 
                 {/* Fixed Update Button */}
@@ -633,6 +857,191 @@ const ProfileScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 </View>
               </KeyboardAvoidingView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isDeleteAccountModalVisible}
+        onRequestClose={() => {
+          if (!deleteAccountLoading) {
+            handleCloseDeleteAccountModal();
+          }
+        }}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseDeleteAccountModal} accessible={false}>
+          <View style={styles.settingsModalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <View style={styles.deleteModalContainer}>
+                <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
+                  <View style={styles.deleteModalHeader}>
+                    <Text style={styles.deleteModalHeaderTitle}>Eliminar Cuenta</Text>
+                    <TouchableOpacity onPress={handleCloseDeleteAccountModal} style={styles.closeButton}>
+                      <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <ScrollView 
+                    style={styles.deleteModalScrollView}
+                    contentContainerStyle={{flexGrow: 1, paddingBottom: 100}}
+                    showsVerticalScrollIndicator={false} 
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <View style={styles.deleteModalContent}>
+              
+              {!showFinalDeleteButton ? (
+                <>
+                  <Text style={styles.deleteModalMessage}>
+                    Antes de proceder, nos gustaría saber por qué deseas eliminar tu cuenta. Esto nos ayuda a mejorar.
+                  </Text>
+                  
+                  <View style={styles.reasonsContainer}>
+                    {deletionReasons.map((reason, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.reasonOption,
+                          selectedDeleteReason === reason && styles.reasonOptionSelected
+                        ]}
+                        onPress={() => handleReasonSelect(reason)}
+                        disabled={deleteAccountLoading}
+                      >
+                        <View style={styles.reasonOptionContent}>
+                          <View style={[
+                            styles.radioButton,
+                            selectedDeleteReason === reason && styles.radioButtonSelected
+                          ]}>
+                            {selectedDeleteReason === reason && (
+                              <View style={styles.radioButtonInner} />
+                            )}
+                          </View>
+                          <Text style={[
+                            styles.reasonOptionText,
+                            selectedDeleteReason === reason && styles.reasonOptionTextSelected
+                          ]}>
+                            {reason}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {selectedDeleteReason === 'Otros' && (
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>
+                        Por favor, cuéntanos más:
+                      </Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Describe tu razón..."
+                        placeholderTextColor="#999999"
+                        multiline
+                        numberOfLines={4}
+                        value={deleteAccountFeedback}
+                        onChangeText={setDeleteAccountFeedback}
+                        textAlignVertical="top"
+                        autoCapitalize="sentences"
+                        editable={!deleteAccountLoading}
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.fixedUpdateButtonContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.updateProfileButton,
+                        (!selectedDeleteReason || (selectedDeleteReason === 'Otros' && !deleteAccountFeedback.trim()) || deleteAccountLoading) && styles.updateProfileButtonDisabled
+                      ]}
+                      onPress={handleSaveFeedbackAndProceed}
+                      disabled={!selectedDeleteReason || (selectedDeleteReason === 'Otros' && !deleteAccountFeedback.trim()) || deleteAccountLoading}
+                    >
+                      <Text style={[
+                        styles.updateProfileButtonText,
+                        (!selectedDeleteReason || (selectedDeleteReason === 'Otros' && !deleteAccountFeedback.trim()) || deleteAccountLoading) && styles.updateProfileButtonTextDisabled
+                      ]}>
+                        {deleteAccountLoading ? 'Guardando...' : 'Continuar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.deleteModalMessage}>
+                    Esta acción no se puede deshacer. Se eliminarán permanentemente:
+                  </Text>
+                  <View style={styles.deleteModalList}>
+                    <Text style={styles.deleteModalListItem}>• Tu perfil y datos personales</Text>
+                    <Text style={styles.deleteModalListItem}>• Tu historial de ejercicios</Text>
+                    <Text style={styles.deleteModalListItem}>• Tu historial de sesiones</Text>
+                    <Text style={styles.deleteModalListItem}>• Tu foto de perfil</Text>
+                  </View>
+                  <Text style={styles.deleteModalNote}>
+                    Nota: Tus compras se conservarán por razones legales y contables.
+                  </Text>
+                  
+                  {auth.currentUser?.providerData[0]?.providerId === 'password' && (
+                    <TextInput
+                      style={styles.deletePasswordInput}
+                      placeholder="Ingresa tu contraseña para confirmar"
+                      placeholderTextColor="#999999"
+                      secureTextEntry
+                      value={deletePassword}
+                      onChangeText={setDeletePassword}
+                      autoCapitalize="none"
+                      editable={!deleteAccountLoading}
+                    />
+                  )}
+
+                  <View style={styles.finalDeleteButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.deleteCancelButtonInModal}
+                      onPress={handleCloseDeleteAccountModal}
+                      disabled={deleteAccountLoading}
+                    >
+                      <Text style={styles.deleteCancelTextInModal}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.deleteAccountButtonInModal,
+                        (deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())) && styles.deleteAccountButtonDisabled
+                      ]}
+                      onPress={() => {
+                        Alert.alert(
+                          'Última confirmación',
+                          '¿Estás seguro de que deseas eliminar tu cuenta permanentemente? Esta acción no se puede deshacer.',
+                          [
+                            {
+                              text: 'Cancelar',
+                              style: 'cancel'
+                            },
+                            {
+                              text: 'Eliminar',
+                              style: 'destructive',
+                              onPress: handleDeleteAccountConfirm
+                            }
+                          ]
+                        );
+                      }}
+                      disabled={deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())}
+                    >
+                      <Text style={[
+                        styles.deleteAccountTextInModal,
+                        (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim()) && styles.deleteAccountTextDisabled
+                      ]}>
+                        {deleteAccountLoading ? 'Eliminando...' : 'Eliminar Permanentemente'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+                    </View>
+                  </ScrollView>
+                </KeyboardAvoidingView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -999,6 +1408,241 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  deleteAccountButtonInModal: {
+    backgroundColor: 'rgba(220, 53, 69, 0.2)',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 30,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '70%',
+    maxWidth: 250,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  deleteAccountTextInModal: {
+    color: '#dc3545',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteAccountTextDisabled: {
+    color: '#666666',
+  },
+  deleteCancelButtonInModal: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '70%',
+    maxWidth: 250,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  deleteCancelTextInModal: {
+    color: '#cccccc',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteAccountButtonDisabled: {
+    opacity: 0.5,
+  },
+  finalDeleteButtonsContainer: {
+    marginTop: 20,
+    marginBottom: 30,
+    gap: 8,
+    alignItems: 'center',
+  },
+  // Delete Account Modal Styles
+  deleteModalContainer: {
+    backgroundColor: '#2a2a2a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '95%',
+    minHeight: '80%',
+  },
+  deleteModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  deleteModalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+    flex: 1,
+    paddingLeft: Math.max(20, screenWidth * 0.05),
+  },
+  deleteModalScrollView: {
+    flex: 1,
+  },
+  deleteModalContent: {
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 80,
+  },
+  deleteModalTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#dc3545',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 16,
+    color: '#ffffff',
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  deleteModalSubMessage: {
+    fontSize: 15,
+    color: '#cccccc',
+    marginBottom: 16,
+    fontWeight: '500',
+  },
+  deleteModalList: {
+    marginBottom: 16,
+    paddingLeft: 20,
+  },
+  deleteModalListItem: {
+    fontSize: 14,
+    color: '#cccccc',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  deleteModalNote: {
+    fontSize: 13,
+    color: '#999999',
+    fontStyle: 'italic',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  deleteFeedbackInput: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#ffffff',
+    marginBottom: 20,
+    minHeight: 120,
+    maxHeight: 200,
+  },
+  deletePasswordInput: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#ffffff',
+    marginBottom: 20,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  deleteModalButtonCancel: {
+    backgroundColor: '#3a3a3a',
+  },
+  deleteModalButtonContinue: {
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 77, 0.72)',
+  },
+  deleteModalButtonConfirm: {
+    backgroundColor: '#dc3545',
+  },
+  deleteModalButtonDisabled: {
+    opacity: 0.5,
+  },
+  deleteModalButtonCancelText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteModalButtonContinueText: {
+    color: 'rgba(191, 168, 77, 1)',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteModalButtonConfirmText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Reasons Selection Styles
+  reasonsContainer: {
+    marginTop: 20,
+    marginBottom: 20,
+    gap: 12,
+  },
+  reasonOption: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 0,
+  },
+  reasonOptionSelected: {
+    backgroundColor: 'rgba(220, 53, 69, 0.2)',
+    borderColor: '#dc3545',
+  },
+  reasonOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  radioButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioButtonSelected: {
+    borderColor: '#dc3545',
+  },
+  radioButtonInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#dc3545',
+  },
+  reasonOptionText: {
+    fontSize: 16,
+    color: '#ffffff',
+    flex: 1,
+  },
+  reasonOptionTextSelected: {
+    color: '#ffffff',
+    fontWeight: '500',
+  },
+  otherReasonContainer: {
+    marginTop: 20,
+    marginBottom: 20,
   },
   disciplineCard: {
     backgroundColor: '#2a2a2a',

@@ -169,6 +169,17 @@ service cloud.firestore {
     }
     
     // ============================================
+    // ACCOUNT DELETION FEEDBACK
+    // ============================================
+    
+    // Account deletion feedback - users can create their own feedback, admins can read all
+    match /account_deletion_feedback/{feedbackId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+    
+    // ============================================
     // DEFAULT RULE (Fallback for any other collections)
     // ============================================
     

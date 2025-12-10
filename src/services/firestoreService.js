@@ -5,6 +5,7 @@ import {
   setDoc, 
   getDoc, 
   updateDoc, 
+  deleteDoc,
   collection, 
   query, 
   where, 
@@ -12,7 +13,8 @@ import {
   limit, 
   getDocs, 
   addDoc, 
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 
 // Helper function to remove undefined values from an object recursively
@@ -845,6 +847,177 @@ class FirestoreService {
       return null;
     } catch (error) {
       console.error('❌ Error getting user course version:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save account deletion feedback before deletion
+   */
+  async saveAccountDeletionFeedback(userId, feedback) {
+    try {
+      console.log('💬 Saving account deletion feedback for user:', userId);
+      
+      const feedbackData = {
+        userId: userId,
+        feedback: feedback,
+        timestamp: serverTimestamp(),
+        deleted: false, // Will be updated when account is actually deleted
+      };
+
+      // Save to a separate collection that won't be deleted
+      await addDoc(collection(firestore, 'account_deletion_feedback'), feedbackData);
+      
+      console.log('✅ Account deletion feedback saved');
+      return true;
+    } catch (error) {
+      console.error('❌ Error saving account deletion feedback:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all user data from Firestore (except purchases as per requirements)
+   */
+  async deleteAllUserData(userId) {
+    try {
+      console.log('🗑️ Starting deletion of all user data for:', userId);
+
+      // Delete subcollections
+      await this.deleteSubcollection(userId, 'exerciseHistory');
+      await this.deleteSubcollection(userId, 'sessionHistory');
+
+      // Delete user_progress documents (documents starting with userId_)
+      await this.deleteUserProgressDocuments(userId);
+
+      // Delete completed_sessions documents (documents starting with userId_)
+      await this.deleteCompletedSessionsDocuments(userId);
+
+      // Delete main user document
+      const userRef = doc(firestore, 'users', userId);
+      await deleteDoc(userRef);
+      console.log('✅ User document deleted');
+
+      console.log('✅ All user data deleted successfully');
+    } catch (error) {
+      console.error('❌ Error deleting user data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Delete a subcollection
+   */
+  async deleteSubcollection(userId, subcollectionName) {
+    try {
+      const subcollectionRef = collection(firestore, 'users', userId, subcollectionName);
+      const snapshot = await getDocs(subcollectionRef);
+      
+      if (snapshot.empty) {
+        console.log(`✅ ${subcollectionName} subcollection is empty`);
+        return;
+      }
+
+      // Firestore batch limit is 500 operations
+      const batchSize = 500;
+      const docs = snapshot.docs;
+      
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const batch = writeBatch(firestore);
+        const batchDocs = docs.slice(i, i + batchSize);
+        
+        batchDocs.forEach((docSnapshot) => {
+          batch.delete(docSnapshot.ref);
+        });
+        
+        await batch.commit();
+        console.log(`✅ Deleted ${batchDocs.length} documents from ${subcollectionName} (batch ${Math.floor(i / batchSize) + 1})`);
+      }
+
+      console.log(`✅ ${subcollectionName} subcollection deleted (${docs.length} documents)`);
+    } catch (error) {
+      console.error(`❌ Error deleting ${subcollectionName} subcollection:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Delete user_progress documents
+   */
+  async deleteUserProgressDocuments(userId) {
+    try {
+      const userProgressRef = collection(firestore, 'user_progress');
+      
+      // Fetch all user_progress docs and filter client-side
+      // Note: For large collections, consider adding a userId field to documents for better querying
+      const snapshot = await getDocs(userProgressRef);
+      const userDocs = snapshot.docs.filter(doc => 
+        doc.id.startsWith(userId + '_') || doc.id === userId
+      );
+
+      if (userDocs.length === 0) {
+        console.log('✅ No user_progress documents to delete');
+        return;
+      }
+
+      // Batch delete
+      const batchSize = 500;
+      for (let i = 0; i < userDocs.length; i += batchSize) {
+        const batch = writeBatch(firestore);
+        const batchDocs = userDocs.slice(i, i + batchSize);
+        
+        batchDocs.forEach((docSnapshot) => {
+          batch.delete(docSnapshot.ref);
+        });
+        
+        await batch.commit();
+        console.log(`✅ Deleted ${batchDocs.length} user_progress documents (batch ${Math.floor(i / batchSize) + 1})`);
+      }
+
+      console.log(`✅ user_progress documents deleted (${userDocs.length} documents)`);
+    } catch (error) {
+      console.error('❌ Error deleting user_progress documents:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Delete completed_sessions documents
+   */
+  async deleteCompletedSessionsDocuments(userId) {
+    try {
+      const completedSessionsRef = collection(firestore, 'completed_sessions');
+      const snapshot = await getDocs(completedSessionsRef);
+      
+      // Filter documents that start with userId_ or have userId in data
+      const userDocs = snapshot.docs.filter(doc => {
+        const docId = doc.id;
+        const docData = doc.data();
+        return docId.startsWith(userId + '_') || docData.userId === userId;
+      });
+
+      if (userDocs.length === 0) {
+        console.log('✅ No completed_sessions documents to delete');
+        return;
+      }
+
+      // Batch delete
+      const batchSize = 500;
+      for (let i = 0; i < userDocs.length; i += batchSize) {
+        const batch = writeBatch(firestore);
+        const batchDocs = userDocs.slice(i, i + batchSize);
+        
+        batchDocs.forEach((docSnapshot) => {
+          batch.delete(docSnapshot.ref);
+        });
+        
+        await batch.commit();
+        console.log(`✅ Deleted ${batchDocs.length} completed_sessions documents (batch ${Math.floor(i / batchSize) + 1})`);
+      }
+
+      console.log(`✅ completed_sessions documents deleted (${userDocs.length} documents)`);
+    } catch (error) {
+      console.error('❌ Error deleting completed_sessions documents:', error);
       throw error;
     }
   }

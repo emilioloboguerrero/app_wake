@@ -10,6 +10,8 @@ import {
   ImageBackground,
   Image,
   Alert,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
@@ -72,6 +74,7 @@ const MainScreen = ({ navigation, route }) => {
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
   const [cachedCourseData, setCachedCourseData] = useState(null);
   const [libraryImageUri, setLibraryImageUri] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   // Get the first name from displayName
   const getFirstName = () => {
     // Check auth.currentUser first for most up-to-date data
@@ -585,6 +588,86 @@ const MainScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
+    }
+  };
+
+  // Pull-to-refresh handler (uses same logic but with separate refreshing state)
+  const onRefresh = async () => {
+    if (!user?.uid) return;
+    
+    setRefreshing(true);
+    setError(null);
+    
+    try {
+      logger.log('🔄 Pull-to-refresh: Refreshing courses from database...');
+      
+      // Ensure callbacks are set up
+      courseDownloadService.setUIUpdateCallbacks(
+        (courseId, newVersion, status) => {
+          setDownloadedCourses(prev => {
+            if (prev[courseId]) {
+              return {
+                ...prev,
+                [courseId]: { 
+                  ...prev[courseId], 
+                  status: status,
+                  downloaded_version: newVersion,
+                  lastUpdated: Date.now()
+                }
+              };
+            }
+            return prev;
+          });
+        },
+        (courseId, error, status) => {
+          setDownloadedCourses(prev => {
+            if (prev[courseId]) {
+              return {
+                ...prev,
+                [courseId]: { ...prev[courseId], status: status }
+              };
+            }
+            return prev;
+          });
+        }
+      );
+      
+      // Clear consolidated cache to force fresh data
+      consolidatedDataService.clearUserCache(user.uid);
+      
+      // Force sync courses from Firestore to update cache
+      await hybridDataService.syncCourses(user.uid);
+      
+      // Use consolidated service to get fresh data
+      const { courses, downloadedData } = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
+      
+      logger.log('✅ Pull-to-refresh: Fresh courses loaded:', courses.length);
+      
+      if (courses.length > 0) {
+        // Update cache with fresh data
+        await simpleCourseCache.updateCache(user.uid, courses);
+        await cacheCourseData(courses);
+        
+        // Display fresh courses
+        setPurchasedCourses(courses);
+        setDownloadedCourses(downloadedData);
+        setError(null);
+      } else {
+        // No active courses, but still show the library card
+        setPurchasedCourses([]);
+        setDownloadedCourses({});
+        setError(null);
+      }
+      
+    } catch (error) {
+      logger.error('❌ Error refreshing courses (pull-to-refresh):', error);
+      if (error.message.includes('offline') || error.message.includes('unavailable')) {
+        setError('Sin conexión. Mostrando cursos guardados...');
+      } else {
+        setError('Error de conexión. Verifica tu internet e inténtalo de nuevo.');
+      }
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -1204,82 +1287,103 @@ const MainScreen = ({ navigation, route }) => {
       {/* Fixed Bottom Spacer - Prevents tab bar overlap */}
       <BottomSpacer />
       
-      <View style={styles.content}>
-        {/* Spacer for fixed header */}
-        <WakeHeaderSpacer />
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#ffffff"
+            colors={['#ffffff']}
+            progressBackgroundColor="#1a1a1a"
+            title={refreshing ? "Actualizando..." : "Desliza para actualizar"}
+            titleColor="#ffffff"
+            progressViewOffset={40}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        bounces={true}
+        alwaysBounceVertical={true}
+      >
+        <View style={styles.contentWrapper}>
+          {/* Spacer for fixed header */}
+          <WakeHeaderSpacer />
 
-        {/* User Greeting Section */}
-        <View style={styles.userSection}>
-          <Text style={styles.greeting}>
-            Hola, <Text style={styles.username}>{getFirstName()}</Text>
-          </Text>
-        </View>
+          {/* User Greeting Section */}
+          <View style={styles.userSection}>
+            <Text style={styles.greeting}>
+              Hola, <Text style={styles.username}>{getFirstName()}</Text>
+            </Text>
+          </View>
 
-        {/* Swipeable Cards Section */}
-        <View style={styles.cardsSection}>
-          {loading ? (
-            <LoadingSpinner 
-              size="large" 
-              text="Cargando programas..." 
-              containerStyle={styles.loadingContainer}
-            />
-          ) : error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={refreshCoursesFromDatabase}>
-                <Text style={styles.retryButtonText}>Reintentar</Text>
-              </TouchableOpacity>
-              
-            </View>
-          ) : (
-            <View style={styles.swipeableContainer}>
-              <View style={{ flex: 1 }}>
-                  <Animated.FlatList
-                    ref={flatListRef}
-                    data={getSwipeableCards()}
-                    renderItem={renderSwipeableCard}
-                    keyExtractor={(item, index) => item?.id || `item_${index}`}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    snapToInterval={CARD_WIDTH + CARD_SPACING}
-                    snapToAlignment="start"
-                    decelerationRate="fast"
-                    contentContainerStyle={styles.flatListContent}
-                    ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
-                    onScroll={Animated.event(
-                      [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                      { useNativeDriver: true }
-                    )}
-                    onScrollEndDrag={handleScroll}
-                    onMomentumScrollEnd={handleScroll}
-                    scrollEventThrottle={16}
-                    style={{ flex: 1 }}
-                    getItemLayout={(data, index) => ({
-                      length: CARD_WIDTH + CARD_SPACING,
-                      offset: (CARD_WIDTH + CARD_SPACING) * index,
-                      index,
-                    })}
-                    // Virtual scrolling optimizations
-                    initialNumToRender={2}
-                    maxToRenderPerBatch={3}
-                    windowSize={5}
-                    removeClippedSubviews={true}
-                    updateCellsBatchingPeriod={50}
-                  />
-                  {/* Pagination indicators positioned directly below cards */}
-                   <View style={{ 
-                     height: Math.max(15, screenHeight * 0.02), 
-                     justifyContent: 'center', 
-                     paddingBottom: Math.max(100, screenHeight * 0.12), 
-                     marginTop: Math.max(-50, screenHeight * -0.06)
-                   }}>
-                     {renderPaginationIndicators()}
-                   </View>
-                </View>
-            </View>
-          )}
+          {/* Swipeable Cards Section */}
+          <View style={styles.cardsSection}>
+            {loading ? (
+              <LoadingSpinner 
+                size="large" 
+                text="Cargando programas..." 
+                containerStyle={styles.loadingContainer}
+              />
+            ) : error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={refreshCoursesFromDatabase}>
+                  <Text style={styles.retryButtonText}>Reintentar</Text>
+                </TouchableOpacity>
+                
+              </View>
+            ) : (
+              <View style={styles.swipeableContainer}>
+                <View style={{ flex: 1 }}>
+                    <Animated.FlatList
+                      ref={flatListRef}
+                      data={getSwipeableCards()}
+                      renderItem={renderSwipeableCard}
+                      keyExtractor={(item, index) => item?.id || `item_${index}`}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      snapToInterval={CARD_WIDTH + CARD_SPACING}
+                      snapToAlignment="start"
+                      decelerationRate="fast"
+                      contentContainerStyle={styles.flatListContent}
+                      ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
+                      onScroll={Animated.event(
+                        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                        { useNativeDriver: true }
+                      )}
+                      onScrollEndDrag={handleScroll}
+                      onMomentumScrollEnd={handleScroll}
+                      scrollEventThrottle={16}
+                      style={{ flex: 1 }}
+                      getItemLayout={(data, index) => ({
+                        length: CARD_WIDTH + CARD_SPACING,
+                        offset: (CARD_WIDTH + CARD_SPACING) * index,
+                        index,
+                      })}
+                      // Virtual scrolling optimizations
+                      initialNumToRender={2}
+                      maxToRenderPerBatch={3}
+                      windowSize={5}
+                      removeClippedSubviews={true}
+                      updateCellsBatchingPeriod={50}
+                    />
+                    {/* Pagination indicators positioned directly below cards */}
+                     <View style={{ 
+                       height: Math.max(15, screenHeight * 0.02), 
+                       justifyContent: 'center', 
+                       paddingBottom: Math.max(100, screenHeight * 0.12), 
+                       marginTop: Math.max(-50, screenHeight * -0.06)
+                     }}>
+                       {renderPaginationIndicators()}
+                     </View>
+                  </View>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      </ScrollView>
       
       {/* Tutorial Overlay */}
       <TutorialOverlay
@@ -1298,6 +1402,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
   },
   content: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  contentWrapper: {
     flex: 1,
   },
   userSection: {

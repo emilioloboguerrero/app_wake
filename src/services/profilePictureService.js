@@ -136,23 +136,50 @@ class ProfilePictureService {
   // Delete profile picture
   async deleteProfilePicture(userId) {
     try {
-      // Delete from Firebase Storage
+      // Delete from Firebase Storage first
       const storage = getStorage();
       const storageRef = ref(storage, `profiles/${userId}/profile.jpg`);
-      await deleteObject(storageRef);
+      
+      try {
+        await deleteObject(storageRef);
+      } catch (storageError) {
+        // If file doesn't exist, that's okay - just continue
+        if (storageError.code === 'storage/object-not-found') {
+          console.log('Profile picture does not exist in Storage, skipping deletion');
+        } else {
+          // Re-throw other storage errors
+          throw storageError;
+        }
+      }
 
-      // Update Firestore document
-      const firestore = getFirestore();
-      const userRef = doc(firestore, 'users', userId);
-      await updateDoc(userRef, {
-        profilePictureUrl: deleteField(),
-        profilePicturePath: deleteField(),
-        profilePictureUpdatedAt: deleteField()
-      });
+      // Try to update Firestore document if it still exists
+      // (It might already be deleted if this is called during account deletion)
+      try {
+        const firestore = getFirestore();
+        const userRef = doc(firestore, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          await updateDoc(userRef, {
+            profilePictureUrl: deleteField(),
+            profilePicturePath: deleteField(),
+            profilePictureUpdatedAt: deleteField()
+          });
+        }
+      } catch (firestoreError) {
+        // If document doesn't exist or can't update, that's okay
+        // This can happen during account deletion
+        console.log('Could not update Firestore document (may already be deleted)');
+      }
 
-      // Clear cache
+      // Clear cache (this should always work)
       this.cache.delete(userId);
-      await AsyncStorage.removeItem(`profile_${userId}`);
+      try {
+        await AsyncStorage.removeItem(`profile_${userId}`);
+      } catch (cacheError) {
+        // Ignore cache errors
+        console.log('Could not clear cache');
+      }
 
       return true;
     } catch (error) {

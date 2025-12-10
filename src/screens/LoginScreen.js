@@ -10,6 +10,7 @@ import {
   Keyboard,
   Platform,
   Switch,
+  Dimensions,
 } from 'react-native';
 import { auth } from '../config/firebase';
 import { 
@@ -31,6 +32,9 @@ import logger from '../utils/logger.js';
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
 
+// Get screen dimensions
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
@@ -42,6 +46,7 @@ const LoginScreen = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
+  const [AppleButtonComponent, setAppleButtonComponent] = useState(null);
 
 
   const validateEmail = (email) => {
@@ -343,6 +348,23 @@ const LoginScreen = () => {
     }
   };
 
+  // Load Apple Button component when screen mounts (iOS only)
+  useEffect(() => {
+    const loadAppleButton = async () => {
+      if (!isExpoGo && Platform.OS === 'ios') {
+        try {
+          const AppleButton = await appleAuthService.getAppleButton();
+          if (AppleButton) {
+            setAppleButtonComponent(() => AppleButton);
+          }
+        } catch (error) {
+          logger.warn('Could not load Apple Button component:', error);
+        }
+      }
+    };
+    loadAppleButton();
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
@@ -476,7 +498,20 @@ const LoginScreen = () => {
         )}
 
         {/* Apple Sign-In Button - Only show in production builds on iOS */}
-        {!isExpoGo && Platform.OS === 'ios' && (
+        {!isExpoGo && Platform.OS === 'ios' && AppleButtonComponent && (
+          <View style={styles.appleButtonContainer}>
+            <AppleButtonComponent
+              buttonType={AppleButtonComponent.ButtonType.CONTINUE}
+              buttonStyle={AppleButtonComponent.ButtonStyle.BLACK}
+              cornerRadius={8}
+              onPress={handleAppleLogin}
+              style={styles.appleButton}
+            />
+          </View>
+        )}
+        
+        {/* Fallback to custom button if Apple Button component not loaded */}
+        {!isExpoGo && Platform.OS === 'ios' && !AppleButtonComponent && (
           <Button
             title="Continua con Apple"
             onPress={handleAppleLogin}
@@ -612,8 +647,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  appleButton: {
+  appleButtonContainer: {
+    width: Math.max(280, screenWidth * 0.7),
+    height: Math.max(50, screenHeight * 0.06),
+    marginBottom: 16,
+    alignSelf: 'center',
     marginTop: 12,
+  },
+  appleButton: {
+    width: '100%',
+    height: '100%',
   },
 });
 

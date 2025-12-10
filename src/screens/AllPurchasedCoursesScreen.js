@@ -128,7 +128,11 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
         onBackPress={() => navigation.goBack()}
       />
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.content}>
           {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
@@ -177,6 +181,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
               <TouchableOpacity 
                 style={styles.exploreButton} 
                 onPress={() => navigation.navigate('ProgramLibrary')}
+                activeOpacity={0.7}
+                delayPressIn={0}
               >
                 <Text style={styles.exploreButtonText}>Explorar biblioteca</Text>
               </TouchableOpacity>

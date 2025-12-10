@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Import your main screens and navigators
 import MainStackNavigator from './MainStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
-import CommunityScreen from '../screens/CommunityScreen';
+// import CommunityScreen from '../screens/CommunityScreen'; // TODO: Re-enable when feature is ready
 
 // Import your custom Figma icons
 import { User02 as SvgUser02, House02 as SvgHouse02 } from '../components/icons';
@@ -77,20 +77,22 @@ const MainTabNavigator = () => {
           let fillColor = focused ? '#ffffff' : 'none'; // Fill when active
           let strokeWidth = focused ? 2.8 : 2.5; // Thicker stroke when active
 
-          if (route.name === 'Community') {
-            return (
-              <Image 
-                source={require('../../assets/community-icon.png')} 
-                style={{ 
-                  width: iconSize-2, 
-                  height: iconSize-2,
-                  tintColor: '#ffffff',
-                  opacity: focused ? 1 : 0.6
-                }}
-                resizeMode="contain"
-              />
-            );
-          } else if (route.name === 'Main') {
+          // Community tab hidden until feature is ready
+          // if (route.name === 'Community') {
+          //   return (
+          //     <Image 
+          //       source={require('../../assets/community-icon.png')} 
+          //       style={{ 
+          //         width: iconSize-2, 
+          //         height: iconSize-2,
+          //         tintColor: '#ffffff',
+          //         opacity: focused ? 1 : 0.6
+          //       }}
+          //       resizeMode="contain"
+          //     />
+          //   );
+          // } else 
+          if (route.name === 'Main') {
             return <SvgHouse02 width={iconSize} height={iconSize} stroke={iconColor} fill={fillColor} strokeWidth={strokeWidth} style={{ opacity: focused ? 1 : 0.6 }} />;
           } else if (route.name === 'Profile') {
             return <SvgUser02 width={iconSize} height={iconSize} stroke={iconColor} fill={fillColor} strokeWidth={strokeWidth} style={{ opacity: focused ? 1 : 0.6 }} />;
@@ -100,10 +102,11 @@ const MainTabNavigator = () => {
         },
       })}
     >
-      <Tab.Screen 
+      {/* Community tab hidden until feature is ready */}
+      {/* <Tab.Screen 
         name="Community" 
         component={CommunityScreen}
-      />
+      /> */}
       <Tab.Screen 
         name="Main" 
         component={MainStackNavigator}
