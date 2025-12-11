@@ -3,7 +3,7 @@ export default {
   expo: {
     name: "Wake",
     slug: "wake",
-    version: "1.1.4",
+    version: "1.1.5",
     orientation: "portrait",
     icon: "./assets/app_icon.png",
     userInterfaceStyle: "dark",
@@ -15,7 +15,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.lab.wake.co",
-      buildNumber: "10",
+      buildNumber: "11",
       usesAppleSignIn: true,
       googleServicesFile: "./GoogleService-Info.plist",
       infoPlist: {
@@ -37,7 +37,7 @@ export default {
         foregroundImage: "./assets/app_icon.png",
         backgroundColor: "#1a1a1a"
       },
-      versionCode: 10,
+      versionCode: 11,
       edgeToEdgeEnabled: true,
       package: "com.lab.wake.co",
       googleServicesFile: "./google-services.json"
