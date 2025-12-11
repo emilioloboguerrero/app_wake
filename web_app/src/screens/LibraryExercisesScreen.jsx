@@ -46,6 +46,8 @@ const IMPLEMENTS_LIST = [
   'Cable',
   'Máquina Smith',
   'Máquina',
+  'Lastre',
+  'Paralelas',
   'TRX',
   'Otro'
 ];
