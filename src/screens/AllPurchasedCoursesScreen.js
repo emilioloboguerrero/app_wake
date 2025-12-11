@@ -180,7 +180,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
               <Text style={styles.emptyTitle}>No tienes ningún programa... todavía.</Text>
               <TouchableOpacity 
                 style={styles.exploreButton} 
-                onPress={() => navigation.navigate('ProgramLibrary')}
+                onPress={() => navigation.navigate('Main', { screen: 'ProgramLibrary' })}
                 activeOpacity={0.7}
                 delayPressIn={0}
               >
