@@ -12,6 +12,8 @@ import ProfileScreen from './screens/ProfileScreen';
 import CoursePurchaseScreen from './screens/CoursePurchaseScreen';
 import BibliotecaScreen from './screens/BibliotecaScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
+import OneOnOneScreen from './screens/OneOnOneScreen';
+import ClientProgramScreen from './screens/ClientProgramScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -66,6 +68,22 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <LabScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/one-on-one" 
+              element={
+                <ProtectedRoute>
+                  <OneOnOneScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/one-on-one/:clientId" 
+              element={
+                <ProtectedRoute>
+                  <ClientProgramScreen />
                 </ProtectedRoute>
               } 
             />

@@ -1,0 +1,221 @@
+// One-on-One Client Service for Wake Web Dashboard
+import { firestore } from '../config/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  doc,
+  getDoc,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  serverTimestamp,
+  orderBy
+} from 'firebase/firestore';
+import { getUser } from './firestoreService';
+
+class OneOnOneService {
+  /**
+   * Get all clients for a creator
+   * @param {string} creatorId - Creator user ID
+   * @returns {Promise<Array>} Array of client documents
+   */
+  async getClientsByCreator(creatorId) {
+    try {
+      const clientsRef = collection(firestore, 'one_on_one_clients');
+      
+      // Try with orderBy first, fallback to without if index doesn't exist
+      let querySnapshot;
+      try {
+        const q = query(
+          clientsRef, 
+          where('creatorId', '==', creatorId),
+          orderBy('createdAt', 'desc')
+        );
+        querySnapshot = await getDocs(q);
+      } catch (error) {
+        // Fallback if index doesn't exist yet - query without orderBy
+        console.warn('OrderBy index not found, querying without orderBy:', error);
+        const q = query(
+          clientsRef, 
+          where('creatorId', '==', creatorId)
+        );
+        querySnapshot = await getDocs(q);
+      }
+      
+      const clients = [];
+      querySnapshot.forEach((doc) => {
+        clients.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return clients;
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a new client to a creator
+   * @param {string} creatorId - Creator user ID
+   * @param {string} clientUserId - Client user ID
+   * @returns {Promise<Object>} Created client document
+   */
+  async addClient(creatorId, clientUserId) {
+    try {
+      // Check if relationship already exists
+      const existingQuery = query(
+        collection(firestore, 'one_on_one_clients'),
+        where('creatorId', '==', creatorId),
+        where('clientUserId', '==', clientUserId)
+      );
+      const existingSnapshot = await getDocs(existingQuery);
+      
+      if (!existingSnapshot.empty) {
+        throw new Error('This client is already added');
+      }
+
+      // Get client user data to cache basic info
+      let clientName = '';
+      let clientEmail = '';
+      
+      try {
+        const clientUserDoc = await getUser(clientUserId);
+        if (clientUserDoc) {
+          clientName = clientUserDoc.displayName || clientUserDoc.name || '';
+          clientEmail = clientUserDoc.email || '';
+        }
+      } catch (error) {
+        console.warn('Could not fetch client user data:', error);
+        // Continue anyway with empty values
+      }
+
+      // Create client document
+      const clientsRef = collection(firestore, 'one_on_one_clients');
+      const newClientRef = await addDoc(clientsRef, {
+        creatorId: creatorId,
+        clientUserId: clientUserId,
+        clientName: clientName,
+        clientEmail: clientEmail,
+        courseId: [], // Array of course IDs
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // Get the created document to return
+      const createdDoc = await getDoc(newClientRef);
+      return {
+        id: createdDoc.id,
+        ...createdDoc.data()
+      };
+    } catch (error) {
+      console.error('Error adding client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single client by ID
+   * @param {string} clientId - Client document ID
+   * @returns {Promise<Object|null>} Client document or null
+   */
+  async getClientById(clientId) {
+    try {
+      const clientDocRef = doc(firestore, 'one_on_one_clients', clientId);
+      const clientDoc = await getDoc(clientDocRef);
+      
+      if (clientDoc.exists()) {
+        return {
+          id: clientDoc.id,
+          ...clientDoc.data()
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a client
+   * @param {string} clientId - Client document ID
+   */
+  async deleteClient(clientId) {
+    try {
+      const clientDocRef = doc(firestore, 'one_on_one_clients', clientId);
+      await deleteDoc(clientDocRef);
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a client document
+   * @param {string} clientId - Client document ID
+   * @param {Object} updates - Fields to update
+   */
+  async updateClient(clientId, updates) {
+    try {
+      const clientDocRef = doc(firestore, 'one_on_one_clients', clientId);
+      await updateDoc(clientDocRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get full user data for a client
+   * @param {string} clientUserId - Client user ID
+   * @returns {Promise<Object|null>} User document data or null
+   */
+  async getClientUserData(clientUserId) {
+    try {
+      const userData = await getUser(clientUserId);
+      if (!userData) {
+        return null;
+      }
+
+      // Calculate age from birthDate if available and age is not set
+      let age = userData.age;
+      if (!age && userData.birthDate) {
+        const birthDate = userData.birthDate.toDate ? userData.birthDate.toDate() : new Date(userData.birthDate);
+        if (!isNaN(birthDate.getTime())) {
+          age = new Date().getFullYear() - birthDate.getFullYear();
+          const monthDiff = new Date().getMonth() - birthDate.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && new Date().getDate() < birthDate.getDate())) {
+            age--;
+          }
+        }
+      }
+
+      return {
+        name: userData.name || userData.displayName || '',
+        username: userData.username || '',
+        email: userData.email || '',
+        age: age || null,
+        gender: userData.gender || '',
+        country: userData.country || '',
+        city: userData.city || userData.location || '',
+        height: userData.height || null,
+        initialWeight: userData.bodyweight || userData.weight || null
+      };
+    } catch (error) {
+      console.error('Error fetching client user data:', error);
+      throw error;
+    }
+  }
+}
+
+export default new OneOnOneService();
+

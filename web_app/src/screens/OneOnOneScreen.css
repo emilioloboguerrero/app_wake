@@ -1,0 +1,167 @@
+.one-on-one-content {
+  width: 100%;
+  max-width: 1200px;
+  padding: 32px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.one-on-one-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-top: 32px;
+  margin-bottom: 32px;
+}
+
+.one-on-one-action-pill {
+  padding: 6px 20px;
+  height: 32px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.one-on-one-action-pill:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.one-on-one-action-icon {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Clients List */
+.one-on-one-loading,
+.one-on-one-error,
+.one-on-one-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #cccccc;
+}
+
+.one-on-one-error {
+  color: #FF6B6B;
+}
+
+.one-on-one-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.one-on-one-client-box {
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+
+.one-on-one-client-box:hover {
+  border-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.one-on-one-client-name {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.one-on-one-client-name:hover {
+  color: rgba(191, 168, 77, 0.9);
+}
+
+/* Modal */
+.modal-one-on-one-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.modal-error-message {
+  padding: 12px;
+  background-color: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 8px;
+  color: #FF6B6B;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Client Detail Modal */
+.modal-client-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 400px;
+}
+
+.client-detail-loading,
+.client-detail-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.client-detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.client-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.client-detail-row:last-child {
+  border-bottom: none;
+}
+
+.client-detail-label {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.client-detail-value {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  text-align: right;
+}
+

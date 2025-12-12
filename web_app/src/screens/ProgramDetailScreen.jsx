@@ -7,6 +7,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Input from '../components/Input';
+import CreateExerciseModal from '../components/CreateExerciseModal';
 import programService from '../services/programService';
 import libraryService from '../services/libraryService';
 import programAnalyticsService from '../services/programAnalyticsService';
@@ -763,8 +764,6 @@ const ProgramDetailScreen = () => {
   const [isDeletingExercise, setIsDeletingExercise] = useState(false);
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
-  const [newExerciseDraft, setNewExerciseDraft] = useState(null);
-  const [newExerciseSets, setNewExerciseSets] = useState([]);
   const [isCreatingNewExercise, setIsCreatingNewExercise] = useState(false);
   const [isCreatingExercise, setIsCreatingExercise] = useState(false); // Track if we're creating a new exercise in the main modal
   const [selectedExercise, setSelectedExercise] = useState(null);
@@ -2991,108 +2990,28 @@ const ProgramDetailScreen = () => {
   };
 
   const handleCloseCreateExerciseModal = () => {
-    setNewExerciseDraft(null);
-    setNewExerciseSets([]);
     setIsCreateExerciseModalOpen(false);
   };
 
-  const handleSelectPrimaryForNewExercise = async () => {
-    if (!user) return;
-    
-    try {
-      setIsLoadingLibrariesForSelection(true);
-      setLibraryExerciseModalMode('primary');
-      setAlternativeToEdit(null);
-      setSelectedLibraryForExercise(null);
-      setExercisesFromSelectedLibrary([]);
-      
-      // Load available libraries
-      const libraries = await libraryService.getLibrariesByCreator(user.uid);
-      setAvailableLibrariesForSelection(libraries);
-      setIsLibraryExerciseModalOpen(true);
-    } catch (err) {
-      console.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
-    } finally {
-      setIsLoadingLibrariesForSelection(false);
-    }
-  };
+  // These handlers are no longer needed - CreateExerciseModal handles everything internally
 
-  const handleSelectExerciseForNew = async (exerciseName) => {
-    if (!selectedLibraryForExercise || !exerciseName) {
-      return;
-    }
-
-    try {
-      if (libraryExerciseModalMode === 'primary') {
-        // Update primary exercise for new exercise
-        const primaryUpdate = {
-          [selectedLibraryForExercise]: exerciseName
-        };
-        
-        setNewExerciseDraft(prev => ({
-          ...prev,
-          primary: primaryUpdate
-        }));
-        
-        // Update library titles if needed
-        if (!libraryTitles[selectedLibraryForExercise]) {
-          const library = await libraryService.getLibraryById(selectedLibraryForExercise);
-          if (library && library.title) {
-            setLibraryTitles(prev => ({
-              ...prev,
-              [selectedLibraryForExercise]: library.title
-            }));
-          }
-        }
-      }
-      
-      handleCloseLibraryExerciseModal();
-    } catch (err) {
-      console.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
-    }
-  };
-
-  const handleAddSetToNewExercise = () => {
-    setNewExerciseSets(prev => [...prev, {
-      reps: null,
-      intensity: null
-    }]);
-  };
-
-  const handleUpdateNewExerciseSet = (index, field, value) => {
-    setNewExerciseSets(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: value
-      };
-      return updated;
-    });
-  };
-
-  const handleRemoveSetFromNewExercise = (index) => {
-    setNewExerciseSets(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleCreateNewExercise = async () => {
-    if (!programId || !selectedModule || !selectedSession || !newExerciseDraft) {
+  const handleCreateNewExerciseFromData = async (exerciseData) => {
+    if (!programId || !selectedModule || !selectedSession) {
       return;
     }
 
     // Validate requirements
-    const hasPrimary = newExerciseDraft.primary && 
-      typeof newExerciseDraft.primary === 'object' && 
-      Object.values(newExerciseDraft.primary).length > 0 &&
-      Object.values(newExerciseDraft.primary)[0];
+    const hasPrimary = exerciseData.primary && 
+      typeof exerciseData.primary === 'object' && 
+      Object.values(exerciseData.primary).length > 0 &&
+      Object.values(exerciseData.primary)[0];
     
     if (!hasPrimary) {
       alert('Por favor selecciona un ejercicio principal');
       return;
     }
 
-    if (newExerciseSets.length === 0) {
+    if (!exerciseData.sets || exerciseData.sets.length === 0) {
       alert('Por favor crea al menos una serie');
       return;
     }
@@ -3101,7 +3020,7 @@ const ProgramDetailScreen = () => {
       setIsCreatingNewExercise(true);
       
       // Get primary exercise name
-      const primaryValues = Object.values(newExerciseDraft.primary);
+      const primaryValues = Object.values(exerciseData.primary);
       const primaryExerciseName = primaryValues[0];
       
       // Create exercise
@@ -3115,10 +3034,10 @@ const ProgramDetailScreen = () => {
       // Update exercise with primary, alternatives, measures, and objectives
       // Explicitly remove name and title fields that were automatically created
       const updateData = {
-        primary: newExerciseDraft.primary,
-        alternatives: newExerciseDraft.alternatives || {},
-        measures: newExerciseDraft.measures || [],
-        objectives: newExerciseDraft.objectives || [],
+        primary: exerciseData.primary,
+        alternatives: exerciseData.alternatives || {},
+        measures: exerciseData.measures || [],
+        objectives: exerciseData.objectives || [],
         name: deleteField(),
         title: deleteField()
       };
@@ -3132,8 +3051,8 @@ const ProgramDetailScreen = () => {
       );
 
       // Create sets
-      for (let i = 0; i < newExerciseSets.length; i++) {
-        const set = newExerciseSets[i];
+      for (let i = 0; i < exerciseData.sets.length; i++) {
+        const set = exerciseData.sets[i];
         await programService.createSet(
           programId,
           selectedModule.id,
@@ -3177,31 +3096,22 @@ const ProgramDetailScreen = () => {
         return orderA - orderB;
       });
       setExercises(sortedExercises);
-
+      
       // Refresh incomplete status
       await refreshIncompleteStatus();
-
+      
       // Close modal
       handleCloseCreateExerciseModal();
     } catch (err) {
       console.error('Error creating exercise:', err);
       alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      throw err; // Re-throw so CreateExerciseModal can handle it
     } finally {
       setIsCreatingNewExercise(false);
     }
   };
 
-  // Check if new exercise can be saved
-  const canSaveNewExercise = () => {
-    if (!newExerciseDraft) return false;
-    
-    const hasPrimary = newExerciseDraft.primary && 
-      typeof newExerciseDraft.primary === 'object' && 
-      Object.values(newExerciseDraft.primary).length > 0 &&
-      Object.values(newExerciseDraft.primary)[0];
-    
-    return hasPrimary && newExerciseSets.length > 0;
-  };
+  // Validation is now handled by CreateExerciseModal component
 
   // Check if we can save the exercise being created in the main modal
   const canSaveCreatingExercise = () => {
@@ -4545,12 +4455,6 @@ const ProgramDetailScreen = () => {
   };
 
   const handleSelectExercise = async (exerciseName) => {
-    // If creating new exercise in the create modal, use the new handler
-    if (isCreateExerciseModalOpen && libraryExerciseModalMode === 'primary') {
-      await handleSelectExerciseForNew(exerciseName);
-      return;
-    }
-    
     // If creating exercise in the main modal, update the draft directly
     if (isCreatingExercise && libraryExerciseModalMode === 'primary') {
       const exerciseId = 'new'; // Temporary ID
@@ -8719,129 +8623,15 @@ const ProgramDetailScreen = () => {
         </div>
       </Modal>
 
-      {/* Create New Exercise Modal */}
-      <Modal
+      {/* Create New Exercise Modal - Now using shared component */}
+      <CreateExerciseModal
         isOpen={isCreateExerciseModalOpen}
         onClose={handleCloseCreateExerciseModal}
-        title="Crear Nuevo Ejercicio"
-      >
-        <div className="create-exercise-modal-content">
-          <div className="create-exercise-section">
-            <h4 className="create-exercise-section-title">Ejercicio Principal *</h4>
-            {newExerciseDraft?.primary && Object.values(newExerciseDraft.primary).length > 0 ? (
-              <div className="exercise-horizontal-card">
-                <span className="exercise-horizontal-card-name">
-                  {Object.values(newExerciseDraft.primary)[0]}
-                </span>
-                <button 
-                  className="exercise-horizontal-card-edit"
-                  onClick={handleSelectPrimaryForNewExercise}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <>
-                <button
-                  className="create-exercise-select-button"
-                  onClick={handleSelectPrimaryForNewExercise}
-                >
-                  <span className="create-exercise-select-button-text">Seleccionar Ejercicio Principal</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <p className="create-exercise-requirement-message">Requerido: Debes seleccionar un ejercicio principal</p>
-              </>
-            )}
-          </div>
-
-          <div className="create-exercise-section">
-            <div className="create-exercise-section-header">
-              <h4 className="create-exercise-section-title">Series *</h4>
-              <button
-                className="create-exercise-add-set-button"
-                onClick={handleAddSetToNewExercise}
-              >
-                <span className="create-exercise-add-set-icon">+</span>
-                <span className="create-exercise-add-set-text">Agregar Serie</span>
-              </button>
-            </div>
-            {newExerciseSets.length === 0 ? (
-              <>
-                <p className="create-exercise-empty">No hay series. Agrega al menos una serie.</p>
-                <p className="create-exercise-requirement-message">Requerido: Debes agregar al menos una serie</p>
-              </>
-            ) : (
-              <div className="create-exercise-sets-list">
-                {newExerciseSets.map((set, index) => (
-                  <div key={index} className="create-exercise-set-item">
-                    <div className="create-exercise-set-header">
-                      <span className="create-exercise-set-number">Serie {index + 1}</span>
-                      {newExerciseSets.length > 1 && (
-                        <button
-                          className="create-exercise-set-remove"
-                          onClick={() => handleRemoveSetFromNewExercise(index)}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="create-exercise-set-fields">
-                      <div className="create-exercise-set-field">
-                        <label className="create-exercise-set-label">Repeticiones</label>
-                        <Input
-                          type="text"
-                          placeholder="Ej: 10 o 8-12"
-                          value={set.reps || ''}
-                          onChange={(e) => handleUpdateNewExerciseSet(index, 'reps', e.target.value)}
-                          light={true}
-                        />
-                      </div>
-                      <div className="create-exercise-set-field">
-                        <label className="create-exercise-set-label">Intensidad</label>
-                        <Input
-                          type="text"
-                          placeholder="Ej: 8/10"
-                          value={set.intensity || ''}
-                          onChange={(e) => handleUpdateNewExerciseSet(index, 'intensity', e.target.value)}
-                          light={true}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="create-exercise-modal-actions">
-            {!canSaveNewExercise() && (
-              <div className="create-exercise-requirements-summary">
-                <p className="create-exercise-requirements-text">
-                  Para crear el ejercicio, necesitas:
-                  {(!newExerciseDraft?.primary || Object.values(newExerciseDraft.primary || {}).length === 0) && (
-                    <span className="create-exercise-requirement-item"> • Ejercicio principal</span>
-                  )}
-                  {newExerciseSets.length === 0 && (
-                    <span className="create-exercise-requirement-item"> • Al menos una serie</span>
-                  )}
-                </p>
-              </div>
-            )}
-            <Button
-              title={isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}
-              onClick={handleCreateNewExercise}
-              disabled={!canSaveNewExercise() || isCreatingNewExercise}
-              loading={isCreatingNewExercise}
-            />
-          </div>
-        </div>
-      </Modal>
+        onExerciseCreated={async (exerciseData) => {
+          // This callback handles saving to Firestore for ProgramDetailScreen
+          await handleCreateNewExerciseFromData(exerciseData);
+        }}
+      />
 
       {/* Stat Explanation Modal */}
       <Modal

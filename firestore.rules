@@ -61,6 +61,30 @@ service cloud.firestore {
     }
     
     // ============================================
+    // ONE-ON-ONE CLIENTS
+    // ============================================
+    
+    // One-on-one clients collection
+    match /one_on_one_clients/{clientDocId} {
+      // Creator can read/write their own clients
+      // Client can read their own record
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || 
+        resource.data.clientUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // ============================================
     // COURSE CONTENT
     // ============================================
     

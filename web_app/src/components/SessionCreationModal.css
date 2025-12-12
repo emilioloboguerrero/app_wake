@@ -1,0 +1,340 @@
+.session-creation-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 600px;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.session-creation-date {
+  padding: 12px 16px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  text-align: center;
+}
+
+.session-creation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Session Name and Library Toggle Row */
+.session-creation-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.session-creation-name-input-wrapper {
+  flex: 1;
+}
+
+.session-creation-library-toggle-wrapper {
+  flex-shrink: 0;
+}
+
+.session-creation-library-toggle-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-library-toggle-text {
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Elegant Toggle Styles (same as ProgramDetailScreen) */
+.elegant-toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+}
+
+.elegant-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.elegant-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  transition: 0.3s;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.elegant-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: rgba(255, 255, 255, 0.9);
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.elegant-toggle input:checked + .elegant-toggle-slider {
+  background-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.elegant-toggle input:checked + .elegant-toggle-slider:before {
+  transform: translateX(20px);
+  background-color: rgba(191, 168, 77, 1);
+  box-shadow: 0 0 4px rgba(191, 168, 77, 0.5);
+}
+
+.elegant-toggle input:focus + .elegant-toggle-slider {
+  box-shadow: 0 0 4px rgba(191, 168, 77, 0.4);
+}
+
+/* Exercises Section */
+.session-creation-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.session-creation-exercises-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.session-creation-exercises-title {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-exercises-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.session-creation-edit-button {
+  padding: 6px 16px;
+  height: 32px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-edit-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.session-creation-edit-button-active {
+  background-color: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.3);
+  color: rgba(191, 168, 77, 1);
+}
+
+.session-creation-add-exercise-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-add-exercise-button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.session-creation-add-exercise-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-creation-add-exercise-icon {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.session-creation-exercises-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-creation-exercises-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-exercise-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.session-creation-exercise-card:hover:not(.session-creation-exercise-card-edit-mode) {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(191, 168, 77, 0.3);
+  transform: translateY(-1px);
+}
+
+.session-creation-exercise-card-edit-mode {
+  cursor: default;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.session-creation-exercise-card-edit-mode::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.session-creation-exercise-delete-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background-color: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: rgba(255, 68, 68, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+  pointer-events: auto;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-exercise-delete-button:hover {
+  background-color: rgba(255, 68, 68, 0.3);
+  border-color: rgba(255, 68, 68, 0.5);
+  transform: scale(1.05);
+}
+
+.session-creation-exercise-delete-icon {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.session-creation-exercise-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(191, 168, 77, 0.15);
+  border-radius: 8px;
+  color: rgba(191, 168, 77, 1);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-exercise-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-creation-exercise-title {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+
+.session-creation-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.session-creation-cancel-button {
+  padding: 12px 24px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 1);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.session-creation-cancel-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+

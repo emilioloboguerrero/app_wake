@@ -16,6 +16,7 @@ import {
   serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
+import { getMondayWeek } from '../utils/weekCalculation';
 
 // Helper function to remove undefined values from an object recursively
 function removeUndefinedValues(obj) {
@@ -213,11 +214,37 @@ class FirestoreService {
 
   async getCourseModules(courseId) {
     try {
-      const modulesQuery = query(
-        collection(firestore, 'courses', courseId, 'modules'),
-        orderBy('order', 'asc')
-      );
+      // First, get course to check if it's weekly
+      const courseData = await this.getCourse(courseId);
+      const isWeeklyProgram = courseData?.weekly === true;
+      
+      let modulesQuery;
+      
+      if (isWeeklyProgram) {
+        // ✅ Weekly program: Filter by current calendar week
+        const currentWeek = getMondayWeek(); // "2025-W03"
+        
+        console.log('📅 Filtering weekly program by week:', currentWeek);
+        
+        modulesQuery = query(
+          collection(firestore, 'courses', courseId, 'modules'),
+          where('week', '==', currentWeek), // ✅ Only current week's modules
+          orderBy('order', 'asc')
+        );
+      } else {
+        // ✅ Normal program: Download all modules (existing behavior)
+        modulesQuery = query(
+          collection(firestore, 'courses', courseId, 'modules'),
+          orderBy('order', 'asc') // No week filter
+        );
+      }
+      
       const modulesSnapshot = await getDocs(modulesQuery);
+      
+      if (isWeeklyProgram && modulesSnapshot.empty) {
+        console.warn('⚠️ No modules found for current week:', currentWeek);
+        // Could return empty array or show message to user
+      }
       
       // OPTIMIZED: Fetch all modules in parallel instead of sequential
       const modules = await Promise.all(

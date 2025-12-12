@@ -3,12 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestoreService from '../services/firestoreService';
 import hybridDataService from '../services/hybridDataService';
 import updateEventManager from '../services/updateEventManager';
+import { getMondayWeek } from '../utils/weekCalculation';
 
 class CourseDownloadService {
   constructor() {
     this.currentUserId = null; // Will be set by calling context
     this._versionChecksInProgress = new Set(); // Track courses currently being updated to prevent infinite loops
     this._backgroundUpdatesInProgress = new Set(); // Track background updates to prevent duplicates
+    this._weekChecksInProgress = new Set(); // Track week checks in progress to prevent recursion
   }
 
   /**
@@ -16,6 +18,188 @@ class CourseDownloadService {
    */
   setCurrentUserId(userId) {
     this.currentUserId = userId;
+  }
+
+  /**
+   * Get the stored week for a course (last week we downloaded)
+   */
+  async getStoredWeek(courseId) {
+    try {
+      const storedCourse = await this.getCourseData(courseId, true); // Skip version check
+      return storedCourse?.currentWeek || null;
+    } catch (error) {
+      console.error('Error getting stored week:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update stored week locally
+   */
+  async updateStoredWeek(courseId, week) {
+    try {
+      const storedCourse = await this.getCourseData(courseId, true);
+      if (storedCourse) {
+        storedCourse.currentWeek = week;
+        await this.storeCourseLocally(courseId, storedCourse);
+        console.log('✅ Stored week updated:', week);
+      }
+    } catch (error) {
+      console.error('Error updating stored week:', error);
+    }
+  }
+
+  /**
+   * Check if week changed and trigger re-download if needed
+   */
+  async checkWeekChange(courseId, userId, skipDownload = false) {
+    try {
+      // Prevent recursion - if already checking, skip
+      const checkKey = `${courseId}_${userId}`;
+      if (this._weekChecksInProgress.has(checkKey)) {
+        console.log('⚠️ Week check already in progress for:', courseId);
+        return false;
+      }
+
+      this._weekChecksInProgress.add(checkKey);
+
+      try {
+        const courseData = await firestoreService.getCourse(courseId);
+        
+        // Only check for weekly programs
+        if (courseData?.weekly !== true) {
+          return false; // Not a weekly program, no week change check needed
+        }
+        
+        const currentWeek = getMondayWeek(); // Get current calendar week
+        const storedWeek = await this.getStoredWeek(courseId);
+        
+        // If week changed, re-download (unless skipDownload is true)
+        if (storedWeek && storedWeek !== currentWeek && !skipDownload) {
+          console.log('🔄 Week changed detected!', {
+            storedWeek,
+            currentWeek,
+            courseId
+          });
+          
+          // Clear local cache to force fresh download
+          await this.deleteCourse(courseId);
+          
+          // Re-download with new week (pass skipDownload to prevent recursion)
+          await this.downloadCourseInternal(courseId, userId);
+          
+          // Update stored week
+          await this.updateStoredWeek(courseId, currentWeek);
+          
+          return true; // Week changed, re-downloaded
+        }
+        
+        // Update stored week if first time
+        if (!storedWeek) {
+          await this.updateStoredWeek(courseId, currentWeek);
+        }
+        
+        return false; // No week change
+      } finally {
+        // Always remove from in-progress set
+        this._weekChecksInProgress.delete(checkKey);
+      }
+    } catch (error) {
+      console.error('Error checking week change:', error);
+      const checkKey = `${courseId}_${userId}`;
+      this._weekChecksInProgress.delete(checkKey);
+      return false;
+    }
+  }
+
+  /**
+   * Internal download method that skips week check (to prevent recursion)
+   */
+  async downloadCourseInternal(courseId, userId) {
+    try {
+      console.log('📥 Starting course download (internal):', courseId);
+      
+      // Skip week check to prevent recursion
+      // Try to get course data from hybrid system first (cached)
+      console.log('🔍 Checking hybrid cache for course data...');
+      let courseData = null;
+      let modules = [];
+      
+      try {
+        // Get course metadata from hybrid cache
+        const courses = await hybridDataService.loadCourses();
+        courseData = courses.find(c => c.id === courseId);
+        
+        if (courseData) {
+          console.log('✅ Course metadata found in hybrid cache');
+          modules = await firestoreService.getCourseModules(courseId);
+          console.log('📚 Course modules loaded from DB:', modules.length);
+        } else {
+          console.log('⚠️ Course not found in hybrid cache, fetching from DB...');
+          courseData = await firestoreService.getCourse(courseId);
+          if (!courseData) {
+            throw new Error(`Course ${courseId} not found in Firestore`);
+          }
+          console.log('📖 Course data retrieved from DB:', Object.keys(courseData));
+          modules = await firestoreService.getCourseModules(courseId);
+          console.log('📚 Course modules loaded from DB:', modules.length);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error getting course data:', error.message);
+        throw error;
+      }
+      
+      // Store image URL for direct use
+      let imageUrl = null;
+      if (courseData.image_url) {
+        imageUrl = courseData.image_url;
+        console.log(`📥 Course ${courseId} has image URL:`, imageUrl);
+      }
+      
+      // Store current week for weekly programs
+      let currentWeek = null;
+      if (courseData?.weekly === true) {
+        currentWeek = getMondayWeek();
+        console.log('📅 Weekly program - current week:', currentWeek);
+      }
+
+      const basicCourseData = {
+        courseId,
+        downloadedAt: new Date().toISOString(),
+        expiresAt: this.calculateCourseExpiration(courseData),
+        version: courseData.version || "1.0",
+        imageUrl: courseData.image_url || courseData.imageUrl,
+        currentWeek: currentWeek,
+        courseData: {
+          ...courseData,
+          modules: modules || []
+        }
+      };
+      
+      try {
+        await this.storeCourseLocally(courseId, {
+          ...basicCourseData,
+          size_mb: this.estimateDataSize({ ...courseData, modules }),
+          compressed: false
+        });
+        console.log('✅ Basic course data stored locally');
+      } catch (storeError) {
+        console.error('❌ Failed to store basic course data:', storeError);
+      }
+      
+      try {
+        await this.validateCourseData({ ...courseData, modules });
+      } catch (validationError) {
+        console.warn('⚠️ Course data validation warning:', validationError);
+      }
+      
+      console.log('✅ Course downloaded successfully (internal):', courseId);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Course download failed (internal):', error);
+      throw error;
+    }
   }
   /**
    * Download course content when purchased
@@ -25,6 +209,33 @@ class CourseDownloadService {
   async downloadCourse(courseId, userId) {
     try {
       console.log('📥 Starting course download:', courseId);
+      
+      // ✅ NEW: Check if week changed (only for weekly programs)
+      // Check without downloading first to see if week changed
+      let courseMetadata = await firestoreService.getCourse(courseId);
+      if (courseMetadata?.weekly === true) {
+        const currentWeek = getMondayWeek();
+        const storedWeek = await this.getStoredWeek(courseId);
+        
+        if (storedWeek && storedWeek !== currentWeek) {
+          console.log('🔄 Week changed detected during download!', {
+            storedWeek,
+            currentWeek
+          });
+          
+          // Clear local cache to force fresh download
+          await this.deleteCourse(courseId);
+          
+          // Use internal download to prevent recursion
+          await this.downloadCourseInternal(courseId, userId);
+          
+          // Update stored week
+          await this.updateStoredWeek(courseId, currentWeek);
+          
+          console.log('✅ Week changed, course re-downloaded with new week content');
+          return true;
+        }
+      }
       
       // Try to get course data from hybrid system first (cached)
       console.log('🔍 Checking hybrid cache for course data...');
@@ -85,6 +296,13 @@ class CourseDownloadService {
         console.log(`⚠️ No image_url found for course ${courseId}`);
       }
       
+      // ✅ NEW: Store current week for weekly programs
+      let currentWeek = null;
+      if (courseData?.weekly === true) {
+        currentWeek = getMondayWeek();
+        console.log('📅 Weekly program - current week:', currentWeek);
+      }
+
       // FIX: Store basic course data immediately, even if full download fails
       const basicCourseData = {
         courseId,
@@ -92,6 +310,7 @@ class CourseDownloadService {
         expiresAt: this.calculateCourseExpiration(courseData),
         version: courseData.version || "1.0",
         imageUrl: courseData.image_url || courseData.imageUrl,
+        currentWeek: currentWeek, // Store current week for next check
         courseData: {
           ...courseData,
           modules: modules || []
@@ -198,6 +417,27 @@ class CourseDownloadService {
         return null;
       }
       
+      // ✅ NEW: Check if week changed (for weekly programs)
+      if (courseData?.courseData?.weekly === true && this.currentUserId) {
+        const currentWeek = getMondayWeek();
+        const storedWeek = courseData.currentWeek;
+        
+        if (storedWeek && storedWeek !== currentWeek) {
+          console.log('🔄 Week changed detected during getCourseData!', {
+            storedWeek,
+            currentWeek
+          });
+          
+          // Trigger background re-download
+          this.checkWeekChange(courseId, this.currentUserId).catch(error => {
+            console.error('Error in background week check:', error);
+          });
+          
+          // Still return old data for now (download happens in background)
+          // User will see update on next access
+        }
+      }
+
       // Skip version check for fast initial load (will be checked in background)
       if (skipVersionCheck) {
         const decompressedData = await this.decompressCourseData(courseData);
