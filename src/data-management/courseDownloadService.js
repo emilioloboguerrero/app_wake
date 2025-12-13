@@ -163,6 +163,9 @@ class CourseDownloadService {
         console.log('📅 Weekly program - current week:', currentWeek);
       }
 
+      // ✅ NEW: Extract library versions from resolved modules
+      const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
+      
       const basicCourseData = {
         courseId,
         downloadedAt: new Date().toISOString(),
@@ -170,6 +173,7 @@ class CourseDownloadService {
         version: courseData.version || "1.0",
         imageUrl: courseData.image_url || courseData.imageUrl,
         currentWeek: currentWeek,
+        libraryVersions: libraryVersions, // ✅ NEW: Store library versions
         courseData: {
           ...courseData,
           modules: modules || []
@@ -304,6 +308,9 @@ class CourseDownloadService {
       }
 
       // FIX: Store basic course data immediately, even if full download fails
+      // ✅ NEW: Extract library versions from resolved modules
+      const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
+      
       const basicCourseData = {
         courseId,
         downloadedAt: new Date().toISOString(),
@@ -311,6 +318,7 @@ class CourseDownloadService {
         version: courseData.version || "1.0",
         imageUrl: courseData.image_url || courseData.imageUrl,
         currentWeek: currentWeek, // Store current week for next check
+        libraryVersions: libraryVersions, // ✅ NEW: Store library versions
         courseData: {
           ...courseData,
           modules: modules || []
@@ -522,6 +530,39 @@ class CourseDownloadService {
           
           try {
             console.log('🔍 VERSION CHECK: Status is ready, checking for version mismatch');
+            
+            // ✅ NEW: Check library versions first
+            const decompressedData = await this.decompressCourseData(courseData);
+            let libraryVersionCheck = null;
+            
+            if (decompressedData.libraryVersions && decompressedData.courseData?.creator_id) {
+              try {
+                // Import library resolution service dynamically to avoid circular dependencies
+      const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
+                libraryVersionCheck = await libraryResolutionService.checkLibraryVersionsChanged(
+                  decompressedData.courseData.creator_id,
+                  decompressedData.libraryVersions
+                );
+                
+                if (libraryVersionCheck.needsUpdate) {
+                  console.log('🔄 LIBRARY VERSION CHECK: Library items changed, triggering update');
+                  this.handleLibraryVersionUpdate(courseId, libraryVersionCheck, this.currentUserId).catch(error => {
+                    console.error('❌ Error in handleLibraryVersionUpdate:', error);
+                  });
+                  
+                  return {
+                    ...decompressedData,
+                    status: 'updating',
+                    updateProgress: 0
+                  };
+                }
+              } catch (libraryError) {
+                console.error('❌ Error checking library versions:', libraryError);
+                // Continue with course version check even if library check fails
+              }
+            }
+            
+            // ✅ EXISTING: Check course version
             const versionCheck = await this.checkVersionMismatch(courseId, courseData, this.currentUserId);
             console.log('📊 VERSION CHECK: Version check result:', versionCheck);
             
@@ -537,7 +578,6 @@ class CourseDownloadService {
                 }
               });
               
-              const decompressedData = await this.decompressCourseData(courseData);
               return {
                 ...decompressedData,
                 status: 'updating',
@@ -859,6 +899,112 @@ class CourseDownloadService {
       console.error('❌ Error removing course from cache:', error);
       return false;
     }
+  }
+
+  // Library Version Methods
+  /**
+   * Extract library versions from modules
+   */
+  async extractLibraryVersions(creatorId, modules) {
+    if (!creatorId || !modules || modules.length === 0) {
+      return { sessions: {}, modules: {} };
+    }
+    
+    try {
+      // Import library resolution service dynamically to avoid circular dependencies
+      const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
+      return await libraryResolutionService.extractLibraryVersions(creatorId, modules);
+    } catch (error) {
+      console.error('❌ Error extracting library versions:', error);
+      return { sessions: {}, modules: {} };
+    }
+  }
+
+  /**
+   * Handle library version update
+   */
+  async handleLibraryVersionUpdate(courseId, versionCheck, userId) {
+    const updateKey = `${courseId}_${userId}`;
+    
+    // Prevent duplicate updates
+    if (this._versionChecksInProgress?.has(updateKey)) {
+      console.log('⚠️ Library version update already in progress for:', courseId);
+      return;
+    }
+    
+    this._versionChecksInProgress.add(updateKey);
+    
+    try {
+      console.log('🔄 Handling library version update for course:', courseId);
+      
+      // Mark as updating
+      await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        update_status: 'updating',
+        lastUpdated: Date.now()
+      });
+      
+      // Start background refresh
+      this.startLibraryBackgroundUpdate(courseId, versionCheck, userId);
+      
+    } catch (error) {
+      console.error('❌ Error handling library version update:', error);
+      this._versionChecksInProgress.delete(updateKey);
+    }
+  }
+
+  /**
+   * Start background library update
+   */
+  async startLibraryBackgroundUpdate(courseId, versionCheck, userId) {
+    const updateKey = `${courseId}_${userId}`;
+    
+    if (this._backgroundUpdatesInProgress.has(updateKey)) {
+      console.log('⚠️ Library background update already in progress for:', courseId);
+      return;
+    }
+    
+    this._backgroundUpdatesInProgress.add(updateKey);
+    
+    setTimeout(async () => {
+      try {
+        console.log('🔄 LIBRARY BACKGROUND UPDATE: Starting for:', courseId);
+        
+        // Re-download course (will get updated library items)
+        await this.downloadCourse(courseId, userId);
+        
+        console.log('✅ LIBRARY BACKGROUND UPDATE: Download completed');
+        
+        // Update status
+        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+          update_status: 'ready',
+          lastUpdated: Date.now()
+        });
+        
+        // Notify UI
+        this.notifyUpdateComplete(courseId, null);
+        
+        // Clean up
+        this._backgroundUpdatesInProgress.delete(updateKey);
+        if (this._versionChecksInProgress) {
+          this._versionChecksInProgress.delete(updateKey);
+        }
+        
+      } catch (error) {
+        console.error('❌ LIBRARY BACKGROUND UPDATE FAILED:', error);
+        
+        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+          update_status: 'failed'
+        });
+        
+        this.notifyUpdateFailed(courseId, error);
+        
+        // Clean up
+        this._backgroundUpdatesInProgress.delete(updateKey);
+        if (this._versionChecksInProgress) {
+          this._versionChecksInProgress.delete(updateKey);
+        }
+      }
+    }, 1000);
   }
 
   // Version System Methods

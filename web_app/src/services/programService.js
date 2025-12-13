@@ -11,6 +11,7 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
+  setDoc,
   writeBatch,
   serverTimestamp,
   orderBy,
@@ -494,18 +495,99 @@ class ProgramService {
     }
   }
 
-  // Get modules for a program
+  // Get modules for a program (with library resolution)
   async getModulesByProgram(programId) {
     try {
+      // Get program to get creator_id
+      const program = await this.getProgramById(programId);
+      const creatorId = program?.creator_id;
+      
       const modulesRef = collection(firestore, 'courses', programId, 'modules');
       const querySnapshot = await getDocs(modulesRef);
       
       const modules = [];
-      querySnapshot.forEach((doc) => {
+      
+      for (const docSnapshot of querySnapshot.docs) {
+        const moduleData = docSnapshot.data();
+        
+        // ✅ NEW: Check if library reference
+        if (moduleData.libraryModuleRef && creatorId) {
+          try {
+            // Import libraryService dynamically to avoid circular dependencies
+            const { default: libraryService } = await import('./libraryService');
+            
+            // Fetch library module
+            const libraryModule = await libraryService.getLibraryModuleById(creatorId, moduleData.libraryModuleRef);
+            
+            if (libraryModule) {
+              // Resolve library sessions
+              const resolvedSessions = await Promise.all(
+                (libraryModule.sessionRefs || []).map(async ({ librarySessionRef, order }) => {
+                  // Find program session with this librarySessionRef
+                  const programSessionsRef = collection(
+                    firestore,
+                    'courses', programId,
+                    'modules', docSnapshot.id,
+                    'sessions'
+                  );
+                  const programSessionsSnapshot = await getDocs(programSessionsRef);
+                  
+                  const matchingSession = programSessionsSnapshot.docs.find(sessionDoc =>
+                    sessionDoc.data().librarySessionRef === librarySessionRef
+                  );
+                  
+                  if (matchingSession) {
+                    const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
+                    if (librarySession) {
+                      const overrides = await this.getSessionOverrides(programId, docSnapshot.id, matchingSession.id);
+                      return {
+                        id: matchingSession.id,
+                        ...librarySession,
+                        librarySessionRef,
+                        order: matchingSession.data().order || order,
+                        _overrides: overrides
+                      };
+                    }
+                  }
+                  
+                  // Fallback if not found
+                  const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
+                  return librarySession ? {
+                    ...librarySession,
+                    librarySessionRef,
+                    order
+                  } : null;
+                })
+              );
+              
+              // Merge with program-specific data
+              modules.push({
+                id: docSnapshot.id,
+                ...libraryModule,
+                libraryModuleRef: moduleData.libraryModuleRef,
+                order: moduleData.order,
+                sessions: resolvedSessions.filter(Boolean)
+              });
+              continue;
+            }
+          } catch (error) {
+            console.error('Error resolving library module:', error);
+            // Fall through to use standalone module data
+          }
+        }
+        
+        // Standalone module or resolution failed
         modules.push({
-          id: doc.id,
-          ...doc.data()
+          id: docSnapshot.id,
+          ...moduleData
         });
+      }
+      
+      // Sort by order
+      modules.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
       });
       
       return modules;
@@ -516,7 +598,7 @@ class ProgramService {
   }
 
   // Create a new module
-  async createModule(programId, moduleName) {
+  async createModule(programId, moduleName, libraryModuleRef = null) {
     try {
       const modulesRef = collection(firestore, 'courses', programId, 'modules');
       // Get the max order from existing modules
@@ -529,11 +611,18 @@ class ProgramService {
       }
       
       const newModule = {
-        title: moduleName.trim(),
         order: newOrder,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
+      
+      // ✅ NEW: If libraryModuleRef provided, store only reference
+      if (libraryModuleRef) {
+        newModule.libraryModuleRef = libraryModuleRef;
+      } else {
+        // Standalone module - store title directly
+        newModule.title = moduleName.trim();
+      }
       
       const docRef = await addDoc(modulesRef, newModule);
       return {
@@ -544,6 +633,13 @@ class ProgramService {
       console.error('Error creating module:', error);
       throw error;
     }
+  }
+
+  /**
+   * Create module from library (with reference)
+   */
+  async createModuleFromLibrary(programId, libraryModuleRef) {
+    return await this.createModule(programId, null, libraryModuleRef);
   }
 
   // Delete a module
@@ -642,24 +738,85 @@ class ProgramService {
     }
   }
 
-  // Get sessions for a module
+  // Get sessions for a module (with library resolution)
   async getSessionsByModule(programId, moduleId) {
     try {
+      // Get program to get creator_id
+      const program = await this.getProgramById(programId);
+      const creatorId = program?.creator_id;
+      
       const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
       const querySnapshot = await getDocs(sessionsRef);
       
       const sessions = [];
-      querySnapshot.forEach((doc) => {
+      
+      for (const docSnapshot of querySnapshot.docs) {
+        const sessionData = docSnapshot.data();
+        
+        // ✅ NEW: Check if library reference
+        if (sessionData.librarySessionRef && creatorId) {
+          try {
+            // Import libraryService dynamically to avoid circular dependencies
+            const { default: libraryService } = await import('./libraryService');
+            
+            // Fetch library session
+            const librarySession = await libraryService.getLibrarySessionById(creatorId, sessionData.librarySessionRef);
+            
+            if (librarySession) {
+              // Merge with program-specific order
+              sessions.push({
+                id: docSnapshot.id,
+                ...librarySession,
+                librarySessionRef: sessionData.librarySessionRef,
+                order: sessionData.order,
+                // Fetch overrides if any
+                _overrides: await this.getSessionOverrides(programId, moduleId, docSnapshot.id)
+              });
+              continue;
+            }
+          } catch (error) {
+            console.error('Error resolving library session:', error);
+            // Fall through to use standalone session data
+          }
+        }
+        
+        // Standalone session or resolution failed
         sessions.push({
-          id: doc.id,
-          ...doc.data()
+          id: docSnapshot.id,
+          ...sessionData
         });
+      }
+      
+      // Sort by order
+      sessions.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
       });
       
       return sessions;
     } catch (error) {
       console.error('Error fetching sessions:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get session overrides
+   */
+  async getSessionOverrides(programId, moduleId, sessionId) {
+    try {
+      const overridesRef = doc(firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'overrides', 'data'
+      );
+      const docSnap = await getDoc(overridesRef);
+      return docSnap.exists() ? docSnap.data() : null;
+    } catch (error) {
+      console.error('Error fetching session overrides:', error);
+      return null;
     }
   }
 
@@ -738,7 +895,7 @@ class ProgramService {
   }
 
   // Create a new session
-  async createSession(programId, moduleId, sessionName, order = null, imageUrl = null) {
+  async createSession(programId, moduleId, sessionName, order = null, imageUrl = null, librarySessionRef = null) {
     try {
       // If order is not provided, calculate it by getting the max order from existing sessions
       let sessionOrder = order;
@@ -755,15 +912,20 @@ class ProgramService {
       
       const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
       const newSession = {
-        title: sessionName.trim(),
         order: sessionOrder,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
       
-      // Add image_url if provided
-      if (imageUrl) {
-        newSession.image_url = imageUrl;
+      // ✅ NEW: If librarySessionRef provided, store only reference
+      if (librarySessionRef) {
+        newSession.librarySessionRef = librarySessionRef;
+      } else {
+        // Standalone session - store title and image directly
+        newSession.title = sessionName.trim();
+        if (imageUrl) {
+          newSession.image_url = imageUrl;
+        }
       }
       
       const docRef = await addDoc(sessionsRef, newSession);
@@ -774,6 +936,50 @@ class ProgramService {
     } catch (error) {
       console.error('Error creating session:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Create session from library (with reference)
+   */
+  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null) {
+    return await this.createSession(programId, moduleId, null, order, null, librarySessionRef);
+  }
+
+  /**
+   * Update session override
+   */
+  async updateSessionOverride(programId, moduleId, sessionId, overrideData) {
+    try {
+      const overridesRef = doc(firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'overrides', 'data'
+      );
+      
+      await updateDoc(overridesRef, {
+        ...overrideData,
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      // If document doesn't exist, create it
+      if (error.code === 'not-found') {
+        const overridesRef = doc(firestore,
+          'courses', programId,
+          'modules', moduleId,
+          'sessions', sessionId,
+          'overrides', 'data'
+        );
+        await setDoc(overridesRef, {
+          ...overrideData,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+      } else {
+        console.error('Error updating session override:', error);
+        throw error;
+      }
     }
   }
 
@@ -1203,6 +1409,46 @@ class ProgramService {
       await batch.commit();
     } catch (error) {
       console.error('Error batch updating completeness:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create module from library (creates module + all sessions from library module)
+   */
+  async createModuleFromLibrary(programId, libraryModuleRef) {
+    try {
+      // Get program to get creator_id
+      const program = await this.getProgramById(programId);
+      const creatorId = program?.creator_id;
+      
+      if (!creatorId) {
+        throw new Error('Program creator not found');
+      }
+      
+      // Import libraryService dynamically to avoid circular dependencies
+      const { default: libraryService } = await import('./libraryService');
+      
+      // Get library module
+      const libraryModule = await libraryService.getLibraryModuleById(creatorId, libraryModuleRef);
+      if (!libraryModule) {
+        throw new Error('Library module not found');
+      }
+      
+      // Create module with reference
+      const newModule = await this.createModule(programId, null, libraryModuleRef);
+      
+      // Create sessions from library module's session references
+      const sessionRefs = libraryModule.sessionRefs || [];
+      
+      for (let i = 0; i < sessionRefs.length; i++) {
+        const { librarySessionRef, order } = sessionRefs[i];
+        await this.createSessionFromLibrary(programId, newModule.id, librarySessionRef, order);
+      }
+      
+      return newModule;
+    } catch (error) {
+      console.error('Error creating module from library:', error);
       throw error;
     }
   }

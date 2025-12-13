@@ -214,9 +214,10 @@ class FirestoreService {
 
   async getCourseModules(courseId) {
     try {
-      // First, get course to check if it's weekly
+      // First, get course to check if it's weekly and get creator_id
       const courseData = await this.getCourse(courseId);
       const isWeeklyProgram = courseData?.weekly === true;
+      const creatorId = courseData?.creator_id;
       
       let modulesQuery;
       
@@ -246,12 +247,32 @@ class FirestoreService {
         // Could return empty array or show message to user
       }
       
+      // Import library resolution service dynamically to avoid circular dependencies
+      const { default: libraryResolutionService } = await import('./libraryResolutionService');
+      
       // OPTIMIZED: Fetch all modules in parallel instead of sequential
       const modules = await Promise.all(
         modulesSnapshot.docs.map(async (moduleDoc) => {
           const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
           
-          // Get sessions for this module
+          // ✅ NEW: Check if module is library reference
+          if (moduleData.libraryModuleRef && creatorId) {
+            try {
+              console.log('📚 Resolving library module:', moduleData.libraryModuleRef);
+              return await libraryResolutionService.resolveLibraryModule(
+                creatorId,
+                moduleData.libraryModuleRef,
+                courseId,
+                moduleDoc.id
+              );
+            } catch (error) {
+              console.error('❌ Error resolving library module:', error);
+              // Fallback to empty module if resolution fails
+              return { ...moduleData, sessions: [] };
+            }
+          }
+          
+          // ✅ EXISTING: Fetch sessions (standalone or with library refs)
           try {
             const sessionsQuery = query(
               collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions'),
@@ -264,7 +285,25 @@ class FirestoreService {
               sessionsSnapshot.docs.map(async (sessionDoc) => {
                 const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
                 
-                // Get exercises for this session
+                // ✅ NEW: Check if session is library reference
+                if (sessionData.librarySessionRef && creatorId) {
+                  try {
+                    console.log('📚 Resolving library session:', sessionData.librarySessionRef);
+                    return await libraryResolutionService.resolveLibrarySession(
+                      creatorId,
+                      sessionData.librarySessionRef,
+                      courseId,
+                      moduleDoc.id,
+                      sessionDoc.id
+                    );
+                  } catch (error) {
+                    console.error('❌ Error resolving library session:', error);
+                    // Fallback to empty session if resolution fails
+                    return { ...sessionData, exercises: [] };
+                  }
+                }
+                
+                // ✅ EXISTING: Standalone session - fetch exercises/sets normally
                 try {
                   const exercisesQuery = query(
                     collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises'),
@@ -324,6 +363,66 @@ class FirestoreService {
     } catch (error) {
       console.error('Error in getCourseModules:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get session-level overrides
+   */
+  async getSessionOverrides(programId, moduleId, sessionId) {
+    try {
+      const overridesRef = doc(firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'overrides', 'data'
+      );
+      const docSnap = await getDoc(overridesRef);
+      return docSnap.exists() ? docSnap.data() : null;
+    } catch (error) {
+      console.error('Error fetching session overrides:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get exercise-level overrides
+   */
+  async getExerciseOverrides(programId, moduleId, sessionId, exerciseId) {
+    try {
+      const overridesRef = doc(firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'exercises', exerciseId,
+        'overrides', 'data'
+      );
+      const docSnap = await getDoc(overridesRef);
+      return docSnap.exists() ? docSnap.data() : null;
+    } catch (error) {
+      console.error('Error fetching exercise overrides:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get set-level overrides
+   */
+  async getSetOverrides(programId, moduleId, sessionId, exerciseId, setId) {
+    try {
+      const overridesRef = doc(firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'exercises', exerciseId,
+        'sets', setId,
+        'overrides', 'data'
+      );
+      const docSnap = await getDoc(overridesRef);
+      return docSnap.exists() ? docSnap.data() : null;
+    } catch (error) {
+      console.error('Error fetching set overrides:', error);
+      return null;
     }
   }
 

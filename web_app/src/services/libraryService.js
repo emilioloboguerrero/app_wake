@@ -12,7 +12,10 @@ import {
   deleteDoc,
   updateDoc,
   deleteField,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -295,6 +298,1210 @@ class LibraryService {
       await updateDoc(libraryDocRef, updateData);
     } catch (error) {
       console.error('Error updating exercise:', error);
+      throw error;
+    }
+  }
+
+  // ========== SESSION LIBRARY METHODS ==========
+
+  /**
+   * Get all library sessions for a creator
+   */
+  async getSessionLibrary(creatorId) {
+    try {
+      const sessionsRef = collection(firestore, 'creator_libraries', creatorId, 'sessions');
+      const querySnapshot = await getDocs(sessionsRef);
+      
+      const sessions = [];
+      querySnapshot.forEach((doc) => {
+        sessions.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return sessions.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(0);
+        const dateB = b.created_at?.toDate?.() || new Date(0);
+        return dateB - dateA; // Newest first
+      });
+    } catch (error) {
+      console.error('Error fetching session library:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single library session by ID with exercises
+   */
+  async getLibrarySessionById(creatorId, sessionId) {
+    try {
+      const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      if (!sessionDoc.exists()) {
+        return null;
+      }
+      
+      const sessionData = {
+        id: sessionDoc.id,
+        ...sessionDoc.data()
+      };
+      
+      // Fetch exercises
+      const exercisesRef = collection(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', sessionId, 
+        'exercises'
+      );
+      const exercisesSnapshot = await getDocs(exercisesRef);
+      
+      const exercises = await Promise.all(
+        exercisesSnapshot.docs.map(async (exerciseDoc) => {
+          const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
+          
+          // Fetch sets
+          const setsRef = collection(
+            firestore,
+            'creator_libraries', creatorId,
+            'sessions', sessionId,
+            'exercises', exerciseDoc.id,
+            'sets'
+          );
+          const setsSnapshot = await getDocs(setsRef);
+          
+          exerciseData.sets = setsSnapshot.docs.map(setDoc => ({
+            id: setDoc.id,
+            ...setDoc.data()
+          }));
+          
+          return exerciseData;
+        })
+      );
+      
+      sessionData.exercises = exercises.sort((a, b) => (a.order || 0) - (b.order || 0));
+      
+      return sessionData;
+    } catch (error) {
+      console.error('Error fetching library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a library session directly (without needing a program session first)
+   */
+  async createLibrarySession(creatorId, sessionData) {
+    try {
+      const librarySessionsRef = collection(firestore, 'creator_libraries', creatorId, 'sessions');
+      const newLibrarySession = {
+        title: sessionData.title,
+        image_url: sessionData.image_url || null,
+        creator_id: creatorId,
+        version: 1,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const librarySessionDocRef = await addDoc(librarySessionsRef, newLibrarySession);
+      
+      return {
+        id: librarySessionDocRef.id,
+        ...newLibrarySession
+      };
+    } catch (error) {
+      console.error('Error creating library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload image for library session
+   */
+  async uploadLibrarySessionImage(creatorId, sessionId, imageFile, onProgress) {
+    try {
+      const sanitizedSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const fileName = `image.jpg`;
+      const storagePath = `creator_libraries/${creatorId}/sessions/${sanitizedSessionId}/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+
+      const metadata = {
+        contentType: imageFile.type || 'image/jpeg',
+        cacheControl: 'public, max-age=31536000'
+      };
+
+      const uploadTask = uploadBytesResumable(storageRef, imageFile, metadata);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            if (onProgress) {
+              onProgress(progress);
+            }
+          },
+          (error) => {
+            console.error('Error uploading library session image:', error);
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              // Update the library session document with the image URL
+              const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId);
+              await updateDoc(sessionRef, {
+                image_url: downloadURL,
+                updated_at: serverTimestamp()
+              });
+
+              resolve(downloadURL);
+            } catch (error) {
+              reject(error);
+            }
+          }
+        );
+      });
+    } catch (error) {
+      console.error('Error uploading library session image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save session to library
+   */
+  async saveSessionToLibrary(creatorId, programId, moduleId, sessionId) {
+    try {
+      // Get session data from program
+      const sessionRef = doc(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      if (!sessionDoc.exists()) {
+        throw new Error('Session not found');
+      }
+      
+      const sessionData = sessionDoc.data();
+      
+      // Create library session
+      const librarySessionsRef = collection(firestore, 'creator_libraries', creatorId, 'sessions');
+      const newLibrarySession = {
+        title: sessionData.title,
+        image_url: sessionData.image_url || null,
+        creator_id: creatorId,
+        version: 1,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const librarySessionDocRef = await addDoc(librarySessionsRef, newLibrarySession);
+      
+      // Get exercises from program session
+      const exercisesRef = collection(
+        firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions', sessionId,
+        'exercises'
+      );
+      const exercisesSnapshot = await getDocs(exercisesRef);
+      
+      // Copy each exercise with sets
+      for (const exerciseDoc of exercisesSnapshot.docs) {
+        const exerciseData = exerciseDoc.data();
+        
+        // Create exercise in library
+        const libraryExerciseRef = collection(
+          firestore,
+          'creator_libraries', creatorId,
+          'sessions', librarySessionDocRef.id,
+          'exercises'
+        );
+        
+        const newLibraryExercise = {
+          primary: exerciseData.primary || {},
+          alternatives: exerciseData.alternatives || {},
+          measures: exerciseData.measures || [],
+          objectives: exerciseData.objectives || [],
+          order: exerciseData.order || 0,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        };
+        
+        const libraryExerciseDocRef = await addDoc(libraryExerciseRef, newLibraryExercise);
+        
+        // Copy sets
+        const setsRef = collection(
+          firestore,
+          'courses', programId,
+          'modules', moduleId,
+          'sessions', sessionId,
+          'exercises', exerciseDoc.id,
+          'sets'
+        );
+        const setsSnapshot = await getDocs(setsRef);
+        
+        for (const setDoc of setsSnapshot.docs) {
+          const setData = setDoc.data();
+          const librarySetsRef = collection(
+            firestore,
+            'creator_libraries', creatorId,
+            'sessions', librarySessionDocRef.id,
+            'exercises', libraryExerciseDocRef.id,
+            'sets'
+          );
+          
+          await addDoc(librarySetsRef, {
+            ...setData,
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp()
+          });
+        }
+      }
+      
+      return {
+        id: librarySessionDocRef.id,
+        ...newLibrarySession
+      };
+    } catch (error) {
+      console.error('Error saving session to library:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete library session (with usage check)
+   */
+  async deleteLibrarySession(creatorId, sessionId) {
+    try {
+      // Check if session is used in any programs
+      const usageResult = await this.checkLibrarySessionUsage(creatorId, sessionId);
+      
+      if (usageResult.inUse) {
+        throw new Error(`Session is used in ${usageResult.count} programs. Cannot delete.`);
+      }
+      
+      // Delete session (exercises and sets will be deleted by Firestore rules or cascade)
+      const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId);
+      await deleteDoc(sessionRef);
+    } catch (error) {
+      console.error('Error deleting library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if library session is used in any programs
+   */
+  async checkLibrarySessionUsage(creatorId, sessionId) {
+    try {
+      // Get all programs by creator
+      const programsRef = collection(firestore, 'courses');
+      const programsQuery = query(programsRef, where('creator_id', '==', creatorId));
+      const programsSnapshot = await getDocs(programsQuery);
+      
+      let usageCount = 0;
+      const usedIn = [];
+      
+      for (const programDoc of programsSnapshot.docs) {
+        const modulesRef = collection(firestore, 'courses', programDoc.id, 'modules');
+        const modulesSnapshot = await getDocs(modulesRef);
+        
+        for (const moduleDoc of modulesSnapshot.docs) {
+          const sessionsRef = collection(
+            firestore,
+            'courses', programDoc.id,
+            'modules', moduleDoc.id,
+            'sessions'
+          );
+          const sessionsSnapshot = await getDocs(sessionsRef);
+          
+          for (const sessionDoc of sessionsSnapshot.docs) {
+            const sessionData = sessionDoc.data();
+            if (sessionData.librarySessionRef === sessionId) {
+              usageCount++;
+              usedIn.push({
+                programId: programDoc.id,
+                moduleId: moduleDoc.id,
+                sessionId: sessionDoc.id
+              });
+            }
+          }
+        }
+      }
+      
+      return {
+        inUse: usageCount > 0,
+        count: usageCount,
+        usedIn
+      };
+    } catch (error) {
+      console.error('Error checking library session usage:', error);
+      return { inUse: false, count: 0, usedIn: [] };
+    }
+  }
+
+  /**
+   * Update library session
+   */
+  async updateLibrarySession(creatorId, sessionId, updates) {
+    try {
+      const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId);
+      
+      // Increment version on any update
+      const sessionDoc = await getDoc(sessionRef);
+      if (!sessionDoc.exists()) {
+        throw new Error('Library session not found');
+      }
+      
+      const currentVersion = sessionDoc.data().version || 0;
+      
+      await updateDoc(sessionRef, {
+        ...updates,
+        version: currentVersion + 1,
+        updated_at: serverTimestamp()
+      });
+      
+      return currentVersion + 1;
+    } catch (error) {
+      console.error('Error updating library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update library session version (increment on changes)
+   */
+  async incrementLibrarySessionVersion(creatorId, sessionId) {
+    try {
+      const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      if (!sessionDoc.exists()) {
+        throw new Error('Library session not found');
+      }
+      
+      const currentVersion = sessionDoc.data().version || 0;
+      
+      await updateDoc(sessionRef, {
+        version: currentVersion + 1,
+        updated_at: serverTimestamp()
+      });
+      
+      return currentVersion + 1;
+    } catch (error) {
+      console.error('Error incrementing library session version:', error);
+      throw error;
+    }
+  }
+
+  // ========== MODULE LIBRARY METHODS ==========
+
+  /**
+   * Get all library modules for a creator
+   */
+  async getModuleLibrary(creatorId) {
+    try {
+      const modulesRef = collection(firestore, 'creator_libraries', creatorId, 'modules');
+      const querySnapshot = await getDocs(modulesRef);
+      
+      const modules = [];
+      querySnapshot.forEach((doc) => {
+        modules.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return modules.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(0);
+        const dateB = b.created_at?.toDate?.() || new Date(0);
+        return dateB - dateA; // Newest first
+      });
+    } catch (error) {
+      console.error('Error fetching module library:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single library module by ID
+   */
+  async getLibraryModuleById(creatorId, moduleId) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (!moduleDoc.exists()) {
+        return null;
+      }
+      
+      return {
+        id: moduleDoc.id,
+        ...moduleDoc.data()
+      };
+    } catch (error) {
+      console.error('Error fetching library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a library module directly (without needing a program module first)
+   */
+  async createLibraryModule(creatorId, moduleData) {
+    try {
+      const libraryModulesRef = collection(firestore, 'creator_libraries', creatorId, 'modules');
+      const newLibraryModule = {
+        title: moduleData.title,
+        creator_id: creatorId,
+        sessionRefs: moduleData.sessionRefs || [],
+        version: 1,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const libraryModuleDocRef = await addDoc(libraryModulesRef, newLibraryModule);
+      
+      return {
+        id: libraryModuleDocRef.id,
+        ...newLibraryModule
+      };
+    } catch (error) {
+      console.error('Error creating library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save module to library
+   */
+  async saveModuleToLibrary(creatorId, programId, moduleId) {
+    try {
+      // Get module data from program
+      const moduleRef = doc(firestore, 'courses', programId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (!moduleDoc.exists()) {
+        throw new Error('Module not found');
+      }
+      
+      const moduleData = moduleDoc.data();
+      
+      // Get sessions from module
+      const sessionsRef = collection(
+        firestore,
+        'courses', programId,
+        'modules', moduleId,
+        'sessions'
+      );
+      const sessionsSnapshot = await getDocs(sessionsRef);
+      
+      const sessionRefs = [];
+      
+      // For each session, save to library if not already there
+      for (const sessionDoc of sessionsSnapshot.docs) {
+        const sessionData = sessionDoc.data();
+        
+        // Check if session has librarySessionRef (already in library)
+        if (sessionData.librarySessionRef) {
+          sessionRefs.push({
+            librarySessionRef: sessionData.librarySessionRef,
+            order: sessionData.order || 0
+          });
+        } else {
+          // Save session to library first
+          const librarySession = await this.saveSessionToLibrary(
+            creatorId,
+            programId,
+            moduleId,
+            sessionDoc.id
+          );
+          
+          sessionRefs.push({
+            librarySessionRef: librarySession.id,
+            order: sessionData.order || 0
+          });
+        }
+      }
+      
+      // Create library module
+      const libraryModulesRef = collection(firestore, 'creator_libraries', creatorId, 'modules');
+      const newLibraryModule = {
+        title: moduleData.title,
+        creator_id: creatorId,
+        sessionRefs: sessionRefs,
+        version: 1,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const libraryModuleDocRef = await addDoc(libraryModulesRef, newLibraryModule);
+      
+      return {
+        id: libraryModuleDocRef.id,
+        ...newLibraryModule
+      };
+    } catch (error) {
+      console.error('Error saving module to library:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete library module (with usage check)
+   */
+  async deleteLibraryModule(creatorId, moduleId) {
+    try {
+      // Check if module is used in any programs
+      const usageResult = await this.checkLibraryModuleUsage(creatorId, moduleId);
+      
+      if (usageResult.inUse) {
+        throw new Error(`Module is used in ${usageResult.count} programs. Cannot delete.`);
+      }
+      
+      // Delete module
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      await deleteDoc(moduleRef);
+    } catch (error) {
+      console.error('Error deleting library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if library module is used in any programs
+   */
+  async checkLibraryModuleUsage(creatorId, moduleId) {
+    try {
+      // Get all programs by creator
+      const programsRef = collection(firestore, 'courses');
+      const programsQuery = query(programsRef, where('creator_id', '==', creatorId));
+      const programsSnapshot = await getDocs(programsQuery);
+      
+      let usageCount = 0;
+      const usedIn = [];
+      
+      for (const programDoc of programsSnapshot.docs) {
+        const modulesRef = collection(firestore, 'courses', programDoc.id, 'modules');
+        const modulesSnapshot = await getDocs(modulesRef);
+        
+        for (const moduleDoc of modulesSnapshot.docs) {
+          const moduleData = moduleDoc.data();
+          if (moduleData.libraryModuleRef === moduleId) {
+            usageCount++;
+            usedIn.push({
+              programId: programDoc.id,
+              moduleId: moduleDoc.id
+            });
+          }
+        }
+      }
+      
+      return {
+        inUse: usageCount > 0,
+        count: usageCount,
+        usedIn
+      };
+    } catch (error) {
+      console.error('Error checking library module usage:', error);
+      return { inUse: false, count: 0, usedIn: [] };
+    }
+  }
+
+  /**
+   * Update library module
+   */
+  async updateLibraryModule(creatorId, moduleId, updates) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      
+      // Increment version on any update
+      const moduleDoc = await getDoc(moduleRef);
+      const currentVersion = moduleDoc.exists() ? (moduleDoc.data().version || 0) : 0;
+      
+      await updateDoc(moduleRef, {
+        ...updates,
+        version: currentVersion + 1,
+        updated_at: serverTimestamp()
+      });
+      
+      return currentVersion + 1;
+    } catch (error) {
+      console.error('Error updating library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update library module version (increment on changes)
+   */
+  async incrementLibraryModuleVersion(creatorId, moduleId) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (!moduleDoc.exists()) {
+        throw new Error('Library module not found');
+      }
+      
+      const currentVersion = moduleDoc.data().version || 0;
+      
+      await updateDoc(moduleRef, {
+        version: currentVersion + 1,
+        updated_at: serverTimestamp()
+      });
+      
+      return currentVersion + 1;
+    } catch (error) {
+      console.error('Error incrementing library module version:', error);
+      throw error;
+    }
+  }
+
+  // ========== LIBRARY SESSION EXERCISES METHODS ==========
+
+  /**
+   * Get exercises for a library session
+   */
+  async getLibrarySessionExercises(creatorId, sessionId) {
+    try {
+      const exercisesRef = collection(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', sessionId, 
+        'exercises'
+      );
+      const q = query(exercisesRef, orderBy('order', 'asc'));
+      const querySnapshot = await getDocs(q);
+      
+      const exercises = [];
+      for (const exerciseDoc of querySnapshot.docs) {
+        const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
+        
+        // Fetch sets
+        const setsRef = collection(
+          firestore,
+          'creator_libraries', creatorId,
+          'sessions', sessionId,
+          'exercises', exerciseDoc.id,
+          'sets'
+        );
+        const setsSnapshot = await getDocs(setsRef);
+        
+        exerciseData.sets = setsSnapshot.docs.map(setDoc => ({
+          id: setDoc.id,
+          ...setDoc.data()
+        }));
+        
+        exercises.push(exerciseData);
+      }
+      
+      return exercises;
+    } catch (error) {
+      console.error('Error fetching library session exercises:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create exercise in library session
+   */
+  async createLibrarySessionExercise(creatorId, sessionId, exerciseData, order = null) {
+    try {
+      let exerciseOrder = order;
+      if (exerciseOrder === null) {
+        const exercisesRef = collection(
+          firestore, 
+          'creator_libraries', creatorId, 
+          'sessions', sessionId, 
+          'exercises'
+        );
+        const q = query(exercisesRef, orderBy('order', 'desc'), limit(1));
+        const querySnapshot = await getDocs(q);
+        exerciseOrder = 0;
+        if (!querySnapshot.empty) {
+          const lastExercise = querySnapshot.docs[0].data();
+          exerciseOrder = (lastExercise.order !== undefined && lastExercise.order !== null) ? lastExercise.order + 1 : 0;
+        }
+      }
+      
+      const exercisesRef = collection(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', sessionId, 
+        'exercises'
+      );
+      const newExercise = {
+        ...exerciseData,
+        order: exerciseOrder,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(exercisesRef, newExercise);
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+      
+      return {
+        id: docRef.id,
+        ...newExercise
+      };
+    } catch (error) {
+      console.error('Error creating library session exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update exercise in library session
+   */
+  async updateLibrarySessionExercise(creatorId, sessionId, exerciseId, updates) {
+    try {
+      const exerciseRef = doc(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', sessionId, 
+        'exercises', exerciseId
+      );
+      await updateDoc(exerciseRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+    } catch (error) {
+      console.error('Error updating library session exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete exercise from library session
+   */
+  async deleteLibrarySessionExercise(creatorId, sessionId, exerciseId) {
+    try {
+      // Delete all sets for this exercise
+      const setsRef = collection(
+        firestore,
+        'creator_libraries', creatorId,
+        'sessions', sessionId,
+        'exercises', exerciseId,
+        'sets'
+      );
+      const setsSnapshot = await getDocs(setsRef);
+      
+      for (const setDoc of setsSnapshot.docs) {
+        const setDocRef = doc(
+          firestore,
+          'creator_libraries', creatorId,
+          'sessions', sessionId,
+          'exercises', exerciseId,
+          'sets', setDoc.id
+        );
+        await deleteDoc(setDocRef);
+      }
+      
+      // Delete the exercise document
+      const exerciseDocRef = doc(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', sessionId, 
+        'exercises', exerciseId
+      );
+      await deleteDoc(exerciseDocRef);
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+    } catch (error) {
+      console.error('Error deleting library session exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update exercise order in library session
+   */
+  async updateLibrarySessionExerciseOrder(creatorId, sessionId, exerciseOrders) {
+    try {
+      if (!exerciseOrders || exerciseOrders.length === 0) {
+        return;
+      }
+
+      const batch = writeBatch(firestore);
+      
+      exerciseOrders.forEach(({ exerciseId, order }) => {
+        if (!exerciseId) return;
+        const exerciseDocRef = doc(
+          firestore, 
+          'creator_libraries', creatorId, 
+          'sessions', sessionId, 
+          'exercises', exerciseId
+        );
+        batch.update(exerciseDocRef, {
+          order: order,
+          updated_at: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+    } catch (error) {
+      console.error('Error updating library session exercise order:', error);
+      throw error;
+    }
+  }
+
+  // ========== LIBRARY MODULE SESSIONS METHODS ==========
+
+  /**
+   * Get sessions for a library module
+   */
+  async getLibraryModuleSessions(creatorId, moduleId) {
+    try {
+      const moduleDoc = await getDoc(doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId));
+      if (!moduleDoc.exists()) {
+        return [];
+      }
+      
+      const moduleData = moduleDoc.data();
+      const sessionRefs = moduleData.sessionRefs || [];
+      
+      // Fetch all sessions
+      const sessions = await Promise.all(
+        sessionRefs.map(async (sessionId, index) => {
+          const sessionDoc = await getDoc(doc(firestore, 'creator_libraries', creatorId, 'sessions', sessionId));
+          if (sessionDoc.exists()) {
+            return {
+              id: sessionDoc.id,
+              ...sessionDoc.data(),
+              order: index
+            };
+          }
+          return null;
+        })
+      );
+      
+      return sessions.filter(s => s !== null);
+    } catch (error) {
+      console.error('Error fetching library module sessions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add session to library module
+   */
+  async addSessionToLibraryModule(creatorId, moduleId, sessionId) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (!moduleDoc.exists()) {
+        throw new Error('Library module not found');
+      }
+      
+      const moduleData = moduleDoc.data();
+      const sessionRefs = moduleData.sessionRefs || [];
+      
+      // Check if session already exists
+      if (sessionRefs.includes(sessionId)) {
+        return;
+      }
+      
+      // Add session to array
+      await updateDoc(moduleRef, {
+        sessionRefs: [...sessionRefs, sessionId],
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment module version
+      await this.incrementLibraryModuleVersion(creatorId, moduleId);
+    } catch (error) {
+      console.error('Error adding session to library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove session from library module
+   */
+  async removeSessionFromLibraryModule(creatorId, moduleId, sessionId) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (!moduleDoc.exists()) {
+        throw new Error('Library module not found');
+      }
+      
+      const moduleData = moduleDoc.data();
+      const sessionRefs = (moduleData.sessionRefs || []).filter(id => id !== sessionId);
+      
+      await updateDoc(moduleRef, {
+        sessionRefs: sessionRefs,
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment module version
+      await this.incrementLibraryModuleVersion(creatorId, moduleId);
+    } catch (error) {
+      console.error('Error removing session from library module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update session order in library module
+   */
+  async updateLibraryModuleSessionOrder(creatorId, moduleId, sessionIds) {
+    try {
+      const moduleRef = doc(firestore, 'creator_libraries', creatorId, 'modules', moduleId);
+      
+      await updateDoc(moduleRef, {
+        sessionRefs: sessionIds,
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment module version
+      await this.incrementLibraryModuleVersion(creatorId, moduleId);
+    } catch (error) {
+      console.error('Error updating library module session order:', error);
+      throw error;
+    }
+  }
+
+  // ========== EXERCISE MANAGEMENT IN LIBRARY SESSIONS ==========
+
+  /**
+   * Get exercises for a library session
+   */
+  async getExercisesByLibrarySession(creatorId, librarySessionId) {
+    try {
+      const exercisesRef = collection(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', librarySessionId, 
+        'exercises'
+      );
+      const q = query(exercisesRef, orderBy('order', 'asc'));
+      const querySnapshot = await getDocs(q);
+      
+      const exercises = [];
+      querySnapshot.forEach((doc) => {
+        exercises.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return exercises;
+    } catch (error) {
+      console.error('Error fetching exercises for library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an exercise in a library session
+   */
+  async createExerciseInLibrarySession(creatorId, librarySessionId, exerciseName, order = null) {
+    try {
+      // Calculate order if not provided
+      let exerciseOrder = order;
+      if (exerciseOrder === null) {
+        const exercisesRef = collection(
+          firestore, 
+          'creator_libraries', creatorId, 
+          'sessions', librarySessionId, 
+          'exercises'
+        );
+        const q = query(exercisesRef, orderBy('order', 'desc'), limit(1));
+        const querySnapshot = await getDocs(q);
+        exerciseOrder = 0;
+        if (!querySnapshot.empty) {
+          const lastExercise = querySnapshot.docs[0].data();
+          exerciseOrder = (lastExercise.order !== undefined && lastExercise.order !== null) ? lastExercise.order + 1 : 0;
+        }
+      }
+      
+      const exercisesRef = collection(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', librarySessionId, 
+        'exercises'
+      );
+      const newExercise = {
+        title: exerciseName.trim(),
+        name: exerciseName.trim(),
+        order: exerciseOrder,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(exercisesRef, newExercise);
+      return {
+        id: docRef.id,
+        ...newExercise
+      };
+    } catch (error) {
+      console.error('Error creating exercise in library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an exercise in a library session
+   */
+  async updateExerciseInLibrarySession(creatorId, librarySessionId, exerciseId, updates) {
+    try {
+      const exerciseDocRef = doc(
+        firestore, 
+        'creator_libraries', creatorId, 
+        'sessions', librarySessionId, 
+        'exercises', exerciseId
+      );
+      await updateDoc(exerciseDocRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, librarySessionId);
+    } catch (error) {
+      console.error('Error updating exercise in library session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get sets for an exercise in a library session
+   */
+  async getSetsByLibraryExercise(creatorId, librarySessionId, exerciseId) {
+    try {
+      const setsRef = collection(
+        firestore,
+        'creator_libraries', creatorId,
+        'sessions', librarySessionId,
+        'exercises', exerciseId,
+        'sets'
+      );
+      const q = query(setsRef, orderBy('order', 'asc'));
+      const querySnapshot = await getDocs(q);
+      
+      const sets = [];
+      querySnapshot.forEach((doc) => {
+        sets.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return sets;
+    } catch (error) {
+      console.error('Error fetching sets for library exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a set for an exercise in a library session
+   */
+  async createSetInLibraryExercise(creatorId, librarySessionId, exerciseId, order = null) {
+    try {
+      // Calculate order if not provided
+      let setOrder = order;
+      if (setOrder === null) {
+        const setsRef = collection(
+          firestore,
+          'creator_libraries', creatorId,
+          'sessions', librarySessionId,
+          'exercises', exerciseId,
+          'sets'
+        );
+        const q = query(setsRef, orderBy('order', 'desc'), limit(1));
+        const querySnapshot = await getDocs(q);
+        setOrder = 0;
+        if (!querySnapshot.empty) {
+          const lastSet = querySnapshot.docs[0].data();
+          setOrder = (lastSet.order !== undefined && lastSet.order !== null) ? lastSet.order + 1 : 0;
+        }
+      }
+      
+      const setsRef = collection(
+        firestore,
+        'creator_libraries', creatorId,
+        'sessions', librarySessionId,
+        'exercises', exerciseId,
+        'sets'
+      );
+      const newSet = {
+        order: setOrder,
+        title: `Serie ${setOrder + 1}`,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(setsRef, newSet);
+      return {
+        id: docRef.id,
+        ...newSet
+      };
+    } catch (error) {
+      console.error('Error creating set in library exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a set for an exercise in a library session
+   */
+  async updateSetInLibraryExercise(creatorId, librarySessionId, exerciseId, setId, updates) {
+    try {
+      const setDocRef = doc(
+        firestore,
+        'creator_libraries', creatorId,
+        'sessions', librarySessionId,
+        'exercises', exerciseId,
+        'sets', setId
+      );
+      await updateDoc(setDocRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, librarySessionId);
+    } catch (error) {
+      console.error('Error updating set in library exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a set from an exercise in a library session
+   */
+  async deleteSetFromLibraryExercise(creatorId, librarySessionId, exerciseId, setId) {
+    try {
+      const setDocRef = doc(
+        firestore,
+        'creator_libraries', creatorId,
+        'sessions', librarySessionId,
+        'exercises', exerciseId,
+        'sets', setId
+      );
+      await deleteDoc(setDocRef);
+      
+      // Increment session version
+      await this.incrementLibrarySessionVersion(creatorId, librarySessionId);
+    } catch (error) {
+      console.error('Error deleting set from library exercise:', error);
       throw error;
     }
   }

@@ -6,6 +6,7 @@ import LibrariesScreen from './screens/LibrariesScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import ProgramsScreen from './screens/ProgramsScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
+import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
 import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -14,6 +15,8 @@ import BibliotecaScreen from './screens/BibliotecaScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
+import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
+import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -108,6 +111,54 @@ function AppContent() {
               element={
                 <ProtectedRoute requireCreator={false}>
                   <BibliotecaScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/sessions/new" 
+              element={
+                <ProtectedRoute>
+                  <CreateLibrarySessionScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/modules/new" 
+              element={
+                <ProtectedRoute>
+                  <CreateLibraryModuleScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/content" 
+              element={
+                <ProtectedRoute>
+                  <LibraryContentScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/content/sessions/:sessionId" 
+              element={
+                <ProtectedRoute>
+                  <LibraryContentScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/content/modules/:moduleId" 
+              element={
+                <ProtectedRoute>
+                  <LibraryContentScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/library/content/modules/:moduleId/sessions/:sessionId" 
+              element={
+                <ProtectedRoute>
+                  <LibraryContentScreen />
                 </ProtectedRoute>
               } 
             />
