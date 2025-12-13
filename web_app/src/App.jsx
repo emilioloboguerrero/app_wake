@@ -13,6 +13,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import CoursePurchaseScreen from './screens/CoursePurchaseScreen';
 import BibliotecaScreen from './screens/BibliotecaScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
+import SupportScreen from './screens/SupportScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
@@ -163,7 +164,8 @@ function AppContent() {
               } 
             />
             <Route path="/legal" element={<LegalDocumentsScreen />} />
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/support" element={<SupportScreen />} />
+            <Route path="/" element={<SupportScreen />} />
           </Routes>
         </div>
       </Router>
