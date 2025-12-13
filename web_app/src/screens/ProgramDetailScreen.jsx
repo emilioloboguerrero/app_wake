@@ -539,7 +539,7 @@ const SortableModuleCard = ({ module, isModuleEditMode, onModuleClick, onDeleteM
       )}
       <div className="module-card-header">
         <h3 className="module-card-title">
-          {module.title || module.name || `Módulo ${module.id.slice(0, 8)}`}
+          {module.title || `Semana ${moduleNumber}`}
         </h3>
         {module.description && (
           <p className="module-card-description">{module.description}</p>
@@ -720,7 +720,7 @@ const ProgramDetailScreen = () => {
   const [moduleIncompleteMap, setModuleIncompleteMap] = useState({}); // Map: moduleId -> boolean
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [isCopySessionModalOpen, setIsCopySessionModalOpen] = useState(false);
-  const [copySessionModalPage, setCopySessionModalPage] = useState('crear'); // 'crear' | 'biblioteca'
+  const [copySessionModalPage, setCopySessionModalPage] = useState('biblioteca'); // 'crear' | 'biblioteca'
   const [sessionToEdit, setSessionToEdit] = useState(null);
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
@@ -739,7 +739,7 @@ const ProgramDetailScreen = () => {
   const [isEditingLibrarySession, setIsEditingLibrarySession] = useState(false);
   const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
   const [isCopyModuleModalOpen, setIsCopyModuleModalOpen] = useState(false);
-  const [copyModuleModalPage, setCopyModuleModalPage] = useState('crear'); // 'crear' | 'biblioteca'
+  const [copyModuleModalPage, setCopyModuleModalPage] = useState('biblioteca'); // 'crear' | 'biblioteca'
   // ✅ NEW: Library module states
   const [libraryModules, setLibraryModules] = useState([]);
   const [isLoadingLibraryModules, setIsLoadingLibraryModules] = useState(false);
@@ -2115,13 +2115,17 @@ const ProgramDetailScreen = () => {
 
   const handleAddModule = () => {
     setIsCopyModuleModalOpen(true);
-    setCopyModuleModalPage('crear');
+    setCopyModuleModalPage('biblioteca');
     setModuleName('');
+    // Load library modules when opening
+    if (libraryModules.length === 0) {
+      loadLibraryModules();
+    }
   };
 
   const handleCloseCopyModuleModal = () => {
     setIsCopyModuleModalOpen(false);
-    setCopyModuleModalPage('crear');
+    setCopyModuleModalPage('biblioteca');
     setModuleName('');
     setLibraryModules([]);
   };
@@ -3030,13 +3034,27 @@ const ProgramDetailScreen = () => {
       const primaryValues = Object.values(newExerciseDraft.primary);
       const primaryExerciseName = primaryValues[0];
       
-      // Create exercise
-      const newExercise = await programService.createExercise(
-        programId,
-        selectedModule.id,
-        selectedSession.id,
-        primaryExerciseName
-      );
+      // Check if session is a library reference
+      const sessionIsLibraryRef = selectedSession.librarySessionRef;
+      
+      let newExercise;
+      if (sessionIsLibraryRef && user) {
+        // If session is a library reference, create exercise in library session
+        console.log('handleCreateNewExercise: Session is library reference, creating in library session');
+        newExercise = await libraryService.createExerciseInLibrarySession(
+          user.uid,
+          selectedSession.librarySessionRef,
+          primaryExerciseName
+        );
+      } else {
+        // Standalone session - create exercise in program session
+        newExercise = await programService.createExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          primaryExerciseName
+        );
+      }
 
       // Update exercise with primary, alternatives, measures, and objectives
       // Explicitly remove name and title fields that were automatically created
@@ -3049,34 +3067,59 @@ const ProgramDetailScreen = () => {
         title: deleteField()
       };
       
-      await programService.updateExercise(
-        programId,
-        selectedModule.id,
-        selectedSession.id,
-        newExercise.id,
-        updateData
-      );
+      if (sessionIsLibraryRef && user) {
+        // Update exercise in library session
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          selectedSession.librarySessionRef,
+          newExercise.id,
+          updateData
+        );
+      } else {
+        // Update exercise in program session
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id,
+          updateData
+        );
+      }
 
       // Create sets
       for (let i = 0; i < newExerciseSets.length; i++) {
         const set = newExerciseSets[i];
-        await programService.createSet(
-          programId,
-          selectedModule.id,
-          selectedSession.id,
-          newExercise.id
-        );
         
-        // Update set with data
-        const setsData = await programService.getSetsByExercise(
-          programId,
-          selectedModule.id,
-          selectedSession.id,
-          newExercise.id
-        );
+        let createdSet;
+        if (sessionIsLibraryRef && user) {
+          // Create set in library session exercise
+          createdSet = await libraryService.createSetInLibraryExercise(
+            user.uid,
+            selectedSession.librarySessionRef,
+            newExercise.id,
+            i
+          );
+        } else {
+          // Create set in program session exercise
+          await programService.createSet(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id
+          );
+          
+          // Get the created set
+          const setsData = await programService.getSetsByExercise(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id
+          );
+          
+          createdSet = setsData[setsData.length - 1];
+        }
         
-        if (setsData.length > 0) {
-          const createdSet = setsData[setsData.length - 1];
+        if (createdSet) {
           const setUpdateData = {
             order: i,
             title: `Serie ${i + 1}`,
@@ -3084,14 +3127,26 @@ const ProgramDetailScreen = () => {
             intensity: set.intensity || null
           };
           
-          await programService.updateSet(
-            programId,
-            selectedModule.id,
-            selectedSession.id,
-            newExercise.id,
-            createdSet.id,
-            setUpdateData
-          );
+          if (sessionIsLibraryRef && user) {
+            // Update set in library session exercise
+            await libraryService.updateSetInLibraryExercise(
+              user.uid,
+              selectedSession.librarySessionRef,
+              newExercise.id,
+              createdSet.id,
+              setUpdateData
+            );
+          } else {
+            // Update set in program session exercise
+            await programService.updateSet(
+              programId,
+              selectedModule.id,
+              selectedSession.id,
+              newExercise.id,
+              createdSet.id,
+              setUpdateData
+            );
+          }
         }
       }
 
@@ -3159,13 +3214,35 @@ const ProgramDetailScreen = () => {
       const primaryValues = Object.values(exerciseDraft.primary);
       const primaryExerciseName = primaryValues[0];
       
-      // Create exercise
-      const newExercise = await programService.createExercise(
-        programId,
-        selectedModule.id,
-        selectedSession.id,
-        primaryExerciseName
-      );
+      // Check if session is a library reference
+      const sessionIsLibraryRef = selectedSession.librarySessionRef;
+      
+      let newExercise;
+      if (sessionIsLibraryRef && user) {
+        // If session is a library reference, create exercise in library session
+        console.log('Session is library reference, creating exercise in library session:', {
+          librarySessionRef: selectedSession.librarySessionRef,
+          primaryExerciseName
+        });
+        
+        newExercise = await libraryService.createExerciseInLibrarySession(
+          user.uid,
+          selectedSession.librarySessionRef,
+          primaryExerciseName
+        );
+        
+        // Also create a program exercise document for override support (if needed)
+        // For now, exercises from library sessions are loaded directly from library
+        // Program exercise document might not be needed unless we implement exercise overrides
+      } else {
+        // Standalone session - create exercise in program session
+        newExercise = await programService.createExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          primaryExerciseName
+        );
+      }
 
       // Update exercise with primary, alternatives, measures, and objectives
       // Explicitly remove name and title fields that were automatically created
@@ -3178,35 +3255,60 @@ const ProgramDetailScreen = () => {
         title: deleteField()
       };
       
-      await programService.updateExercise(
-        programId,
-        selectedModule.id,
-        selectedSession.id,
-        newExercise.id,
-        updateData
-      );
+      if (sessionIsLibraryRef && user) {
+        // Update exercise in library session
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          selectedSession.librarySessionRef,
+          newExercise.id,
+          updateData
+        );
+      } else {
+        // Update exercise in program session
+        await programService.updateExercise(
+          programId,
+          selectedModule.id,
+          selectedSession.id,
+          newExercise.id,
+          updateData
+        );
+      }
 
       // Create sets (filter out temporary sets and create real ones)
       const tempSets = exerciseSets.filter(set => set.id && set.id.startsWith('temp-'));
       for (let i = 0; i < tempSets.length; i++) {
         const tempSet = tempSets[i];
-        await programService.createSet(
-          programId,
-          selectedModule.id,
-          selectedSession.id,
-          newExercise.id
-        );
         
-        // Get the created set and update it with data
-        const setsData = await programService.getSetsByExercise(
-          programId,
-          selectedModule.id,
-          selectedSession.id,
-          newExercise.id
-        );
+        let createdSet;
+        if (sessionIsLibraryRef && user) {
+          // Create set in library session exercise
+          createdSet = await libraryService.createSetInLibraryExercise(
+            user.uid,
+            selectedSession.librarySessionRef,
+            newExercise.id,
+            i
+          );
+        } else {
+          // Create set in program session exercise
+          await programService.createSet(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id
+          );
+          
+          // Get the created set
+          const setsData = await programService.getSetsByExercise(
+            programId,
+            selectedModule.id,
+            selectedSession.id,
+            newExercise.id
+          );
+          
+          createdSet = setsData[setsData.length - 1];
+        }
         
-        if (setsData.length > 0) {
-          const createdSet = setsData[setsData.length - 1];
+        if (createdSet) {
           const updateSetData = {
             reps: tempSet.reps || null,
             intensity: tempSet.intensity || null,
@@ -3214,14 +3316,26 @@ const ProgramDetailScreen = () => {
             title: `Serie ${i + 1}`
           };
           
-          await programService.updateSet(
-            programId,
-            selectedModule.id,
-            selectedSession.id,
-            newExercise.id,
-            createdSet.id,
-            updateSetData
-          );
+          if (sessionIsLibraryRef && user) {
+            // Update set in library session exercise
+            await libraryService.updateSetInLibraryExercise(
+              user.uid,
+              selectedSession.librarySessionRef,
+              newExercise.id,
+              createdSet.id,
+              updateSetData
+            );
+          } else {
+            // Update set in program session exercise
+            await programService.updateSet(
+              programId,
+              selectedModule.id,
+              selectedSession.id,
+              newExercise.id,
+              createdSet.id,
+              updateSetData
+            );
+          }
         }
       }
 
@@ -3234,7 +3348,7 @@ const ProgramDetailScreen = () => {
       });
       setExercises(sortedExercises);
       
-      // Load sets for the new exercise
+      // Load sets for the new exercise (works for both library and program sessions)
       const setsData = await programService.getSetsByExercise(
         programId,
         selectedModule.id,
@@ -4791,11 +4905,15 @@ const ProgramDetailScreen = () => {
 
   const handleAddSession = () => {
     setIsCopySessionModalOpen(true);
-    setCopySessionModalPage('crear');
+    setCopySessionModalPage('biblioteca');
     setSessionName('');
     setSessionImageFile(null);
     setSessionImagePreview(null);
     setSessionToEdit(null);
+    // Load library sessions when opening
+    if (librarySessions.length === 0) {
+      loadLibrarySessions();
+    }
   };
 
   // ✅ NEW: Load library sessions
@@ -4816,10 +4934,30 @@ const ProgramDetailScreen = () => {
 
   // ✅ NEW: Handle library session selection
   const handleSelectLibrarySession = async (librarySessionId) => {
-    if (!programId || !selectedModule || !librarySessionId) return;
+    if (!programId || !selectedModule || !librarySessionId || !user) return;
     
     try {
       setIsCreatingSession(true);
+      
+      console.log('Adding session to module:', {
+        programId,
+        moduleId: selectedModule.id,
+        librarySessionId,
+        isLibraryModule: !!selectedModule.libraryModuleRef
+      });
+      
+      // Check if the module is a library reference
+      if (selectedModule.libraryModuleRef) {
+        // If module is a library reference, add session to library module's sessionRefs
+        console.log('Module is library reference, adding to library module sessionRefs');
+        await libraryService.addSessionToLibraryModule(
+          user.uid,
+          selectedModule.libraryModuleRef,
+          librarySessionId
+        );
+      }
+      
+      // Always create program session document for override support
       await programService.createSessionFromLibrary(
         programId,
         selectedModule.id,
@@ -4846,7 +4984,7 @@ const ProgramDetailScreen = () => {
 
   const handleCloseCopySessionModal = () => {
     setIsCopySessionModalOpen(false);
-    setCopySessionModalPage('crear');
+    setCopySessionModalPage('biblioteca');
     setLibrarySessions([]);
     if (!sessionToEdit) {
       setSessionName('');
@@ -4867,10 +5005,14 @@ const ProgramDetailScreen = () => {
   const handleEditSessionClick = () => {
     if (!selectedSession) return;
     setSessionToEdit(selectedSession);
-    setSessionName(selectedSession.title || selectedSession.name || '');
-    setSessionImagePreview(selectedSession.image_url || null);
+    // Use overridden values if they exist, otherwise use library/standalone values
+    const displayTitle = selectedSession.title || selectedSession.name || '';
+    const displayImage = selectedSession.image_url || null;
+    setSessionName(displayTitle);
+    setSessionImagePreview(displayImage);
     setSessionImageFile(null);
-    setIsEditingLibrarySession(!!selectedSession.librarySessionRef);
+    // Reset editing library state - will be determined when saving
+    setIsEditingLibrarySession(false);
     setIsSessionModalOpen(true);
   };
 
@@ -6424,7 +6566,7 @@ const ProgramDetailScreen = () => {
                             )}
                           <div className="module-card-header">
                             <h3 className="module-card-title">
-                              {module.title || module.name || `Módulo ${module.id.slice(0, 8)}`}
+                              {module.title || `Semana ${moduleNumber}`}
                             </h3>
                             {module.description && (
                               <p className="module-card-description">{module.description}</p>
@@ -7376,12 +7518,6 @@ const ProgramDetailScreen = () => {
                 <label className="anuncios-screens-label">Opciones</label>
                 <div className="anuncios-screens-container">
                   <button
-                    className={`anuncios-screen-item ${copyModuleModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setCopyModuleModalPage('crear')}
-                  >
-                    <span className="anuncios-screen-name">Crear</span>
-                  </button>
-                  <button
                     className={`anuncios-screen-item ${copyModuleModalPage === 'biblioteca' ? 'anuncios-screen-item-active' : ''}`}
                     onClick={() => {
                       setCopyModuleModalPage('biblioteca');
@@ -7391,6 +7527,12 @@ const ProgramDetailScreen = () => {
                     }}
                   >
                     <span className="anuncios-screen-name">Usar de Biblioteca</span>
+                  </button>
+                  <button
+                    className={`anuncios-screen-item ${copyModuleModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setCopyModuleModalPage('crear')}
+                  >
+                    <span className="anuncios-screen-name">Crear</span>
                   </button>
                 </div>
               </div>
@@ -7686,12 +7828,6 @@ const ProgramDetailScreen = () => {
                 <label className="anuncios-screens-label">Opciones</label>
                 <div className="anuncios-screens-container">
                   <button
-                    className={`anuncios-screen-item ${copySessionModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setCopySessionModalPage('crear')}
-                  >
-                    <span className="anuncios-screen-name">Crear</span>
-                  </button>
-                  <button
                     className={`anuncios-screen-item ${copySessionModalPage === 'biblioteca' ? 'anuncios-screen-item-active' : ''}`}
                     onClick={() => {
                       setCopySessionModalPage('biblioteca');
@@ -7701,6 +7837,12 @@ const ProgramDetailScreen = () => {
                     }}
                   >
                     <span className="anuncios-screen-name">Usar de Biblioteca</span>
+                  </button>
+                  <button
+                    className={`anuncios-screen-item ${copySessionModalPage === 'crear' ? 'anuncios-screen-item-active' : ''}`}
+                    onClick={() => setCopySessionModalPage('crear')}
+                  >
+                    <span className="anuncios-screen-name">Crear</span>
                   </button>
                 </div>
               </div>

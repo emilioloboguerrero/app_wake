@@ -79,6 +79,9 @@ const ProfileScreen = ({ navigation }) => {
   
   // Insights modal state
   const [isInsightsModalVisible, setIsInsightsModalVisible] = useState(false);
+  
+  // Subscriptions info modal state
+  const [isSubscriptionsInfoModalVisible, setIsSubscriptionsInfoModalVisible] = useState(false);
   const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
@@ -1099,7 +1102,8 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.interestsProgramsContainer}>
           <TouchableOpacity
             style={styles.smallCard}
-            onPress={() => navigation.navigate('Subscriptions')}
+            onPress={() => setIsSubscriptionsInfoModalVisible(true)}
+            // Disabled: navigation.navigate('Subscriptions') - functionality disabled, showing info modal instead
           >
             <Text style={styles.smallCardTitle}>Suscripciones</Text>
           </TouchableOpacity>
@@ -1152,6 +1156,45 @@ const ProfileScreen = ({ navigation }) => {
           onNavigateToVolume={() => navigation.navigate('WeeklyVolumeHistory')}
           onNavigateToSessions={() => navigation.navigate('Sessions')}
         />
+        
+        {/* Subscriptions Info Modal */}
+        <Modal
+          visible={isSubscriptionsInfoModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsSubscriptionsInfoModalVisible(false)}
+        >
+          <View style={styles.subscriptionsInfoModalOverlay}>
+            <TouchableOpacity 
+              style={styles.subscriptionsInfoModalBackdrop}
+              activeOpacity={1}
+              onPress={() => setIsSubscriptionsInfoModalVisible(false)}
+            />
+            <View style={styles.subscriptionsInfoModalContent}>
+              <View style={styles.subscriptionsInfoModalHeader}>
+                <Text style={styles.subscriptionsInfoModalTitle}>Información</Text>
+                <TouchableOpacity 
+                  style={styles.subscriptionsInfoCloseButton}
+                  onPress={() => setIsSubscriptionsInfoModalVisible(false)}
+                >
+                  <Text style={styles.subscriptionsInfoCloseButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.subscriptionsInfoScrollContainer}>
+                <ScrollView 
+                  style={styles.subscriptionsInfoScrollView}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <Text style={styles.subscriptionsInfoModalDescription}>
+                    Las suscripciones y compras no se administran dentro de la app.{'\n\n'}
+                    El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente fuera de Wake.
+                  </Text>
+                </ScrollView>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -1909,6 +1952,74 @@ const styles = StyleSheet.create({
   },
   bodyweightHeightField: {
     flex: 1,
+  },
+  // Subscriptions Info Modal Styles
+  subscriptionsInfoModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subscriptionsInfoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  subscriptionsInfoModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    width: Math.max(350, screenWidth * 0.9),
+    maxWidth: 400,
+    height: Math.max(350, screenHeight * 0.5),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'visible',
+    padding: Math.max(24, screenWidth * 0.06),
+  },
+  subscriptionsInfoScrollContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  subscriptionsInfoScrollView: {
+    flex: 1,
+  },
+  subscriptionsInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(16, screenHeight * 0.02),
+  },
+  subscriptionsInfoModalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.06, 24),
+    fontWeight: '600',
+  },
+  subscriptionsInfoCloseButton: {
+    width: Math.max(30, screenWidth * 0.075),
+    height: Math.max(30, screenWidth * 0.075),
+    borderRadius: Math.max(15, screenWidth * 0.037),
+    backgroundColor: '#44454B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionsInfoCloseButtonText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  subscriptionsInfoModalDescription: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '400',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    textAlign: 'left',
   },
 });
 

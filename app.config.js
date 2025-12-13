@@ -3,7 +3,7 @@ export default {
   expo: {
     name: "Wake",
     slug: "wake",
-    version: "1.1.5",
+    version: "1.1.6",
     orientation: "portrait",
     icon: "./assets/app_icon.png",
     userInterfaceStyle: "dark",

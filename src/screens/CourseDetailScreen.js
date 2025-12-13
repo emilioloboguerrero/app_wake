@@ -11,8 +11,8 @@ import {
   Dimensions,
   Animated,
   ImageBackground,
-  Platform,
-  Linking,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Text from '../components/Text';
@@ -22,10 +22,10 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
+import SvgCircleHelp from '../components/icons/SvgCircleHelp';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
-import EpaycoWebView from '../components/EpaycoWebView';
-import { isAdmin } from '../utils/roleHelper';
+import { isAdmin, isCreator } from '../utils/roleHelper';
 import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -38,9 +38,6 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import profilePictureService from '../services/profilePictureService';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// Website URL for iOS purchases
-const WEBSITE_URL = 'https://wakelab.co';
-
 const CourseDetailScreen = ({ navigation, route }) => {
   const { course } = route.params;
   const { user } = useAuth();
@@ -51,8 +48,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [purchasing, setPurchasing] = useState(false);
   const [userOwnsCourse, setUserOwnsCourse] = useState(false);
   const [checkingOwnership, setCheckingOwnership] = useState(true);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [checkoutURL, setCheckoutURL] = useState(null);
   const [userRole, setUserRole] = useState('user');
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -75,6 +70,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [userCourseEntry, setUserCourseEntry] = useState(null);
   const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const trialConfig = course?.free_trial || {};
   const trialDurationDays = trialConfig?.duration_days || 0;
@@ -499,22 +495,6 @@ useEffect(() => {
     }
   }, [isVideoPaused, videoPlayer]);
 
-  // Pause preview when payment modal is open
-  useEffect(() => {
-    if (!videoPlayer || !showPaymentModal) {
-      return;
-    }
-
-    try {
-      videoPlayer.pause();
-      videoPlayer.muted = true;
-      if (!isVideoPaused) {
-        setIsVideoPaused(true);
-      }
-    } catch (error) {
-      logger.log('⚠️ Error pausing video for payment modal:', error.message);
-    }
-  }, [showPaymentModal, videoPlayer, isVideoPaused]);
 
   // Video tap handler
   const handleVideoTap = () => {
@@ -708,102 +688,10 @@ useEffect(() => {
       return; // Exit early - free flow handled
     }
 
-    // FOR iOS: Open website in Safari instead of in-app purchase (only for paid purchases)
-    if (Platform.OS === 'ios') {
-      try {
-        // Get Firebase ID token for auto-login
-        let websiteUrl = `${WEBSITE_URL}/course/${course.id}?fromApp=true&platform=ios`;
-        
-        if (user?.uid) {
-          try {
-            const idToken = await auth.currentUser.getIdToken();
-            const encodedToken = encodeURIComponent(idToken);
-            websiteUrl += `&token=${encodedToken}`;
-          } catch (tokenError) {
-            console.warn('Could not get ID token, opening without auto-login:', tokenError);
-            // Continue without token - user will need to log in manually
-          }
-        }
-        
-        const canOpen = await Linking.canOpenURL(websiteUrl);
-        if (canOpen) {
-          await Linking.openURL(websiteUrl);
-        } else {
-          Alert.alert('Error', 'No se pudo abrir la página web');
-        }
-      } catch (error) {
-        console.error('Error opening website:', error);
-        Alert.alert('Error', 'No se pudo abrir la página web');
-      }
-      return;
-    }
-
-    // FOR Android: Continue with payment flow (only for paid purchases)
-    try {
-      if (postPurchaseTimeoutRef.current) {
-        clearTimeout(postPurchaseTimeoutRef.current);
-        postPurchaseTimeoutRef.current = null;
-      }
-      if (postPurchaseTimeoutSecondRef.current) {
-        clearTimeout(postPurchaseTimeoutSecondRef.current);
-        postPurchaseTimeoutSecondRef.current = null;
-      }
-      pendingPostPurchaseRef.current = false;
-      processingPurchaseRef.current = false;
-      readyNotificationSentRef.current = false;
-      setProcessingPurchase(false);
-
-      setOwnershipReady(false);
-      setPurchasing(true);
-
-      // Payment flow
-      const courseDetails = await firestoreService.getCourse(course.id);
-      
-      // Check if subscription (monthly)
-      if (courseDetails?.access_duration === "monthly") {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const accountEmail = user?.email?.trim();
-
-        if (accountEmail && emailRegex.test(accountEmail)) {
-          const initialResult = await createSubscriptionWithEmail(
-            accountEmail,
-            { suppressAlerts: true }
-          );
-
-          if (initialResult?.success) {
-            return;
-          }
-
-          if (initialResult?.requiresAlternateEmail) {
-            promptForMercadoPagoEmail(initialResult.error);
-            return;
-          }
-
-          if (initialResult?.error) {
-            Alert.alert('Error en la compra', initialResult.error);
-            return;
-          }
-        }
-
-        promptForMercadoPagoEmail();
-        return;
-      } else {
-        // One-time payment - direct checkout
-        const result = await purchaseService.preparePurchase(user.uid, course.id);
-
-        if (result.success) {
-          setCheckoutURL(result.checkoutURL);
-          setShowPaymentModal(true);
-        } else {
-          Alert.alert('Error en la compra', result.error);
-        }
-      }
-    } catch (error) {
-      console.error('Error purchasing course:', error);
-      Alert.alert('Error', 'Error al procesar la compra');
-    } finally {
-      setPurchasing(false);
-    }
+    // Unified system: Catalog only - no purchases, no redirects
+    // Library serves as catalog only for all platforms
+    setPurchasing(false);
+    setShowInfoModal(true);
   };
 
   const handleStartTrial = async () => {
@@ -877,115 +765,6 @@ useEffect(() => {
   };
 
 
-  const promptForMercadoPagoEmail = (errorMessage) => {
-    setPurchasing(false);
-
-    const promptMessage = 'Por favor ingresa tu correo de Mercado Pago para continuar con la suscripción:';
-
-    Alert.prompt(
-      'Email de Mercado Pago',
-      promptMessage,
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-          onPress: () => {
-            setPurchasing(false);
-          }
-        },
-        {
-          text: 'Continuar',
-          onPress: (emailInput) => {
-            setTimeout(async () => {
-              const trimmedEmail = emailInput?.trim();
-              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-              if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
-                Alert.alert('Error', 'Por favor, ingresa un email válido');
-                setPurchasing(false);
-                return;
-              }
-
-              await createSubscriptionWithEmail(trimmedEmail);
-            }, 100);
-          }
-        }
-      ],
-      'plain-text',
-      undefined,
-      'email-address'
-    );
-  };
-
-
-  // Helper function to create subscription with email
-  const createSubscriptionWithEmail = async (email, options = {}) => {
-    const { suppressAlerts = false } = options;
-    setPurchasing(true);
-    try {
-      if (postPurchaseTimeoutRef.current) {
-        clearTimeout(postPurchaseTimeoutRef.current);
-        postPurchaseTimeoutRef.current = null;
-      }
-      if (postPurchaseTimeoutSecondRef.current) {
-        clearTimeout(postPurchaseTimeoutSecondRef.current);
-        postPurchaseTimeoutSecondRef.current = null;
-      }
-      pendingPostPurchaseRef.current = false;
-      processingPurchaseRef.current = false;
-      setProcessingPurchase(false);
-
-      logger.log('📧 Creating subscription with email:', email);
-      const result = await purchaseService.prepareSubscription(
-        user.uid,
-        course.id,
-        email
-      );
-
-      logger.log('📧 Subscription result:', result);
-
-      if (result.success && result.checkoutURL) {
-        logger.log('✅ Subscription checkout URL received:', result.checkoutURL);
-        setCheckoutURL(result.checkoutURL);
-        // Use setTimeout to ensure state updates are processed
-        setTimeout(() => {
-          setShowPaymentModal(true);
-          setPurchasing(false);
-        }, 100);
-        return { success: true, checkoutURL: result.checkoutURL };
-      }
-
-      if (result.requiresAlternateEmail) {
-        logger.warn('ℹ️ Subscription requires alternate email:', result.error);
-        setPurchasing(false);
-        return {
-          success: false,
-          requiresAlternateEmail: true,
-          error: result.error,
-        };
-      }
-
-      logger.error('❌ Subscription creation failed:', result.error);
-      if (!suppressAlerts) {
-        Alert.alert('Error en la compra', result.error || 'Error al crear la suscripción');
-      }
-      setPurchasing(false);
-      return {
-        success: false,
-        error: result.error || 'Error al crear la suscripción',
-      };
-    } catch (error) {
-      logger.error('❌ Error creating subscription checkout:', error);
-      if (!suppressAlerts) {
-        Alert.alert('Error', error.message || 'Error al crear la suscripción');
-      }
-      setPurchasing(false);
-      return {
-        success: false,
-        error: error.message || 'Error al crear la suscripción',
-      };
-    }
-  };
 
   const schedulePostPurchaseFlow = React.useCallback(() => {
     if (!pendingPostPurchaseRef.current) {
@@ -1006,69 +785,12 @@ useEffect(() => {
     }, 3000);
   }, [handlePostPurchaseFlow]);
 
-  // Payment modal handlers - Trigger cache refresh, state will update and show alert automatically
-  const handlePaymentSuccess = React.useCallback(async (paymentResult) => {
-    console.log('✅ Payment redirect detected:', paymentResult);
 
-    setShowPaymentModal(false);
-    setCheckoutURL(null);
-
-    // Reset alert flag for new purchase
-    successAlertShownRef.current = false;
-
-    // Set processing state
-    processingPurchaseRef.current = true;
-    pendingPostPurchaseRef.current = true;
-    setProcessingPurchase(true);
-    
-    logger.log('⏳ Payment modal closed - refreshing cache and updating state');
-    
-    // Clear any existing timeouts
-    if (postPurchaseTimeoutRef.current) {
-      clearTimeout(postPurchaseTimeoutRef.current);
-      postPurchaseTimeoutRef.current = null;
-    }
-    if (postPurchaseTimeoutSecondRef.current) {
-      clearTimeout(postPurchaseTimeoutSecondRef.current);
-      postPurchaseTimeoutSecondRef.current = null;
-    }
-    
-    // Refresh cache and update ownership - this will trigger the useEffect to show alert
-    hybridDataService.syncCourses(user.uid).then(async () => {
-      logger.log('✅ Cache synced');
-      // Update ownership check - this will set userOwnsCourse and ownershipReady
-      await checkCourseOwnership();
-    }).catch(err => {
-      logger.error('❌ Cache sync error:', err);
-    });
-  }, [user?.uid, course.id, checkCourseOwnership]);
-
-  const handlePaymentError = (paymentError) => {
-    console.log('❌ Payment error:', paymentError);
-    setShowPaymentModal(false);
-    setCheckoutURL(null);
-    setProcessingPurchase(false);
-    processingPurchaseRef.current = false;
-    postPurchaseFlowTriggeredRef.current = false;
-    pendingPostPurchaseRef.current = false;
-    if (postPurchaseTimeoutRef.current) {
-      clearTimeout(postPurchaseTimeoutRef.current);
-      postPurchaseTimeoutRef.current = null;
-    }
-    Alert.alert('Error en el pago', 'Hubo un problema con el pago. Por favor intenta de nuevo.');
-  };
-
-  const handlePaymentClose = () => {
-    setShowPaymentModal(false);
-    setCheckoutURL(null);
-
-    if (pendingPostPurchaseRef.current) {
-      if (!processingPurchaseRef.current) {
-        processingPurchaseRef.current = true;
-        setProcessingPurchase(true);
-      }
-      schedulePostPurchaseFlow();
-    }
+  // Handle info button press
+  const handleInfoButtonPress = () => {
+    // Always show info modal for all users
+    // No redirect functionality - library serves as catalog only
+    setShowInfoModal(true);
   };
 
   const renderPurchaseButton = () => {
@@ -1129,52 +851,9 @@ useEffect(() => {
     }
 
     if (canShowTrialCta) {
-      // On iOS, show "Ver en página" button instead of trial button
-      if (Platform.OS === 'ios') {
-        return (
-          <TouchableOpacity 
-            style={[styles.primaryButton, purchasing && styles.disabledButton]} 
-            onPress={handlePurchaseCourse}
-            disabled={purchasing}
-          >
-            {purchasing ? (
-              <>
-                <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryButtonText}>Procesando compra...</Text>
-              </>
-            ) : (
-              <Text style={styles.primaryButtonText}>Ver en página</Text>
-            )}
-          </TouchableOpacity>
-        );
-      }
-
-      // On Android, show trial button with pricing
-      const trialPriceCopy = course.price
-        ? `$${course.price} COP después`
-        : 'Pago requerido después';
-
-      return (
-        <TouchableOpacity 
-          style={[styles.primaryButton, purchasing && styles.disabledButton]} 
-          onPress={handleStartTrial}
-          disabled={purchasing}
-        >
-          {purchasing ? (
-            <>
-              <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" style={{ marginRight: 8 }} />
-              <Text style={styles.primaryButtonText}>Iniciando prueba...</Text>
-            </>
-          ) : (
-            <View style={styles.buttonTextContainer}>
-              <Text style={styles.primaryButtonText}>
-                {`Probar GRATIS por ${trialDurationDays} días`}
-              </Text>
-              <Text style={styles.trialPriceText}>{trialPriceCopy}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      );
+      // Unified system: Catalog only - no trial buttons, no redirects
+      // Library serves as catalog only for all platforms
+      return null;
     }
 
     return (
@@ -1189,19 +868,11 @@ useEffect(() => {
             <Text style={styles.primaryButtonText}>Procesando compra...</Text>
           </>
         ) : (
-          <View style={styles.buttonTextContainer}>
-            <Text style={styles.primaryButtonText}>
-              {Platform.OS === 'ios' 
-                ? 'Ver en página' 
-                : (shouldUseFreeFlow() ? 'Probar' : 'Empezar ahora')
-              }
-            </Text>
-            {!shouldUseFreeFlow() && course.price && Platform.OS !== 'ios' && (
-              <Text style={styles.buttonPriceText}>
-                ${course.price} COP{course.access_duration === 'monthly' ? '/mes' : ''}
-              </Text>
-            )}
-          </View>
+          <SvgCircleHelp 
+            width={24} 
+            height={24} 
+            color="rgba(191, 168, 77, 1)" 
+          />
         )}
       </TouchableOpacity>
     );
@@ -1497,16 +1168,47 @@ useEffect(() => {
         </View>
       </ScrollView>
 
-      {/* Epayco WebView Modal */}
-      {showPaymentModal && checkoutURL && (
-        <EpaycoWebView
-          visible={showPaymentModal}
-          checkoutURL={checkoutURL}
-          onPaymentSuccess={handlePaymentSuccess}
-          onPaymentError={handlePaymentError}
-          onClose={handlePaymentClose}
-        />
-      )}
+      {/* Catalog Info Modal */}
+      <Modal
+        visible={showInfoModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.catalogInfoModalOverlay}>
+          <TouchableOpacity 
+            style={styles.catalogInfoModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowInfoModal(false)}
+          />
+          <View style={styles.catalogInfoModalContent}>
+            <View style={styles.catalogInfoModalHeader}>
+              <Text style={styles.catalogInfoModalTitle}>Información</Text>
+              <TouchableOpacity 
+                style={styles.catalogInfoCloseButton}
+                onPress={() => setShowInfoModal(false)}
+              >
+                <Text style={styles.catalogInfoCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.catalogInfoScrollContainer}>
+              <ScrollView 
+                style={styles.catalogInfoScrollView}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.catalogInfoModalDescription}>
+                  Wake te permite acceder a programas de entrenamiento que ya has adquirido previamente fuera de la app.{'\n\n'}
+                  La aplicación no procesa pagos ni suscripciones.{'\n\n'}
+                  Todos los programas y planes se adquieren a través de nuestro sitio web oficial.{'\n'}
+                  Una vez realizada la compra, solo debes iniciar sesión en la app para acceder a tu biblioteca.{'\n\n'}
+                  Sitio web oficial: www.wakelab.co
+                </Text>
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -2066,6 +1768,153 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 18,
     fontWeight: '700',
+  },
+  infoButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    height: Math.max(50, screenHeight * 0.06),
+    width: Math.max(280, screenWidth * 0.7),
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Math.max(15, screenHeight * 0.02),
+  },
+  infoButtonText: {
+    color: '#007AFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#2a2a2a',
+    borderTopLeftRadius: Math.max(20, screenWidth * 0.05),
+    borderTopRightRadius: Math.max(20, screenWidth * 0.05),
+    padding: Math.max(24, screenWidth * 0.06),
+    width: '100%',
+    maxHeight: '70%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(20, screenHeight * 0.025),
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.06, 24),
+    fontWeight: '600',
+  },
+  modalCloseButton: {
+    width: Math.max(30, screenWidth * 0.075),
+    height: Math.max(30, screenWidth * 0.075),
+    borderRadius: Math.max(15, screenWidth * 0.037),
+    backgroundColor: '#44454B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseButtonText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  modalScrollView: {
+    maxHeight: Math.max(400, screenHeight * 0.5),
+  },
+  modalInfoSection: {
+    marginBottom: Math.max(20, screenHeight * 0.025),
+  },
+  modalInfoLabel: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+    marginBottom: Math.max(8, screenHeight * 0.01),
+    opacity: 0.8,
+  },
+  modalInfoValue: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '400',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+  },
+  // Catalog Info Modal Styles
+  catalogInfoModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  catalogInfoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  catalogInfoModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    width: Math.max(350, screenWidth * 0.9),
+    maxWidth: 400,
+    height: Math.max(400, screenHeight * 0.6),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'visible',
+    padding: Math.max(24, screenWidth * 0.06),
+  },
+  catalogInfoScrollContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  catalogInfoScrollView: {
+    flex: 1,
+  },
+  catalogInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(16, screenHeight * 0.02),
+  },
+  catalogInfoModalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.06, 24),
+    fontWeight: '600',
+  },
+  catalogInfoCloseButton: {
+    width: Math.max(30, screenWidth * 0.075),
+    height: Math.max(30, screenWidth * 0.075),
+    borderRadius: Math.max(15, screenWidth * 0.037),
+    backgroundColor: '#44454B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catalogInfoCloseButtonText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  catalogInfoModalDescription: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '400',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    textAlign: 'left',
   },
 });
 

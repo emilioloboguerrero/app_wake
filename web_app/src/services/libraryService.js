@@ -361,15 +361,16 @@ class LibraryService {
         exercisesSnapshot.docs.map(async (exerciseDoc) => {
           const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
           
-          // Fetch sets
-          const setsRef = collection(
-            firestore,
-            'creator_libraries', creatorId,
-            'sessions', sessionId,
-            'exercises', exerciseDoc.id,
-            'sets'
-          );
-          const setsSnapshot = await getDocs(setsRef);
+        // Fetch sets from subcollection: creator_libraries/{creatorId}/sessions/{sessionId}/exercises/{exerciseId}/sets
+        const setsRef = collection(
+          firestore,
+          'creator_libraries', creatorId,
+          'sessions', sessionId,
+          'exercises', exerciseDoc.id,
+          'sets'
+        );
+        const setsQuery = query(setsRef, orderBy('order', 'asc'));
+        const setsSnapshot = await getDocs(setsQuery);
           
           exerciseData.sets = setsSnapshot.docs.map(setDoc => ({
             id: setDoc.id,
@@ -421,17 +422,33 @@ class LibraryService {
    */
   async uploadLibrarySessionImage(creatorId, sessionId, imageFile, onProgress) {
     try {
-      const sanitizedSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const fileName = `image.jpg`;
-      const storagePath = `creator_libraries/${creatorId}/sessions/${sanitizedSessionId}/${fileName}`;
+      // Validate file type
+      if (!imageFile.type.startsWith('image/')) {
+        throw new Error('El archivo debe ser una imagen');
+      }
+
+      // Validate file size (e.g., max 10MB)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (imageFile.size > maxSize) {
+        throw new Error('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      }
+
+      // Get file extension
+      const fileExtension = imageFile.name.split('.').pop() || 'jpg';
+      
+      // Use timestamp-based filename (same pattern as programService.uploadProgramImage and cardService)
+      const timestamp = Date.now();
+      const fileName = `${timestamp}.${fileExtension}`;
+      
+      // Use user-owned path structure (same pattern as cards/{userId}/ and profiles/{userId}/)
+      // This path structure works because storage rules check request.auth.uid == userId
+      // Use cards path with subfolder to leverage existing permissions
+      // Path: cards/{creatorId}/library_sessions/{sessionId}/{timestamp}.{ext}
+      const storagePath = `cards/${creatorId}/library_sessions/${sessionId}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      const metadata = {
-        contentType: imageFile.type || 'image/jpeg',
-        cacheControl: 'public, max-age=31536000'
-      };
-
-      const uploadTask = uploadBytesResumable(storageRef, imageFile, metadata);
+      // Upload file with progress tracking (no metadata needed, same as programService.uploadProgramImage)
+      const uploadTask = uploadBytesResumable(storageRef, imageFile);
 
       return new Promise((resolve, reject) => {
         uploadTask.on(
@@ -758,6 +775,7 @@ class LibraryService {
         title: moduleData.title,
         creator_id: creatorId,
         sessionRefs: moduleData.sessionRefs || [],
+        order: moduleData.order !== undefined ? moduleData.order : null,
         version: 1,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
@@ -981,7 +999,7 @@ class LibraryService {
       for (const exerciseDoc of querySnapshot.docs) {
         const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
         
-        // Fetch sets
+        // Fetch sets from subcollection: creator_libraries/{creatorId}/sessions/{sessionId}/exercises/{exerciseId}/sets
         const setsRef = collection(
           firestore,
           'creator_libraries', creatorId,
@@ -989,15 +1007,29 @@ class LibraryService {
           'exercises', exerciseDoc.id,
           'sets'
         );
-        const setsSnapshot = await getDocs(setsRef);
+        const setsQuery = query(setsRef, orderBy('order', 'asc'));
+        const setsSnapshot = await getDocs(setsQuery);
         
         exerciseData.sets = setsSnapshot.docs.map(setDoc => ({
           id: setDoc.id,
           ...setDoc.data()
         }));
         
+        console.log('📦 Loaded sets for library exercise:', {
+          exerciseId: exerciseDoc.id,
+          exerciseTitle: exerciseData.title || exerciseData.name,
+          setsCount: exerciseData.sets.length,
+          sets: exerciseData.sets.map(set => ({ id: set.id, order: set.order, reps: set.reps, intensity: set.intensity }))
+        });
+        
         exercises.push(exerciseData);
       }
+      
+      console.log('📦 Total exercises with sets loaded:', {
+        sessionId,
+        exercisesCount: exercises.length,
+        totalSetsCount: exercises.reduce((sum, ex) => sum + (ex.sets?.length || 0), 0)
+      });
       
       return exercises;
     } catch (error) {

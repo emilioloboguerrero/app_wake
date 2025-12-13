@@ -516,13 +516,32 @@ class ProgramService {
             // Import libraryService dynamically to avoid circular dependencies
             const { default: libraryService } = await import('./libraryService');
             
-            // Fetch library module
+            // Fetch library module from creator_libraries/{creatorId}/modules/{libraryModuleRef}
             const libraryModule = await libraryService.getLibraryModuleById(creatorId, moduleData.libraryModuleRef);
             
             if (libraryModule) {
+              console.log('Resolved library module:', {
+                programModuleId: docSnapshot.id,
+                libraryModuleRef: moduleData.libraryModuleRef,
+                libraryModuleTitle: libraryModule.title,
+                libraryModuleName: libraryModule.name,
+                sessionRefsCount: (libraryModule.sessionRefs || []).length
+              });
               // Resolve library sessions
+              // sessionRefs can be either:
+              // - Array of strings: [sessionId1, sessionId2, ...]
+              // - Array of objects: [{ librarySessionRef, order }, ...]
+              const sessionRefs = libraryModule.sessionRefs || [];
               const resolvedSessions = await Promise.all(
-                (libraryModule.sessionRefs || []).map(async ({ librarySessionRef, order }) => {
+                sessionRefs.map(async (sessionRef, index) => {
+                  // Handle both formats
+                  const librarySessionId = typeof sessionRef === 'string' 
+                    ? sessionRef 
+                    : (sessionRef.librarySessionRef || sessionRef.id || sessionRef);
+                  const sessionOrder = typeof sessionRef === 'object' && sessionRef.order !== undefined
+                    ? sessionRef.order
+                    : index;
+                  
                   // Find program session with this librarySessionRef
                   const programSessionsRef = collection(
                     firestore,
@@ -533,41 +552,64 @@ class ProgramService {
                   const programSessionsSnapshot = await getDocs(programSessionsRef);
                   
                   const matchingSession = programSessionsSnapshot.docs.find(sessionDoc =>
-                    sessionDoc.data().librarySessionRef === librarySessionRef
+                    sessionDoc.data().librarySessionRef === librarySessionId
                   );
                   
-                  if (matchingSession) {
-                    const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
+                  try {
+                    const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionId);
                     if (librarySession) {
-                      const overrides = await this.getSessionOverrides(programId, docSnapshot.id, matchingSession.id);
-                      return {
-                        id: matchingSession.id,
+                      const overrides = matchingSession 
+                        ? await this.getSessionOverrides(programId, docSnapshot.id, matchingSession.id)
+                        : null;
+                      
+                      // Merge library session data with overrides
+                      const mergedSessionData = {
                         ...librarySession,
-                        librarySessionRef,
-                        order: matchingSession.data().order || order,
-                        _overrides: overrides
+                        ...(overrides || {}), // Apply overrides on top of library data
+                        id: programSessionId || librarySessionId, // Use program session ID for override support
+                        librarySessionRef: librarySessionId,
+                        order: matchingSession?.data().order ?? sessionOrder,
+                        _overrides: overrides // Keep reference to overrides
                       };
+                      
+                      return mergedSessionData;
                     }
+                  } catch (error) {
+                    console.error(`Error resolving library session ${librarySessionId}:`, error);
+                    return null;
                   }
                   
-                  // Fallback if not found
-                  const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
-                  return librarySession ? {
-                    ...librarySession,
-                    librarySessionRef,
-                    order
-                  } : null;
+                  return null;
                 })
               );
               
               // Merge with program-specific data
-              modules.push({
+              // Title should be "Semana {order + 1}" based on program order
+              // Library module title goes in description field
+              const semanaTitle = `Semana ${(moduleData.order !== undefined && moduleData.order !== null) ? moduleData.order + 1 : 1}`;
+              const libraryTitle = libraryModule.title || libraryModule.name || null;
+              
+              const mergedModule = {
                 id: docSnapshot.id,
-                ...libraryModule,
-                libraryModuleRef: moduleData.libraryModuleRef,
-                order: moduleData.order,
+                ...libraryModule, // Library module data (for sessions, etc.)
+                title: semanaTitle, // Override title to "Semana X"
+                description: libraryTitle, // Store library module title in description
+                libraryModuleRef: moduleData.libraryModuleRef, // Keep the reference
+                order: moduleData.order, // Use program's order
                 sessions: resolvedSessions.filter(Boolean)
+              };
+              
+              // Debug: Log full merged module data
+              console.log('🔵 Merged module data:', {
+                id: mergedModule.id,
+                title: mergedModule.title,
+                description: mergedModule.description,
+                libraryModuleRef: mergedModule.libraryModuleRef,
+                hasSessions: mergedModule.sessions.length > 0,
+                fullModuleData: mergedModule
               });
+              
+              modules.push(mergedModule);
               continue;
             }
           } catch (error) {
@@ -577,10 +619,21 @@ class ProgramService {
         }
         
         // Standalone module or resolution failed
-        modules.push({
+        // Ensure title is set to "Semana X" based on order
+        const standaloneModule = {
           id: docSnapshot.id,
           ...moduleData
-        });
+        };
+        
+        // If module doesn't have a title or it's not in "Semana X" format, set it
+        if (!standaloneModule.title || !standaloneModule.title.startsWith('Semana ')) {
+          const moduleOrder = standaloneModule.order !== undefined && standaloneModule.order !== null 
+            ? standaloneModule.order 
+            : modules.length;
+          standaloneModule.title = `Semana ${moduleOrder + 1}`;
+        }
+        
+        modules.push(standaloneModule);
       }
       
       // Sort by order
@@ -588,6 +641,15 @@ class ProgramService {
         const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
         const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
         return orderA - orderB;
+      });
+      
+      // After sorting, ensure all modules have correct "Semana X" titles based on their final order
+      modules.forEach((module, index) => {
+        const expectedOrder = module.order !== undefined && module.order !== null ? module.order : index;
+        const expectedTitle = `Semana ${expectedOrder + 1}`;
+        if (module.title !== expectedTitle) {
+          module.title = expectedTitle;
+        }
       });
       
       return modules;
@@ -610,8 +672,12 @@ class ProgramService {
         newOrder = (lastModule.order !== undefined && lastModule.order !== null) ? lastModule.order + 1 : 0;
       }
       
+      // Set title to "Semana {order + 1}"
+      const semanaTitle = `Semana ${newOrder + 1}`;
+      
       const newModule = {
         order: newOrder,
+        title: semanaTitle, // Always set title to "Semana X"
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
@@ -619,9 +685,13 @@ class ProgramService {
       // ✅ NEW: If libraryModuleRef provided, store only reference
       if (libraryModuleRef) {
         newModule.libraryModuleRef = libraryModuleRef;
+        // Store library module title in description field for display
+        // We'll fetch and set this when the module is loaded
       } else {
-        // Standalone module - store title directly
-        newModule.title = moduleName.trim();
+        // Standalone module - store original name in description if provided
+        if (moduleName) {
+          newModule.description = moduleName.trim();
+        }
       }
       
       const docRef = await addDoc(modulesRef, newModule);
@@ -725,8 +795,11 @@ class ProgramService {
           return;
         }
         const moduleDocRef = doc(firestore, 'courses', programId, 'modules', moduleId);
+        // Update title to "Semana {order + 1}" when order changes
+        const semanaTitle = `Semana ${order + 1}`;
         batch.update(moduleDocRef, {
           order: order,
+          title: semanaTitle,
           updated_at: serverTimestamp()
         });
       });
@@ -745,6 +818,156 @@ class ProgramService {
       const program = await this.getProgramById(programId);
       const creatorId = program?.creator_id;
       
+      // ✅ NEW: Check if this module is a library reference
+      const moduleRef = doc(firestore, 'courses', programId, 'modules', moduleId);
+      const moduleDoc = await getDoc(moduleRef);
+      
+      if (moduleDoc.exists()) {
+        const moduleData = moduleDoc.data();
+        
+        // If this is a library module reference, get sessions from the library module
+        if (moduleData.libraryModuleRef && creatorId) {
+          try {
+            // Import libraryService dynamically to avoid circular dependencies
+            const { default: libraryService } = await import('./libraryService');
+            
+            // Get the library module from creator_libraries/{creatorId}/modules/{libraryModuleRef}
+            const libraryModule = await libraryService.getLibraryModuleById(creatorId, moduleData.libraryModuleRef);
+            
+            console.log('🟢 Loading sessions for library module:', {
+              programModuleId: moduleId,
+              libraryModuleRef: moduleData.libraryModuleRef,
+              libraryModuleTitle: libraryModule?.title,
+              libraryModuleName: libraryModule?.name,
+              fullLibraryModule: libraryModule,
+              hasSessionRefs: !!libraryModule?.sessionRefs,
+              sessionRefsCount: (libraryModule?.sessionRefs || []).length,
+              sessionRefsData: libraryModule?.sessionRefs
+            });
+            
+            if (libraryModule && libraryModule.sessionRefs) {
+              // Resolve all library sessions
+              // sessionRefs can be either:
+              // - Array of strings: [sessionId1, sessionId2, ...]
+              // - Array of objects: [{ librarySessionRef, order }, ...]
+              const sessionRefs = libraryModule.sessionRefs;
+              
+              console.log('📋 Processing sessionRefs:', {
+                sessionRefsType: Array.isArray(sessionRefs) ? 'array' : typeof sessionRefs,
+                sessionRefsLength: Array.isArray(sessionRefs) ? sessionRefs.length : 0,
+                sessionRefs: sessionRefs
+              });
+              
+              const resolvedSessions = await Promise.all(
+                sessionRefs.map(async (sessionRef, index) => {
+                  // Handle both formats
+                  const librarySessionId = typeof sessionRef === 'string' 
+                    ? sessionRef 
+                    : (sessionRef.librarySessionRef || sessionRef.id || sessionRef);
+                  const sessionOrder = typeof sessionRef === 'object' && sessionRef.order !== undefined
+                    ? sessionRef.order
+                    : index;
+                  
+                  console.log('📋 Processing sessionRef item:', {
+                    index,
+                    sessionRef,
+                    librarySessionId,
+                    sessionOrder
+                  });
+                  
+                  try {
+                    const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionId);
+                    
+                    if (librarySession) {
+                      // Find the corresponding program session document (if it exists)
+                      const programSessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
+                      const programSessionsSnapshot = await getDocs(programSessionsRef);
+                      
+                      console.log('🔍 Looking for matching program session:', {
+                        librarySessionId: librarySessionId,
+                        programSessionsCount: programSessionsSnapshot.docs.length,
+                        programSessions: programSessionsSnapshot.docs.map(doc => ({
+                          id: doc.id,
+                          librarySessionRef: doc.data().librarySessionRef
+                        }))
+                      });
+                      
+                      let matchingSession = programSessionsSnapshot.docs.find(sessionDoc =>
+                        sessionDoc.data().librarySessionRef === librarySessionId
+                      );
+                      
+                      console.log('🔍 Matching session found:', {
+                        found: !!matchingSession,
+                        matchingSessionId: matchingSession?.id,
+                        matchingSessionData: matchingSession ? matchingSession.data() : null
+                      });
+                      
+                      // If no program session document exists, create one for override support
+                      let programSessionId;
+                      if (!matchingSession) {
+                        console.log('⚠️ No program session document found, creating one for override support');
+                        programSessionId = await this.ensureProgramSessionDocument(programId, moduleId, librarySessionId, sessionOrder);
+                        // Re-fetch to get the created document
+                        const sessionsRef2 = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
+                        const sessionsSnapshot2 = await getDocs(sessionsRef2);
+                        matchingSession = sessionsSnapshot2.docs.find(sessionDoc => sessionDoc.id === programSessionId);
+                      } else {
+                        programSessionId = matchingSession.id;
+                      }
+                      
+                      // Get overrides if program session exists
+                      const overrides = programSessionId 
+                        ? await this.getSessionOverrides(programId, moduleId, programSessionId)
+                        : null;
+                      
+                      // Merge library session data with overrides
+                      const resolvedSession = {
+                        ...librarySession,
+                        ...(overrides || {}), // Apply overrides on top of library data
+                        id: matchingSession?.id || librarySessionId, // Use program session ID if exists, otherwise library session ID
+                        title: (overrides?.title || librarySession.title || librarySession.name), // Use override title if available
+                        librarySessionRef: librarySessionId, // Always include librarySessionRef for exercise loading
+                        order: matchingSession?.data().order ?? sessionOrder,
+                        _overrides: overrides // Keep reference to overrides
+                      };
+                      
+                      console.log('🔷 Resolved library session:', {
+                        programSessionId: matchingSession?.id,
+                        librarySessionId: librarySessionId,
+                        finalSessionId: resolvedSession.id,
+                        title: resolvedSession.title,
+                        hasLibrarySessionRef: !!resolvedSession.librarySessionRef
+                      });
+                      
+                      return resolvedSession;
+                    }
+                  } catch (error) {
+                    console.error(`Error resolving library session ${librarySessionId}:`, error);
+                    return null;
+                  }
+                  
+                  return null;
+                })
+              );
+              
+              // Filter out nulls and sort by order
+              const sessions = resolvedSessions.filter(Boolean);
+              sessions.sort((a, b) => {
+                const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+                const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+                return orderA - orderB;
+              });
+              
+              return sessions;
+            }
+          } catch (error) {
+            console.error('Error resolving library module sessions:', error);
+            // Fall through to regular session loading
+          }
+        }
+      }
+      
+      // Regular module or library resolution failed - load sessions from program module
       const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
       const querySnapshot = await getDocs(sessionsRef);
       
@@ -753,7 +976,7 @@ class ProgramService {
       for (const docSnapshot of querySnapshot.docs) {
         const sessionData = docSnapshot.data();
         
-        // ✅ NEW: Check if library reference
+        // ✅ Check if library reference
         if (sessionData.librarySessionRef && creatorId) {
           try {
             // Import libraryService dynamically to avoid circular dependencies
@@ -763,15 +986,28 @@ class ProgramService {
             const librarySession = await libraryService.getLibrarySessionById(creatorId, sessionData.librarySessionRef);
             
             if (librarySession) {
-              // Merge with program-specific order
-              sessions.push({
-                id: docSnapshot.id,
+              // Fetch overrides
+              const overrides = await this.getSessionOverrides(programId, moduleId, docSnapshot.id);
+              
+              // Merge library session data with overrides
+              const resolvedSession = {
                 ...librarySession,
-                librarySessionRef: sessionData.librarySessionRef,
+                ...(overrides || {}), // Apply overrides on top of library data
+                id: docSnapshot.id, // Always use program session ID
+                title: (overrides?.title || librarySession.title || librarySession.name), // Use override title if available
+                librarySessionRef: sessionData.librarySessionRef, // Keep library reference for exercise loading
                 order: sessionData.order,
-                // Fetch overrides if any
-                _overrides: await this.getSessionOverrides(programId, moduleId, docSnapshot.id)
+                _overrides: overrides // Keep reference to overrides
+              };
+              
+              console.log('🔶 Resolved library session (from program sessions):', {
+                programSessionId: docSnapshot.id,
+                librarySessionRef: sessionData.librarySessionRef,
+                title: resolvedSession.title,
+                hasLibrarySessionRef: !!resolvedSession.librarySessionRef
               });
+              
+              sessions.push(resolvedSession);
               continue;
             }
           } catch (error) {
@@ -923,8 +1159,8 @@ class ProgramService {
       } else {
         // Standalone session - store title and image directly
         newSession.title = sessionName.trim();
-        if (imageUrl) {
-          newSession.image_url = imageUrl;
+      if (imageUrl) {
+        newSession.image_url = imageUrl;
         }
       }
       
@@ -941,9 +1177,47 @@ class ProgramService {
 
   /**
    * Create session from library (with reference)
+   * This creates a program session document that references the library session
    */
   async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null) {
+    // Ensure a program session document exists for override support
     return await this.createSession(programId, moduleId, null, order, null, librarySessionRef);
+  }
+  
+  /**
+   * Ensure program session document exists for a library session reference
+   * This is needed when loading sessions from library modules where no program session document exists yet
+   */
+  async ensureProgramSessionDocument(programId, moduleId, librarySessionRef, order = null) {
+    try {
+      // Check if a program session document already exists for this library session
+      const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
+      const sessionsSnapshot = await getDocs(sessionsRef);
+      
+      const existingSession = sessionsSnapshot.docs.find(sessionDoc =>
+        sessionDoc.data().librarySessionRef === librarySessionRef
+      );
+      
+      if (existingSession) {
+        // Program session document already exists
+        return existingSession.id;
+      }
+      
+      // Create program session document if it doesn't exist
+      const sessionOrder = order !== null ? order : sessionsSnapshot.docs.length;
+      const newSession = {
+        order: sessionOrder,
+        librarySessionRef: librarySessionRef,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(sessionsRef, newSession);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error ensuring program session document:', error);
+      throw error;
+    }
   }
 
   /**
@@ -1107,6 +1381,125 @@ class ProgramService {
   // Get exercises for a session
   async getExercisesBySession(programId, moduleId, sessionId) {
     try {
+      // Get program to get creator_id for library resolution
+      const program = await this.getProgramById(programId);
+      const creatorId = program?.creator_id;
+      
+      // Check if this session is a library reference
+      const sessionRef = doc(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      console.log('🔴 getExercisesBySession called:', {
+        programId,
+        moduleId,
+        sessionId,
+        sessionDocExists: sessionDoc.exists(),
+        sessionData: sessionDoc.exists() ? sessionDoc.data() : null,
+        creatorId
+      });
+      
+      if (sessionDoc.exists()) {
+        const sessionData = sessionDoc.data();
+        
+        // If this is a library session reference, get exercises from the library session
+        if (sessionData.librarySessionRef && creatorId) {
+          console.log('✅ Session has librarySessionRef, loading from library:', {
+            librarySessionRef: sessionData.librarySessionRef
+          });
+          try {
+            // Import libraryService dynamically to avoid circular dependencies
+            const { default: libraryService } = await import('./libraryService');
+            
+            // Get exercises from library session
+            const libraryExercises = await libraryService.getLibrarySessionExercises(creatorId, sessionData.librarySessionRef);
+            
+            console.log('🟡 Loaded exercises from library session:', {
+              programSessionId: sessionId,
+              librarySessionRef: sessionData.librarySessionRef,
+              exercisesCount: libraryExercises.length,
+              exercises: libraryExercises.map(ex => ({ id: ex.id, title: ex.title, name: ex.name, setsCount: ex.sets?.length || 0 }))
+            });
+            
+            return libraryExercises;
+          } catch (error) {
+            console.error('Error resolving library session exercises:', error);
+            // Fall through to regular exercise loading
+          }
+        }
+      } else {
+        // Session document doesn't exist - check if this module is a library module reference
+        // If so, the sessionId might be a library session ID
+        console.log('🔵 Session document does not exist, checking if module is library reference...');
+        
+        const moduleRef = doc(firestore, 'courses', programId, 'modules', moduleId);
+        const moduleDoc = await getDoc(moduleRef);
+        
+        console.log('🔵 Module document check:', {
+          moduleDocExists: moduleDoc.exists(),
+          moduleData: moduleDoc.exists() ? moduleDoc.data() : null
+        });
+        
+        if (moduleDoc.exists()) {
+          const moduleData = moduleDoc.data();
+          
+          console.log('🔵 Module data:', {
+            hasLibraryModuleRef: !!moduleData.libraryModuleRef,
+            libraryModuleRef: moduleData.libraryModuleRef,
+            hasCreatorId: !!creatorId,
+            creatorId: creatorId
+          });
+          
+          // If this module is a library module reference, try loading from library session directly
+          if (moduleData.libraryModuleRef && creatorId) {
+            console.log('✅⚠️ Session document not found, but module is library reference. Loading from library session directly:', {
+              sessionId,
+              libraryModuleRef: moduleData.libraryModuleRef,
+              creatorId: creatorId
+            });
+            
+            try {
+              // Import libraryService dynamically to avoid circular dependencies
+              const { default: libraryService } = await import('./libraryService');
+              
+              // Try to load exercises from library session directly using sessionId as library session ID
+              // The sessionId here IS the library session ID when no program session document exists
+              console.log('🔵 Calling getLibrarySessionExercises with:', {
+                creatorId,
+                sessionId
+              });
+              
+              const libraryExercises = await libraryService.getLibrarySessionExercises(creatorId, sessionId);
+              
+              console.log('🟡✅ Loaded exercises from library session (using sessionId directly as library session ID):', {
+                sessionId,
+                exercisesCount: libraryExercises.length,
+                exercises: libraryExercises.map(ex => ({ id: ex.id, title: ex.title, name: ex.name, setsCount: ex.sets?.length || 0 }))
+              });
+              
+              return libraryExercises;
+            } catch (error) {
+              console.error('❌ Error loading exercises from library session:', error);
+              console.error('❌ Error details:', {
+                message: error.message,
+                stack: error.stack,
+                creatorId,
+                sessionId
+              });
+              // Fall through to regular exercise loading
+            }
+          } else {
+            console.log('⚠️ Module is not a library reference or creatorId missing:', {
+              hasLibraryModuleRef: !!moduleData.libraryModuleRef,
+              hasCreatorId: !!creatorId
+            });
+          }
+        } else {
+          console.log('⚠️ Module document does not exist');
+        }
+      }
+      
+      // Regular session or library resolution failed - load exercises from program session
+      console.log('⚠️ Falling back to program session exercises (not a library reference or resolution failed)');
       const exercisesRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId, 'exercises');
       const q = query(exercisesRef, orderBy('order', 'asc'));
       const querySnapshot = await getDocs(q);
@@ -1117,6 +1510,12 @@ class ProgramService {
           id: doc.id,
           ...doc.data()
         });
+      });
+      
+      console.log('🔴 Loaded exercises from program session:', {
+        sessionId,
+        exercisesCount: exercises.length,
+        exercises: exercises.map(ex => ({ id: ex.id, title: ex.title }))
       });
       
       return exercises;
@@ -1241,6 +1640,118 @@ class ProgramService {
   // Get sets for an exercise
   async getSetsByExercise(programId, moduleId, sessionId, exerciseId) {
     try {
+      // Get program to get creator_id for library resolution
+      const program = await this.getProgramById(programId);
+      const creatorId = program?.creator_id;
+      
+      // Check if this session is a library reference
+      const sessionRef = doc(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      if (sessionDoc.exists()) {
+        const sessionData = sessionDoc.data();
+        
+        // If this is a library session reference, get sets from the library session exercise
+        if (sessionData.librarySessionRef && creatorId) {
+          try {
+            // Import libraryService dynamically to avoid circular dependencies
+            const { default: libraryService } = await import('./libraryService');
+            
+            // Get sets from library session exercise
+            const setsRef = collection(
+              firestore,
+              'creator_libraries', creatorId,
+              'sessions', sessionData.librarySessionRef,
+              'exercises', exerciseId,
+              'sets'
+            );
+            const q = query(setsRef, orderBy('order', 'asc'));
+            const querySnapshot = await getDocs(q);
+            
+            const sets = [];
+            querySnapshot.forEach((doc) => {
+              sets.push({
+                id: doc.id,
+                ...doc.data()
+              });
+            });
+            
+            console.log('🟠 Loaded sets from library session exercise:', {
+              programSessionId: sessionId,
+              librarySessionRef: sessionData.librarySessionRef,
+              exerciseId: exerciseId,
+              setsCount: sets.length,
+              sets: sets
+            });
+            
+            return sets;
+          } catch (error) {
+            console.error('Error resolving library session exercise sets:', error);
+            // Fall through to regular set loading
+          }
+        }
+      } else {
+        // Session document doesn't exist - check if this module is a library module reference
+        // When a library module is used, program session documents may not exist
+        // The sessionId passed here is likely the library session ID directly
+        console.log('🔵 getSetsByExercise: Session document does not exist, checking if module is library reference...');
+        
+        const moduleRef = doc(firestore, 'courses', programId, 'modules', moduleId);
+        const moduleDoc = await getDoc(moduleRef);
+        
+        if (moduleDoc.exists()) {
+          const moduleData = moduleDoc.data();
+          
+          // If this module is a library module reference, the sessionId is likely a library session ID
+          if (moduleData.libraryModuleRef && creatorId) {
+            console.log('✅⚠️ getSetsByExercise: Session document not found, but module is library reference. Loading sets from library session directly:', {
+              sessionId,
+              exerciseId,
+              libraryModuleRef: moduleData.libraryModuleRef,
+              creatorId: creatorId
+            });
+            
+            try {
+              // Import libraryService dynamically to avoid circular dependencies
+              const { default: libraryService } = await import('./libraryService');
+              
+              // Load sets directly from library session exercise
+              // The sessionId here IS the library session ID when no program session document exists
+              const setsRef = collection(
+                firestore,
+                'creator_libraries', creatorId,
+                'sessions', sessionId,
+                'exercises', exerciseId,
+                'sets'
+              );
+              const q = query(setsRef, orderBy('order', 'asc'));
+              const querySnapshot = await getDocs(q);
+              
+              const sets = [];
+              querySnapshot.forEach((doc) => {
+                sets.push({
+                  id: doc.id,
+                  ...doc.data()
+                });
+              });
+              
+              console.log('🟠✅ Loaded sets from library session exercise (direct):', {
+                librarySessionId: sessionId,
+                exerciseId: exerciseId,
+                setsCount: sets.length,
+                sets: sets
+              });
+              
+              return sets;
+            } catch (error) {
+              console.error('❌ Error loading sets from library session exercise (direct):', error);
+              // Fall through to regular set loading
+            }
+          }
+        }
+      }
+      
+      // Regular session or library resolution failed - load sets from program session exercise
       const setsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets');
       const q = query(setsRef, orderBy('order', 'asc'));
       const querySnapshot = await getDocs(q);

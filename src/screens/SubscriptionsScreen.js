@@ -20,8 +20,6 @@ import SvgInfo from '../components/icons/SvgInfo';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const UPDATE_SUBSCRIPTION_URL =
-  'https://us-central1-wolf-20b8b.cloudfunctions.net/updateSubscriptionStatus';
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -49,6 +47,7 @@ const SubscriptionsScreen = ({ navigation }) => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [pendingCancelSubscription, setPendingCancelSubscription] =
     useState(null);
+  const [showSubscriptionInfoModal, setShowSubscriptionInfoModal] = useState(false);
 
   const createInitialSurveyAnswers = () => ({
     reason: null,
@@ -159,79 +158,6 @@ const SubscriptionsScreen = ({ navigation }) => {
     }
   };
 
-  const performAction = async (subscriptionId, action, extraData = {}) => {
-    if (!user?.uid) {
-      return;
-    }
-
-    setActionState((prev) => ({
-      ...prev,
-      [subscriptionId]: action,
-    }));
-
-    try {
-      const response = await fetch(UPDATE_SUBSCRIPTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-          subscriptionId,
-          action,
-          ...extraData,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.error || 'No se pudo actualizar la suscripción');
-      }
-
-      logger.log(
-        `Subscription ${subscriptionId} updated via action ${action}`,
-      );
-    } catch (error) {
-      logger.error('Error performing subscription action:', error);
-      Alert.alert(
-        'Error',
-        'No se pudo completar la acción. Intenta más tarde.',
-      );
-    } finally {
-      setActionState((prev) => ({
-        ...prev,
-        [subscriptionId]: null,
-      }));
-    }
-  };
-
-  const confirmAction = (subscription, action) => {
-    if (action === 'cancel') {
-      handleCancelIntent(subscription);
-      return;
-    }
-
-    const actionLabels = {
-      cancel: 'cancelar',
-      pause: 'pausar',
-      resume: 'reanudar',
-    };
-
-    const actionText = actionLabels[action] || 'actualizar';
-
-    Alert.alert(
-      'Confirmar acción',
-      `¿Deseas ${actionText} esta suscripción?`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Sí',
-          onPress: () => performAction(subscription.id, action),
-        },
-      ],
-    );
-  };
 
   const renderActions = (subscription) => {
     const currentStatus = subscription.status || 'pending';
@@ -240,40 +166,16 @@ const SubscriptionsScreen = ({ navigation }) => {
       return null;
     }
 
-    const actions = [];
-
-    if (currentStatus === 'paused') {
-      actions.push({ key: 'resume', label: 'Reanudar' });
-      actions.push({ key: 'cancel', label: 'Cancelar' });
-    } else {
-      actions.push({ key: 'pause', label: 'Pausar' });
-      actions.push({ key: 'cancel', label: 'Cancelar' });
-    }
-
+    // Disabled: Show single button that opens info modal instead of action buttons
     return (
       <View style={styles.actionsRow}>
-        {actions.map((action) => {
-          const isProcessing =
-            actionState[subscription.id] &&
-            actionState[subscription.id] === action.key;
-
-          return (
-            <TouchableOpacity
-              key={action.key}
-              style={[
-                styles.actionButton,
-                isProcessing && styles.actionButtonDisabled,
-              ]}
-              onPress={() => confirmAction(subscription, action.key)}
-              disabled={isProcessing}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.actionButtonText}>
-                {isProcessing ? 'Procesando...' : action.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => setShowSubscriptionInfoModal(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.actionButtonText}>Gestionar</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -709,6 +611,45 @@ const SubscriptionsScreen = ({ navigation }) => {
           })
         )}
       </ScrollView>
+
+      {/* Subscription Management Info Modal */}
+      <Modal
+        visible={showSubscriptionInfoModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSubscriptionInfoModal(false)}
+      >
+        <View style={styles.subscriptionInfoModalOverlay}>
+          <TouchableOpacity 
+            style={styles.subscriptionInfoModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowSubscriptionInfoModal(false)}
+          />
+          <View style={styles.subscriptionInfoModalContent}>
+            <View style={styles.subscriptionInfoModalHeader}>
+              <Text style={styles.subscriptionInfoModalTitle}>Información</Text>
+              <TouchableOpacity 
+                style={styles.subscriptionInfoCloseButton}
+                onPress={() => setShowSubscriptionInfoModal(false)}
+              >
+                <Text style={styles.subscriptionInfoCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.subscriptionInfoScrollContainer}>
+              <ScrollView 
+                style={styles.subscriptionInfoScrollView}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.subscriptionInfoModalDescription}>
+                  Las suscripciones y compras no se administran dentro de la app.{'\n\n'}
+                  El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente fuera de Wake.
+                </Text>
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1030,6 +971,74 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
     textAlign: 'center',
+  },
+  // Subscription Info Modal Styles
+  subscriptionInfoModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subscriptionInfoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  subscriptionInfoModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    width: Math.max(350, screenWidth * 0.9),
+    maxWidth: 400,
+    height: Math.max(300, screenHeight * 0.4),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'visible',
+    padding: Math.max(24, screenWidth * 0.06),
+  },
+  subscriptionInfoScrollContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  subscriptionInfoScrollView: {
+    flex: 1,
+  },
+  subscriptionInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(16, screenHeight * 0.02),
+  },
+  subscriptionInfoModalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.06, 24),
+    fontWeight: '600',
+  },
+  subscriptionInfoCloseButton: {
+    width: Math.max(30, screenWidth * 0.075),
+    height: Math.max(30, screenWidth * 0.075),
+    borderRadius: Math.max(15, screenWidth * 0.037),
+    backgroundColor: '#44454B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionInfoCloseButtonText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  subscriptionInfoModalDescription: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '400',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    textAlign: 'left',
   },
 });
 

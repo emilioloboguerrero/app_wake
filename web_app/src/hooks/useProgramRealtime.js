@@ -5,6 +5,7 @@ import { firestore } from '../config/firebase';
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   query,
   orderBy,
@@ -82,22 +83,68 @@ export const useProgramRealtime = (programId, isActive = false) => {
       listeners.push(programUnsubscribe);
 
       // Listen to modules collection
+      // Note: We don't resolve library modules in real-time to avoid async issues
+      // Instead, we rely on getModulesByProgram to do the resolution
+      // The real-time listener only updates when modules are added/removed/reordered
       const modulesUnsubscribe = onSnapshot(
         query(
           collection(firestore, 'courses', programId, 'modules'),
           orderBy('order', 'asc')
         ),
-        (snapshot) => {
+        async (snapshot) => {
           if (!isMounted) return;
           
-          const modules = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
+          // Get program to get creator_id for library resolution
+          const programDoc = await getDoc(doc(firestore, 'courses', programId));
+          const creatorId = programDoc.data()?.creator_id;
+          
+          // Resolve library modules if needed (same logic as getModulesByProgram)
+          const modules = await Promise.all(
+            snapshot.docs.map(async (docSnapshot) => {
+              const moduleData = docSnapshot.data();
+              
+              // If library reference, resolve it
+              if (moduleData.libraryModuleRef && creatorId) {
+                try {
+                  const { default: libraryService } = await import('../services/libraryService');
+                  const libraryModule = await libraryService.getLibraryModuleById(creatorId, moduleData.libraryModuleRef);
+                  
+                  if (libraryModule) {
+                    // Merge library module data (includes title from library)
+                    return {
+                      id: docSnapshot.id,
+                      ...libraryModule, // Library module data first (includes title)
+                      libraryModuleRef: moduleData.libraryModuleRef,
+                      order: moduleData.order
+                    };
+                  }
+                } catch (error) {
+                  console.error('Error resolving library module in real-time:', error);
+                }
+              }
+              
+              // Standalone module or resolution failed
+              return {
+                id: docSnapshot.id,
+                ...moduleData
+              };
+            })
+          );
+          
+          // Sort by order
+          modules.sort((a, b) => {
+            const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+            const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+            return orderA - orderB;
+          });
           
           // Update React Query cache
           queryClient.setQueryData(
             queryKeys.modules.all(programId),
+            modules
+          );
+          queryClient.setQueryData(
+            queryKeys.modules.withCounts(programId),
             modules
           );
         },
@@ -169,13 +216,117 @@ export const useModuleSessionsRealtime = (programId, moduleId, isActive = false)
           collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions'),
           orderBy('order', 'asc')
         ),
-        (snapshot) => {
+        async (snapshot) => {
           if (!isMounted) return;
           
-          const sessions = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
+          // Get program to get creator_id for library resolution
+          const programDoc = await getDoc(doc(firestore, 'courses', programId));
+          const creatorId = programDoc.data()?.creator_id;
+          
+          // Check if this module is a library reference
+          const moduleDoc = await getDoc(doc(firestore, 'courses', programId, 'modules', moduleId));
+          const moduleData = moduleDoc.data();
+          
+          // If library module reference, resolve sessions from library
+          if (moduleData?.libraryModuleRef && creatorId) {
+            try {
+              const { default: libraryService } = await import('../services/libraryService');
+              const libraryModule = await libraryService.getLibraryModuleById(creatorId, moduleData.libraryModuleRef);
+              
+              if (libraryModule && libraryModule.sessionRefs) {
+                // Resolve library sessions
+                const sessionRefs = libraryModule.sessionRefs;
+                const resolvedSessions = await Promise.all(
+                  sessionRefs.map(async (sessionRef, index) => {
+                    const librarySessionId = typeof sessionRef === 'string' 
+                      ? sessionRef 
+                      : (sessionRef.librarySessionRef || sessionRef.id || sessionRef);
+                    const sessionOrder = typeof sessionRef === 'object' && sessionRef.order !== undefined
+                      ? sessionRef.order
+                      : index;
+                    
+                    try {
+                      const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionId);
+                      if (librarySession) {
+                        // Find matching program session for overrides
+                        const matchingSession = snapshot.docs.find(sessionDoc =>
+                          sessionDoc.data().librarySessionRef === librarySessionId
+                        );
+                        
+                        return {
+                          id: matchingSession?.id || librarySessionId,
+                          ...librarySession,
+                          title: librarySession.title || librarySession.name, // Ensure title is set
+                          librarySessionRef: librarySessionId,
+                          order: matchingSession?.data().order ?? sessionOrder
+                        };
+                      }
+                    } catch (error) {
+                      console.error(`Error resolving library session ${librarySessionId}:`, error);
+                      return null;
+                    }
+                    return null;
+                  })
+                );
+                
+                const sessions = resolvedSessions.filter(Boolean);
+                sessions.sort((a, b) => {
+                  const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+                  const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+                  return orderA - orderB;
+                });
+                
+                queryClient.setQueryData(
+                  queryKeys.sessions.all(programId, moduleId),
+                  sessions
+                );
+                return;
+              }
+            } catch (error) {
+              console.error('Error resolving library module sessions in real-time:', error);
+              // Fall through to regular session loading
+            }
+          }
+          
+          // Regular module or library resolution failed - use program sessions
+          const sessions = await Promise.all(
+            snapshot.docs.map(async (docSnapshot) => {
+              const sessionData = docSnapshot.data();
+              
+              // If library session reference, resolve it
+              if (sessionData.librarySessionRef && creatorId) {
+                try {
+                  const { default: libraryService } = await import('../services/libraryService');
+                  const librarySession = await libraryService.getLibrarySessionById(creatorId, sessionData.librarySessionRef);
+                  
+                  if (librarySession) {
+                    return {
+                      id: docSnapshot.id,
+                      ...librarySession,
+                      title: librarySession.title || librarySession.name, // Ensure title is set
+                      librarySessionRef: sessionData.librarySessionRef,
+                      order: sessionData.order
+                    };
+                  }
+                } catch (error) {
+                  console.error('Error resolving library session in real-time:', error);
+                }
+              }
+              
+              // Standalone session or resolution failed
+              return {
+                id: docSnapshot.id,
+                ...sessionData
+              };
+            })
+          );
+          
+          // Sort by order
+          sessions.sort((a, b) => {
+            const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+            const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+            return orderA - orderB;
+          });
           
           queryClient.setQueryData(
             queryKeys.sessions.all(programId, moduleId),

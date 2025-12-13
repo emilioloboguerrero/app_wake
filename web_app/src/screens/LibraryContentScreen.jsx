@@ -28,6 +28,16 @@ import './ProgramDetailScreen.css';
 // Helper functions
 const getLibraryExerciseKey = (libraryId, exerciseName) => `${libraryId || ''}::${exerciseName || ''}`;
 
+const isLibraryExerciseDataComplete = (exerciseData) => {
+  if (!exerciseData) return false;
+  
+  const hasVideo = Boolean(exerciseData.video_url || exerciseData.video);
+  const hasMuscles = Boolean(exerciseData.muscle_activation && Object.keys(exerciseData.muscle_activation).length > 0);
+  const hasImplements = Boolean(exerciseData.implements && Array.isArray(exerciseData.implements) && exerciseData.implements.length > 0);
+  
+  return hasVideo && hasMuscles && hasImplements;
+};
+
 const getPrimaryReferences = (exercise) => {
   if (!exercise || typeof exercise.primary !== 'object' || exercise.primary === null) {
     return [];
@@ -64,6 +74,186 @@ const parseIntensityForDisplay = (intensity) => {
   return String(intensity);
 };
 
+const formatRepsValue = (value) => {
+  // Remove all spaces and keep only numbers and "-"
+  let cleaned = value.replace(/[^0-9-]/g, '');
+  
+  // Remove multiple consecutive dashes (keep only single dashes)
+  cleaned = cleaned.replace(/-+/g, '-');
+  
+  // Remove leading dashes (but allow trailing dash while typing)
+  cleaned = cleaned.replace(/^-+/, '');
+  
+  // If empty, return empty string
+  if (cleaned === '') {
+    return '';
+  }
+  
+  // Split by dash to get parts
+  const parts = cleaned.split('-');
+  
+  // If only one part (no dash or trailing dash), return as is
+  if (parts.length === 1) {
+    return parts[0];
+  }
+  
+  // If there's a trailing dash (like "10-"), allow it for now
+  if (cleaned.endsWith('-') && parts.length === 2 && parts[1] === '') {
+    return cleaned; // Allow "10-" format while typing
+  }
+  
+  // If more than 2 parts, take first two
+  if (parts.length > 2) {
+    return `${parts[0]}-${parts[1]}`;
+  }
+  
+  // Return formatted as "x-y"
+  return cleaned;
+};
+
+// Sortable Session Card Component
+const SortableSessionCard = ({ session, isSessionEditMode, onSessionClick, onDeleteSession, sessionIndex }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: session.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const cardStyle = {
+    ...style,
+    ...(session.image_url ? {
+      backgroundImage: `url(${session.image_url})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    } : {})
+  };
+
+  const sessionNumber = (session.order !== undefined && session.order !== null) ? session.order + 1 : sessionIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={cardStyle}
+      className={`session-card ${isSessionEditMode ? 'session-card-edit-mode' : ''} ${isDragging ? 'session-card-dragging' : ''} ${session.image_url ? 'session-card-with-image' : ''}`}
+      onClick={() => onSessionClick(session)}
+    >
+      <div className="session-card-number">{sessionNumber}</div>
+      {isSessionEditMode && (
+        <>
+          <button
+            className="session-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteSession(session);
+            }}
+          >
+            <span className="session-delete-icon">−</span>
+          </button>
+          <div
+            className="session-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+        </>
+      )}
+      <div className="session-card-header">
+        <h3 className="session-card-title">
+          {session.title || `Sesión ${session.id.slice(0, 8)}`}
+        </h3>
+      </div>
+    </div>
+  );
+};
+
+// Sortable Module Card Component
+const SortableModuleCard = ({ module, isModuleEditMode, onModuleClick, onDeleteModule, moduleIndex }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: module.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const moduleNumber = (module.order !== undefined && module.order !== null) ? module.order + 1 : moduleIndex + 1;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`module-card ${isModuleEditMode ? 'module-card-edit-mode' : ''} ${isDragging ? 'module-card-dragging' : ''}`}
+      onClick={() => onModuleClick(module)}
+    >
+      <div className="module-card-number">{moduleNumber}</div>
+      {isModuleEditMode && (
+        <>
+          <button
+            className="module-delete-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteModule(module);
+            }}
+          >
+            <span className="module-delete-icon">−</span>
+          </button>
+          <div
+            className="module-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
+              <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+        </>
+      )}
+      <div className="module-card-header">
+        <h3 className="module-card-title">
+          {module.title || `Semana ${module.id.slice(0, 8)}`}
+        </h3>
+      </div>
+      <div className="module-card-footer">
+        <span className="module-card-count">
+          {(module.sessionRefs || []).length} {(module.sessionRefs || []).length === 1 ? 'sesión' : 'sesiones'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const LibraryContentScreen = () => {
   const { moduleId, sessionId } = useParams();
   const navigate = useNavigate();
@@ -81,6 +271,14 @@ const LibraryContentScreen = () => {
   
   const tab = getTabFromContext();
   
+  // Sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+  
   const [libraryModules, setLibraryModules] = useState([]);
   const [selectedModule, setSelectedModule] = useState(null);
   const [librarySessions, setLibrarySessions] = useState([]);
@@ -88,6 +286,40 @@ const LibraryContentScreen = () => {
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Module edit mode state
+  const [isModuleEditMode, setIsModuleEditMode] = useState(false);
+  const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
+  const [moduleName, setModuleName] = useState('');
+  const [isCreatingModule, setIsCreatingModule] = useState(false);
+  const [moduleToDelete, setModuleToDelete] = useState(null);
+  const [isDeleteModuleModalOpen, setIsDeleteModuleModalOpen] = useState(false);
+  const [deleteModuleConfirmation, setDeleteModuleConfirmation] = useState('');
+  const [isDeletingModule, setIsDeletingModule] = useState(false);
+  const [isUpdatingModuleOrder, setIsUpdatingModuleOrder] = useState(false);
+  const [originalModulesOrder, setOriginalModulesOrder] = useState([]);
+  
+  // Session edit mode state
+  const [isSessionEditMode, setIsSessionEditMode] = useState(false);
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [isCopySessionModalOpen, setIsCopySessionModalOpen] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [sessionToEdit, setSessionToEdit] = useState(null);
+  const [sessionName, setSessionName] = useState('');
+  const [sessionImageFile, setSessionImageFile] = useState(null);
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
+  const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
+  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
+  const [deleteSessionConfirmation, setDeleteSessionConfirmation] = useState('');
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isUpdatingSessionOrder, setIsUpdatingSessionOrder] = useState(false);
+  const [originalSessionsOrder, setOriginalSessionsOrder] = useState([]);
+  const [availableLibrarySessions, setAvailableLibrarySessions] = useState([]);
+  const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
+  
   const [isExerciseEditMode, setIsExerciseEditMode] = useState(false);
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState(null);
@@ -119,6 +351,9 @@ const LibraryContentScreen = () => {
   const [isObjectiveSelectionModalOpen, setIsObjectiveSelectionModalOpen] = useState(false);
   const [objectiveToEditIndex, setObjectiveToEditIndex] = useState(null);
   const [isCreatingNewExercise, setIsCreatingNewExercise] = useState(false);
+  const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
+  const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
+  const libraryDataCacheRef = useRef(libraryDataCache);
 
   // Load library modules (only if no moduleId or sessionId)
   useEffect(() => {
@@ -128,10 +363,16 @@ const LibraryContentScreen = () => {
       try {
         setLoading(true);
         const modules = await libraryService.getModuleLibrary(user.uid);
-        setLibraryModules(modules);
+        // Sort modules by order field
+        const sortedModules = modules.sort((a, b) => {
+          const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+          const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+          return orderA - orderB;
+        });
+        setLibraryModules(sortedModules);
       } catch (err) {
         console.error('Error loading library modules:', err);
-        setError('Error al cargar los módulos');
+        setError('Error al cargar las semanas');
       } finally {
         setLoading(false);
       }
@@ -195,9 +436,202 @@ const LibraryContentScreen = () => {
     loadSessionExercises();
   }, [user, sessionId]);
 
+  // Load library sessions when modal opens
+  useEffect(() => {
+    if (isCopySessionModalOpen && selectedModule) {
+      loadLibrarySessions();
+    }
+  }, [isCopySessionModalOpen, selectedModule]);
+
   const handleModuleClick = (module) => {
+    if (isModuleEditMode) return;
     const currentTab = searchParams.get('tab') || 'modules';
     navigate(`/library/content/modules/${module.id}?tab=${currentTab}`);
+  };
+
+  // Module management handlers
+  const handleAddModule = () => {
+    setIsModuleModalOpen(true);
+    setModuleName('');
+  };
+
+  const handleCloseModuleModal = () => {
+    setIsModuleModalOpen(false);
+    setModuleName('');
+  };
+
+  const handleCreateModule = async () => {
+    if (!moduleName.trim() || !user) {
+      return;
+    }
+
+    try {
+      setIsCreatingModule(true);
+      
+      // Calculate new order
+      const maxOrder = libraryModules.length > 0 
+        ? Math.max(...libraryModules.map(m => (m.order !== undefined && m.order !== null) ? m.order : -1))
+        : -1;
+      const newOrder = maxOrder + 1;
+      
+      await libraryService.createLibraryModule(user.uid, {
+        title: moduleName.trim(),
+        sessionRefs: [],
+        order: newOrder
+      });
+      
+      // Reload modules
+      const modules = await libraryService.getModuleLibrary(user.uid);
+      // Sort modules by order field
+      const sortedModules = modules.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      setLibraryModules(sortedModules);
+      
+      // Close modal
+      handleCloseModuleModal();
+    } catch (err) {
+      console.error('Error creating module:', err);
+      alert('Error al crear la semana. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCreatingModule(false);
+    }
+  };
+
+  const handleEditModules = async () => {
+    if (!isModuleEditMode) {
+      // Entering edit mode: store original order
+      setOriginalModulesOrder([...libraryModules]);
+      setIsModuleEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveModuleOrder();
+    }
+  };
+
+  const handleSaveModuleOrder = async () => {
+    if (!user) return;
+
+    try {
+      setIsUpdatingModuleOrder(true);
+      
+      // Update each module's order
+      await Promise.all(
+        libraryModules.map((module, index) => 
+          libraryService.updateLibraryModule(user.uid, module.id, { order: index })
+        )
+      );
+      
+      setIsModuleEditMode(false);
+      setOriginalModulesOrder([]);
+      
+      // Reload modules to get updated order
+      const modules = await libraryService.getModuleLibrary(user.uid);
+      setLibraryModules(modules);
+    } catch (err) {
+      console.error('Error updating module order:', err);
+      // Revert to original order on error
+      if (originalModulesOrder.length > 0) {
+        setLibraryModules([...originalModulesOrder]);
+      }
+      alert('Error al actualizar el orden de las semanas. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingModuleOrder(false);
+    }
+  };
+
+  const handleDragEndModules = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = libraryModules.findIndex((module) => module.id === active.id);
+    const newIndex = libraryModules.findIndex((module) => module.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newModules = arrayMove(libraryModules, oldIndex, newIndex);
+    setLibraryModules(newModules);
+  };
+
+  const handleDeleteModule = async (module) => {
+    if (!user) return;
+    
+    try {
+      const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, module.id);
+      
+      if (usageCheck.inUse) {
+        alert(
+          `⚠️ No se puede eliminar esta semana de la biblioteca.\n\n` +
+          `Está siendo usada en ${usageCheck.count} programa(s).\n\n` +
+          `Primero debes eliminar o reemplazar todas las referencias en los programas.`
+        );
+        return;
+      }
+      
+      setModuleToDelete(module);
+      setIsDeleteModuleModalOpen(true);
+      setDeleteModuleConfirmation('');
+    } catch (error) {
+      console.error('Error checking module usage:', error);
+      // Continue with delete attempt anyway
+      setModuleToDelete(module);
+      setIsDeleteModuleModalOpen(true);
+      setDeleteModuleConfirmation('');
+    }
+  };
+
+  const handleCloseDeleteModuleModal = () => {
+    setIsDeleteModuleModalOpen(false);
+    setModuleToDelete(null);
+    setDeleteModuleConfirmation('');
+  };
+
+  const handleConfirmDeleteModule = async () => {
+    if (!moduleToDelete || !deleteModuleConfirmation.trim() || !user) {
+      return;
+    }
+
+    // Verify the confirmation matches the module title
+    const moduleTitle = moduleToDelete.title || `Semana ${moduleToDelete.id?.slice(0, 8) || ''}`;
+    if (deleteModuleConfirmation.trim() !== moduleTitle) {
+      return;
+    }
+
+    try {
+      setIsDeletingModule(true);
+      
+      await libraryService.deleteLibraryModule(user.uid, moduleToDelete.id);
+      
+      // Reload modules
+      const modules = await libraryService.getModuleLibrary(user.uid);
+      setLibraryModules(modules);
+      
+      // If the deleted module was selected, go back to modules list
+      if (selectedModule && selectedModule.id === moduleToDelete.id) {
+        setSelectedModule(null);
+        setLibrarySessions([]);
+        navigate('/library/content?tab=modules');
+      }
+      
+      // Close modal and exit edit mode if no modules left
+      handleCloseDeleteModuleModal();
+      if (modules.length === 0) {
+        setIsModuleEditMode(false);
+      }
+    } catch (err) {
+      console.error('Error deleting module:', err);
+      alert('Error al eliminar la semana. Por favor, intenta de nuevo.');
+    } finally {
+      setIsDeletingModule(false);
+    }
   };
 
   const handleBackToModules = () => {
@@ -209,6 +643,7 @@ const LibraryContentScreen = () => {
   };
 
   const handleSessionClick = (session) => {
+    if (isSessionEditMode) return;
     const currentTab = searchParams.get('tab') || 'modules';
     navigate(`/library/content/modules/${moduleId}/sessions/${session.id}?tab=${currentTab}`);
   };
@@ -221,6 +656,328 @@ const LibraryContentScreen = () => {
     }
     setSelectedSession(null);
     setExercises([]);
+  };
+
+  // Session management handlers
+  const handleAddSession = () => {
+    setIsCopySessionModalOpen(true);
+    loadLibrarySessions();
+  };
+
+  const handleCloseCopySessionModal = () => {
+    setIsCopySessionModalOpen(false);
+    setAvailableLibrarySessions([]);
+  };
+
+  const handleEditSessionClick = () => {
+    if (!selectedSession || !user) return;
+    setSessionToEdit(selectedSession);
+    setSessionName(selectedSession.title || '');
+    setSessionImagePreview(selectedSession.image_url || null);
+    setSessionImageFile(null);
+    setIsSessionModalOpen(true);
+  };
+
+  const handleSessionImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecciona un archivo de imagen válido');
+      return;
+    }
+
+    // Validate file size (e.g., max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      return;
+    }
+
+    setSessionImageFile(file);
+    
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setSessionImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSessionImageDelete = () => {
+    setSessionImageFile(null);
+    setSessionImagePreview(null);
+  };
+
+  const handleUpdateSession = async () => {
+    if (!sessionName.trim() || !user || !selectedSession || !sessionToEdit) {
+      return;
+    }
+
+    try {
+      setIsUpdatingSession(true);
+      
+      let imageUrl = selectedSession.image_url; // Keep existing image by default
+      
+      // Upload new image if provided
+      if (sessionImageFile) {
+        // Validate file before upload
+        if (!(sessionImageFile instanceof File)) {
+          console.error('Invalid file object:', sessionImageFile);
+          alert('Error: Archivo inválido. Por favor, intenta de nuevo.');
+          setIsUpdatingSession(false);
+          return;
+        }
+
+        setIsUploadingSessionImage(true);
+        setSessionImageUploadProgress(0);
+        
+        try {
+          console.log('Starting image upload:', {
+            userId: user.uid,
+            sessionId: selectedSession.id,
+            fileName: sessionImageFile.name,
+            fileSize: sessionImageFile.size,
+            fileType: sessionImageFile.type
+          });
+
+          imageUrl = await libraryService.uploadLibrarySessionImage(
+            user.uid,
+            selectedSession.id,
+            sessionImageFile,
+            (progress) => {
+              setSessionImageUploadProgress(Math.round(progress));
+            }
+          );
+
+          console.log('Image uploaded successfully, URL:', imageUrl);
+          
+          // Note: uploadLibrarySessionImage already updates the session document with image_url
+          // So we don't need to update it again in the updateLibrarySession call below
+        } catch (uploadError) {
+          console.error('Error uploading session image:', uploadError);
+          console.error('Upload error details:', {
+            message: uploadError.message,
+            code: uploadError.code,
+            serverResponse: uploadError.serverResponse,
+            stack: uploadError.stack
+          });
+          
+          const errorMessage = uploadError.message || 'Error desconocido al subir la imagen';
+          alert(`Error al subir la imagen: ${errorMessage}. Por favor, intenta de nuevo.`);
+          
+          // Reset upload state
+          setIsUploadingSessionImage(false);
+          setSessionImageUploadProgress(0);
+          setIsUpdatingSession(false);
+          return;
+        } finally {
+          setIsUploadingSessionImage(false);
+          setSessionImageUploadProgress(0);
+        }
+      } else if (!sessionImagePreview && selectedSession.image_url) {
+        // Image was deleted
+        imageUrl = null;
+      }
+      
+      // Update session
+      await libraryService.updateLibrarySession(user.uid, selectedSession.id, {
+        title: sessionName.trim(),
+        image_url: imageUrl
+      });
+      
+      // Update local state
+      const updatedSession = {
+        ...selectedSession,
+        title: sessionName.trim(),
+        image_url: imageUrl
+      };
+      setSelectedSession(updatedSession);
+      
+      // Update in sessions list if we're viewing sessions
+      if (selectedModule) {
+        const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
+        setLibrarySessions(sessions);
+      }
+      
+      // Close modal
+      handleCloseSessionModal();
+    } catch (err) {
+      console.error('Error updating session:', err);
+      console.error('Update error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+      alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+    } finally {
+      setIsUpdatingSession(false);
+      setIsUploadingSessionImage(false);
+      setSessionImageUploadProgress(0);
+    }
+  };
+
+  const handleCloseSessionModal = () => {
+    setIsSessionModalOpen(false);
+    setSessionToEdit(null);
+    setSessionName('');
+    setSessionImageFile(null);
+    setSessionImagePreview(null);
+    setIsUploadingSessionImage(false);
+    setSessionImageUploadProgress(0);
+  };
+
+  const loadLibrarySessions = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoadingLibrarySessions(true);
+      const sessions = await libraryService.getSessionLibrary(user.uid);
+      // Filter out sessions already in the module
+      const moduleSessionIds = (selectedModule?.sessionRefs || []).map(ref => typeof ref === 'string' ? ref : ref.id || ref);
+      const availableSessions = sessions.filter(session => !moduleSessionIds.includes(session.id));
+      setAvailableLibrarySessions(availableSessions);
+    } catch (err) {
+      console.error('Error loading library sessions:', err);
+      alert('Error al cargar las sesiones de la biblioteca');
+    } finally {
+      setIsLoadingLibrarySessions(false);
+    }
+  };
+
+  const handleSelectLibrarySession = async (librarySessionId) => {
+    if (!user || !selectedModule || !librarySessionId) return;
+    
+    try {
+      setIsCreatingSession(true);
+      await libraryService.addSessionToLibraryModule(user.uid, selectedModule.id, librarySessionId);
+      
+      // Reload sessions
+      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
+      setLibrarySessions(sessions);
+      
+      handleCloseCopySessionModal();
+    } catch (err) {
+      console.error('Error adding session to module:', err);
+      alert('Error al agregar la sesión. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  const handleEditSessions = async () => {
+    if (!isSessionEditMode) {
+      // Entering edit mode: store original order
+      setOriginalSessionsOrder([...librarySessions]);
+      setIsSessionEditMode(true);
+    } else {
+      // Exiting edit mode: save order
+      await handleSaveSessionOrder();
+    }
+  };
+
+  const handleSaveSessionOrder = async () => {
+    if (!user || !selectedModule) return;
+
+    try {
+      setIsUpdatingSessionOrder(true);
+      const sessionIds = librarySessions.map(session => session.id);
+      
+      // Update order in database
+      await libraryService.updateLibraryModuleSessionOrder(user.uid, selectedModule.id, sessionIds);
+      
+      setIsSessionEditMode(false);
+      setOriginalSessionsOrder([]);
+      
+      // Reload sessions
+      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
+      setLibrarySessions(sessions);
+    } catch (err) {
+      console.error('Error updating session order:', err);
+      // Revert to original order on error
+      if (originalSessionsOrder.length > 0) {
+        setLibrarySessions([...originalSessionsOrder]);
+      }
+      alert('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.');
+    } finally {
+      setIsUpdatingSessionOrder(false);
+    }
+  };
+
+  const handleDragEndSessions = (event) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = librarySessions.findIndex((session) => session.id === active.id);
+    const newIndex = librarySessions.findIndex((session) => session.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Only update local state - don't save to Firestore yet
+    const newSessions = arrayMove(librarySessions, oldIndex, newIndex);
+    setLibrarySessions(newSessions);
+  };
+
+  const handleDeleteSession = async (session) => {
+    if (!user || !selectedModule) return;
+    
+    setSessionToDelete(session);
+    setIsDeleteSessionModalOpen(true);
+    setDeleteSessionConfirmation('');
+  };
+
+  const handleCloseDeleteSessionModal = () => {
+    setIsDeleteSessionModalOpen(false);
+    setSessionToDelete(null);
+    setDeleteSessionConfirmation('');
+  };
+
+  const handleConfirmDeleteSession = async () => {
+    if (!sessionToDelete || !deleteSessionConfirmation.trim() || !user || !selectedModule) {
+      return;
+    }
+
+    // Verify the confirmation matches the session title
+    const sessionTitle = sessionToDelete.title || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
+    if (deleteSessionConfirmation.trim() !== sessionTitle) {
+      return;
+    }
+
+    try {
+      setIsDeletingSession(true);
+      
+      // Remove session from module
+      await libraryService.removeSessionFromLibraryModule(user.uid, selectedModule.id, sessionToDelete.id);
+      
+      // Reload sessions
+      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
+      setLibrarySessions(sessions);
+      
+      // If the deleted session was selected, go back to sessions list
+      if (selectedSession && selectedSession.id === sessionToDelete.id) {
+        setSelectedSession(null);
+        setExercises([]);
+      }
+      
+      // Close modal and exit edit mode if no sessions left
+      handleCloseDeleteSessionModal();
+      if (sessions.length === 0) {
+        setIsSessionEditMode(false);
+      }
+    } catch (err) {
+      console.error('Error deleting session:', err);
+      alert('Error al eliminar la sesión. Por favor, intenta de nuevo.');
+    } finally {
+      setIsDeletingSession(false);
+    }
   };
 
   const getScreenName = () => {
@@ -239,7 +996,7 @@ const LibraryContentScreen = () => {
     if (loading) {
       return (
         <div className="modules-loading">
-          <p>Cargando módulos...</p>
+          <p>Cargando semanas...</p>
         </div>
       );
     }
@@ -255,35 +1012,75 @@ const LibraryContentScreen = () => {
     if (libraryModules.length === 0) {
       return (
         <div className="modules-empty">
-          <p>No tienes módulos aún. Crea un nuevo módulo para comenzar.</p>
+          <p>No tienes semanas aún. Crea una nueva semana para comenzar.</p>
         </div>
+      );
+    }
+
+    if (isModuleEditMode) {
+      return (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndModules}
+        >
+          <SortableContext
+            items={libraryModules.map(m => m.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="modules-list">
+              {libraryModules.map((module, index) => (
+                <SortableModuleCard
+                  key={module.id}
+                  module={module}
+                  moduleIndex={index}
+                  isModuleEditMode={isModuleEditMode}
+                  onModuleClick={handleModuleClick}
+                  onDeleteModule={handleDeleteModule}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       );
     }
 
     return (
       <div className="modules-list">
-        {libraryModules.map((module, index) => {
-          const moduleNumber = index + 1;
-          return (
-            <div
-              key={module.id}
-              className="module-card"
-              onClick={() => handleModuleClick(module)}
-            >
-              <div className="module-card-number">{moduleNumber}</div>
-              <div className="module-card-header">
-                <h3 className="module-card-title">
-                  {module.title || `Módulo ${module.id.slice(0, 8)}`}
-                </h3>
-              </div>
-              <div className="module-card-footer">
-                <span className="module-card-count">
-                  {(module.sessionRefs || []).length} {(module.sessionRefs || []).length === 1 ? 'sesión' : 'sesiones'}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+        {libraryModules.map((module, index) => (
+          <SortableModuleCard
+            key={module.id}
+            module={module}
+            moduleIndex={index}
+            isModuleEditMode={isModuleEditMode}
+            onModuleClick={handleModuleClick}
+            onDeleteModule={handleDeleteModule}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Render module actions
+  const renderModuleActions = () => {
+    if (moduleId || sessionId) return null; // Don't show actions when viewing a specific module/session
+    
+    return (
+      <div className="modules-actions">
+        <button 
+          className={`module-action-pill ${isModuleEditMode ? 'module-action-pill-disabled' : ''}`}
+          onClick={handleAddModule}
+          disabled={isModuleEditMode}
+        >
+          <span className="module-action-icon">+</span>
+        </button>
+        <button 
+          className="module-action-pill"
+          onClick={handleEditModules}
+          disabled={isUpdatingModuleOrder}
+        >
+          <span className="module-action-text">{isModuleEditMode ? 'Guardar' : 'Editar'}</span>
+        </button>
       </div>
     );
   };
@@ -301,36 +1098,75 @@ const LibraryContentScreen = () => {
     if (librarySessions.length === 0) {
       return (
         <div className="sessions-empty">
-          <p>No hay sesiones aún en este módulo.</p>
+          <p>No hay sesiones aún en esta semana.</p>
         </div>
+      );
+    }
+
+    if (isSessionEditMode) {
+      return (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndSessions}
+        >
+          <SortableContext
+            items={librarySessions.map(s => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="sessions-list">
+              {librarySessions.map((session, index) => (
+                <SortableSessionCard
+                  key={session.id}
+                  session={session}
+                  sessionIndex={index}
+                  isSessionEditMode={isSessionEditMode}
+                  onSessionClick={handleSessionClick}
+                  onDeleteSession={handleDeleteSession}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       );
     }
 
     return (
       <div className="sessions-list">
-        {librarySessions.map((session, index) => {
-          const sessionNumber = index + 1;
-          return (
-            <div
-              key={session.id}
-              className={`session-card ${session.image_url ? 'session-card-with-image' : ''}`}
-              style={session.image_url ? {
-                backgroundImage: `url(${session.image_url})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-              } : {}}
-              onClick={() => handleSessionClick(session)}
-            >
-              <div className="session-card-number">{sessionNumber}</div>
-              <div className="session-card-header">
-                <h3 className="session-card-title">
-                  {session.title || `Sesión ${session.id.slice(0, 8)}`}
-                </h3>
-              </div>
-            </div>
-          );
-        })}
+        {librarySessions.map((session, index) => (
+          <SortableSessionCard
+            key={session.id}
+            session={session}
+            sessionIndex={index}
+            isSessionEditMode={isSessionEditMode}
+            onSessionClick={handleSessionClick}
+            onDeleteSession={handleDeleteSession}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Render session actions
+  const renderSessionActions = () => {
+    if (!selectedModule) return null; // Only show when viewing a module
+    
+    return (
+      <div className="sessions-actions">
+        <button 
+          className={`session-action-pill ${isSessionEditMode ? 'session-action-pill-disabled' : ''}`}
+          onClick={handleAddSession}
+          disabled={isSessionEditMode}
+        >
+          <span className="session-action-icon">+</span>
+        </button>
+        <button 
+          className="session-action-pill"
+          onClick={handleEditSessions}
+          disabled={isUpdatingSessionOrder}
+        >
+          <span className="session-action-text">{isSessionEditMode ? 'Guardar' : 'Editar'}</span>
+        </button>
       </div>
     );
   };
@@ -372,6 +1208,12 @@ const LibraryContentScreen = () => {
             <div 
               key={exercise.id} 
               className="exercise-card"
+              onClick={() => {
+                if (!isExerciseEditMode) {
+                  handleExerciseClick(exercise);
+                }
+              }}
+              style={{ cursor: isExerciseEditMode ? 'default' : 'pointer' }}
             >
               <div className="exercise-card-number">{exerciseNumber}</div>
               <div className="exercise-card-header">
@@ -402,6 +1244,158 @@ const LibraryContentScreen = () => {
 
   const getBackPath = () => {
     return `/libraries?tab=${tab}`;
+  };
+
+  // Helper to check if library exercise is incomplete
+  const isLibraryExerciseIncomplete = (libraryId, exerciseName) => {
+    if (!libraryId || !exerciseName) {
+      return false;
+    }
+    const key = getLibraryExerciseKey(libraryId, exerciseName);
+    return libraryExerciseCompleteness[key] === false;
+  };
+
+  // Update refs when state changes
+  useEffect(() => {
+    libraryDataCacheRef.current = libraryDataCache;
+  }, [libraryDataCache]);
+
+  // Handle clicking on an existing exercise to open modal
+  const handleExerciseClick = async (exercise) => {
+    if (isExerciseEditMode) {
+      return;
+    }
+    try {
+      const normalizedExercise = {
+        ...exercise,
+        alternatives:
+          exercise.alternatives && typeof exercise.alternatives === 'object' && exercise.alternatives !== null && !Array.isArray(exercise.alternatives)
+            ? exercise.alternatives
+            : {},
+        measures: Array.isArray(exercise.measures) ? exercise.measures : [],
+        objectives: Array.isArray(exercise.objectives) ? exercise.objectives : [],
+      };
+
+      setSelectedExercise(normalizedExercise);
+      setExerciseDraft(JSON.parse(JSON.stringify(normalizedExercise)));
+      setSelectedExerciseTab('general');
+      setIsExerciseModalOpen(true);
+      setIsCreatingExercise(false);
+      
+      // Load exercise data for primary and alternatives (titles + completeness)
+      const referenceLibrariesMap = {};
+      getPrimaryReferences(normalizedExercise).forEach(({ libraryId, exerciseName }) => {
+        if (!libraryId || !exerciseName) return;
+        if (!referenceLibrariesMap[libraryId]) {
+          referenceLibrariesMap[libraryId] = new Set();
+        }
+        referenceLibrariesMap[libraryId].add(exerciseName);
+      });
+
+      if (normalizedExercise.alternatives && Object.keys(normalizedExercise.alternatives).length > 0) {
+        Object.entries(normalizedExercise.alternatives).forEach(([libraryId, values]) => {
+          if (!libraryId || !Array.isArray(values)) return;
+          values.forEach((value) => {
+            const exerciseName = typeof value === 'string' ? value : value?.name || value?.title || value?.id;
+            if (!exerciseName) return;
+            if (!referenceLibrariesMap[libraryId]) {
+              referenceLibrariesMap[libraryId] = new Set();
+            }
+            referenceLibrariesMap[libraryId].add(exerciseName);
+          });
+        });
+      }
+
+      const libraryIds = Object.keys(referenceLibrariesMap);
+      if (libraryIds.length > 0) {
+        const titlesMap = {};
+        const libraryDataUpdates = {};
+        const completenessUpdates = {};
+        
+        await Promise.all(
+          libraryIds.map(async (libraryId) => {
+            try {
+              let libraryData = libraryDataCache[libraryId];
+              if (!libraryData) {
+                libraryData = await libraryService.getLibraryById(libraryId);
+                if (libraryData) {
+                  libraryDataUpdates[libraryId] = libraryData;
+                }
+              }
+
+              if (libraryData && libraryData.title) {
+                titlesMap[libraryId] = libraryData.title;
+              } else {
+                titlesMap[libraryId] = libraryId;
+              }
+
+              referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+                if (!exerciseName) return;
+                const key = getLibraryExerciseKey(libraryId, exerciseName);
+                if (libraryData) {
+                  completenessUpdates[key] = isLibraryExerciseDataComplete(libraryData[exerciseName]);
+                } else {
+                  completenessUpdates[key] = false;
+                }
+              });
+            } catch (error) {
+              console.error(`Error fetching library ${libraryId}:`, error);
+              titlesMap[libraryId] = libraryId;
+              referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+                if (!exerciseName) return;
+                completenessUpdates[getLibraryExerciseKey(libraryId, exerciseName)] = false;
+              });
+            }
+          })
+        );
+
+        setLibraryTitles(titlesMap);
+
+        if (Object.keys(libraryDataUpdates).length > 0) {
+          setLibraryDataCache((prev) => ({
+            ...prev,
+            ...libraryDataUpdates,
+          }));
+        }
+
+        if (Object.keys(completenessUpdates).length > 0) {
+          setLibraryExerciseCompleteness((prev) => ({
+            ...prev,
+            ...completenessUpdates,
+          }));
+        }
+      } else {
+        setLibraryTitles({});
+      }
+      
+      // Load sets/series from subcollection
+      if (user && sessionId && exercise.id) {
+        const setsData = await libraryService.getSetsByLibraryExercise(
+          user.uid,
+          sessionId,
+          exercise.id
+        );
+        setExerciseSets(setsData);
+        // Store original sets for comparison
+        setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+        // Reset unsaved changes
+        setUnsavedSetChanges({});
+      } else {
+        setExerciseSets([]);
+        setOriginalExerciseSets([]);
+        setUnsavedSetChanges({});
+      }
+      
+      // Reset edit modes
+      setIsAlternativesEditMode(false);
+      setIsMeasuresEditMode(false);
+      setIsObjectivesEditMode(false);
+      setIsSeriesEditMode(false);
+      setExpandedSeries({});
+    } catch (error) {
+      console.error('Error opening exercise modal:', error);
+      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+    }
   };
 
   // Computed values for exercise modal
@@ -498,6 +1492,11 @@ const LibraryContentScreen = () => {
       return;
     }
 
+    const exerciseId = currentExerciseId;
+    if (!isCreatingExercise && (!exerciseId || !user || !sessionId)) {
+      return;
+    }
+
     try {
       if (libraryExerciseModalMode === 'primary') {
         const primaryUpdate = {
@@ -506,6 +1505,24 @@ const LibraryContentScreen = () => {
         
         // If creating exercise in main modal, update draft
         if (isCreatingExercise) {
+          setExerciseDraft(prev => ({
+            ...prev,
+            primary: primaryUpdate
+          }));
+          setSelectedExercise(prev => ({
+            ...prev,
+            primary: primaryUpdate
+          }));
+        } else {
+          // Editing existing exercise - save to database
+          await libraryService.updateExerciseInLibrarySession(
+            user.uid,
+            sessionId,
+            exerciseId,
+            { primary: primaryUpdate }
+          );
+          
+          // Update local state
           setExerciseDraft(prev => ({
             ...prev,
             primary: primaryUpdate
@@ -549,6 +1566,24 @@ const LibraryContentScreen = () => {
         currentAlternatives[selectedLibraryForExercise].push(exerciseName);
         
         if (isCreatingExercise) {
+          setExerciseDraft(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          setSelectedExercise(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+        } else {
+          // Editing existing exercise - save to database
+          await libraryService.updateExerciseInLibrarySession(
+            user.uid,
+            sessionId,
+            exerciseId,
+            { alternatives: currentAlternatives }
+          );
+          
+          // Update local state
           setExerciseDraft(prev => ({
             ...prev,
             alternatives: currentAlternatives
@@ -603,6 +1638,24 @@ const LibraryContentScreen = () => {
               ...prev,
               alternatives: currentAlternatives
             }));
+          } else {
+            // Editing existing exercise - save to database
+            await libraryService.updateExerciseInLibrarySession(
+              user.uid,
+              sessionId,
+              exerciseId,
+              { alternatives: currentAlternatives }
+            );
+            
+            // Update local state
+            setExerciseDraft(prev => ({
+              ...prev,
+              alternatives: currentAlternatives
+            }));
+            setSelectedExercise(prev => ({
+              ...prev,
+              alternatives: currentAlternatives
+            }));
           }
         }
       }
@@ -644,7 +1697,7 @@ const LibraryContentScreen = () => {
     }
   };
 
-  const handleDeleteAlternative = (libraryId, index) => {
+  const handleDeleteAlternative = async (libraryId, index) => {
     const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
     if (currentAlternatives[libraryId] && Array.isArray(currentAlternatives[libraryId])) {
       currentAlternatives[libraryId].splice(index, 1);
@@ -661,6 +1714,31 @@ const LibraryContentScreen = () => {
           ...prev,
           alternatives: currentAlternatives
         }));
+      } else {
+        // Editing existing exercise - save to database
+        if (!currentExerciseId || !user || !sessionId) return;
+        
+        try {
+          await libraryService.updateExerciseInLibrarySession(
+            user.uid,
+            sessionId,
+            currentExerciseId,
+            { alternatives: currentAlternatives }
+          );
+          
+          // Update local state
+          setExerciseDraft(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+          setSelectedExercise(prev => ({
+            ...prev,
+            alternatives: currentAlternatives
+          }));
+        } catch (err) {
+          console.error('Error deleting alternative:', err);
+          alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+        }
       }
     }
   };
@@ -720,17 +1798,41 @@ const LibraryContentScreen = () => {
           ...prev,
           measures: updatedMeasures
         }));
-        setIsMeasureSelectionModalOpen(false);
-        setMeasureToEditIndex(null);
-        return;
+      } else {
+        // Editing existing exercise - save to database
+        if (!currentExerciseId || !user || !sessionId) {
+          setIsMeasureSelectionModalOpen(false);
+          setMeasureToEditIndex(null);
+          return;
+        }
+        
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { measures: updatedMeasures }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
       }
+      
+      setIsMeasureSelectionModalOpen(false);
+      setMeasureToEditIndex(null);
     } catch (err) {
       console.error('Error updating measure:', err);
       alert('Error al actualizar la medida. Por favor, intenta de nuevo.');
     }
   };
 
-  const handleDeleteMeasure = (index) => {
+  const handleDeleteMeasure = async (index) => {
     const updatedMeasures = draftMeasures.filter((_, i) => i !== index);
 
     if (isCreatingExercise) {
@@ -742,6 +1844,31 @@ const LibraryContentScreen = () => {
         ...prev,
         measures: updatedMeasures
       }));
+    } else {
+      // Editing existing exercise - save to database
+      if (!currentExerciseId || !user || !sessionId) return;
+      
+      try {
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { measures: updatedMeasures }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+      } catch (err) {
+        console.error('Error deleting measure:', err);
+        alert('Error al eliminar la medida. Por favor, intenta de nuevo.');
+      }
     }
   };
 
@@ -779,17 +1906,41 @@ const LibraryContentScreen = () => {
           ...prev,
           objectives: updatedObjectives
         }));
-        setIsObjectiveSelectionModalOpen(false);
-        setObjectiveToEditIndex(null);
-        return;
+      } else {
+        // Editing existing exercise - save to database
+        if (!currentExerciseId || !user || !sessionId) {
+          setIsObjectiveSelectionModalOpen(false);
+          setObjectiveToEditIndex(null);
+          return;
+        }
+        
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { objectives: updatedObjectives }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
       }
+      
+      setIsObjectiveSelectionModalOpen(false);
+      setObjectiveToEditIndex(null);
     } catch (err) {
       console.error('Error updating objective:', err);
       alert('Error al actualizar el objetivo. Por favor, intenta de nuevo.');
     }
   };
 
-  const handleDeleteObjective = (index) => {
+  const handleDeleteObjective = async (index) => {
     const updatedObjectives = draftObjectives.filter((_, i) => i !== index);
 
     if (isCreatingExercise) {
@@ -801,12 +1952,41 @@ const LibraryContentScreen = () => {
         ...prev,
         objectives: updatedObjectives
       }));
+    } else {
+      // Editing existing exercise - save to database
+      if (!currentExerciseId || !user || !sessionId) return;
+      
+      try {
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { objectives: updatedObjectives }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+      } catch (err) {
+        console.error('Error deleting objective:', err);
+        alert('Error al eliminar el objetivo. Por favor, intenta de nuevo.');
+      }
     }
   };
 
   // Set handlers
   const handleCreateSet = async () => {
-    if (!user || !sessionId || !currentExerciseId) return;
+    if (!user || !sessionId) return;
+    
+    // If creating exercise, we don't need currentExerciseId (it will be null)
+    // If editing existing exercise, we need currentExerciseId
+    if (!isCreatingExercise && !currentExerciseId) return;
     
     try {
       setIsCreatingSet(true);
@@ -829,6 +2009,10 @@ const LibraryContentScreen = () => {
         setUnsavedSetChanges(prev => ({ ...prev, [tempId]: false }));
       } else {
         // Existing exercise - create in database
+        if (!currentExerciseId) {
+          console.error('Cannot create set: currentExerciseId is required for existing exercise');
+          return;
+        }
         const newSet = await libraryService.createSetInLibraryExercise(
           user.uid,
           sessionId,
@@ -847,55 +2031,161 @@ const LibraryContentScreen = () => {
   };
 
   const handleUpdateSetValue = (setIndex, field, value) => {
-    const updatedSets = [...exerciseSets];
-    if (updatedSets[setIndex]) {
-      updatedSets[setIndex] = {
-        ...updatedSets[setIndex],
-        [field]: value
-      };
-      setExerciseSets(updatedSets);
-      setUnsavedSetChanges(prev => ({
-        ...prev,
-        [updatedSets[setIndex].id]: true
-      }));
+    // Check if set exists
+    const set = exerciseSets[setIndex];
+    if (!set || !set.id) {
+      console.error('Set not found or missing ID');
+      return;
     }
+
+    let processedValue = value;
+
+    // For intensity field, validate and restrict to 1-10
+    if (field === 'intensity') {
+      // Remove any non-numeric characters
+      const numericValue = value.replace(/[^0-9]/g, '');
+      
+      // If empty, allow it
+      if (numericValue === '') {
+        processedValue = '';
+      } else {
+        // Parse and clamp to 1-10
+        const numValue = parseInt(numericValue, 10);
+        if (numValue < 1) {
+          processedValue = '1';
+        } else if (numValue > 10) {
+          processedValue = '10';
+        } else {
+          processedValue = String(numValue);
+        }
+      }
+    } else if (field === 'reps') {
+      // For reps field, only allow numbers and "-", format to "x-y"
+      processedValue = formatRepsValue(value);
+    }
+
+    // Update local state only (not DB)
+    const updatedSets = [...exerciseSets];
+    const originalSet = originalExerciseSets.find(s => s.id === set.id);
+    
+    // For intensity, store as "x/10" format in local state
+    let valueToStore = processedValue === '' ? null : processedValue;
+    if (field === 'intensity' && processedValue !== '') {
+      valueToStore = `${processedValue}/10`;
+    }
+    
+    updatedSets[setIndex] = {
+      ...updatedSets[setIndex],
+      [field]: valueToStore
+    };
+    setExerciseSets(updatedSets);
+    
+    // Check all fields for this set to determine if it has any unsaved changes
+    let setHasChanges = false;
+    if (originalSet) {
+      for (const checkField of ['reps', 'intensity']) {
+        const current = updatedSets[setIndex][checkField];
+        const original = originalSet[checkField];
+        // Normalize comparison (handle null/undefined/empty string)
+        // For intensity, both should be in "x/10" format, so compare as strings
+        const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
+        const originalNormalized = original === null || original === undefined || original === '' ? null : String(original);
+        if (currentNormalized !== originalNormalized) {
+          setHasChanges = true;
+          break;
+        }
+      }
+    } else {
+      // If no original set, always mark as having changes
+      setHasChanges = true;
+    }
+    
+    setUnsavedSetChanges(prev => ({
+      ...prev,
+      [set.id]: setHasChanges
+    }));
   };
 
   const handleSaveSetChanges = async (setId) => {
-    if (!user || !sessionId || !currentExerciseId) return;
+    if (!user || !sessionId) return;
     
-    const set = exerciseSets.find(s => s.id === setId);
-    if (!set || !unsavedSetChanges[setId]) return;
+    // If creating exercise, sets are already in local state, just mark as saved
+    if (isCreatingExercise) {
+      const setIndex = exerciseSets.findIndex(s => s.id === setId);
+      if (setIndex !== -1) {
+        const updatedOriginalSets = [...originalExerciseSets];
+        updatedOriginalSets[setIndex] = { ...exerciseSets[setIndex] };
+        setOriginalExerciseSets(updatedOriginalSets);
+        setUnsavedSetChanges(prev => {
+          const newState = { ...prev };
+          delete newState[setId];
+          return newState;
+        });
+      }
+      return;
+    }
+
+    if (!currentExerciseId) {
+      return;
+    }
+
+    const setIndex = exerciseSets.findIndex(s => s.id === setId);
+    if (setIndex === -1) {
+      return;
+    }
+
+    const set = exerciseSets[setIndex];
+    const originalSet = originalExerciseSets.find(s => s.id === setId);
     
+    if (!set || !originalSet) {
+      return;
+    }
+
+    // Build update data with only changed fields
+    const updateData = {};
+    let hasChanges = false;
+    
+    for (const field of ['reps', 'intensity']) {
+      const current = set[field];
+      const original = originalSet[field];
+      // Normalize comparison (handle null/undefined/empty string)
+      const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
+      const originalNormalized = original === null || original === undefined || original === '' ? null : String(original);
+      if (currentNormalized !== originalNormalized) {
+        // For intensity, save as "x/10" format
+        if (field === 'intensity' && current !== null && current !== '') {
+          updateData[field] = current; // Already in "x/10" format from local state
+        } else {
+          updateData[field] = current === null || current === '' ? null : current;
+        }
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      return; // No changes to save
+    }
+
     try {
       setIsSavingSetChanges(true);
       
-      if (isCreatingExercise) {
-        // Just mark as saved (will be saved when exercise is created)
-        setUnsavedSetChanges(prev => ({
-          ...prev,
-          [setId]: false
-        }));
-      } else {
-        // Save to database
-        const setUpdateData = {
-          reps: set.reps || null,
-          intensity: set.intensity || null
-        };
-        
-        await libraryService.updateSetInLibraryExercise(
-          user.uid,
-          sessionId,
-          currentExerciseId,
-          setId,
-          setUpdateData
-        );
-        
-        setUnsavedSetChanges(prev => ({
-          ...prev,
-          [setId]: false
-        }));
-      }
+      await libraryService.updateSetInLibraryExercise(
+        user.uid,
+        sessionId,
+        currentExerciseId,
+        setId,
+        updateData
+      );
+      
+      // Update original sets to reflect saved state
+      const updatedOriginalSets = [...originalExerciseSets];
+      updatedOriginalSets[setIndex] = { ...exerciseSets[setIndex] };
+      setOriginalExerciseSets(updatedOriginalSets);
+      
+      setUnsavedSetChanges(prev => ({
+        ...prev,
+        [setId]: false
+      }));
     } catch (err) {
       console.error('Error saving set changes:', err);
       alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
@@ -938,7 +2228,11 @@ const LibraryContentScreen = () => {
   };
 
   const handleDuplicateSet = async (set) => {
-    if (!user || !sessionId || !currentExerciseId) return;
+    if (!user || !sessionId) return;
+    
+    // If creating exercise, we don't need currentExerciseId (it will be null)
+    // If editing existing exercise, we need currentExerciseId
+    if (!isCreatingExercise && !currentExerciseId) return;
     
     const maxOrder = exerciseSets.length > 0 
       ? Math.max(...exerciseSets.map(s => (s.order !== undefined && s.order !== null) ? s.order : -1))
@@ -960,6 +2254,10 @@ const LibraryContentScreen = () => {
         setUnsavedSetChanges(prev => ({ ...prev, [tempId]: true }));
       } else {
         // Existing exercise - create in database
+        if (!currentExerciseId) {
+          console.error('Cannot duplicate set: currentExerciseId is required for existing exercise');
+          return;
+        }
         const newSet = await libraryService.createSetInLibraryExercise(
           user.uid,
           sessionId,
@@ -1012,14 +2310,6 @@ const LibraryContentScreen = () => {
   };
 
   const [originalSeriesOrder, setOriginalSeriesOrder] = useState([]);
-
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   // SortableSeriesCard Component
   const SortableSeriesCard = ({ set, setIndex, isSeriesEditMode, isExpanded, onToggleExpansion, onDeleteSet, onDuplicateSet, objectivesFields, getObjectiveDisplayName, handleUpdateSetValue, hasUnsavedChanges, onSaveSetChanges, isSavingSetChanges, parseIntensityForDisplay }) => {
@@ -1321,6 +2611,7 @@ const LibraryContentScreen = () => {
     <DashboardLayout 
       screenName={getScreenName()}
       headerBackgroundImage={selectedSession?.image_url || null}
+      onHeaderEditClick={selectedSession ? handleEditSessionClick : null}
       onBack={null}
       showBackButton={true}
       backPath={getBackPath()}
@@ -1371,11 +2662,13 @@ const LibraryContentScreen = () => {
           ) : selectedModule ? (
             <div className="sessions-content">
               <h2 className="page-section-title">Sesiones</h2>
+              {renderSessionActions()}
               {renderSessions()}
             </div>
           ) : (
             <div className="modules-content">
-              <h2 className="page-section-title">Módulos</h2>
+              <h2 className="page-section-title">Semanas</h2>
+              {renderModuleActions()}
               {renderModules()}
             </div>
           )}
@@ -2017,6 +3310,248 @@ const LibraryContentScreen = () => {
               )}
             </div>
           )}
+        </div>
+      </Modal>
+      {/* Create Module Modal */}
+      <Modal
+        isOpen={isModuleModalOpen}
+        onClose={handleCloseModuleModal}
+        title="Nueva semana"
+      >
+        <div className="modal-library-content">
+          <Input
+            placeholder="Nombre de la semana"
+            value={moduleName}
+            onChange={(e) => setModuleName(e.target.value)}
+            type="text"
+            light={true}
+          />
+          <div className="modal-actions">
+            <Button
+              title={isCreatingModule ? 'Creando...' : 'Crear'}
+              onClick={handleCreateModule}
+              disabled={!moduleName.trim() || isCreatingModule}
+              loading={isCreatingModule}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Module Modal */}
+      <Modal
+        isOpen={isDeleteModuleModalOpen}
+        onClose={handleCloseDeleteModuleModal}
+        title={moduleToDelete?.title || 'Eliminar semana'}
+      >
+        <div className="modal-library-content">
+          <p className="delete-instruction-text">
+            Para confirmar, escribe el nombre de la semana:
+          </p>
+          <div className="delete-input-button-row">
+            <Input
+              placeholder={moduleToDelete?.title || 'Nombre de la semana'}
+              value={deleteModuleConfirmation}
+              onChange={(e) => setDeleteModuleConfirmation(e.target.value)}
+              type="text"
+              light={true}
+            />
+            <button
+              className={`delete-library-button ${deleteModuleConfirmation.trim() !== (moduleToDelete?.title || '') ? 'delete-library-button-disabled' : ''}`}
+              onClick={handleConfirmDeleteModule}
+              disabled={deleteModuleConfirmation.trim() !== (moduleToDelete?.title || '') || isDeletingModule}
+            >
+              {isDeletingModule ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+          <p className="delete-warning-text">
+            Esta acción es irreversible. Todo el contenido de esta semana se eliminará permanentemente.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Add Session from Library Modal */}
+      <Modal
+        isOpen={isCopySessionModalOpen}
+        onClose={handleCloseCopySessionModal}
+        title="Agregar Sesión"
+      >
+        <div className="modal-library-content" style={{ minHeight: '400px', maxHeight: '600px', overflowY: 'auto' }}>
+          {isLoadingLibrarySessions ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+              <p>Cargando sesiones...</p>
+            </div>
+          ) : availableLibrarySessions.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+              <p>No hay sesiones disponibles en la biblioteca.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {availableLibrarySessions.map((session) => (
+                <div key={session.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                  <div>
+                    <h4 style={{ margin: 0, color: '#ffffff', fontSize: '16px', fontWeight: 600 }}>
+                      {session.title || `Sesión ${session.id.slice(0, 8)}`}
+                    </h4>
+                  </div>
+                  <button
+                    className="copy-session-item-button"
+                    onClick={() => handleSelectLibrarySession(session.id)}
+                    disabled={isCreatingSession}
+                  >
+                    {isCreatingSession ? 'Agregando...' : 'Agregar'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Edit Session Modal */}
+      <Modal
+        isOpen={isSessionModalOpen}
+        onClose={handleCloseSessionModal}
+        title="Editar Sesión"
+      >
+        <div className="edit-program-modal-content">
+          <div className="edit-program-modal-body">
+            {/* Left Side - Inputs */}
+            <div className="edit-program-modal-left">
+              <div className="edit-program-input-group">
+                <label className="edit-program-input-label">Nombre de la Sesión</label>
+                <Input
+                  placeholder="Nombre de la sesión"
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                  type="text"
+                  light={true}
+                />
+              </div>
+            </div>
+
+            {/* Right Side - Image */}
+            <div className="edit-program-modal-right">
+              <div className="edit-program-image-section">
+                {(sessionImagePreview || (sessionToEdit && sessionToEdit.image_url)) ? (
+                  <div className="edit-program-image-container">
+                    <img
+                      src={sessionImagePreview || sessionToEdit?.image_url}
+                      alt="Sesión"
+                      className="edit-program-image"
+                    />
+                    <div className="edit-program-image-overlay">
+                      <div className="edit-program-image-actions">
+                        <label className="edit-program-image-action-pill">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleSessionImageUpload}
+                            disabled={isUploadingSessionImage || isUpdatingSession}
+                            style={{ display: 'none' }}
+                          />
+                          <span className="edit-program-image-action-text">
+                            {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
+                          </span>
+                        </label>
+                        {isUploadingSessionImage && (
+                          <div className="edit-program-image-progress">
+                            <div className="edit-program-image-progress-bar">
+                              <div 
+                                className="edit-program-image-progress-fill"
+                                style={{ width: `${sessionImageUploadProgress}%` }}
+                              />
+                            </div>
+                            <span className="edit-program-image-progress-text">
+                              {sessionImageUploadProgress}%
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          className="edit-program-image-action-pill edit-program-image-delete-pill"
+                          onClick={handleSessionImageDelete}
+                          disabled={isUploadingSessionImage || isUpdatingSession}
+                        >
+                          <span className="edit-program-image-action-text">Eliminar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="edit-program-no-image">
+                    <p>No hay imagen disponible</p>
+                    <label className="edit-program-image-upload-button">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSessionImageUpload}
+                        disabled={isUploadingSessionImage || isUpdatingSession}
+                        style={{ display: 'none' }}
+                      />
+                      {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
+                    </label>
+                    {isUploadingSessionImage && (
+                      <div className="edit-program-image-progress">
+                        <div className="edit-program-image-progress-bar">
+                          <div 
+                            className="edit-program-image-progress-fill"
+                            style={{ width: `${sessionImageUploadProgress}%` }}
+                          />
+                        </div>
+                        <span className="edit-program-image-progress-text">
+                          {sessionImageUploadProgress}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="edit-program-modal-actions">
+            <Button
+              title={
+                isUpdatingSession || isUploadingSessionImage ? 'Guardando...' : 'Guardar'
+              }
+              onClick={handleUpdateSession}
+              disabled={
+                !sessionName.trim() || 
+                (isUpdatingSession || isUploadingSessionImage)
+              }
+              loading={isUpdatingSession || isUploadingSessionImage}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Session Modal */}
+      <Modal
+        isOpen={isDeleteSessionModalOpen}
+        onClose={handleCloseDeleteSessionModal}
+        title={sessionToDelete?.title || 'Eliminar sesión'}
+      >
+        <div className="modal-library-content">
+          <p className="delete-instruction-text">
+            Para confirmar, escribe el nombre de la sesión:
+          </p>
+          <div className="delete-input-button-row">
+            <Input
+              placeholder={sessionToDelete?.title || 'Nombre de la sesión'}
+              value={deleteSessionConfirmation}
+              onChange={(e) => setDeleteSessionConfirmation(e.target.value)}
+              type="text"
+              light={true}
+            />
+            <button
+              className={`delete-library-button ${deleteSessionConfirmation.trim() !== (sessionToDelete?.title || '') ? 'delete-library-button-disabled' : ''}`}
+              onClick={handleConfirmDeleteSession}
+              disabled={deleteSessionConfirmation.trim() !== (sessionToDelete?.title || '') || isDeletingSession}
+            >
+              {isDeletingSession ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+          <p className="delete-warning-text">
+            Esta acción es irreversible. La sesión se eliminará de esta semana.
+          </p>
         </div>
       </Modal>
     </DashboardLayout>
