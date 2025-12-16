@@ -132,7 +132,7 @@ class CourseDownloadService {
         
         if (courseData) {
           console.log('✅ Course metadata found in hybrid cache');
-          modules = await firestoreService.getCourseModules(courseId);
+          modules = await firestoreService.getCourseModules(courseId, userId);
           console.log('📚 Course modules loaded from DB:', modules.length);
         } else {
           console.log('⚠️ Course not found in hybrid cache, fetching from DB...');
@@ -141,7 +141,7 @@ class CourseDownloadService {
             throw new Error(`Course ${courseId} not found in Firestore`);
           }
           console.log('📖 Course data retrieved from DB:', Object.keys(courseData));
-          modules = await firestoreService.getCourseModules(courseId);
+          modules = await firestoreService.getCourseModules(courseId, userId);
           console.log('📚 Course modules loaded from DB:', modules.length);
         }
       } catch (error) {
@@ -261,7 +261,7 @@ class CourseDownloadService {
           // For now, we still need to get modules from DB as they're not cached in hybrid system
           // This is a temporary solution - we could extend hybrid system to cache modules too
           console.log('⚠️ Modules not in hybrid cache, fetching from DB...');
-          modules = await firestoreService.getCourseModules(courseId);
+          modules = await firestoreService.getCourseModules(courseId, userId);
           console.log('📚 Course modules loaded from DB:', modules.length);
         } else {
           console.log('⚠️ Course not found in hybrid cache, fetching from DB...');
@@ -272,7 +272,7 @@ class CourseDownloadService {
           }
           console.log('📖 Course data retrieved from DB:', Object.keys(courseData));
           
-          modules = await firestoreService.getCourseModules(courseId);
+          modules = await firestoreService.getCourseModules(courseId, userId);
           console.log('📚 Course modules loaded from DB:', modules.length);
         }
         
@@ -311,6 +311,21 @@ class CourseDownloadService {
       // ✅ NEW: Extract library versions from resolved modules
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
       
+      // ✅ NEW: Load client program if userId provided
+      let clientProgram = null;
+      let clientProgramVersion = null;
+      if (userId) {
+        try {
+          clientProgram = await firestoreService.getClientProgram(userId, courseId);
+          if (clientProgram) {
+            clientProgramVersion = clientProgram.version_snapshot || null;
+            console.log('✅ Client program loaded:', clientProgram.id);
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not load client program:', error);
+        }
+      }
+      
       const basicCourseData = {
         courseId,
         downloadedAt: new Date().toISOString(),
@@ -319,10 +334,12 @@ class CourseDownloadService {
         imageUrl: courseData.image_url || courseData.imageUrl,
         currentWeek: currentWeek, // Store current week for next check
         libraryVersions: libraryVersions, // ✅ NEW: Store library versions
+        clientProgramVersion: clientProgramVersion, // ✅ NEW: Store client program version snapshot
         courseData: {
           ...courseData,
           modules: modules || []
-        }
+        },
+        clientProgram: clientProgram || null // ✅ NEW: Store client program data
       };
       
       // FIX: Try to store immediately with basic data
@@ -538,7 +555,7 @@ class CourseDownloadService {
             if (decompressedData.libraryVersions && decompressedData.courseData?.creator_id) {
               try {
                 // Import library resolution service dynamically to avoid circular dependencies
-      const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
+                const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
                 libraryVersionCheck = await libraryResolutionService.checkLibraryVersionsChanged(
                   decompressedData.courseData.creator_id,
                   decompressedData.libraryVersions
@@ -559,6 +576,34 @@ class CourseDownloadService {
               } catch (libraryError) {
                 console.error('❌ Error checking library versions:', libraryError);
                 // Continue with course version check even if library check fails
+              }
+            }
+            
+            // ✅ NEW: Check client program version
+            if (this.currentUserId && decompressedData.clientProgramVersion) {
+              try {
+                const currentClientProgram = await firestoreService.getClientProgram(this.currentUserId, courseId);
+                if (currentClientProgram) {
+                  const currentVersion = currentClientProgram.version_snapshot;
+                  const storedVersion = decompressedData.clientProgramVersion;
+                  
+                  // Compare versions (simple deep equality check)
+                  if (JSON.stringify(currentVersion) !== JSON.stringify(storedVersion)) {
+                    console.log('🔄 CLIENT PROGRAM VERSION CHECK: Client overrides changed, triggering update');
+                    // Trigger re-download to get updated client overrides
+                    this.handleVersionUpdate(courseId, decompressedData.version, this.currentUserId).catch(error => {
+                      console.error('❌ Error in handleVersionUpdate:', error);
+                    });
+                    
+                    return {
+                      ...decompressedData,
+                      status: 'updating',
+                      updateProgress: 0
+                    };
+                  }
+                }
+              } catch (clientError) {
+                console.error('❌ Error checking client program version:', clientError);
               }
             }
             

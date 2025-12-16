@@ -488,7 +488,7 @@ class WorkoutProgressService {
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
             // Get modules from Firestore (still needed, but at least we have course metadata)
-            const modules = await firestoreService.getCourseModules(courseId);
+            const modules = await firestoreService.getCourseModules(courseId, userId);
             
             if (modules) {
               logger.log('✅ Using hybrid cache + modules for instant load');
@@ -524,7 +524,7 @@ class WorkoutProgressService {
           // Fetch in parallel for faster response
           const [firestoreCourse, modules] = await Promise.all([
             firestoreService.getCourse(courseId),
-            firestoreService.getCourseModules(courseId)
+            firestoreService.getCourseModules(courseId, userId)
           ]);
           
           if (firestoreCourse && modules) {

@@ -1,7 +1,7 @@
 import React from 'react';
 import './Modal.css';
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = false }) => {
   if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
@@ -10,9 +10,11 @@ const Modal = ({ isOpen, onClose, title, children }) => {
     }
   };
 
+  const containerClassName = `modal-container ${wide ? 'modal-container-wide' : ''} ${extraWide ? 'modal-container-extra-wide' : ''}`;
+
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
-      <div className="modal-container">
+      <div className={containerClassName}>
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
           <button className="modal-close-button" onClick={onClose}>

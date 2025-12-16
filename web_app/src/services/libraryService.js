@@ -1093,6 +1093,9 @@ class LibraryService {
    */
   async updateLibrarySessionExercise(creatorId, sessionId, exerciseId, updates) {
     try {
+      // Increment session version when exercise is updated
+      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+      
       const exerciseRef = doc(
         firestore, 
         'creator_libraries', creatorId, 
@@ -1104,8 +1107,7 @@ class LibraryService {
         updated_at: serverTimestamp()
       });
       
-      // Increment session version
-      await this.incrementLibrarySessionVersion(creatorId, sessionId);
+      // Increment session version (already done at start of function, but keep for safety)
     } catch (error) {
       console.error('Error updating library session exercise:', error);
       throw error;

@@ -84,6 +84,7 @@ class ProgramService {
         description: programData.description || '',
         discipline: programData.discipline || '',
         access_duration: access_duration,
+        deliveryType: programData.deliveryType || 'low_ticket', // Support one_on_one programs
         status: programData.status || 'draft',
         price: programData.price ? parseInt(programData.price, 10) : null,
         free_trial: programData.freeTrialActive ? {
@@ -555,6 +556,8 @@ class ProgramService {
                     sessionDoc.data().librarySessionRef === librarySessionId
                   );
                   
+                  const programSessionId = matchingSession?.id;
+                  
                   try {
                     const librarySession = await libraryService.getLibrarySessionById(creatorId, librarySessionId);
                     if (librarySession) {
@@ -689,7 +692,7 @@ class ProgramService {
         // We'll fetch and set this when the module is loaded
       } else {
         // Standalone module - store original name in description if provided
-        if (moduleName) {
+        if (moduleName && typeof moduleName === 'string') {
           newModule.description = moduleName.trim();
         }
       }
@@ -1158,9 +1161,11 @@ class ProgramService {
         newSession.librarySessionRef = librarySessionRef;
       } else {
         // Standalone session - store title and image directly
-        newSession.title = sessionName.trim();
-      if (imageUrl) {
-        newSession.image_url = imageUrl;
+        if (sessionName && typeof sessionName === 'string') {
+          newSession.title = sessionName.trim();
+        }
+        if (imageUrl) {
+          newSession.image_url = imageUrl;
         }
       }
       
@@ -1952,14 +1957,113 @@ class ProgramService {
       // Create sessions from library module's session references
       const sessionRefs = libraryModule.sessionRefs || [];
       
+      console.log('📚 Creating sessions from library module:', {
+        moduleId: newModule.id,
+        sessionRefsCount: sessionRefs.length,
+        sessionRefs: sessionRefs
+      });
+      
       for (let i = 0; i < sessionRefs.length; i++) {
-        const { librarySessionRef, order } = sessionRefs[i];
-        await this.createSessionFromLibrary(programId, newModule.id, librarySessionRef, order);
+        const sessionRef = sessionRefs[i];
+        try {
+          // Handle both formats:
+          // - Array of strings: [sessionId1, sessionId2, ...]
+          // - Array of objects: [{ librarySessionRef, order }, ...]
+          const librarySessionRef = typeof sessionRef === 'string' 
+            ? sessionRef 
+            : (sessionRef?.librarySessionRef || sessionRef?.id || sessionRef);
+          const sessionOrder = typeof sessionRef === 'object' && sessionRef.order !== undefined
+            ? sessionRef.order
+            : i;
+          
+          if (librarySessionRef) {
+            console.log(`📝 Creating session ${i + 1}/${sessionRefs.length}:`, {
+              librarySessionRef,
+              order: sessionOrder,
+              moduleId: newModule.id
+            });
+            await this.createSessionFromLibrary(programId, newModule.id, librarySessionRef, sessionOrder);
+            console.log(`✅ Session ${i + 1} created successfully`);
+          } else {
+            console.warn(`⚠️ Skipping session ${i + 1}: invalid librarySessionRef`, sessionRef);
+          }
+        } catch (error) {
+          console.error(`❌ Error creating session ${i + 1}/${sessionRefs.length}:`, error);
+          // Continue with other sessions instead of failing completely
+          // This allows partial success - some sessions might be created even if one fails
+        }
       }
       
       return newModule;
     } catch (error) {
       console.error('Error creating module from library:', error);
+      throw error;
+    }
+  }
+
+  // Client Program Methods
+  /**
+   * Assign program to a client user
+   * Creates client program document with version snapshot
+   */
+  async assignProgramToClient(programId, userId, initialOverrides = {}) {
+    try {
+      const { default: clientProgramService } = await import('./clientProgramService');
+      return await clientProgramService.assignProgramToClient(programId, userId, initialOverrides);
+    } catch (error) {
+      console.error('Error assigning program to client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get client program for a user
+   */
+  async getClientProgram(programId, userId) {
+    try {
+      const { default: clientProgramService } = await import('./clientProgramService');
+      return await clientProgramService.getClientProgram(programId, userId);
+    } catch (error) {
+      console.error('Error getting client program:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update client program override
+   */
+  async updateClientOverride(programId, userId, path, value) {
+    try {
+      const { default: clientProgramService } = await import('./clientProgramService');
+      return await clientProgramService.updateClientOverride(programId, userId, path, value);
+    } catch (error) {
+      console.error('Error updating client override:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all client programs for a program (for creator dashboard)
+   */
+  async getClientProgramsForProgram(programId) {
+    try {
+      const { default: clientProgramService } = await import('./clientProgramService');
+      return await clientProgramService.getClientProgramsForProgram(programId);
+    } catch (error) {
+      console.error('Error getting client programs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk update client programs
+   */
+  async bulkUpdateClientPrograms(programId, userIds, path, value) {
+    try {
+      const { default: clientProgramService } = await import('./clientProgramService');
+      return await clientProgramService.bulkUpdateClientPrograms(programId, userIds, path, value);
+    } catch (error) {
+      console.error('Error in bulk update:', error);
       throw error;
     }
   }

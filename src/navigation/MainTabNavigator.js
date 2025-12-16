@@ -29,8 +29,6 @@ const MainTabNavigator = () => {
     // Hide tab bar for sub-screens
     const hideTabBarScreens = [
       'ProgramLibrary',
-      'BrowseByCreator', 
-      'BrowseByDiscipline',
       'CourseDetail',
       'DailyWorkout',
       'WorkoutExercises',

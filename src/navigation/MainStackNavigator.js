@@ -4,8 +4,6 @@ import { createStackNavigator } from '@react-navigation/stack';
 // Import screens
 import MainScreen from '../screens/MainScreen';
 import ProgramLibraryScreen from '../screens/ProgramLibraryScreen';
-import BrowseByCreatorScreen from '../screens/BrowseByCreatorScreen';
-import BrowseByDisciplineScreen from '../screens/BrowseByDisciplineScreen';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
 import DailyWorkoutScreen from '../screens/DailyWorkoutScreen';
 import WorkoutExercisesScreen from '../screens/WorkoutExercisesScreen';
@@ -28,8 +26,6 @@ const MainStackNavigator = () => {
     >
       <Stack.Screen name="MainScreen" component={MainScreen} />
       <Stack.Screen name="ProgramLibrary" component={ProgramLibraryScreen} />
-      <Stack.Screen name="BrowseByCreator" component={BrowseByCreatorScreen} />
-      <Stack.Screen name="BrowseByDiscipline" component={BrowseByDisciplineScreen} />
       <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
       <Stack.Screen name="CreatorProfile" component={CreatorProfileScreen} />
       <Stack.Screen name="DailyWorkout" component={DailyWorkoutScreen} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
@@ -7,6 +7,7 @@ import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import programService from '../services/programService';
+import libraryService from '../services/libraryService';
 import { getUser } from '../services/firestoreService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import './ProgramsScreen.css';
@@ -14,7 +15,9 @@ import './ProgramsScreen.css';
 const ProgramsScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const [isProgramTypeSelectionModalOpen, setIsProgramTypeSelectionModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalPage, setModalPage] = useState('general'); // 'general' | 'configuracion'
   const [programName, setProgramName] = useState('');
@@ -28,6 +31,10 @@ const ProgramsScreen = () => {
   // General page fields
   const [discipline, setDiscipline] = useState('Fuerza - hipertrofia');
   const [programType, setProgramType] = useState('subscription'); // 'subscription' | 'one-time'
+  // NEW: delivery type – how the program is sold/used
+  // 'low_ticket' → general scalable programs
+  // 'one_on_one' → programs intended for 1:1 clients
+  const [deliveryType, setDeliveryType] = useState('low_ticket');
   const [duration, setDuration] = useState(1); // Duration in weeks
   const [price, setPrice] = useState('');
   const [programImageFile, setProgramImageFile] = useState(null);
@@ -80,6 +87,33 @@ const ProgramsScreen = () => {
       setCreatorName(userDoc);
     }
   }, [userDoc]);
+
+  // Check for autoCreate parameter and open modal if present
+  useEffect(() => {
+    const autoCreate = searchParams.get('autoCreate');
+    if (autoCreate === 'true' && user) {
+      // Set delivery type to low_ticket and open the create modal directly
+      setDeliveryType('low_ticket');
+      setIsModalOpen(true);
+      // Remove the parameter from URL
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, user, setSearchParams]);
+
+  // Load libraries when modal opens
+  useEffect(() => {
+    const loadLibraries = async () => {
+      if (isModalOpen && user) {
+        try {
+          const libraries = await libraryService.getLibrariesByCreator(user.uid);
+          setAvailableLibraries(libraries);
+        } catch (error) {
+          console.error('Error loading libraries:', error);
+        }
+      }
+    };
+    loadLibraries();
+  }, [isModalOpen, user]);
 
   // Create program mutation with optimistic update
   const createProgramMutation = useMutation({
@@ -173,7 +207,17 @@ const ProgramsScreen = () => {
   const error = queryError ? 'Error al cargar los programas' : null;
 
   const handleAddProgram = () => {
+    setIsProgramTypeSelectionModalOpen(true);
+  };
+
+  const handleSelectLowTicket = () => {
+    setIsProgramTypeSelectionModalOpen(false);
+    setDeliveryType('low_ticket');
     setIsModalOpen(true);
+  };
+
+  const handleCloseProgramTypeSelectionModal = () => {
+    setIsProgramTypeSelectionModalOpen(false);
   };
 
   const handleCloseModal = () => {
@@ -183,6 +227,7 @@ const ProgramsScreen = () => {
     setProgramDescription('');
     setDiscipline('Fuerza - hipertrofia');
     setProgramType('subscription');
+    setDeliveryType('low_ticket');
     setDuration(1);
     setPrice('');
     setProgramImageFile(null);
@@ -239,6 +284,7 @@ const ProgramsScreen = () => {
         description: programDescription.trim() || '',
         discipline,
         programType,
+        deliveryType,
         status: 'draft', // Always draft
         price: price ? parseInt(price, 10) : null,
         freeTrialActive,
@@ -373,7 +419,7 @@ const ProgramsScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="Programas">
+    <DashboardLayout screenName="Programas low-ticket">
       <div className="programs-content">
         <div className="programs-actions">
           <button 
@@ -408,6 +454,7 @@ const ProgramsScreen = () => {
           <div className="programs-list">
             {programs.map((program) => {
               const weekCount = programService.getWeekCount(program);
+              const programDeliveryType = program.deliveryType || 'low_ticket';
               return (
                 <div 
                   key={program.id} 
@@ -450,11 +497,18 @@ const ProgramsScreen = () => {
                     </div>
                   )}
                   <div className="program-card-footer">
-                    {weekCount > 0 && (
-                      <span className="program-card-count">
-                        {weekCount} {weekCount === 1 ? 'semana' : 'semanas'}
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        {weekCount > 0 && (
+                          <span className="program-card-count">
+                            {weekCount} {weekCount === 1 ? 'semana' : 'semanas'}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`program-type-pill program-type-pill-${programDeliveryType}`}>
+                        {programDeliveryType === 'one_on_one' ? '1 on 1' : 'Low ticket'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -469,241 +523,274 @@ const ProgramsScreen = () => {
         onClose={handleCloseModal}
         title="Nuevo programa"
       >
-        <div className="edit-program-modal-content">
-          <div className="edit-program-modal-body">
-            {/* Left Side - Menu */}
-            <div className="edit-program-modal-left">
-              <div className="anuncios-screens-list">
-                <label className="anuncios-screens-label">Páginas</label>
-                <div className="anuncios-screens-container">
-                  <button
-                    className={`anuncios-screen-item ${modalPage === 'general' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setModalPage('general')}
+        <div className="one-on-one-modal-content">
+          {/* Information Section */}
+          <div className="one-on-one-modal-section">
+            <div className="one-on-one-modal-section-header">
+              <h3 className="one-on-one-modal-section-title">Información Básica</h3>
+              <span className="one-on-one-modal-section-badge">Requerido</span>
+            </div>
+            <div className="one-on-one-modal-section-content">
+              <div className="edit-program-input-group">
+                <label className="edit-program-input-label">
+                  Nombre del Programa <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                </label>
+                <Input
+                  placeholder="Ej: Programa de Fuerza Avanzado"
+                  value={programName}
+                  onChange={(e) => setProgramName(e.target.value)}
+                  type="text"
+                  light={true}
+                />
+              </div>
+              
+              <div className="edit-program-input-group">
+                <label className="edit-program-input-label">Descripción</label>
+                <textarea
+                  className="program-config-description-textarea"
+                  value={programDescription}
+                  onChange={(e) => setProgramDescription(e.target.value)}
+                  placeholder="Describe el objetivo y características de este programa..."
+                  rows={4}
+                />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div className="edit-program-input-group">
+                  <label className="edit-program-input-label">
+                    Disciplina <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                  </label>
+                  <select
+                    className="program-config-dropdown"
+                    value={discipline}
+                    onChange={(e) => setDiscipline(e.target.value)}
                   >
-                    <span className="anuncios-screen-name">General</span>
-                  </button>
-                  <button
-                    className={`anuncios-screen-item ${modalPage === 'configuracion' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setModalPage('configuracion')}
+                    <option value="Fuerza - hipertrofia">Fuerza - hipertrofia</option>
+                  </select>
+                  <p className="one-on-one-field-note">
+                    No se puede cambiar después de la creación
+                  </p>
+                </div>
+                
+                <div className="edit-program-input-group">
+                  <label className="edit-program-input-label">
+                    Tipo <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                  </label>
+                  <select
+                    className="program-config-dropdown"
+                    value={programType}
+                    onChange={(e) => setProgramType(e.target.value)}
                   >
-                    <span className="anuncios-screen-name">Configuración</span>
-                  </button>
+                    <option value="subscription">Suscripción</option>
+                    <option value="one-time">Pago único</option>
+                  </select>
+                  <p className="one-on-one-field-note">
+                    No se puede cambiar después de la creación
+                  </p>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Right Side - Content */}
-            <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              {modalPage === 'general' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '24px', flex: 1 }}>
+          {/* Pricing & Duration Section */}
+          <div className="one-on-one-modal-section">
+            <div className="one-on-one-modal-section-header">
+              <h3 className="one-on-one-modal-section-title">Precio y Duración</h3>
+              <span className="one-on-one-modal-section-badge-optional">Opcional</span>
+            </div>
+            <div className="one-on-one-modal-section-content">
+              <div style={{ display: 'grid', gridTemplateColumns: programType === 'one-time' ? '1fr 1fr' : '1fr', gap: '20px' }}>
+                {programType === 'one-time' ? (
                   <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Nombre del Programa *</label>
-          <Input
-            placeholder="Nombre del programa"
-            value={programName}
-            onChange={(e) => setProgramName(e.target.value)}
-            type="text"
-            light={true}
-          />
-                  </div>
-                  
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Descripción</label>
-                    <textarea
-                      className="program-config-description-textarea"
-            value={programDescription}
-            onChange={(e) => setProgramDescription(e.target.value)}
-                      placeholder="Escribe la descripción del programa..."
-                      rows={6}
-                    />
-                  </div>
-                  
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Disciplina *</label>
-                    <select
-                      className="program-config-dropdown"
-                      value={discipline}
-                      onChange={(e) => setDiscipline(e.target.value)}
-                    >
-                      <option value="Fuerza - hipertrofia">Fuerza - hipertrofia</option>
-                    </select>
-                    <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '12px', marginTop: '4px', marginBottom: 0 }}>
-                      No se puede cambiar después de la creación
-                    </p>
-                  </div>
-                  
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Tipo *</label>
-                    <select
-                      className="program-config-dropdown"
-                      value={programType}
-                      onChange={(e) => setProgramType(e.target.value)}
-                    >
-                      <option value="subscription">Suscripción</option>
-                      <option value="one-time">Pago único</option>
-                    </select>
-                    <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '12px', marginTop: '4px', marginBottom: 0 }}>
-                      No se puede cambiar después de la creación
-                    </p>
-                  </div>
-                  
-                  {programType === 'one-time' ? (
-                    <div className="edit-program-input-group">
-                      <label className="edit-program-input-label">Duración (semanas)</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                          <input
-                            type="number"
-                            className="duration-input"
-                            value={duration}
-                            onChange={(e) => {
-                              const value = parseInt(e.target.value, 10) || 1;
-                              if (value >= 1) {
-                                setDuration(value);
-                              }
-                            }}
-                            min="1"
+                    <label className="edit-program-input-label">Duración (semanas)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                        <input
+                          type="number"
+                          className="duration-input"
+                          value={duration}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10) || 1;
+                            if (value >= 1) {
+                              setDuration(value);
+                            }
+                          }}
+                          min="1"
+                          style={{
+                            width: '80px',
+                            padding: '12px 16px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            fontSize: '14px',
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+                          }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={handleDurationIncrement}
                             style={{
-                              width: '80px',
-                              padding: '12px 16px',
+                              width: '24px',
+                              height: '24px',
                               backgroundColor: 'rgba(255, 255, 255, 0.08)',
                               border: '1px solid rgba(255, 255, 255, 0.1)',
-                              borderRadius: '8px',
+                              borderRadius: '4px',
                               color: 'rgba(255, 255, 255, 0.8)',
-                              fontSize: '14px',
-                              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: 0
                             }}
-                          />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <button
-                              type="button"
-                              onClick={handleDurationIncrement}
-                              style={{
-                                width: '24px',
-                                height: '24px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                                border: '1px solid rgba(255, 255, 255, 0.1)',
-                                borderRadius: '4px',
-                                color: 'rgba(255, 255, 255, 0.8)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0
-                              }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleDurationDecrement}
-                              disabled={duration <= 1}
-                              style={{
-                                width: '24px',
-                                height: '24px',
-                                backgroundColor: duration <= 1 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.08)',
-                                border: '1px solid rgba(255, 255, 255, 0.1)',
-                                borderRadius: '4px',
-                                color: duration <= 1 ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.8)',
-                                cursor: duration <= 1 ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0
-                              }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDurationDecrement}
+                            disabled={duration <= 1}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              backgroundColor: duration <= 1 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              borderRadius: '4px',
+                              color: duration <= 1 ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.8)',
+                              cursor: duration <= 1 ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: 0
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
                         </div>
-                        <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
-                          {duration === 1 ? 'Semana' : 'Semanas'}
-                        </span>
                       </div>
+                      <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
+                        {duration === 1 ? 'Semana' : 'Semanas'}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="edit-program-input-group">
-                      <label className="edit-program-input-label">Duración</label>
-                      <div style={{ 
-                        padding: '12px 16px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '8px',
-                        color: 'rgba(255, 255, 255, 0.6)',
-                        fontSize: '14px',
-                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-                      }}>
-                        Mensual
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Precio</label>
-                    <Input
-                      placeholder="Precio (ej: 29900)"
-                      value={price}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '');
-                        setPrice(value);
-                      }}
-            type="text"
-            light={true}
-          />
                   </div>
-                  
-                  {/* Image Card */}
-                  <div className="program-config-card">
-                    <div className="program-config-card-header">
-                      <span className="program-config-card-label">Imagen del Programa</span>
+                ) : (
+                  <div className="edit-program-input-group">
+                    <label className="edit-program-input-label">Duración</label>
+                    <div style={{ 
+                      padding: '12px 16px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      fontSize: '14px',
+                      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+                    }}>
+                      Mensual
                     </div>
-                    <div className="program-config-card-content">
-                      {programImagePreview ? (
-                        <div className="program-config-card-image-container">
-                          <img
-                            src={programImagePreview}
-                            alt="Programa"
-                            className="program-config-card-image"
-                          />
-                          <div className="program-config-card-image-overlay">
-                            <div className="program-config-card-image-actions">
-                              <label className="edit-program-image-action-pill">
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                      setProgramImageFile(file);
-                                      const reader = new FileReader();
-                                      reader.onloadend = () => {
-                                        setProgramImagePreview(reader.result);
-                                      };
-                                      reader.readAsDataURL(file);
-                                    }
-                                  }}
-                                  style={{ display: 'none' }}
-                                />
-                                <span className="edit-program-image-action-text">Cambiar</span>
-                              </label>
-                              <button
-                                className="edit-program-image-action-pill edit-program-image-delete-pill"
-                                onClick={() => {
-                                  setProgramImageFile(null);
-                                  setProgramImagePreview(null);
+                    <p className="one-on-one-field-note">
+                      Los programas de suscripción se renuevan mensualmente
+                    </p>
+                  </div>
+                )}
+                
+                <div className="edit-program-input-group">
+                  <label className="edit-program-input-label">Precio</label>
+                  <Input
+                    placeholder="Ej: 29900"
+                    value={price}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, '');
+                      setPrice(value);
+                    }}
+                    type="text"
+                    light={true}
+                  />
+                  <p className="one-on-one-field-note">
+                    {programType === 'subscription' ? 'Precio mensual en pesos' : 'Precio único en pesos'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Visual Content Section */}
+          <div className="one-on-one-modal-section">
+            <div className="one-on-one-modal-section-header">
+              <h3 className="one-on-one-modal-section-title">Contenido Visual</h3>
+              <span className="one-on-one-modal-section-badge-optional">Opcional</span>
+            </div>
+            <div className="one-on-one-modal-section-content">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                {/* Image Card */}
+                <div className="program-config-card">
+                  <div className="program-config-card-header">
+                    <span className="program-config-card-label">Imagen del Programa</span>
+                  </div>
+                  <div className="program-config-card-content">
+                    {programImagePreview ? (
+                      <div className="program-config-card-image-container">
+                        <img
+                          src={programImagePreview}
+                          alt="Programa"
+                          className="program-config-card-image"
+                        />
+                        <div className="program-config-card-image-overlay">
+                          <div className="program-config-card-image-actions">
+                            <label className="edit-program-image-action-pill">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files[0];
+                                  if (file) {
+                                    setProgramImageFile(file);
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      setProgramImagePreview(reader.result);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
                                 }}
-                              >
-                                <span className="edit-program-image-action-text">Eliminar</span>
-                              </button>
-                            </div>
+                                style={{ display: 'none' }}
+                                disabled={isUploadingImage}
+                              />
+                              <span className="edit-program-image-action-text">
+                                {isUploadingImage ? 'Subiendo...' : 'Cambiar'}
+                              </span>
+                            </label>
+                            {isUploadingImage && (
+                              <div className="edit-program-image-progress">
+                                <div className="edit-program-image-progress-bar">
+                                  <div 
+                                    className="edit-program-image-progress-fill"
+                                    style={{ width: `${imageUploadProgress}%` }}
+                                  />
+                                </div>
+                                <span className="edit-program-image-progress-text">
+                                  {imageUploadProgress}%
+                                </span>
+                              </div>
+                            )}
+                            <button
+                              className="edit-program-image-action-pill edit-program-image-delete-pill"
+                              onClick={() => {
+                                setProgramImageFile(null);
+                                setProgramImagePreview(null);
+                              }}
+                              disabled={isUploadingImage}
+                            >
+                              <span className="edit-program-image-action-text">Eliminar</span>
+                            </button>
                           </div>
                         </div>
-                      ) : (
-                        <label style={{ cursor: 'pointer' }}>
+                      </div>
+                    ) : (
+                      <label style={{ cursor: 'pointer' }}>
                           <input
                             type="file"
                             accept="image/*"
@@ -719,182 +806,304 @@ const ProgramsScreen = () => {
                               }
                             }}
                             style={{ display: 'none' }}
+                            disabled={isUploadingImage}
                           />
-                          <div className="program-config-card-placeholder">
-                            <span>Haz clic para subir una imagen</span>
-                          </div>
-                        </label>
-                      )}
-                    </div>
+                        <div className="program-config-card-placeholder">
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '8px', opacity: 0.5 }}>
+                            <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3M12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <span>Subir imagen</span>
+                        </div>
+                      </label>
+                    )}
                   </div>
-                  
-                  {/* Video Intro Card */}
-                  <div className="program-config-card">
-                    <div className="program-config-card-header">
-                      <span className="program-config-card-label">Video Intro</span>
-                    </div>
-                    <div className="program-config-card-content">
-                      {introVideoPreview ? (
-                        <>
-                          <div className="program-config-card-video-container">
-                            <video
-                              src={introVideoPreview}
-                              controls
-                              className="program-config-card-video"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                            <label className="edit-program-image-action-pill">
-                              <input
-                                type="file"
-                                accept="video/*"
-                                onChange={(e) => {
-                                  const file = e.target.files[0];
-                                  if (file) {
-                                    setIntroVideoFile(file);
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => {
-                                      setIntroVideoPreview(reader.result);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                style={{ display: 'none' }}
-                              />
-                              <span className="edit-program-image-action-text">Cambiar</span>
-                            </label>
-                            <button
-                              className="edit-program-image-action-pill edit-program-image-delete-pill"
-                              onClick={() => {
-                                setIntroVideoFile(null);
-                                setIntroVideoPreview(null);
+                </div>
+                
+                {/* Video Intro Card */}
+                <div className="program-config-card">
+                  <div className="program-config-card-header">
+                    <span className="program-config-card-label">Video Intro</span>
+                  </div>
+                  <div className="program-config-card-content">
+                    {introVideoPreview ? (
+                      <>
+                        <div className="program-config-card-video-container">
+                          <video
+                            src={introVideoPreview}
+                            controls
+                            className="program-config-card-video"
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                          <label className="edit-program-image-action-pill">
+                            <input
+                              type="file"
+                              accept="video/*"
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  setIntroVideoFile(file);
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setIntroVideoPreview(reader.result);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
                               }}
-                            >
-                              <span className="edit-program-image-action-text">Eliminar</span>
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <label style={{ cursor: 'pointer' }}>
-                          <input
-                            type="file"
-                            accept="video/*"
-                            onChange={(e) => {
-                              const file = e.target.files[0];
-                              if (file) {
-                                setIntroVideoFile(file);
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setIntroVideoPreview(reader.result);
-                                };
-                                reader.readAsDataURL(file);
-                              }
+                              style={{ display: 'none' }}
+                              disabled={isUploadingIntroVideo}
+                            />
+                            <span className="edit-program-image-action-text">
+                              {isUploadingIntroVideo ? 'Subiendo...' : 'Cambiar'}
+                            </span>
+                          </label>
+                          {isUploadingIntroVideo && (
+                            <div className="edit-program-image-progress">
+                              <div className="edit-program-image-progress-bar">
+                                <div 
+                                  className="edit-program-image-progress-fill"
+                                  style={{ width: `${introVideoUploadProgress}%` }}
+                                />
+                              </div>
+                              <span className="edit-program-image-progress-text">
+                                {introVideoUploadProgress}%
+                              </span>
+                            </div>
+                          )}
+                          <button
+                            className="edit-program-image-action-pill edit-program-image-delete-pill"
+                            onClick={() => {
+                              setIntroVideoFile(null);
+                              setIntroVideoPreview(null);
                             }}
-                            style={{ display: 'none' }}
-                          />
-                          <div className="program-config-card-placeholder">
-                            <span>Haz clic para subir un video</span>
-                          </div>
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {modalPage === 'configuracion' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '24px', flex: 1 }}>
-                  {/* Free Trial */}
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                      <span>Prueba Gratis Activa</span>
-                      <label className="elegant-toggle">
+                            disabled={isUploadingIntroVideo}
+                          >
+                            <span className="edit-program-image-action-text">Eliminar</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <label style={{ cursor: 'pointer' }}>
                         <input
-                          type="checkbox"
-                          checked={freeTrialActive}
-                          onChange={(e) => setFreeTrialActive(e.target.checked)}
-                        />
-                        <span className="elegant-toggle-slider"></span>
-                      </label>
-                    </label>
-                    {freeTrialActive && (
-                      <div style={{ marginTop: '12px' }}>
-                        <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block' }}>
-                          Duración de la prueba gratis (días)
-                        </label>
-                        <Input
-                          placeholder="Duración en días (ej: 7)"
-                          value={freeTrialDurationDays}
+                          type="file"
+                          accept="video/*"
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '');
-                            setFreeTrialDurationDays(value);
+                            const file = e.target.files[0];
+                            if (file) {
+                              setIntroVideoFile(file);
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setIntroVideoPreview(reader.result);
+                              };
+                              reader.readAsDataURL(file);
+                            }
                           }}
-                          type="text"
-                          light={true}
+                          style={{ display: 'none' }}
+                          disabled={isUploadingIntroVideo}
                         />
-                      </div>
+                        <div className="program-config-card-placeholder">
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '8px', opacity: 0.5 }}>
+                            <path d="M15 10L19.553 7.276C19.834 7.107 20.181 7.107 20.462 7.276C20.743 7.445 21 7.796 21 8.118V15.882C21 16.204 20.743 16.555 20.462 16.724C20.181 16.893 19.834 16.893 19.553 16.724L15 14M5 18H13C13.5304 18 14.0391 17.7893 14.4142 17.4142C14.7893 17.0391 15 16.5304 15 16V8C15 7.46957 14.7893 6.96086 14.4142 6.58579C14.0391 6.21071 13.5304 6 13 6H5C4.46957 6 3.96086 6.21071 3.58579 6.58579C3.21071 6.96086 3 7.46957 3 8V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <span>Subir video</span>
+                        </div>
+                      </label>
                     )}
                   </div>
-                  
-                  {/* Streak */}
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                      <span>Racha Activa</span>
-                      <label className="elegant-toggle">
-                        <input
-                          type="checkbox"
-                          checked={streakEnabled}
-                          onChange={(e) => setStreakEnabled(e.target.checked)}
-                        />
-                        <span className="elegant-toggle-slider"></span>
-                      </label>
-                    </label>
-                    {streakEnabled && (
-                      <div style={{ marginTop: '12px' }}>
-                        <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block' }}>
-                          Mínimo de sesiones por semana
-                        </label>
-                        <Input
-                          placeholder="Mínimo de sesiones por semana (ej: 3)"
-                          value={minimumSessionsPerWeek}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '');
-                            setMinimumSessionsPerWeek(value ? parseInt(value, 10) : 0);
-                          }}
-                          type="text"
-                          light={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Weight Suggestions */}
-                  <div className="edit-program-input-group">
-                    <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                      <span>Sugerencias de Peso Activas</span>
-                      <label className="elegant-toggle">
-                        <input
-                          type="checkbox"
-                          checked={weightSuggestions}
-                          onChange={(e) => setWeightSuggestions(e.target.checked)}
-                        />
-                        <span className="elegant-toggle-slider"></span>
-                      </label>
-                    </label>
-                  </div>
                 </div>
-              )}
-              
-              {/* Global Create Button - Accessible from both pages */}
-              <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                <Button
-                  title={createProgramMutation.isPending ? 'Creando...' : 'Crear'}
-                  onClick={handleCreateProgram}
-                  disabled={!programName.trim() || !discipline || !programType || createProgramMutation.isPending}
-                  loading={createProgramMutation.isPending}
-                />
               </div>
             </div>
+          </div>
+
+          {/* Configuration Section */}
+          <div className="one-on-one-modal-section">
+            <div className="one-on-one-modal-section-header">
+              <h3 className="one-on-one-modal-section-title">Configuración del Programa</h3>
+              <span className="one-on-one-modal-section-badge-optional">Opcional</span>
+            </div>
+            <div className="one-on-one-modal-section-content">
+              {/* Free Trial */}
+              <div className="one-on-one-config-item">
+                <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
+                  <span>Prueba Gratis</span>
+                  <label className="elegant-toggle">
+                    <input
+                      type="checkbox"
+                      checked={freeTrialActive}
+                      onChange={(e) => setFreeTrialActive(e.target.checked)}
+                    />
+                    <span className="elegant-toggle-slider"></span>
+                  </label>
+                </label>
+                <p className="one-on-one-config-description">
+                  Permite a los usuarios probar el programa gratis antes de comprarlo
+                </p>
+                {freeTrialActive && (
+                  <div style={{ marginTop: '12px' }}>
+                    <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block', fontSize: '13px' }}>
+                      Duración de la prueba gratis (días)
+                    </label>
+                    <Input
+                      placeholder="Ej: 7"
+                      value={freeTrialDurationDays}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        setFreeTrialDurationDays(value);
+                      }}
+                      type="text"
+                      light={true}
+                    />
+                  </div>
+                )}
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '8px' }}>
+                {/* Streak */}
+                <div className="one-on-one-config-item">
+                  <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
+                    <span>Racha Activa</span>
+                    <label className="elegant-toggle">
+                      <input
+                        type="checkbox"
+                        checked={streakEnabled}
+                        onChange={(e) => setStreakEnabled(e.target.checked)}
+                      />
+                      <span className="elegant-toggle-slider"></span>
+                    </label>
+                  </label>
+                  <p className="one-on-one-config-description">
+                    Activa el sistema de rachas para motivar la consistencia en los entrenamientos
+                  </p>
+                  {streakEnabled && (
+                    <div style={{ marginTop: '12px' }}>
+                      <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block', fontSize: '13px' }}>
+                        Mínimo de sesiones por semana
+                      </label>
+                      <Input
+                        placeholder="Ej: 3"
+                        value={minimumSessionsPerWeek}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          setMinimumSessionsPerWeek(value ? parseInt(value, 10) : 0);
+                        }}
+                        type="text"
+                        light={true}
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Weight Suggestions */}
+                <div className="one-on-one-config-item">
+                  <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
+                    <span>Sugerencias de Peso</span>
+                    <label className="elegant-toggle">
+                      <input
+                        type="checkbox"
+                        checked={weightSuggestions}
+                        onChange={(e) => setWeightSuggestions(e.target.checked)}
+                      />
+                      <span className="elegant-toggle-slider"></span>
+                    </label>
+                  </label>
+                  <p className="one-on-one-config-description">
+                    Muestra sugerencias automáticas de peso basadas en entrenamientos anteriores
+                  </p>
+                </div>
+              </div>
+              
+              {/* Available Libraries */}
+              <div className="edit-program-input-group" style={{ marginTop: '8px', gridColumn: '1 / -1' }}>
+                <label className="edit-program-input-label">Bibliotecas Disponibles</label>
+                <p className="one-on-one-field-note" style={{ marginBottom: '12px' }}>
+                  Selecciona las bibliotecas de ejercicios que estarán disponibles para construir este programa
+                </p>
+                {availableLibraries.length === 0 ? (
+                  <div className="one-on-one-empty-state">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                      <path d="M4 19.5C4 18.837 4.26339 18.2011 4.73223 17.7322C5.20107 17.2634 5.83696 17 6.5 17H20M4 19.5C4 20.163 4.26339 20.7989 4.73223 21.2678C5.20107 21.7366 5.83696 22 6.5 22H20M4 19.5V9.5M20 19.5V9.5M20 19.5L18 17M4 19.5L6 17M4 9.5C4 8.83696 4.26339 8.20107 4.73223 7.73223C5.20107 7.26339 5.83696 7 6.5 7H20C20.663 7 21.2989 7.26339 21.7678 7.73223C22.2366 8.20107 22.5 8.83696 22.5 9.5V19.5C22.5 20.163 22.2366 20.7989 21.7678 21.2678C21.2989 21.7366 20.663 22 20 22H6.5C5.83696 22 5.20107 21.7366 4.73223 21.2678C4.26339 20.7989 4 20.163 4 19.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p>No tienes bibliotecas disponibles</p>
+                    <p style={{ fontSize: '12px', marginTop: '4px', opacity: 0.6 }}>Crea una biblioteca primero desde la pestaña "Ejercicios"</p>
+                  </div>
+                ) : (
+                  <div className="one-on-one-libraries-grid">
+                    {availableLibraries.map((library) => {
+                      const isSelected = selectedLibraryIds.has(library.id);
+                      return (
+                        <button
+                          key={library.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedLibraryIds(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(library.id)) {
+                                newSet.delete(library.id);
+                              } else {
+                                newSet.add(library.id);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          className={`one-on-one-library-item ${isSelected ? 'one-on-one-library-item-selected' : ''}`}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                            {isSelected && (
+                              <div className="one-on-one-library-check">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            )}
+                            <span>{library.title || `Biblioteca ${library.id.slice(0, 8)}`}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Create Button */}
+          <div className="one-on-one-modal-actions">
+            <Button
+              title={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo ? 'Creando...' : 'Crear Programa'}
+              onClick={handleCreateProgram}
+              disabled={!programName.trim() || !discipline || !programType || createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo}
+              loading={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo}
+            />
+            <p className="one-on-one-modal-help-text">
+              Los campos marcados con <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span> son requeridos. Podrás agregar contenido después de crear el programa.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Program Type Selection Modal */}
+      <Modal
+        isOpen={isProgramTypeSelectionModalOpen}
+        onClose={handleCloseProgramTypeSelectionModal}
+        title="Tipo de programa"
+      >
+        <div className="program-type-selection-modal-content">
+          <p className="program-type-selection-instruction">Selecciona el tipo de programa que deseas crear:</p>
+          <div className="program-type-selection-options">
+            <button
+              className="program-type-selection-option"
+              onClick={handleSelectLowTicket}
+            >
+              <div className="program-type-selection-option-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className="program-type-selection-option-content">
+                <h3 className="program-type-selection-option-title">Low Ticket</h3>
+                <p className="program-type-selection-option-description">Programas generales y escalables para múltiples usuarios</p>
+              </div>
+            </button>
           </div>
         </div>
       </Modal>

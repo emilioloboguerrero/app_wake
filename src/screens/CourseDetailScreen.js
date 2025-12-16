@@ -572,7 +572,7 @@ useEffect(() => {
       setError(null);
       
       console.log('🔍 Fetching modules for course:', course.id);
-      const coursesModules = await firestoreService.getCourseModules(course.id);
+      const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
       
       console.log('✅ Modules fetched:', coursesModules.length);
       setModules(coursesModules);

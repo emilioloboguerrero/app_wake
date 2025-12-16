@@ -1,5 +1,5 @@
 // Library Resolution Service for Wake Mobile App
-// Handles resolving library module and session references, and version tracking
+// Handles resolving library module and session references, version tracking, and client program resolution
 import { firestore } from '../config/firebase';
 import { 
   doc, 
@@ -11,6 +11,153 @@ import {
 } from 'firebase/firestore';
 
 class LibraryResolutionService {
+  /**
+   * Resolve a complete client program with all overrides merged
+   * Priority: Client > Program > Library
+   * 
+   * @param {string} userId - The user's ID
+   * @param {string} programId - The program ID
+   * @param {Object} programTemplate - The program template from courses/{programId}
+   * @returns {Promise<Object>} Fully resolved program with all overrides merged
+   */
+  async resolveClientProgram(userId, programId, programTemplate) {
+    try {
+      console.log('🔄 Resolving client program:', { userId, programId });
+      
+      // Load client program overrides if exists
+      const clientProgramId = `${userId}_${programId}`;
+      let clientOverrides = null;
+      try {
+        const clientProgramDoc = await getDoc(
+          doc(firestore, 'client_programs', clientProgramId)
+        );
+        if (clientProgramDoc.exists()) {
+          clientOverrides = clientProgramDoc.data();
+          console.log('✅ Client overrides found');
+        }
+      } catch (error) {
+        console.warn('⚠️ Client program not found or error loading:', error);
+      }
+
+      const creatorId = programTemplate.creator_id;
+      if (!creatorId) {
+        console.warn('⚠️ No creator_id in program template, skipping library resolution');
+        return this.mergeProgramOverrides(programTemplate, null, clientOverrides);
+      }
+
+      // Resolve modules with library references and overrides
+      const resolvedModules = await Promise.all(
+        (programTemplate.modules || []).map(async (module) => {
+          // Check if module has library reference
+          if (module.libraryModuleRef) {
+            // Resolve from library first
+            const libraryModule = await this.resolveLibraryModule(
+              creatorId,
+              module.libraryModuleRef,
+              programId,
+              module.id
+            );
+            
+            // Merge program-level overrides
+            const programModule = this.mergeModuleOverrides(libraryModule, module, null);
+            
+            // Merge client-level overrides
+            const clientModuleOverrides = clientOverrides?.modules?.[module.id];
+            return this.mergeModuleOverrides(programModule, null, clientModuleOverrides);
+          } else {
+            // Standalone module - still apply overrides
+            const clientModuleOverrides = clientOverrides?.modules?.[module.id];
+            return this.mergeModuleOverrides(module, null, clientModuleOverrides);
+          }
+        })
+      );
+
+      return {
+        ...programTemplate,
+        modules: resolvedModules
+      };
+    } catch (error) {
+      console.error('❌ Error resolving client program:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Merge overrides at module level
+   * Priority: client > program > library
+   */
+  mergeModuleOverrides(libraryModule, programModule, clientModule) {
+    const merged = {
+      ...libraryModule,
+      ...programModule,  // Program overrides library
+      ...clientModule    // Client overrides program
+    };
+
+    // Merge sessions if they exist
+    if (libraryModule?.sessions || programModule?.sessions || clientModule?.sessions) {
+      const sessionMap = new Map();
+      
+      // Start with library sessions
+      if (libraryModule?.sessions) {
+        libraryModule.sessions.forEach(session => {
+          sessionMap.set(session.id || session.librarySessionRef, session);
+        });
+      }
+      
+      // Apply program session overrides
+      if (programModule?.sessions) {
+        programModule.sessions.forEach(session => {
+          const existing = sessionMap.get(session.id || session.librarySessionRef);
+          if (existing) {
+            sessionMap.set(session.id || session.librarySessionRef, {
+              ...existing,
+              ...session
+            });
+          } else {
+            sessionMap.set(session.id || session.librarySessionRef, session);
+          }
+        });
+      }
+      
+      // Apply client session overrides
+      if (clientModule?.sessions) {
+        Object.entries(clientModule.sessions).forEach(([sessionId, sessionOverrides]) => {
+          const existing = sessionMap.get(sessionId);
+          if (existing) {
+            sessionMap.set(sessionId, {
+              ...existing,
+              ...sessionOverrides
+            });
+          }
+        });
+      }
+      
+      merged.sessions = Array.from(sessionMap.values());
+    }
+
+    // Merge title with priority
+    if (clientModule?.title) merged.title = clientModule.title;
+    else if (programModule?.title) merged.title = programModule.title;
+    else if (libraryModule?.title) merged.title = libraryModule.title;
+
+    return merged;
+  }
+
+  /**
+   * Merge program-level overrides (for backward compatibility)
+   */
+  mergeProgramOverrides(programTemplate, programOverrides, clientOverrides) {
+    const merged = { ...programTemplate };
+    
+    if (clientOverrides) {
+      // Merge client-level overrides at root level
+      if (clientOverrides.title) merged.title = clientOverrides.title;
+      if (clientOverrides.description) merged.description = clientOverrides.description;
+      if (clientOverrides.image_url) merged.image_url = clientOverrides.image_url;
+    }
+    
+    return merged;
+  }
   /**
    * Extract library versions from program modules
    * Scans modules and sessions for library references and extracts their version numbers
@@ -256,15 +403,18 @@ class LibraryResolutionService {
   /**
    * Resolve a library session reference
    * Fetches the library session and its exercises with sets
+   * Now supports client-level overrides
    * 
    * @param {string} creatorId - The creator's user ID
    * @param {string} librarySessionRef - The library session ID
    * @param {string} courseId - The program/course ID (for potential override support)
    * @param {string} programModuleId - The program module document ID
    * @param {string} programSessionId - The program session document ID
+   * @param {Object} programOverrides - Program-level overrides (optional)
+   * @param {Object} clientOverrides - Client-level overrides (optional)
    * @returns {Promise<Object>} Session object with resolved exercises
    */
-  async resolveLibrarySession(creatorId, librarySessionRef, courseId, programModuleId, programSessionId) {
+  async resolveLibrarySession(creatorId, librarySessionRef, courseId, programModuleId, programSessionId, programOverrides = null, clientOverrides = null) {
     try {
       // Fetch library session document
       const librarySessionDoc = await getDoc(
@@ -277,8 +427,8 @@ class LibraryResolutionService {
 
       const librarySessionData = librarySessionDoc.data();
 
-      // Check for overrides in program session document
-      let overrides = null;
+      // Check for program-level overrides (old system: overrides/data subcollection)
+      let legacyOverrides = null;
       try {
         const overridesRef = doc(
           firestore,
@@ -289,11 +439,14 @@ class LibraryResolutionService {
         );
         const overridesDoc = await getDoc(overridesRef);
         if (overridesDoc.exists()) {
-          overrides = overridesDoc.data();
+          legacyOverrides = overridesDoc.data();
         }
       } catch (error) {
         // Overrides may not exist, that's okay
       }
+
+      // Merge program overrides (prefer new system over legacy)
+      const effectiveProgramOverrides = programOverrides || legacyOverrides;
 
       // Fetch exercises from library session
       const exercisesRef = collection(
@@ -335,14 +488,49 @@ class LibraryResolutionService {
         })
       );
 
-      // Merge library session data with overrides
+      // Merge exercises with client overrides if provided
+      let resolvedExercises = exercises;
+      if (clientOverrides?.exercises) {
+        resolvedExercises = exercises.map(exercise => {
+          const exerciseOverrides = clientOverrides.exercises[exercise.id];
+          if (!exerciseOverrides) return exercise;
+
+          // Merge exercise-level overrides
+          const mergedExercise = { ...exercise, ...exerciseOverrides };
+
+          // Merge set-level overrides
+          if (exerciseOverrides.sets && exercise.sets) {
+            mergedExercise.sets = exercise.sets.map(set => {
+              const setOverrides = exerciseOverrides.sets[set.id];
+              return setOverrides ? { ...set, ...setOverrides } : set;
+            });
+          }
+
+          return mergedExercise;
+        });
+      }
+
+      // Merge session-level data with priority: Client > Program > Library
       const resolvedSession = {
         id: programSessionId,
         librarySessionRef: librarySessionRef,
-        title: (overrides?.title || librarySessionData.title || librarySessionData.name || 'Untitled Session'),
-        image_url: (overrides?.image_url !== undefined ? overrides.image_url : librarySessionData.image_url),
-        order: librarySessionData.order || 0,
-        exercises: exercises
+        title: clientOverrides?.title 
+          || effectiveProgramOverrides?.title 
+          || librarySessionData.title 
+          || librarySessionData.name 
+          || 'Untitled Session',
+        image_url: clientOverrides?.image_url !== undefined 
+          ? clientOverrides.image_url
+          : (effectiveProgramOverrides?.image_url !== undefined 
+            ? effectiveProgramOverrides.image_url 
+            : librarySessionData.image_url),
+        description: clientOverrides?.description 
+          || effectiveProgramOverrides?.description 
+          || librarySessionData.description,
+        order: effectiveProgramOverrides?.order 
+          || librarySessionData.order 
+          || 0,
+        exercises: resolvedExercises
       };
 
       return resolvedSession;
@@ -354,4 +542,5 @@ class LibraryResolutionService {
 }
 
 export default new LibraryResolutionService();
+
 

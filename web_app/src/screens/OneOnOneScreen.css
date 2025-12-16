@@ -71,10 +71,16 @@
   border-radius: 12px;
   padding: 16px 24px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
   transition: all 0.2s ease;
   box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
   cursor: pointer;
+}
+
+.one-on-one-client-header {
+  display: flex;
+  align-items: center;
 }
 
 .one-on-one-client-box:hover {
@@ -93,6 +99,44 @@
 
 .one-on-one-client-name:hover {
   color: rgba(191, 168, 77, 0.9);
+}
+
+.one-on-one-client-programs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.one-on-one-client-programs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.one-on-one-client-program-badge {
+  padding: 4px 10px;
+  background: rgba(191, 168, 77, 0.15);
+  border: 1px solid rgba(191, 168, 77, 0.3);
+  border-radius: 6px;
+  color: rgba(191, 168, 77, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.one-on-one-client-program-more {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.one-on-one-client-no-programs {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-style: italic;
 }
 
 /* Modal */

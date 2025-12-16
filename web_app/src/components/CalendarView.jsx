@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import './CalendarView.css';
 
 const MONTHS = [
@@ -8,7 +8,17 @@ const MONTHS = [
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
-const CalendarView = ({ onDateSelect }) => {
+// Color palette for programs (cycle through these)
+const PROGRAM_COLORS = [
+  'rgba(191, 168, 77, 0.6)',   // Gold
+  'rgba(107, 142, 35, 0.6)',   // Olive
+  'rgba(70, 130, 180, 0.6)',   // Steel blue
+  'rgba(186, 85, 211, 0.6)',   // Medium orchid
+  'rgba(220, 20, 60, 0.6)',    // Crimson
+  'rgba(255, 140, 0, 0.6)',    // Dark orange
+];
+
+const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, onMonthChange }) => {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -37,18 +47,30 @@ const CalendarView = ({ onDateSelect }) => {
   }
 
   const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+    const newDate = new Date(currentYear, currentMonth - 1, 1);
+    setCurrentDate(newDate);
+    if (onMonthChange) {
+      onMonthChange(newDate);
+    }
   };
 
   const handleNextMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+    const newDate = new Date(currentYear, currentMonth + 1, 1);
+    setCurrentDate(newDate);
+    if (onMonthChange) {
+      onMonthChange(newDate);
+    }
   };
 
   const handleMonthYearChange = (e) => {
     const [monthStr, yearStr] = e.target.value.split('-');
     const newMonth = parseInt(monthStr);
     const newYear = parseInt(yearStr);
-    setCurrentDate(new Date(newYear, newMonth, 1));
+    const newDate = new Date(newYear, newMonth, 1);
+    setCurrentDate(newDate);
+    if (onMonthChange) {
+      onMonthChange(newDate);
+    }
   };
 
   const handleDateClick = (day) => {
@@ -77,6 +99,59 @@ const CalendarView = ({ onDateSelect }) => {
       currentMonth === selectedDate.getMonth() &&
       currentYear === selectedDate.getFullYear()
     );
+  };
+
+  // Format date for comparison (YYYY-MM-DD)
+  const formatDateForStorage = (date) => {
+    const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date));
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Create a map of date strings to sessions for quick lookup
+  const sessionsByDate = useMemo(() => {
+    const map = {};
+    if (!plannedSessions || plannedSessions.length === 0) return map;
+
+    plannedSessions.forEach(session => {
+      let dateStr = session.date;
+      if (!dateStr && session.date_timestamp) {
+        // Handle Firestore Timestamp
+        const timestamp = session.date_timestamp;
+        const dateObj = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+        dateStr = formatDateForStorage(dateObj);
+      }
+      if (dateStr) {
+        if (!map[dateStr]) {
+          map[dateStr] = [];
+        }
+        map[dateStr].push(session);
+      }
+    });
+
+    return map;
+  }, [plannedSessions]);
+
+
+  // Get sessions for a specific day
+  const getSessionsForDay = (day) => {
+    if (day === null) return [];
+    const date = new Date(currentYear, currentMonth, day);
+    const dateStr = formatDateForStorage(date);
+    return sessionsByDate[dateStr] || [];
+  };
+
+  // Get color for a program
+  const getProgramColor = (programId) => {
+    if (programColors && programColors[programId]) {
+      return programColors[programId];
+    }
+    // Default color based on program ID hash
+    if (!programId) return PROGRAM_COLORS[0];
+    const hash = programId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return PROGRAM_COLORS[hash % PROGRAM_COLORS.length];
   };
 
   // Generate month-year options (current year ± 2 years)
@@ -147,16 +222,45 @@ const CalendarView = ({ onDateSelect }) => {
 
         {/* Calendar days */}
         <div className="calendar-days">
-          {calendarDays.map((day, index) => (
-            <button
-              key={index}
-              className={`calendar-day ${day === null ? 'calendar-day-empty' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${isSelected(day) ? 'calendar-day-selected' : ''}`}
-              onClick={() => handleDateClick(day)}
-              disabled={day === null}
-            >
-              {day}
-            </button>
-          ))}
+          {calendarDays.map((day, index) => {
+            const daySessions = getSessionsForDay(day);
+            const hasSessions = daySessions.length > 0;
+            
+            // Get primary session color (first session's program color)
+            const primaryColor = hasSessions ? getProgramColor(daySessions[0].program_id) : null;
+            
+            return (
+              <button
+                key={index}
+                className={`calendar-day ${day === null ? 'calendar-day-empty' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${isSelected(day) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''}`}
+                onClick={() => handleDateClick(day)}
+                disabled={day === null}
+                style={hasSessions && primaryColor ? {
+                  backgroundColor: primaryColor,
+                  borderColor: primaryColor
+                } : {}}
+                title={hasSessions ? `${daySessions.length} sesión${daySessions.length > 1 ? 'es' : ''} planificada${daySessions.length > 1 ? 's' : ''}` : ''}
+              >
+                <span className="calendar-day-number">{day}</span>
+                {hasSessions && (
+                  <div className="calendar-day-session-indicator">
+                    {daySessions.length > 1 && (
+                      <span className="calendar-day-session-count">{daySessions.length}</span>
+                    )}
+                    <div className="calendar-day-session-dots">
+                      {daySessions.slice(0, 3).map((session, idx) => (
+                        <div
+                          key={idx}
+                          className="calendar-day-session-dot"
+                          style={{ backgroundColor: getProgramColor(session.program_id) }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -212,7 +212,7 @@ class FirestoreService {
     }
   }
 
-  async getCourseModules(courseId) {
+  async getCourseModules(courseId, userId = null) {
     try {
       // First, get course to check if it's weekly and get creator_id
       const courseData = await this.getCourse(courseId);
@@ -247,6 +247,16 @@ class FirestoreService {
         // Could return empty array or show message to user
       }
       
+      // Load client program overrides if userId provided
+      let clientProgram = null;
+      if (userId) {
+        try {
+          clientProgram = await this.getClientProgram(userId, courseId);
+        } catch (error) {
+          console.warn('⚠️ Could not load client program, continuing without overrides:', error);
+        }
+      }
+      
       // Import library resolution service dynamically to avoid circular dependencies
       const { default: libraryResolutionService } = await import('./libraryResolutionService');
       
@@ -254,17 +264,32 @@ class FirestoreService {
       const modules = await Promise.all(
         modulesSnapshot.docs.map(async (moduleDoc) => {
           const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
+          const clientModuleOverrides = clientProgram?.modules?.[moduleDoc.id];
           
           // ✅ NEW: Check if module is library reference
           if (moduleData.libraryModuleRef && creatorId) {
             try {
               console.log('📚 Resolving library module:', moduleData.libraryModuleRef);
-              return await libraryResolutionService.resolveLibraryModule(
+              const libraryModule = await libraryResolutionService.resolveLibraryModule(
                 creatorId,
                 moduleData.libraryModuleRef,
                 courseId,
                 moduleDoc.id
               );
+              
+              // Merge program-level and client-level overrides
+              let resolvedModule = { ...libraryModule, ...moduleData };
+              
+              // Apply client overrides if exists
+              if (clientModuleOverrides) {
+                resolvedModule = libraryResolutionService.mergeModuleOverrides(
+                  resolvedModule,
+                  null,
+                  clientModuleOverrides
+                );
+              }
+              
+              return resolvedModule;
             } catch (error) {
               console.error('❌ Error resolving library module:', error);
               // Fallback to empty module if resolution fails
@@ -289,18 +314,29 @@ class FirestoreService {
                 if (sessionData.librarySessionRef && creatorId) {
                   try {
                     console.log('📚 Resolving library session:', sessionData.librarySessionRef);
+                    const programSessionOverrides = sessionData; // Program-level overrides
+                    const clientSessionOverrides = clientModuleOverrides?.sessions?.[sessionDoc.id];
+                    
                     return await libraryResolutionService.resolveLibrarySession(
                       creatorId,
                       sessionData.librarySessionRef,
                       courseId,
                       moduleDoc.id,
-                      sessionDoc.id
+                      sessionDoc.id,
+                      programSessionOverrides,
+                      clientSessionOverrides
                     );
                   } catch (error) {
                     console.error('❌ Error resolving library session:', error);
                     // Fallback to empty session if resolution fails
                     return { ...sessionData, exercises: [] };
                   }
+                }
+                
+                // Apply client overrides to standalone sessions
+                if (clientModuleOverrides?.sessions?.[sessionDoc.id]) {
+                  const clientSessionOverrides = clientModuleOverrides.sessions[sessionDoc.id];
+                  sessionData = { ...sessionData, ...clientSessionOverrides };
                 }
                 
                 // ✅ EXISTING: Standalone session - fetch exercises/sets normally
@@ -423,6 +459,103 @@ class FirestoreService {
     } catch (error) {
       console.error('Error fetching set overrides:', error);
       return null;
+    }
+  }
+
+  // Client Program Methods
+  /**
+   * Get client program document
+   * @param {string} userId - User ID
+   * @param {string} programId - Program ID
+   * @returns {Promise<Object|null>} Client program data or null
+   */
+  async getClientProgram(userId, programId) {
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      const clientProgramDoc = await getDoc(doc(firestore, 'client_programs', clientProgramId));
+      
+      if (clientProgramDoc.exists()) {
+        return {
+          id: clientProgramDoc.id,
+          ...clientProgramDoc.data()
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting client program:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create or update client program
+   * @param {string} userId - User ID
+   * @param {string} programId - Program ID
+   * @param {Object} clientProgramData - Client program data
+   * @returns {Promise<string>} Client program document ID
+   */
+  async setClientProgram(userId, programId, clientProgramData) {
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      await setDoc(doc(firestore, 'client_programs', clientProgramId), {
+        program_id: programId,
+        user_id: userId,
+        ...clientProgramData,
+        updated_at: serverTimestamp()
+      }, { merge: true });
+      return clientProgramId;
+    } catch (error) {
+      console.error('Error setting client program:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update client program overrides at a specific path
+   * @param {string} userId - User ID
+   * @param {string} programId - Program ID
+   * @param {string} path - Dot-separated path (e.g., 'modules.moduleId.sessions.sessionId.title')
+   * @param {*} value - Value to set (null to delete)
+   */
+  async updateClientProgramOverride(userId, programId, path, value) {
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      const clientProgramRef = doc(firestore, 'client_programs', clientProgramId);
+      
+      // Build nested update object
+      const pathParts = path.split('.');
+      const updateData = {};
+      let current = updateData;
+      
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        current[pathParts[i]] = {};
+        current = current[pathParts[i]];
+      }
+      
+      current[pathParts[pathParts.length - 1]] = value;
+      
+      await updateDoc(clientProgramRef, {
+        ...updateData,
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating client program override:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete client program
+   * @param {string} userId - User ID
+   * @param {string} programId - Program ID
+   */
+  async deleteClientProgram(userId, programId) {
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      await deleteDoc(doc(firestore, 'client_programs', clientProgramId));
+    } catch (error) {
+      console.error('Error deleting client program:', error);
+      throw error;
     }
   }
 

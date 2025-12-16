@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  Modal,
 } from 'react-native';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -18,6 +19,7 @@ import TextInput from '../components/TextInput';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
 import hybridDataService from '../services/hybridDataService';
+import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
@@ -26,9 +28,8 @@ import { KeyboardAvoidingView, Keyboard, TouchableWithoutFeedback } from 'react-
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
-import SvgUsers from '../components/icons/vectors_fig/User/Users';
-import SvgBodyPartMuscleStrokeRounded from '../components/icons/SvgBodyPartMuscleStrokeRounded';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
+import SvgInfo from '../components/icons/SvgInfo';
 import logger from '../utils/logger.js';
 const ProgramLibraryScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -50,6 +51,9 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
+  
+  // Info modal state
+  const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   
   // Module cache with TTL (5 minutes)
   const moduleCache = useRef(new Map());
@@ -102,29 +106,90 @@ const ProgramLibraryScreen = ({ navigation }) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      logger.log('🔍 Loading courses with role-based filtering...');
+      logger.log('🔍 Loading courses for user...');
       
-      // Use role-based filtering
-      const coursesData = await firestoreService.getCourses(user?.uid);
+      if (!user?.uid) {
+        setState(prev => ({
+          ...prev,
+          courses: [],
+          filteredCourses: [],
+          loading: false,
+          error: 'Debes iniciar sesión para ver tus programas.'
+        }));
+        return;
+      }
       
-      logger.log('✅ Courses loaded from database:', coursesData.length);
-      logger.log('📊 Courses data sample:', coursesData.slice(0, 2));
+      // Get user role to determine what courses to show
+      let userRole = 'user';
+      try {
+        const userDoc = await firestoreService.getUser(user.uid);
+        userRole = userDoc?.role || 'user';
+        logger.log('👤 User role:', userRole);
+      } catch (error) {
+        logger.error('❌ Error getting user role:', error);
+        // Default to 'user' if error
+      }
       
-      // Extract unique creators and disciplines for navigation options
-      const uniqueCreators = [...new Set(coursesData.map(course => course.creator_id).filter(Boolean))];
-      const uniqueDisciplines = [...new Set(coursesData.map(course => course.discipline).filter(Boolean))];
+      let coursesData = [];
       
-      logger.log('👥 Unique creators:', uniqueCreators.length);
-      logger.log('🏃 Unique disciplines:', uniqueDisciplines.length);
+      // Admins and creators see all courses (with role-based filtering)
+      if (userRole === 'admin' || userRole === 'creator') {
+        logger.log('🔍 Loading all courses for admin/creator...');
+        const allCourses = await firestoreService.getCourses(user.uid);
+        
+        // Transform to match expected format
+        coursesData = allCourses.map(course => ({
+          id: course.id,
+          courseId: course.id,
+          title: course.title || 'Programa sin título',
+          image_url: course.image_url || null,
+          discipline: course.discipline || 'General',
+          creator_id: course.creator_id || null,
+          creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
+          description: course.description || null,
+          difficulty: course.difficulty || null,
+          duration: course.duration || null,
+          ...course // Include any other properties
+        }));
+        
+        logger.log('✅ All courses loaded for admin/creator:', coursesData.length);
+      } else {
+        // Regular users see only purchased courses
+        logger.log('🔍 Loading purchased courses for regular user...');
+        const purchasedCoursesData = await purchaseService.getUserPurchasedCourses(user.uid);
+        
+        logger.log('✅ Purchased courses loaded:', purchasedCoursesData.length);
+        
+        // Transform the data to match the expected format
+        // purchaseService returns objects with courseDetails nested, we need to flatten them
+        coursesData = purchasedCoursesData.map(purchase => {
+          const course = purchase.courseDetails || purchase;
+          return {
+            id: course.id || purchase.courseId,
+            courseId: purchase.courseId || course.id,
+            title: course.title || 'Programa sin título',
+            image_url: course.image_url || null,
+            discipline: course.discipline || 'General',
+            creator_id: course.creator_id || null,
+            creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
+            description: course.description || null,
+            difficulty: course.difficulty || null,
+            duration: course.duration || null,
+            ...course // Include any other properties
+          };
+        });
+      }
+      
+      logger.log('📊 Transformed courses data sample:', coursesData.slice(0, 2));
       
       setState(prev => ({
         ...prev,
         courses: coursesData,
         filteredCourses: coursesData,
-        creators: uniqueCreators,
-        disciplines: uniqueDisciplines,
+        creators: [], // No longer needed
+        disciplines: [], // No longer needed
         loading: false,
-        error: coursesData.length === 0 ? 'No hay programas disponibles en este momento.' : null
+        error: coursesData.length === 0 ? 'No tienes contenido disponible en esta cuenta.' : null
       }));
       
       // Check for tutorials after loading is complete
@@ -134,37 +199,13 @@ const ProgramLibraryScreen = ({ navigation }) => {
       logger.error('❌ Error loading courses:', error);
       logger.error('❌ Error details:', error.message);
       
-      // Try fallback approach
-      try {
-        logger.log('🔄 Trying fallback approach...');
-        const fallbackCourses = await hybridDataService.loadCourses(user?.uid);
-        logger.log('✅ Fallback courses loaded:', fallbackCourses.length);
-        
-        const uniqueCreators = [...new Set(fallbackCourses.map(course => course.creator_id).filter(Boolean))];
-        const uniqueDisciplines = [...new Set(fallbackCourses.map(course => course.discipline).filter(Boolean))];
-        
-        setState(prev => ({
-          ...prev,
-          courses: fallbackCourses,
-          filteredCourses: fallbackCourses,
-          creators: uniqueCreators,
-          disciplines: uniqueDisciplines,
-          loading: false,
-          error: fallbackCourses.length === 0 ? 'No hay programas disponibles en este momento.' : null
-        }));
-        
-        // Check for tutorials after fallback loading is complete
-        await checkForTutorials();
-      } catch (fallbackError) {
-        logger.error('❌ Fallback also failed:', fallbackError);
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          error: 'Error al cargar los programas. Inténtalo de nuevo.'
-        }));
-      }
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Error al cargar tus programas. Inténtalo de nuevo.'
+      }));
     }
-  }, []);
+  }, [user?.uid]);
 
   const fetchCourseModules = useCallback(async (courseId) => {
     // Check cache first
@@ -181,7 +222,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     
     try {
       logger.log('🔄 Fetching modules for course:', courseId);
-      const modules = await firestoreService.getCourseModules(courseId);
+      const modules = await firestoreService.getCourseModules(courseId, user?.uid);
       
       // Cache the modules
       moduleCache.current.set(courseId, {
@@ -423,57 +464,47 @@ const ProgramLibraryScreen = ({ navigation }) => {
           {/* Title Section */}
           <View style={styles.titleSection}>
             <Text style={styles.screenTitle}>Biblioteca</Text>
+            <TouchableOpacity 
+              style={styles.infoIconButton}
+              onPress={() => setIsInfoModalVisible(true)}
+            >
+              <SvgInfo 
+                width={20} 
+                height={20} 
+                color="#ffffff" 
+                opacity={0.7}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <View style={styles.searchInputContainer}>
-              <SvgSearchMagnifyingGlass 
-                width={18} 
-                height={18} 
-                stroke="#ffffff" 
-                strokeWidth={1} 
-                style={styles.searchIcon}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar programas"
-                placeholderTextColor="#ffffff"
-                value={state.searchQuery}
-                onChangeText={handleSearchChange}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-                blurOnSubmit={true}
-              />
+          {state.courses.length > 0 && (
+            <View style={styles.searchContainer}>
+              <View style={styles.searchInputContainer}>
+                <SvgSearchMagnifyingGlass 
+                  width={18} 
+                  height={18} 
+                  stroke="#ffffff" 
+                  strokeWidth={1} 
+                  style={styles.searchIcon}
+                />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Buscar programas"
+                  placeholderTextColor="#ffffff"
+                  value={state.searchQuery}
+                  onChangeText={handleSearchChange}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  blurOnSubmit={true}
+                  editable={state.courses.length > 0}
+                />
+              </View>
             </View>
-          </View>
-
-          {/* Browse Options */}
-          <View style={styles.browseSection}>
-            <View style={styles.browseButtons}>
-              <TouchableOpacity
-                style={styles.browseButton}
-                onPress={() => navigation.navigate('BrowseByDiscipline', { disciplines: state.disciplines, courses: state.courses })}
-              >
-                <Text style={styles.browseButtonTitle}>Disciplinas</Text>
-                <SvgBodyPartMuscleStrokeRounded width={20} height={20} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.browseButton}
-                onPress={() => navigation.navigate('BrowseByCreator', { creators: state.creators, courses: state.courses })}
-              >
-                <Text style={styles.browseButtonTitle}>Creadores</Text>
-                <SvgUsers width={20} height={20} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
 
           {/* Programs Section */}
           <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>
-              {state.searchQuery ? `Resultados para "${state.searchQuery}"` : 'Programas'}
-            </Text>
             
             {state.loading ? (
               <LoadingSpinner 
@@ -494,14 +525,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
                   {state.filteredCourses.map((course, index) => renderCourseCard(course, index))}
                 </View>
 
-                {!state.searchQuery && state.courses.length > state.filteredCourses.length && (
-                  <TouchableOpacity
-                    style={styles.viewAllButton}
-                    onPress={() => navigation.navigate('AllCourses', { courses: state.courses })}
-                  >
-                    <Text style={styles.viewAllText}>Ver todos los programas ({state.courses.length})</Text>
-                  </TouchableOpacity>
-                )}
               </>
             )}
 
@@ -529,6 +552,48 @@ const ProgramLibraryScreen = ({ navigation }) => {
         onClose={() => setTutorialVisible(false)}
         onComplete={handleTutorialComplete}
       />
+      
+      {/* Info Modal */}
+      <Modal
+        visible={isInfoModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsInfoModalVisible(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <TouchableOpacity 
+            style={styles.infoModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setIsInfoModalVisible(false)}
+          />
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalHeader}>
+              <Text style={styles.infoModalTitle}>Información</Text>
+              <TouchableOpacity 
+                style={styles.infoModalCloseButton}
+                onPress={() => setIsInfoModalVisible(false)}
+              >
+                <Text style={styles.infoModalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.infoModalScrollContainer}>
+              <ScrollView 
+                style={styles.infoModalScrollView}
+                showsVerticalScrollIndicator={true}
+              >
+                <Text style={styles.infoModalDescription}>
+                  Esta sección muestra únicamente el contenido disponible para tu cuenta.{'\n\n'}
+                  
+                  Wake no permite adquirir ni gestionar programas desde la app.{'\n\n'}
+                  
+                  Si no ves contenido, asegúrate de haber iniciado sesión con la cuenta correcta.
+                </Text>
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -549,6 +614,10 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     marginTop: 0,
     marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: screenWidth * 0.12, // Match left padding
   },
   screenTitle: {
     fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
@@ -556,6 +625,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
+    marginBottom: 20,
+    flex: 1,
+  },
+  infoIconButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 20,
   },
   searchContainer: {
@@ -611,14 +688,16 @@ const styles = StyleSheet.create({
   programsErrorContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
-    minHeight: 120,
+    paddingVertical: 60,
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    minHeight: 150,
   },
   programsErrorText: {
-    color: '#ff4444',
+    color: '#cccccc',
     fontSize: 16,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
+    lineHeight: 22,
   },
   errorContainer: {
     flex: 1,
@@ -627,25 +706,24 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   errorText: {
-    color: '#ff4444',
+    color: '#cccccc',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
-    height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
-    width: Math.max(200, screenWidth * 0.5), // Match WorkoutExercisesScreen.js
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
-    alignItems: 'center',
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    width: Math.max(200, screenWidth * 0.5),
+    height: Math.max(44, screenHeight * 0.055),
+    borderRadius: Math.max(12, screenWidth * 0.04),
     justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
   },
   retryButtonText: {
-    color: '#ffffff',
+    color: 'rgba(191, 168, 77, 1)',
     fontSize: 16,
-  },
-  browseSection: {
-    marginBottom: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
+    fontWeight: '700',
   },
   sectionTitle: {
     fontSize: 18,
@@ -653,69 +731,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingLeft: screenWidth * 0.12, // Match Biblioteca title padding
   },
-  browseButtons: {
-    flexDirection: 'row',
-    gap: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
-  },
-  browseButton: {
-    backgroundColor: '#2a2a2a',
-    height: Math.max(80, screenHeight * 0.1), // Increased height for better vertical space
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    flexDirection: 'column',
-    gap: 8, // Increased gap between text and icon
-    paddingVertical: 12, // Added vertical padding
-  },
-  browseButtonContent: {
-    flex: 1,
-  },
-  browseButtonTitle: {
-    fontSize: 14,
-    color: '#ffffff',
-    marginBottom: 0, // Removed margin since we're using gap
-    opacity: 0.8,
-    fontWeight: '500', // Added slight weight for better visibility
-  },
-  browseButtonSubtitle: {
-    fontSize: 14,
-    color: '#cccccc',
-  },
-  browseButtonArrow: {
-    fontSize: 20,
-    color: '#007AFF',
-  },
   recentSection: {
     marginBottom: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
-  },
-  viewAllButton: {
-    backgroundColor: '#2a2a2a',
-    paddingVertical: Math.max(16, screenHeight * 0.02), // Responsive padding
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    alignItems: 'center',
-    marginTop: Math.max(15, screenHeight * 0.02), // Responsive margin
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  viewAllText: {
-    color: '#007AFF',
-    fontSize: 14,
   },
   statsContainer: {
     marginBottom: 20,
@@ -961,17 +978,90 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
   },
   emptyText: {
     color: '#cccccc',
-    fontSize: 18,
+    fontSize: 16,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
+    lineHeight: 22,
   },
   emptySubtext: {
     color: '#999999',
     fontSize: 14,
     textAlign: 'center',
+    lineHeight: 20,
+  },
+  // Info Modal Styles
+  infoModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  infoModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(16, screenWidth * 0.04),
+    width: Math.max(350, screenWidth * 0.9),
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  infoModalScrollContainer: {
+    maxHeight: Math.max(400, screenHeight * 0.5),
+  },
+  infoModalScrollView: {
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingBottom: Math.max(24, screenWidth * 0.06),
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(16, screenHeight * 0.02),
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingTop: Math.max(24, screenWidth * 0.06),
+  },
+  infoModalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.055, 22),
+    fontWeight: '600',
+    flex: 1,
+  },
+  infoModalCloseButton: {
+    width: Math.max(30, screenWidth * 0.075),
+    height: Math.max(30, screenWidth * 0.075),
+    borderRadius: Math.max(15, screenWidth * 0.037),
+    backgroundColor: '#44454B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Math.max(12, screenWidth * 0.03),
+  },
+  infoModalCloseButtonText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  infoModalDescription: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '400',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    opacity: 0.9,
   },
 });
 

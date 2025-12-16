@@ -3630,6 +3630,38 @@ body.header-scrolled .program-tab-bar {
   pointer-events: none;
 }
 
+.measure-selection-item-selected {
+  background-color: rgba(191, 168, 77, 0.15) !important;
+  border-color: rgba(191, 168, 77, 0.4) !important;
+}
+
+.measure-selection-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  background-color: transparent;
+}
+
+.measure-selection-checkbox-checked {
+  background-color: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.6);
+  color: rgba(191, 168, 77, 1);
+}
+
+.measure-selection-item:hover .measure-selection-checkbox {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.measure-selection-item-selected:hover .measure-selection-checkbox {
+  border-color: rgba(191, 168, 77, 0.8);
+}
+
 /* Exercise Alternatives Groups */
 .exercise-alternatives-list {
   display: flex;
@@ -4353,6 +4385,264 @@ body.header-scrolled .program-tab-bar {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* One-on-One Modal Styles (for exercise creation modals) */
+.one-on-one-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 32px;
+  max-width: 900px;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+}
+
+.one-on-one-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 24px;
+  transition: all 0.2s ease;
+}
+
+.one-on-one-modal-section:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.one-on-one-modal-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.one-on-one-modal-section-title {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-modal-section-badge {
+  padding: 4px 12px;
+  background-color: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 12px;
+  color: rgba(255, 68, 68, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-modal-section-badge-optional {
+  padding: 4px 12px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-modal-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.one-on-one-field-note {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  margin-top: 6px;
+  margin-bottom: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  line-height: 1.4;
+}
+
+.one-on-one-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  text-align: center;
+}
+
+.one-on-one-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.one-on-one-modal-help-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  text-align: center;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  line-height: 1.5;
+}
+
+.one-on-one-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.one-on-one-modal-content::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.one-on-one-modal-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.one-on-one-modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Exercise Modal Layout - Two Column */
+.exercise-modal-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 500px;
+  max-height: calc(90vh - 120px);
+}
+
+.exercise-modal-main-content {
+  display: flex;
+  flex-direction: row;
+  gap: 24px;
+  min-height: 0;
+  flex: 1;
+}
+
+.exercise-modal-left-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  max-height: calc(90vh - 200px);
+  padding-right: 8px;
+}
+
+.exercise-modal-left-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.exercise-modal-left-panel::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.exercise-modal-left-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.exercise-modal-left-panel::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.exercise-modal-right-panel {
+  width: 420px;
+  flex-shrink: 0;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(90vh - 200px);
+  overflow: hidden;
+}
+
+.exercise-sets-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.exercise-sets-panel-title {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.exercise-sets-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.exercise-sets-panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.exercise-sets-panel-content::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.exercise-sets-panel-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.exercise-sets-panel-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.exercise-sets-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.exercise-sets-panel-actions .exercise-action-pill {
+  width: 100%;
+  justify-content: center;
+}
+
+.one-on-one-modal-section-badge-recommended {
+  padding: 4px 12px;
+  background-color: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  color: rgba(255, 193, 7, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 /* Lab Page Styles */
@@ -5290,3 +5580,4 @@ body.header-scrolled .program-tab-bar {
   opacity: 0.5;
   cursor: not-allowed;
 }
+

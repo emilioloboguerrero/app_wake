@@ -1289,7 +1289,7 @@ const MainScreen = ({ navigation, route }) => {
             progressBackgroundColor="#1a1a1a"
             title={refreshing ? "Actualizando..." : "Desliza para actualizar"}
             titleColor="#ffffff"
-            progressViewOffset={40}
+            progressViewOffset={120}
           />
         }
         showsVerticalScrollIndicator={false}

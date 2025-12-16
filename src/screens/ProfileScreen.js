@@ -1098,36 +1098,22 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           </View>
 
-        {/* Pagos and Programs Section */}
+        {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
-          <TouchableOpacity
-            style={styles.smallCard}
-            onPress={() => setIsSubscriptionsInfoModalVisible(true)}
-            // Disabled: navigation.navigate('Subscriptions') - functionality disabled, showing info modal instead
-          >
-            <Text style={styles.smallCardTitle}>Suscripciones</Text>
+          <TouchableOpacity style={styles.smallCard} onPress={showSettingsModal}>
+            <Settings width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
+            <Text style={styles.smallCardTitle}>Configuración</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.smallCard} onPress={() => navigation.navigate('AllPurchasedCourses')}>
-            <Text style={styles.smallCardTitle}>Programas</Text>
+          <TouchableOpacity style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
+            <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
+            <Text style={styles.smallCardTitle}>Legal</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Configuration Card */}
-        <TouchableOpacity style={styles.configCard} onPress={showSettingsModal}>
-          <Settings width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.configIcon} />
-          <Text style={styles.configCardTitle}>Configuración</Text>
-        </TouchableOpacity>
 
         {/* Lab Card */}
         <TouchableOpacity style={styles.configCard} onPress={() => setIsInsightsModalVisible(true)}>
           <SvgChartLine width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.configIcon} />
           <Text style={styles.configCardTitle}>Lab</Text>
-        </TouchableOpacity>
-
-        {/* Legal Card */}
-        <TouchableOpacity style={styles.configCard} onPress={() => setIsLegalWebViewVisible(true)}>
-          <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.configIcon} />
-          <Text style={styles.configCardTitle}>Legal</Text>
         </TouchableOpacity>
 
 

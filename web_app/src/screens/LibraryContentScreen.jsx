@@ -348,8 +348,10 @@ const LibraryContentScreen = () => {
   const [isObjectivesEditMode, setIsObjectivesEditMode] = useState(false);
   const [isMeasureSelectionModalOpen, setIsMeasureSelectionModalOpen] = useState(false);
   const [measureToEditIndex, setMeasureToEditIndex] = useState(null);
+  const [selectedMeasures, setSelectedMeasures] = useState([]);
   const [isObjectiveSelectionModalOpen, setIsObjectiveSelectionModalOpen] = useState(false);
   const [objectiveToEditIndex, setObjectiveToEditIndex] = useState(null);
+  const [selectedObjectives, setSelectedObjectives] = useState([]);
   const [isCreatingNewExercise, setIsCreatingNewExercise] = useState(false);
   const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
@@ -1766,7 +1768,93 @@ const LibraryContentScreen = () => {
 
   const handleAddMeasure = () => {
     setMeasureToEditIndex(null);
+    setSelectedMeasures([]);
     setIsMeasureSelectionModalOpen(true);
+  };
+
+  const handleToggleMeasureSelection = (measureValue) => {
+    if (measureToEditIndex !== null) {
+      // If editing, handle single selection (old behavior)
+      handleSelectMeasure(measureValue);
+      return;
+    }
+    
+    // Toggle selection for bulk add
+    setSelectedMeasures(prev => {
+      if (prev.includes(measureValue)) {
+        return prev.filter(m => m !== measureValue);
+      } else {
+        return [...prev, measureValue];
+      }
+    });
+  };
+
+  const handleSaveSelectedMeasures = async () => {
+    if (selectedMeasures.length === 0) {
+      alert('Selecciona al menos una medida.');
+      return;
+    }
+
+    try {
+      const updatedMeasures = [...draftMeasures];
+      let addedCount = 0;
+
+      selectedMeasures.forEach(measureValue => {
+        // Skip if already exists
+        if (!updatedMeasures.includes(measureValue)) {
+          updatedMeasures.push(measureValue);
+          addedCount++;
+        }
+      });
+
+      if (addedCount === 0) {
+        alert('Todas las medidas seleccionadas ya están agregadas.');
+        setIsMeasureSelectionModalOpen(false);
+        setSelectedMeasures([]);
+        return;
+      }
+
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+      } else {
+        // Editing existing exercise - save to database
+        if (!currentExerciseId || !user || !sessionId) {
+          setIsMeasureSelectionModalOpen(false);
+          setSelectedMeasures([]);
+          return;
+        }
+        
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { measures: updatedMeasures }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          measures: updatedMeasures
+        }));
+      }
+      
+      setIsMeasureSelectionModalOpen(false);
+      setSelectedMeasures([]);
+    } catch (err) {
+      console.error('Error updating measures:', err);
+      alert('Error al actualizar las medidas. Por favor, intenta de nuevo.');
+    }
   };
 
   const handleSelectMeasure = async (measureValue) => {
@@ -1874,7 +1962,93 @@ const LibraryContentScreen = () => {
 
   const handleAddObjective = () => {
     setObjectiveToEditIndex(null);
+    setSelectedObjectives([]);
     setIsObjectiveSelectionModalOpen(true);
+  };
+
+  const handleToggleObjectiveSelection = (objectiveValue) => {
+    if (objectiveToEditIndex !== null) {
+      // If editing, handle single selection (old behavior)
+      handleSelectObjective(objectiveValue);
+      return;
+    }
+    
+    // Toggle selection for bulk add
+    setSelectedObjectives(prev => {
+      if (prev.includes(objectiveValue)) {
+        return prev.filter(o => o !== objectiveValue);
+      } else {
+        return [...prev, objectiveValue];
+      }
+    });
+  };
+
+  const handleSaveSelectedObjectives = async () => {
+    if (selectedObjectives.length === 0) {
+      alert('Selecciona al menos un objetivo.');
+      return;
+    }
+
+    try {
+      const updatedObjectives = [...draftObjectives];
+      let addedCount = 0;
+
+      selectedObjectives.forEach(objectiveValue => {
+        // Skip if already exists
+        if (!updatedObjectives.includes(objectiveValue)) {
+          updatedObjectives.push(objectiveValue);
+          addedCount++;
+        }
+      });
+
+      if (addedCount === 0) {
+        alert('Todos los objetivos seleccionados ya están agregados.');
+        setIsObjectiveSelectionModalOpen(false);
+        setSelectedObjectives([]);
+        return;
+      }
+
+      if (isCreatingExercise) {
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+      } else {
+        // Editing existing exercise - save to database
+        if (!currentExerciseId || !user || !sessionId) {
+          setIsObjectiveSelectionModalOpen(false);
+          setSelectedObjectives([]);
+          return;
+        }
+        
+        await libraryService.updateExerciseInLibrarySession(
+          user.uid,
+          sessionId,
+          currentExerciseId,
+          { objectives: updatedObjectives }
+        );
+        
+        // Update local state
+        setExerciseDraft(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+        setSelectedExercise(prev => ({
+          ...prev,
+          objectives: updatedObjectives
+        }));
+      }
+      
+      setIsObjectiveSelectionModalOpen(false);
+      setSelectedObjectives([]);
+    } catch (err) {
+      console.error('Error updating objectives:', err);
+      alert('Error al actualizar los objetivos. Por favor, intenta de nuevo.');
+    }
   };
 
   const handleSelectObjective = async (objectiveValue) => {
@@ -2675,7 +2849,7 @@ const LibraryContentScreen = () => {
         </div>
       </div>
 
-      {/* Exercise Modal - Full version with tabs */}
+      {/* Exercise Modal - Unified two-column layout */}
       <Modal
         isOpen={isExerciseModalOpen}
         onClose={handleCloseExerciseModal}
@@ -2694,8 +2868,9 @@ const LibraryContentScreen = () => {
           }
           return source.name || source.title || `Ejercicio ${source.id?.slice(0, 8) || ''}`;
         })()}
+        extraWide={true}
       >
-        <div className="anuncios-modal-content">
+        <div className="exercise-modal-layout">
           {/* Requirements Announcement - Always at top when creating */}
           {isCreatingExercise && !canSaveCreatingExercise() && (
             <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)', borderRadius: '8px' }}>
@@ -2710,338 +2885,338 @@ const LibraryContentScreen = () => {
               </p>
             </div>
           )}
-          <div className="anuncios-modal-body">
-            {/* Left Side - Tab List */}
-            <div className="anuncios-modal-left">
-              <div className="anuncios-screens-list">
-                <label className="anuncios-screens-label">Opciones</label>
-                <div className="anuncios-screens-container">
-                  <button
-                    className={`anuncios-screen-item ${selectedExerciseTab === 'general' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setSelectedExerciseTab('general')}
-                  >
-                    <span className="anuncios-screen-name">General</span>
-                  </button>
-                  <button
-                    className={`anuncios-screen-item ${selectedExerciseTab === 'series' ? 'anuncios-screen-item-active' : ''}`}
-                    onClick={() => setSelectedExerciseTab('series')}
-                  >
-                    <span className="anuncios-screen-name">Series</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Side - Content Display */}
-            <div className="anuncios-modal-right">
+          
+          {/* Main Content Area - Two Columns */}
+          <div className="exercise-modal-main-content">
+            {/* Left Side - General Exercise Info */}
+            <div className="exercise-modal-left-panel">
               {!selectedExercise ? (
-                <div className="exercise-tab-content">
-                  <div className="exercise-tab-empty">
-                    <p>Cargando ejercicio...</p>
-                  </div>
+                <div className="exercise-tab-empty">
+                  <p>Cargando ejercicio...</p>
                 </div>
-              ) : selectedExerciseTab === 'general' ? (
-                <div className="exercise-tab-content">
-                  <div className="exercise-general-content">
-                    {/* Primary Exercise */}
-                    <div className="exercise-general-section">
-                      <h4 className="exercise-general-subtitle">Ejercicio Principal</h4>
-                      {getPrimaryExerciseName() ? (
-                        <div className="exercise-horizontal-card">
-                          <span className="exercise-horizontal-card-name">
-                            {getPrimaryExerciseName()}
-                          </span>
-                          <button 
-                            className="exercise-horizontal-card-edit"
-                            onClick={handleEditPrimary}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className="create-exercise-select-button"
-                          onClick={handleEditPrimary}
-                        >
-                          <span className="create-exercise-select-button-text">Seleccionar Ejercicio Principal</span>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </button>
-                      )}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/* Primary Exercise Section */}
+                    <div className="one-on-one-modal-section">
+                      <div className="one-on-one-modal-section-header">
+                        <h3 className="one-on-one-modal-section-title">Ejercicio Principal</h3>
+                        {isCreatingExercise && (
+                          <span className="one-on-one-modal-section-badge">Requerido</span>
+                        )}
+                      </div>
+                      <div className="one-on-one-modal-section-content">
+                        {getPrimaryExerciseName() ? (
+                          <div className="exercise-horizontal-card">
+                            <span className="exercise-horizontal-card-name">
+                              {getPrimaryExerciseName()}
+                            </span>
+                            <button 
+                              className="exercise-horizontal-card-edit"
+                              onClick={handleEditPrimary}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              className="create-exercise-select-button"
+                              onClick={handleEditPrimary}
+                            >
+                              <span className="create-exercise-select-button-text">Seleccionar Ejercicio Principal</span>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            {isCreatingExercise && (
+                              <p className="one-on-one-field-note" style={{ marginTop: '8px', marginBottom: 0 }}>
+                                Selecciona el ejercicio principal de tu biblioteca
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Alternatives */}
-                    <div className="exercise-general-section">
-                      <div className="exercise-general-subtitle-row">
-                        <h4 className="exercise-general-subtitle">Alternativas</h4>
-                        <div className="exercise-general-actions-container">
-                          {isAlternativesEditMode ? (
-                            <div className="exercise-general-actions-dropdown">
-                              <button 
-                                className="exercise-general-action-button"
-                                onClick={handleAddAlternative}
-                              >
-                                <span className="exercise-general-action-icon">+</span>
-                              </button>
-                              <button 
-                                className="exercise-general-action-button exercise-general-action-button-save"
-                                onClick={() => setIsAlternativesEditMode(false)}
-                              >
-                                <span className="exercise-general-action-text">Guardar</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button 
-                              className="exercise-general-edit-button"
-                              onClick={() => setIsAlternativesEditMode(true)}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                    <div className="one-on-one-modal-section">
+                      <div className="one-on-one-modal-section-header">
+                        <h3 className="one-on-one-modal-section-title">Alternativas</h3>
+                        <span className="one-on-one-modal-section-badge-recommended">Altamente Recomendado</span>
                       </div>
-                      {Object.keys(draftAlternatives).length === 0 ? (
-                        <p className="exercise-general-empty">No hay alternativas agregadas</p>
-                      ) : (
-                        <div className="exercise-alternatives-list">
-                          {Object.entries(draftAlternatives).map(([libraryId, alternativesArray]) => (
-                            <div key={libraryId} className="exercise-alternatives-group">
-                              <h5 className="exercise-alternatives-library-title">
-                                {libraryTitles[libraryId] || libraryId}
-                              </h5>
-                              {Array.isArray(alternativesArray) && alternativesArray.length > 0 ? (
-                                <div className="exercise-horizontal-cards-list">
-                                  {alternativesArray.map((alternativeName, index) => {
-                                    const alternativeLabel = typeof alternativeName === 'string'
-                                      ? alternativeName
-                                      : alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`;
-                                    return (
-                                      <div key={`${libraryId}-${index}`} className="exercise-horizontal-card">
-                                        <span className="exercise-horizontal-card-name">
-                                          {alternativeLabel}
-                                        </span>
-                                        {isAlternativesEditMode && (
-                                          <button 
-                                            className="exercise-horizontal-card-delete"
-                                            onClick={() => handleDeleteAlternative(libraryId, index)}
-                                          >
-                                            <span className="exercise-horizontal-card-delete-icon">−</span>
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className="exercise-general-empty">No hay alternativas para esta biblioteca</p>
-                              )}
-                            </div>
-                          ))}
+                      <div className="one-on-one-modal-section-content">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <p className="one-on-one-field-note" style={{ margin: 0 }}>
+                            Ejercicios alternativos que pueden reemplazar al ejercicio principal
+                          </p>
+                          <div className="exercise-general-actions-container">
+                            {isAlternativesEditMode ? (
+                              <div className="exercise-general-actions-dropdown">
+                                <button 
+                                  className="exercise-general-action-button"
+                                  onClick={handleAddAlternative}
+                                >
+                                  <span className="exercise-general-action-icon">+</span>
+                                </button>
+                                <button 
+                                  className="exercise-general-action-button exercise-general-action-button-save"
+                                  onClick={() => setIsAlternativesEditMode(false)}
+                                >
+                                  <span className="exercise-general-action-text">Guardar</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button 
+                                className="exercise-general-edit-button"
+                                onClick={() => setIsAlternativesEditMode(true)}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
+                        {Object.keys(draftAlternatives).length === 0 ? (
+                          <div className="one-on-one-empty-state" style={{ padding: '24px 16px' }}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                              <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88M13 7C13 9.20914 11.2091 11 9 11C6.79086 11 5 9.20914 5 7C5 4.79086 6.79086 3 9 3C11.2091 3 13 4.79086 13 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <p style={{ margin: 0 }}>No hay alternativas agregadas</p>
+                          </div>
+                        ) : (
+                          <div className="exercise-alternatives-list">
+                            {Object.entries(draftAlternatives).map(([libraryId, alternativesArray]) => (
+                              <div key={libraryId} className="exercise-alternatives-group">
+                                <h5 className="exercise-alternatives-library-title">
+                                  {libraryTitles[libraryId] || libraryId}
+                                </h5>
+                                {Array.isArray(alternativesArray) && alternativesArray.length > 0 ? (
+                                  <div className="exercise-horizontal-cards-list">
+                                    {alternativesArray.map((alternativeName, index) => {
+                                      const alternativeLabel = typeof alternativeName === 'string'
+                                        ? alternativeName
+                                        : alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`;
+                                      return (
+                                        <div key={`${libraryId}-${index}`} className="exercise-horizontal-card">
+                                          <span className="exercise-horizontal-card-name">
+                                            {alternativeLabel}
+                                          </span>
+                                          {isAlternativesEditMode && (
+                                            <button 
+                                              className="exercise-horizontal-card-delete"
+                                              onClick={() => handleDeleteAlternative(libraryId, index)}
+                                            >
+                                              <span className="exercise-horizontal-card-delete-icon">−</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="exercise-general-empty">No hay alternativas para esta biblioteca</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Measures */}
-                    <div className="exercise-general-section">
-                      <div className="exercise-general-subtitle-row">
-                        <h4 className="exercise-general-subtitle">Qué mide</h4>
-                        <div className="exercise-general-actions-container">
-                          {isMeasuresEditMode ? (
-                            <div className="exercise-general-actions-dropdown">
-                              <button 
-                                className="exercise-general-action-button"
-                                onClick={handleAddMeasure}
-                              >
-                                <span className="exercise-general-action-icon">+</span>
-                              </button>
-                              <button 
-                                className="exercise-general-action-button exercise-general-action-button-save"
-                                onClick={() => setIsMeasuresEditMode(false)}
-                              >
-                                <span className="exercise-general-action-text">Guardar</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button 
-                              className="exercise-general-edit-button"
-                              onClick={() => setIsMeasuresEditMode(true)}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                    <div className="one-on-one-modal-section">
+                      <div className="one-on-one-modal-section-header">
+                        <h3 className="one-on-one-modal-section-title">Qué Mide</h3>
+                        <span className="one-on-one-modal-section-badge-optional">Opcional</span>
                       </div>
-                      {draftMeasures.length === 0 ? (
-                        <p className="exercise-general-empty">No hay medidas agregadas</p>
-                      ) : (
-                        <div className="exercise-horizontal-cards-list">
-                          {draftMeasures.map((measure, index) => (
-                            <div key={index} className="exercise-horizontal-card">
-                              <span className="exercise-horizontal-card-name">
-                                {getMeasureDisplayName(measure)}
-                              </span>
-                              {isMeasuresEditMode && (
+                      <div className="one-on-one-modal-section-content">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <p className="one-on-one-field-note" style={{ margin: 0 }}>
+                            Qué valores se registrarán para este ejercicio (ej: repeticiones, peso)
+                          </p>
+                          <div className="exercise-general-actions-container">
+                            {isMeasuresEditMode ? (
+                              <div className="exercise-general-actions-dropdown">
                                 <button 
-                                  className="exercise-horizontal-card-delete"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteMeasure(index);
-                                  }}
+                                  className="exercise-general-action-button"
+                                  onClick={handleAddMeasure}
                                 >
-                                  <span className="exercise-horizontal-card-delete-icon">−</span>
+                                  <span className="exercise-general-action-icon">+</span>
                                 </button>
-                              )}
-                            </div>
-                          ))}
+                                <button 
+                                  className="exercise-general-action-button exercise-general-action-button-save"
+                                  onClick={() => setIsMeasuresEditMode(false)}
+                                >
+                                  <span className="exercise-general-action-text">Guardar</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button 
+                                className="exercise-general-edit-button"
+                                onClick={() => setIsMeasuresEditMode(true)}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
+                        {draftMeasures.length === 0 ? (
+                          <div className="one-on-one-empty-state" style={{ padding: '24px 16px' }}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                              <path d="M9 19C9 19.5304 9.21071 20.0391 9.58579 20.4142C9.96086 20.7893 10.4696 21 11 21H13C13.5304 21 14.0391 20.7893 14.4142 20.4142C14.7893 20.0391 15 19.5304 15 19V15H9V19ZM18 10C18 10.5304 17.7893 11.0391 17.4142 11.4142C17.0391 11.7893 16.5304 12 16 12H15V15H9V12H8C7.46957 12 6.96086 11.7893 6.58579 11.4142C6.21071 11.0391 6 10.5304 6 10V8C6 7.46957 6.21071 6.96086 6.58579 6.58579C6.96086 6.21071 7.46957 6 8 6H16C16.5304 6 17.0391 6.21071 17.4142 6.58579C17.7893 6.96086 18 7.46957 18 8V10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <p style={{ margin: 0 }}>No hay medidas agregadas</p>
+                          </div>
+                        ) : (
+                          <div className="exercise-horizontal-cards-list">
+                            {draftMeasures.map((measure, index) => (
+                              <div key={index} className="exercise-horizontal-card">
+                                <span className="exercise-horizontal-card-name">
+                                  {getMeasureDisplayName(measure)}
+                                </span>
+                                {isMeasuresEditMode && (
+                                  <button 
+                                    className="exercise-horizontal-card-delete"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteMeasure(index);
+                                    }}
+                                  >
+                                    <span className="exercise-horizontal-card-delete-icon">−</span>
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Objectives */}
-                    <div className="exercise-general-section">
-                      <div className="exercise-general-subtitle-row">
-                        <h4 className="exercise-general-subtitle">Objetivos</h4>
-                        <div className="exercise-general-actions-container">
-                          {isObjectivesEditMode ? (
-                            <div className="exercise-general-actions-dropdown">
-                              <button 
-                                className="exercise-general-action-button"
-                                onClick={handleAddObjective}
-                              >
-                                <span className="exercise-general-action-icon">+</span>
-                              </button>
-                              <button 
-                                className="exercise-general-action-button exercise-general-action-button-save"
-                                onClick={() => setIsObjectivesEditMode(false)}
-                              >
-                                <span className="exercise-general-action-text">Guardar</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button 
-                              className="exercise-general-edit-button"
-                              onClick={() => setIsObjectivesEditMode(true)}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                    <div className="one-on-one-modal-section">
+                      <div className="one-on-one-modal-section-header">
+                        <h3 className="one-on-one-modal-section-title">Objetivos</h3>
+                        <span className="one-on-one-modal-section-badge-optional">Opcional</span>
                       </div>
-                      {draftObjectives.length === 0 ? (
-                        <p className="exercise-general-empty">No hay objetivos agregados</p>
-                      ) : (
-                        <div className="exercise-horizontal-cards-list">
-                          {draftObjectives.map((objective, index) => (
-                            <div key={index} className="exercise-horizontal-card">
-                              <span className="exercise-horizontal-card-name">
-                                {getObjectiveDisplayName(typeof objective === 'string' ? objective : objective.name || objective.title || `Objetivo ${index + 1}`)}
-                              </span>
-                              {isObjectivesEditMode && (
+                      <div className="one-on-one-modal-section-content">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <p className="one-on-one-field-note" style={{ margin: 0 }}>
+                            Qué objetivos se persiguen con este ejercicio (ej: repeticiones, intensidad)
+                          </p>
+                          <div className="exercise-general-actions-container">
+                            {isObjectivesEditMode ? (
+                              <div className="exercise-general-actions-dropdown">
                                 <button 
-                                  className="exercise-horizontal-card-delete"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteObjective(index);
-                                  }}
+                                  className="exercise-general-action-button"
+                                  onClick={handleAddObjective}
                                 >
-                                  <span className="exercise-horizontal-card-delete-icon">−</span>
+                                  <span className="exercise-general-action-icon">+</span>
                                 </button>
-                              )}
-                            </div>
-                          ))}
+                                <button 
+                                  className="exercise-general-action-button exercise-general-action-button-save"
+                                  onClick={() => setIsObjectivesEditMode(false)}
+                                >
+                                  <span className="exercise-general-action-text">Guardar</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button 
+                                className="exercise-general-edit-button"
+                                onClick={() => setIsObjectivesEditMode(true)}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
+                        {draftObjectives.length === 0 ? (
+                          <div className="one-on-one-empty-state" style={{ padding: '24px 16px' }}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                              <path d="M22 11.08V12C21.9988 14.1564 21.3005 16.2547 20.0093 17.9818C18.7182 19.7088 16.9033 20.9725 14.8354 21.5839C12.7674 22.1953 10.5573 22.1219 8.53447 21.3746C6.51168 20.6273 4.78465 19.2461 3.61096 17.4371C2.43727 15.628 1.87979 13.4881 2.02168 11.3363C2.16356 9.18455 2.99721 7.13631 4.39828 5.49706C5.79935 3.85781 7.69279 2.71537 9.79619 2.24013C11.8996 1.7649 14.1003 1.98232 16.07 2.85999M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <p style={{ margin: 0 }}>No hay objetivos agregados</p>
+                          </div>
+                        ) : (
+                          <div className="exercise-horizontal-cards-list">
+                            {draftObjectives.map((objective, index) => (
+                              <div key={index} className="exercise-horizontal-card">
+                                <span className="exercise-horizontal-card-name">
+                                  {getObjectiveDisplayName(typeof objective === 'string' ? objective : objective.name || objective.title || `Objetivo ${index + 1}`)}
+                                </span>
+                                {isObjectivesEditMode && (
+                                  <button 
+                                    className="exercise-horizontal-card-delete"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteObjective(index);
+                                    }}
+                                  >
+                                    <span className="exercise-horizontal-card-delete-icon">−</span>
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
+                )}
+            </div>
+            
+            {/* Right Side - Sets Panel (Always Visible) */}
+            <div className="exercise-modal-right-panel">
+              <div className="exercise-sets-panel-header">
+                <h3 className="exercise-sets-panel-title">Series</h3>
+                {isCreatingExercise && (
+                  <span className="one-on-one-modal-section-badge">Requerido</span>
+                )}
+              </div>
+              
+              <div className="exercise-sets-panel-content">
+                <div className="exercise-sets-panel-actions">
+                  <button 
+                    className={`exercise-action-pill ${isSeriesEditMode ? 'exercise-action-pill-disabled' : ''}`}
+                    onClick={handleCreateSet}
+                    disabled={isSeriesEditMode || isCreatingSet}
+                  >
+                    <span className="exercise-action-icon">+</span>
+                    <span className="exercise-action-text">Agregar Serie</span>
+                  </button>
+                  {!isCreatingExercise && (
+                    <button 
+                      className="exercise-action-pill"
+                      onClick={handleEditSeries}
+                      disabled={isUpdatingSeriesOrder}
+                    >
+                      <span className="exercise-action-text">{isSeriesEditMode ? 'Guardar' : 'Editar'}</span>
+                    </button>
+                  )}
                 </div>
-              ) : selectedExerciseTab === 'series' ? (
-                <div className="exercise-tab-content">
-                  <div className="exercises-content">
-                    <div className="exercises-actions">
-                      <button 
-                        className={`exercise-action-pill ${isSeriesEditMode ? 'exercise-action-pill-disabled' : ''}`}
-                        onClick={handleCreateSet}
-                        disabled={isSeriesEditMode || isCreatingSet}
+                
+                {exerciseSets.length === 0 ? (
+                  <div className="exercises-empty">
+                    <p>No hay series configuradas para este ejercicio.</p>
+                  </div>
+                ) : (
+                  <>
+                    {isSeriesEditMode ? (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEndSeries}
                       >
-                        <span className="exercise-action-icon">+</span>
-                      </button>
-                      {!isCreatingExercise && (
-                        <button 
-                          className="exercise-action-pill"
-                          onClick={handleEditSeries}
-                          disabled={isUpdatingSeriesOrder}
+                        <SortableContext
+                          items={exerciseSets.map((set) => set.id)}
+                          strategy={verticalListSortingStrategy}
                         >
-                          <span className="exercise-action-text">{isSeriesEditMode ? 'Guardar' : 'Editar'}</span>
-                        </button>
-                      )}
-                      {isCreatingExercise && (
-                        <button 
-                          className="exercise-action-pill"
-                          onClick={handleSaveCreatingExercise}
-                          disabled={!canSaveCreatingExercise() || isCreatingNewExercise}
-                        >
-                          <span className="exercise-action-text">{isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}</span>
-                        </button>
-                      )}
-                    </div>
-                    
-                    {exerciseSets.length === 0 ? (
-                      <div className="exercises-empty">
-                        <p>No hay series configuradas para este ejercicio.</p>
-                      </div>
-                    ) : (
-                      <>
-                        {isSeriesEditMode ? (
-                          <DndContext
-                            sensors={sensors}
-                            collisionDetection={closestCenter}
-                            onDragEnd={handleDragEndSeries}
-                          >
-                            <SortableContext
-                              items={exerciseSets.map((set) => set.id)}
-                              strategy={verticalListSortingStrategy}
-                            >
-                              <div className="exercises-list">
-                                {exerciseSets.map((set, setIndex) => {
-                                  const isExpanded = expandedSeries[set.id] || false;
-                                  const objectivesFields = draftObjectives.filter(obj => 
-                                    ['reps', 'intensity'].includes(obj)
-                                  );
-                                  const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
-                                  
-                                  return (
-                                    <SortableSeriesCard
-                                      key={set.id}
-                                      set={set}
-                                      setIndex={setIndex}
-                                      isSeriesEditMode={isSeriesEditMode}
-                                      isExpanded={isExpanded}
-                                      onToggleExpansion={handleToggleSeriesExpansion}
-                                      onDeleteSet={handleDeleteSet}
-                                      onDuplicateSet={handleDuplicateSet}
-                                      objectivesFields={objectivesFields}
-                                      getObjectiveDisplayName={getObjectiveDisplayName}
-                                      handleUpdateSetValue={handleUpdateSetValue}
-                                      hasUnsavedChanges={unsavedSetChanges[set.id] || false}
-                                      onSaveSetChanges={handleSaveSetChanges}
-                                      isSavingSetChanges={isSavingSetChanges}
-                                      parseIntensityForDisplay={parseIntensityForDisplay}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            </SortableContext>
-                          </DndContext>
-                        ) : (
                           <div className="exercises-list">
                             {exerciseSets.map((set, setIndex) => {
                               const isExpanded = expandedSeries[set.id] || false;
@@ -3051,113 +3226,155 @@ const LibraryContentScreen = () => {
                               const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
                               
                               return (
-                                <div key={set.id} className="exercise-series-card">
-                                  <button
-                                    className="exercise-series-card-header"
-                                    onClick={() => handleToggleSeriesExpansion(set.id)}
-                                  >
-                                    <span className="exercise-series-number">{setNumber}</span>
-                                    <span className="exercise-series-info">
-                                      {`Serie ${setNumber}`}
-                                    </span>
-                                    <div className="exercise-series-header-right">
-                                      {!isSeriesEditMode && (
-                                        <button
-                                          className="exercise-series-duplicate-button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDuplicateSet(set);
-                                          }}
-                                        >
-                                          <span className="exercise-series-duplicate-icon">⧉</span>
-                                        </button>
-                                      )}
-                                      {unsavedSetChanges[set.id] && (
-                                        <button
-                                          className="exercise-series-save-button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleSaveSetChanges(set.id);
-                                          }}
-                                          disabled={isSavingSetChanges}
-                                        >
-                                          <span className="exercise-series-save-text">
-                                            {isSavingSetChanges ? 'Guardando...' : 'Guardar'}
-                                          </span>
-                                        </button>
-                                      )}
-                                      <svg
-                                        className={`exercise-series-expand-icon ${isExpanded ? 'expanded' : ''}`}
-                                        width="16"
-                                        height="16"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                      >
-                                        <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                      </svg>
-                                    </div>
-                                  </button>
-                                  
-                                  {isExpanded && (
-                                    <div className="exercise-series-content">
-                                      <div className="exercise-series-inputs-row exercise-series-headers-row">
-                                        <div className="exercise-series-set-number-space"></div>
-                                        <div className="exercise-series-inputs-container">
-                                          {objectivesFields.map((field) => (
-                                            <div key={field} className="exercise-series-input-group">
-                                              <span className="exercise-series-input-label">
-                                                {getObjectiveDisplayName(field)}
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="exercise-series-inputs-row">
-                                        <div className="exercise-series-set-number-container">
-                                          <span className="exercise-series-set-number">{setNumber}</span>
-                                        </div>
-                                        <div className="exercise-series-inputs-container">
-                                          {objectivesFields.map((field) => (
-                                            <div key={field} className="exercise-series-input-group">
-                                              {field === 'intensity' ? (
-                                                <div className="exercise-series-intensity-input-wrapper">
-                                                  <input
-                                                    type="text"
-                                                    className="exercise-series-input exercise-series-intensity-input"
-                                                    placeholder="--"
-                                                    value={parseIntensityForDisplay(set[field])}
-                                                    onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
-                                                    maxLength={2}
-                                                  />
-                                                  <span className="exercise-series-intensity-suffix">/10</span>
-                                                </div>
-                                              ) : (
-                                                <input
-                                                  type="text"
-                                                  className="exercise-series-input"
-                                                  placeholder="--"
-                                                  value={set[field] !== undefined && set[field] !== null ? String(set[field]) : ''}
-                                                  onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
-                                                />
-                                              )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                <SortableSeriesCard
+                                  key={set.id}
+                                  set={set}
+                                  setIndex={setIndex}
+                                  isSeriesEditMode={isSeriesEditMode}
+                                  isExpanded={isExpanded}
+                                  onToggleExpansion={handleToggleSeriesExpansion}
+                                  onDeleteSet={handleDeleteSet}
+                                  onDuplicateSet={handleDuplicateSet}
+                                  objectivesFields={objectivesFields}
+                                  getObjectiveDisplayName={getObjectiveDisplayName}
+                                  handleUpdateSetValue={handleUpdateSetValue}
+                                  hasUnsavedChanges={unsavedSetChanges[set.id] || false}
+                                  onSaveSetChanges={handleSaveSetChanges}
+                                  isSavingSetChanges={isSavingSetChanges}
+                                  parseIntensityForDisplay={parseIntensityForDisplay}
+                                />
                               );
                             })}
                           </div>
-                        )}
-                      </>
+                        </SortableContext>
+                      </DndContext>
+                    ) : (
+                      <div className="exercises-list">
+                        {exerciseSets.map((set, setIndex) => {
+                          const isExpanded = expandedSeries[set.id] || false;
+                          const objectivesFields = draftObjectives.filter(obj => 
+                            ['reps', 'intensity'].includes(obj)
+                          );
+                          const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
+                          
+                          return (
+                            <div key={set.id} className="exercise-series-card">
+                              <button
+                                className="exercise-series-card-header"
+                                onClick={() => handleToggleSeriesExpansion(set.id)}
+                              >
+                                <span className="exercise-series-number">{setNumber}</span>
+                                <span className="exercise-series-info">
+                                  {`Serie ${setNumber}`}
+                                </span>
+                                <div className="exercise-series-header-right">
+                                  {!isSeriesEditMode && (
+                                    <button
+                                      className="exercise-series-duplicate-button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDuplicateSet(set);
+                                      }}
+                                    >
+                                      <span className="exercise-series-duplicate-icon">⧉</span>
+                                    </button>
+                                  )}
+                                  {unsavedSetChanges[set.id] && (
+                                    <button
+                                      className="exercise-series-save-button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSaveSetChanges(set.id);
+                                      }}
+                                      disabled={isSavingSetChanges}
+                                    >
+                                      <span className="exercise-series-save-text">
+                                        {isSavingSetChanges ? 'Guardando...' : 'Guardar'}
+                                      </span>
+                                    </button>
+                                  )}
+                                  <svg
+                                    className={`exercise-series-expand-icon ${isExpanded ? 'expanded' : ''}`}
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                  >
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                              </button>
+                              
+                              {isExpanded && (
+                                <div className="exercise-series-content">
+                                  <div className="exercise-series-inputs-row exercise-series-headers-row">
+                                    <div className="exercise-series-set-number-space"></div>
+                                    <div className="exercise-series-inputs-container">
+                                      {objectivesFields.map((field) => (
+                                        <div key={field} className="exercise-series-input-group">
+                                          <span className="exercise-series-input-label">
+                                            {getObjectiveDisplayName(field)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="exercise-series-inputs-row">
+                                    <div className="exercise-series-set-number-container">
+                                      <span className="exercise-series-set-number">{setNumber}</span>
+                                    </div>
+                                    <div className="exercise-series-inputs-container">
+                                      {objectivesFields.map((field) => (
+                                        <div key={field} className="exercise-series-input-group">
+                                          {field === 'intensity' ? (
+                                            <div className="exercise-series-intensity-input-wrapper">
+                                              <input
+                                                type="text"
+                                                className="exercise-series-input exercise-series-intensity-input"
+                                                placeholder="--"
+                                                value={parseIntensityForDisplay(set[field])}
+                                                onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                                                maxLength={2}
+                                              />
+                                              <span className="exercise-series-intensity-suffix">/10</span>
+                                            </div>
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              className="exercise-series-input"
+                                              placeholder="--"
+                                              value={set[field] !== undefined && set[field] !== null ? String(set[field]) : ''}
+                                              onChange={(e) => handleUpdateSetValue(setIndex, field, e.target.value)}
+                                            />
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
+                  </>
+                )}
+                
+                {isCreatingExercise && (
+                  <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <Button
+                      title={isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}
+                      onClick={handleSaveCreatingExercise}
+                      disabled={!canSaveCreatingExercise() || isCreatingNewExercise}
+                      loading={isCreatingNewExercise}
+                      style={{ width: '100%' }}
+                    />
                   </div>
-                </div>
-              ) : null}
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -3169,26 +3386,87 @@ const LibraryContentScreen = () => {
         onClose={() => {
           setIsMeasureSelectionModalOpen(false);
           setMeasureToEditIndex(null);
+          setSelectedMeasures([]);
         }}
-        title={measureToEditIndex !== null ? 'Editar Medida' : 'Agregar Medida'}
+        title={measureToEditIndex !== null ? 'Editar Medida' : 'Agregar Medidas'}
       >
         <div className="measure-selection-modal-content">
-          <div className="measure-selection-list">
-            <button
-              className="measure-selection-item"
-              onClick={() => handleSelectMeasure('reps')}
-              disabled={measureToEditIndex === null && draftMeasures.includes('reps')}
-            >
-              <span className="measure-selection-item-name">Repeticiones</span>
-            </button>
-            <button
-              className="measure-selection-item"
-              onClick={() => handleSelectMeasure('weight')}
-              disabled={measureToEditIndex === null && draftMeasures.includes('weight')}
-            >
-              <span className="measure-selection-item-name">Peso</span>
-            </button>
-          </div>
+          {measureToEditIndex !== null ? (
+            // Edit mode - single selection
+            <div className="measure-selection-list">
+              <button
+                className="measure-selection-item"
+                onClick={() => handleSelectMeasure('reps')}
+              >
+                <span className="measure-selection-item-name">Repeticiones</span>
+              </button>
+              <button
+                className="measure-selection-item"
+                onClick={() => handleSelectMeasure('weight')}
+              >
+                <span className="measure-selection-item-name">Peso</span>
+              </button>
+            </div>
+          ) : (
+            // Add mode - multi selection
+            <>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px', marginBottom: '16px', marginTop: 0 }}>
+                Selecciona una o más medidas para agregar:
+              </p>
+              <div className="measure-selection-list">
+                <button
+                  className={`measure-selection-item ${selectedMeasures.includes('reps') ? 'measure-selection-item-selected' : ''}`}
+                  onClick={() => handleToggleMeasureSelection('reps')}
+                  disabled={draftMeasures.includes('reps')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div className={`measure-selection-checkbox ${selectedMeasures.includes('reps') ? 'measure-selection-checkbox-checked' : ''}`}>
+                      {selectedMeasures.includes('reps') && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="measure-selection-item-name">Repeticiones</span>
+                  </div>
+                  {draftMeasures.includes('reps') && (
+                    <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                      Ya agregado
+                    </span>
+                  )}
+                </button>
+                <button
+                  className={`measure-selection-item ${selectedMeasures.includes('weight') ? 'measure-selection-item-selected' : ''}`}
+                  onClick={() => handleToggleMeasureSelection('weight')}
+                  disabled={draftMeasures.includes('weight')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div className={`measure-selection-checkbox ${selectedMeasures.includes('weight') ? 'measure-selection-checkbox-checked' : ''}`}>
+                      {selectedMeasures.includes('weight') && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="measure-selection-item-name">Peso</span>
+                  </div>
+                  {draftMeasures.includes('weight') && (
+                    <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                      Ya agregado
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <Button
+                  title={`Agregar ${selectedMeasures.length > 0 ? `(${selectedMeasures.length})` : ''}`}
+                  onClick={handleSaveSelectedMeasures}
+                  disabled={selectedMeasures.length === 0}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
@@ -3198,33 +3476,114 @@ const LibraryContentScreen = () => {
         onClose={() => {
           setIsObjectiveSelectionModalOpen(false);
           setObjectiveToEditIndex(null);
+          setSelectedObjectives([]);
         }}
-        title={objectiveToEditIndex !== null ? 'Editar Objetivo' : 'Agregar Objetivo'}
+        title={objectiveToEditIndex !== null ? 'Editar Objetivo' : 'Agregar Objetivos'}
       >
         <div className="measure-selection-modal-content">
-          <div className="measure-selection-list">
-            <button
-              className="measure-selection-item"
-              onClick={() => handleSelectObjective('reps')}
-              disabled={objectiveToEditIndex === null && draftObjectives.includes('reps')}
-            >
-              <span className="measure-selection-item-name">Repeticiones</span>
-            </button>
-            <button
-              className="measure-selection-item"
-              onClick={() => handleSelectObjective('intensity')}
-              disabled={objectiveToEditIndex === null && draftObjectives.includes('intensity')}
-            >
-              <span className="measure-selection-item-name">Intensidad</span>
-            </button>
-            <button
-              className="measure-selection-item"
-              onClick={() => handleSelectObjective('previous')}
-              disabled={objectiveToEditIndex === null && draftObjectives.includes('previous')}
-            >
-              <span className="measure-selection-item-name">Anterior</span>
-            </button>
-          </div>
+          {objectiveToEditIndex !== null ? (
+            // Edit mode - single selection
+            <div className="measure-selection-list">
+              <button
+                className="measure-selection-item"
+                onClick={() => handleSelectObjective('reps')}
+              >
+                <span className="measure-selection-item-name">Repeticiones</span>
+              </button>
+              <button
+                className="measure-selection-item"
+                onClick={() => handleSelectObjective('intensity')}
+              >
+                <span className="measure-selection-item-name">Intensidad</span>
+              </button>
+              <button
+                className="measure-selection-item"
+                onClick={() => handleSelectObjective('previous')}
+              >
+                <span className="measure-selection-item-name">Anterior</span>
+              </button>
+            </div>
+          ) : (
+            // Add mode - multi selection
+            <>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px', marginBottom: '16px', marginTop: 0 }}>
+                Selecciona uno o más objetivos para agregar:
+              </p>
+              <div className="measure-selection-list">
+                <button
+                  className={`measure-selection-item ${selectedObjectives.includes('reps') ? 'measure-selection-item-selected' : ''}`}
+                  onClick={() => handleToggleObjectiveSelection('reps')}
+                  disabled={draftObjectives.includes('reps')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div className={`measure-selection-checkbox ${selectedObjectives.includes('reps') ? 'measure-selection-checkbox-checked' : ''}`}>
+                      {selectedObjectives.includes('reps') && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="measure-selection-item-name">Repeticiones</span>
+                  </div>
+                  {draftObjectives.includes('reps') && (
+                    <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                      Ya agregado
+                    </span>
+                  )}
+                </button>
+                <button
+                  className={`measure-selection-item ${selectedObjectives.includes('intensity') ? 'measure-selection-item-selected' : ''}`}
+                  onClick={() => handleToggleObjectiveSelection('intensity')}
+                  disabled={draftObjectives.includes('intensity')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div className={`measure-selection-checkbox ${selectedObjectives.includes('intensity') ? 'measure-selection-checkbox-checked' : ''}`}>
+                      {selectedObjectives.includes('intensity') && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="measure-selection-item-name">Intensidad</span>
+                  </div>
+                  {draftObjectives.includes('intensity') && (
+                    <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                      Ya agregado
+                    </span>
+                  )}
+                </button>
+                <button
+                  className={`measure-selection-item ${selectedObjectives.includes('previous') ? 'measure-selection-item-selected' : ''}`}
+                  onClick={() => handleToggleObjectiveSelection('previous')}
+                  disabled={draftObjectives.includes('previous')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div className={`measure-selection-checkbox ${selectedObjectives.includes('previous') ? 'measure-selection-checkbox-checked' : ''}`}>
+                      {selectedObjectives.includes('previous') && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="measure-selection-item-name">Anterior</span>
+                  </div>
+                  {draftObjectives.includes('previous') && (
+                    <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                      Ya agregado
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <Button
+                  title={`Agregar ${selectedObjectives.length > 0 ? `(${selectedObjectives.length})` : ''}`}
+                  onClick={handleSaveSelectedObjectives}
+                  disabled={selectedObjectives.length === 0}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 

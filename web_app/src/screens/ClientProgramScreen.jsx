@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import CalendarView from '../components/CalendarView';
-import PlanningModal from '../components/PlanningModal';
 import SessionAssignmentModal from '../components/SessionAssignmentModal';
 import SessionCreationModal from '../components/SessionCreationModal';
+import PlanningSidebar from '../components/PlanningSidebar';
 import oneOnOneService from '../services/oneOnOneService';
+import clientSessionService from '../services/clientSessionService';
 import './ClientProgramScreen.css';
 
 const TAB_CONFIG = [
@@ -24,10 +25,13 @@ const ClientProgramScreen = () => {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false);
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [isSessionCreationModalOpen, setIsSessionCreationModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
+  const [selectedProgramId, setSelectedProgramId] = useState(null);
+  const [assignedPrograms, setAssignedPrograms] = useState([]);
+  const [plannedSessions, setPlannedSessions] = useState([]);
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
     const loadClient = async () => {
@@ -64,8 +68,77 @@ const ClientProgramScreen = () => {
     loadClient();
   }, [clientId, user]);
 
+  // Load planned sessions when client or date changes
+  useEffect(() => {
+    const loadPlannedSessions = async () => {
+      if (!clientId) return;
+      
+      try {
+        // Get sessions for current month
+        const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+        const sessions = await clientSessionService.getClientSessions(clientId, startDate, endDate);
+        setPlannedSessions(sessions);
+      } catch (error) {
+        console.error('Error loading planned sessions:', error);
+        setPlannedSessions([]);
+      }
+    };
+
+    if (clientId) {
+      loadPlannedSessions();
+    }
+  }, [clientId, currentDate]);
+
+  // Create program colors map for calendar
+  const programColors = useMemo(() => {
+    const colors = {};
+    const colorPalette = [
+      'rgba(191, 168, 77, 0.6)',
+      'rgba(107, 142, 35, 0.6)',
+      'rgba(70, 130, 180, 0.6)',
+      'rgba(186, 85, 211, 0.6)',
+      'rgba(220, 20, 60, 0.6)',
+      'rgba(255, 140, 0, 0.6)',
+    ];
+    
+    assignedPrograms.forEach((program, index) => {
+      colors[program.id] = colorPalette[index % colorPalette.length];
+    });
+    
+    return colors;
+  }, [assignedPrograms]);
+
   const handleTabClick = (index) => {
     setCurrentTabIndex(index);
+  };
+
+  const handleSessionAssigned = async (sessionData) => {
+    try {
+      await clientSessionService.assignSessionToDate(
+        clientId,
+        sessionData.programId,
+        sessionData.sessionId,
+        sessionData.date,
+        sessionData.moduleId
+      );
+      
+      // Reload planned sessions
+      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      const sessions = await clientSessionService.getClientSessions(clientId, startDate, endDate);
+      setPlannedSessions(sessions);
+      
+      setIsSessionAssignmentModalOpen(false);
+    } catch (error) {
+      console.error('Error assigning session:', error);
+      alert('Error al asignar la sesión');
+    }
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedPlanningDate(date);
+    setIsSessionAssignmentModalOpen(true);
   };
 
   const renderTabContent = () => {
@@ -80,63 +153,54 @@ const ClientProgramScreen = () => {
         );
       case 'planificacion':
         return (
-          <div className="client-program-tab-content">
-            <CalendarView 
-              onDateSelect={(date) => {
-                setSelectedPlanningDate(date);
-                setIsPlanningModalOpen(true);
-              }}
+          <div className="client-program-tab-content client-program-planning-content">
+            <PlanningSidebar
+              clientId={client?.clientUserId}
+              creatorId={user?.uid}
+              selectedProgramId={selectedProgramId}
+              onProgramSelect={setSelectedProgramId}
+              onProgramsChange={setAssignedPrograms}
             />
-            <PlanningModal
-              isOpen={isPlanningModalOpen}
-              onClose={() => {
-                setIsPlanningModalOpen(false);
-                setSelectedPlanningDate(null);
-              }}
-              selectedDate={selectedPlanningDate}
-              onWorkoutClick={(date) => {
-                console.log('Workout clicked, opening SessionAssignmentModal');
-                setIsPlanningModalOpen(false);
-                setIsSessionAssignmentModalOpen(true);
-              }}
-            />
-            <SessionAssignmentModal
-              isOpen={isSessionAssignmentModalOpen}
-              onClose={() => {
-                console.log('SessionAssignmentModal: onClose called');
-                setIsSessionAssignmentModalOpen(false);
-                setSelectedPlanningDate(null);
-              }}
-              selectedDate={selectedPlanningDate}
-              onSessionCreated={(date) => {
-                setIsSessionAssignmentModalOpen(false);
-                setIsSessionCreationModalOpen(true);
-              }}
-              onSessionAdded={(sessionId) => {
-                console.log('Session added from library:', sessionId);
-                // TODO: Implement session addition from library
-              }}
-              onSaveToLibrary={(sessionId) => {
-                console.log('Save session to library:', sessionId);
-                // TODO: Implement save to library logic
-              }}
-            />
-            <SessionCreationModal
-              isOpen={isSessionCreationModalOpen}
-              onClose={() => {
-                setIsSessionCreationModalOpen(false);
-                setSelectedPlanningDate(null);
-              }}
-              selectedDate={selectedPlanningDate}
-              onSave={(sessionData) => {
-                console.log('Session saved:', sessionData);
-                // TODO: Implement session save logic
-              }}
-              onSaveToLibrary={(sessionId) => {
-                console.log('Save session to library:', sessionId);
-                // TODO: Implement save to library logic
-              }}
-            />
+            <div className="client-program-planning-main">
+              <CalendarView 
+                onDateSelect={handleDateSelect}
+                plannedSessions={plannedSessions}
+                programColors={programColors}
+                onMonthChange={setCurrentDate}
+              />
+              <SessionAssignmentModal
+                isOpen={isSessionAssignmentModalOpen}
+                onClose={() => {
+                  setIsSessionAssignmentModalOpen(false);
+                  setSelectedPlanningDate(null);
+                }}
+                selectedDate={selectedPlanningDate}
+                assignedPrograms={assignedPrograms}
+                selectedProgramId={selectedProgramId}
+                onSessionAssigned={handleSessionAssigned}
+                onSessionCreated={(sessionData) => {
+                  setIsSessionAssignmentModalOpen(false);
+                  setIsSessionCreationModalOpen(true);
+                  // TODO: Pass sessionData to creation modal
+                }}
+              />
+              <SessionCreationModal
+                isOpen={isSessionCreationModalOpen}
+                onClose={() => {
+                  setIsSessionCreationModalOpen(false);
+                  setSelectedPlanningDate(null);
+                }}
+                selectedDate={selectedPlanningDate}
+                onSave={(sessionData) => {
+                  console.log('Session saved:', sessionData);
+                  // TODO: Implement session save logic
+                }}
+                onSaveToLibrary={(sessionId) => {
+                  console.log('Save session to library:', sessionId);
+                  // TODO: Implement save to library logic
+                }}
+              />
+            </div>
           </div>
         );
       case 'nutricion':
@@ -182,7 +246,7 @@ const ClientProgramScreen = () => {
     );
   }
 
-  const containerWidth = 100 / TAB_CONFIG.length;
+  const containerWidth = 100 / TAB_CONFIG.length; // Updated to 4 tabs (removed programas)
   const clientName = client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`;
 
   return (
