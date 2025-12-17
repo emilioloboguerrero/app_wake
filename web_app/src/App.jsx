@@ -8,6 +8,8 @@ import ProgramsScreen from './screens/ProgramsScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
 import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
+import UserOnboardingScreen from './screens/UserOnboardingScreen';
+import UserOnboardingQuestions from './screens/UserOnboardingQuestions';
 import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import CoursePurchaseScreen from './screens/CoursePurchaseScreen';
@@ -32,6 +34,22 @@ function AppContent() {
               element={
                 <ProtectedRoute requireOnboarding={false}>
                   <CreatorOnboardingScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/user/onboarding" 
+              element={
+                <ProtectedRoute requireCreator={false} requireOnboarding={false}>
+                  <UserOnboardingScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/user/onboarding/questions" 
+              element={
+                <ProtectedRoute requireCreator={false} requireOnboarding={false}>
+                  <UserOnboardingQuestions />
                 </ProtectedRoute>
               } 
             />

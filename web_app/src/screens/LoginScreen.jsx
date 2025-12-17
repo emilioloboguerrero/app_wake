@@ -20,6 +20,9 @@ const LoginScreen = () => {
   const [passwordError, setPasswordError] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [autoLoginInProgress, setAutoLoginInProgress] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [isLegalModalVisible, setIsLegalModalVisible] = useState(false);
 
   // Attempt auto-login if token is present in URL
   useEffect(() => {
@@ -200,6 +203,69 @@ const LoginScreen = () => {
     }
   };
 
+  const handleRegister = async () => {
+    setEmailError(null);
+    setPasswordError(null);
+    setShowForgotPassword(false);
+
+    if (!email.trim()) {
+      setEmailError('Por favor ingresa tu correo electrónico');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setEmailError('Correo no válido');
+      return;
+    }
+
+    if (!password.trim()) {
+      setPasswordError('Por favor ingresa tu contraseña');
+      return;
+    }
+
+    if (!validatePassword(password)) {
+      setPasswordError('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    // Validate terms acceptance
+    if (!acceptTerms) {
+      alert('Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const initialDisplayName = email.split('@')[0];
+      await authService.registerUser(email, password, initialDisplayName);
+      
+      // AuthContext will automatically fetch user role and handle redirect
+      // Wait a moment for AuthContext to update, then let useEffect handle redirect
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 100);
+    } catch (error) {
+      setIsLoading(false);
+      
+      // Handle specific Firebase errors
+      let errorMessage = 'Ocurrió un error al crear la cuenta. Por favor intenta de nuevo.';
+      
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'Ya existe una cuenta con este correo electrónico';
+          break;
+        case 'auth/weak-password':
+          errorMessage = 'La contraseña es muy débil. Usa al menos 6 caracteres';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Correo electrónico no válido';
+          break;
+      }
+      
+      alert(errorMessage);
+    }
+  };
+
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -299,7 +365,7 @@ const LoginScreen = () => {
 
         {/* Welcome Text */}
         <h1 className="welcome-text">
-          Inicio
+          {isSignUp ? "Crear Cuenta" : "Inicio"}
         </h1>
 
         {/* Email Input */}
@@ -320,14 +386,67 @@ const LoginScreen = () => {
           error={passwordError}
         />
 
+        {/* Terms and Conditions Agreement - Only show during signup */}
+        {isSignUp && (
+          <div className="terms-container">
+            <div className="terms-row">
+              <label className="terms-switch">
+                <input
+                  type="checkbox"
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                />
+                <span className="terms-slider"></span>
+              </label>
+              <div className="terms-text-container">
+                <span className="terms-text">
+                  Acepto la{' '}
+                  <span 
+                    className="terms-link"
+                    onClick={() => setIsLegalModalVisible(true)}
+                  >
+                    política de privacidad
+                  </span>
+                  {' '}y{' '}
+                  <span 
+                    className="terms-link"
+                    onClick={() => setIsLegalModalVisible(true)}
+                  >
+                    términos y condiciones
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main Action Button */}
         <Button
-          title="Iniciar Sesión"
-          onClick={handleContinue}
+          title={isSignUp ? "Crear Cuenta" : "Iniciar Sesión"}
+          onClick={isSignUp ? handleRegister : handleContinue}
           loading={isLoading}
-          disabled={isLoading || !isFormValid}
-          active={isFormValid}
+          disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
+          active={isSignUp ? (isFormValid && acceptTerms) : isFormValid}
         />
+
+        {/* Toggle between Sign In and Sign Up */}
+        <button 
+          onClick={() => {
+            setIsSignUp(!isSignUp);
+            setEmailError(null);
+            setPasswordError(null);
+            setShowForgotPassword(false);
+            setAcceptTerms(false);
+          }}
+          className="toggle-button"
+        >
+          <span className="toggle-text">
+            {isSignUp ? "¿Ya tienes cuenta? " : "¿No tienes cuenta? "}
+            <span className="toggle-link">
+              {isSignUp ? "Iniciar Sesión" : "Crear Cuenta"}
+            </span>
+          </span>
+        </button>
 
         {/* Forgot Password Link - Only show when authentication fails */}
         {showForgotPassword && (
@@ -362,6 +481,61 @@ const LoginScreen = () => {
           disabled={isLoading}
         />
       </div>
+
+      {/* Legal Documents Modal */}
+      {isLegalModalVisible && (
+        <div className="legal-modal-overlay" onClick={() => setIsLegalModalVisible(false)}>
+          <div className="legal-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="legal-modal-header">
+              <h2 className="legal-modal-title">Documentos Legales</h2>
+              <button
+                className="legal-modal-close"
+                onClick={() => setIsLegalModalVisible(false)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="legal-modal-body">
+              <div className="legal-modal-documents">
+                <div className="legal-modal-document-item">
+                  <h3>Términos y Condiciones</h3>
+                  <a
+                    href="https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F1%20-%20TE%CC%81RMINOS%20Y%20CONDICIONES%20DE%20USO%20WAKE.pdf?alt=media&token=500e1ddd-c126-43ba-bb0d-e8b4e571b49c"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="legal-modal-link"
+                  >
+                    Ver Términos y Condiciones
+                  </a>
+                </div>
+                <div className="legal-modal-document-item">
+                  <h3>Política de Tratamiento de Datos Personales</h3>
+                  <a
+                    href="https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F2%20-%20POLI%CC%81TICA%20DE%20TRATAMIENTO%20DE%20DATOS%20PERSONALES%20WAKE.pdf?alt=media&token=5cd87b24-bb70-4daa-b2cf-16f31c46cef7"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="legal-modal-link"
+                  >
+                    Ver Política de Privacidad
+                  </a>
+                </div>
+                <div className="legal-modal-document-item">
+                  <h3>Política de Reembolsos</h3>
+                  <a
+                    href="https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F3-%20POLI%CC%81TICA%20DE%20REEMBOLSOS%2C%20RETRACTO%20Y%20REVERSIO%CC%81N%20DE%20PAGO%20WAKE.pdf?alt=media&token=da5f7fe3-f699-46cb-8fd9-5e0da2e7efb6"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="legal-modal-link"
+                  >
+                    Ver Política de Reembolsos
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -15,6 +15,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [webOnboardingCompleted, setWebOnboardingCompleted] = useState(null);
+  const [profileCompleted, setProfileCompleted] = useState(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (firebaseUser) => {
@@ -26,15 +28,22 @@ export const AuthProvider = ({ children }) => {
         // If field doesn't exist, treat as not completed (false)
         // This ensures all users go through onboarding at least once
         setWebOnboardingCompleted(userData?.webOnboardingCompleted ?? false);
+        // Track user onboarding status (same as mobile app)
+        setProfileCompleted(userData?.profileCompleted ?? false);
+        setOnboardingCompleted(userData?.onboardingCompleted ?? false);
         } catch (error) {
         console.error('Error fetching user data:', error);
           setUserRole('user'); // Default to 'user' if error
         // On error, default to false to ensure onboarding is shown
         setWebOnboardingCompleted(false);
+        setProfileCompleted(false);
+        setOnboardingCompleted(false);
         }
       } else {
         setUserRole(null);
       setWebOnboardingCompleted(null);
+      setProfileCompleted(null);
+      setOnboardingCompleted(null);
       }
   };
 
@@ -62,6 +71,8 @@ export const AuthProvider = ({ children }) => {
     userRole,
     loading,
     webOnboardingCompleted,
+    profileCompleted,
+    onboardingCompleted,
     isCreator: isCreatorValue,
     isAdmin: isAdminValue,
     refreshUserData
@@ -73,7 +84,9 @@ export const AuthProvider = ({ children }) => {
     userRole, 
     isCreator: isCreatorValue,
     isAdmin: isAdminValue,
-    webOnboardingCompleted 
+    webOnboardingCompleted,
+    profileCompleted,
+    onboardingCompleted
   });
   
   return (

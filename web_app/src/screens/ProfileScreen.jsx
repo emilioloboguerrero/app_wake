@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
@@ -13,11 +13,7 @@ import authService from '../services/authService';
 import { updateProfile } from 'firebase/auth';
 import { auth, firestore } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-// Cities data structure matches mobile app: { countryName: [city1, city2, ...] }
-// For web app, we'll use a simplified structure that matches the mobile app pattern
-const CITIES_DATA = {
-  'colombia': ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena', 'Cúcuta', 'Bucaramanga', 'Pereira', 'Santa Marta', 'Ibagué', 'Pasto', 'Manizales', 'Neiva', 'Villavicencio', 'Armenia', 'Valledupar', 'Montería', 'Sincelejo', 'Popayán', 'Tunja']
-};
+import { GetCountries, GetState, GetCity } from 'react-country-state-city';
 import './ProfileScreen.css';
 
 const ProfileScreen = () => {
@@ -96,50 +92,135 @@ const ProfileScreen = () => {
     return 'text';
   };
 
-  // Get country options
-  const getCountryOptions = () => {
-    const countryLabels = {
-      'colombia': 'Colombia',
-      'mexico': 'México',
-      'argentina': 'Argentina',
-      'spain': 'España',
-      'usa': 'Estados Unidos'
+  // Countries and cities state with caching
+  const [countries, setCountries] = useState([]);
+  const [citiesCache, setCitiesCache] = useState({}); // Cache cities by country code
+  const [loadingCities, setLoadingCities] = useState(false);
+
+  // Load countries on mount
+  useEffect(() => {
+    const loadCountries = async () => {
+      try {
+        const allCountries = await GetCountries() || [];
+        const formatted = allCountries.map(country => ({
+          value: country.iso2,
+          label: country.name,
+          name: country.name
+        })).sort((a, b) => a.label.localeCompare(b.label));
+        setCountries(formatted);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+      }
     };
-    const countries = Object.keys(CITIES_DATA).map(key => ({
-      value: key,
-      label: countryLabels[key] || key.charAt(0).toUpperCase() + key.slice(1)
-    }));
-    return countries.sort((a, b) => a.label.localeCompare(b.label));
-  };
+    loadCountries();
+  }, []);
+
+  // Load cities for selected country (with caching)
+  useEffect(() => {
+    const loadCities = async () => {
+      if (!country) {
+        return;
+      }
+
+      // Check cache first
+      if (citiesCache[country]) {
+        return; // Already cached
+      }
+
+      setLoadingCities(true);
+      try {
+        // Get country ID from countries list
+        const allCountries = await GetCountries() || [];
+        const countryObj = allCountries.find(c => c.iso2 === country);
+        
+        if (!countryObj) {
+          setLoadingCities(false);
+          return;
+        }
+        
+        // Get all states for this country
+        const states = await GetState(countryObj.id) || [];
+        
+        // Get cities for each state
+        const allCountryCities = [];
+        
+        if (states.length > 0) {
+          // If country has states, get cities from each state
+          for (const state of states) {
+            try {
+              const stateCities = await GetCity(countryObj.id, state.id) || [];
+              allCountryCities.push(...stateCities);
+            } catch (error) {
+              console.warn(`Error loading cities for state ${state.name}:`, error);
+            }
+          }
+        } else {
+          // If country has no states, try to get cities directly
+          try {
+            const directCities = await GetCity(countryObj.id, 0) || [];
+            allCountryCities.push(...directCities);
+          } catch (error) {
+            console.warn('Could not get cities directly:', error);
+          }
+        }
+        
+        // Cache the cities for this country (even if empty, to avoid re-fetching)
+        setCitiesCache(prev => ({
+          ...prev,
+          [country]: allCountryCities
+        }));
+      } catch (error) {
+        console.error('Error loading cities:', error);
+        // Cache empty array to prevent re-fetching on error
+        setCitiesCache(prev => ({
+          ...prev,
+          [country]: []
+        }));
+      } finally {
+        setLoadingCities(false);
+      }
+    };
+    loadCities();
+  }, [country, citiesCache]);
 
   // Get filtered countries
   const getFilteredCountries = () => {
-    const countries = getCountryOptions();
     if (!countrySearchQuery.trim()) return countries;
+    const searchLower = countrySearchQuery.toLowerCase();
     return countries.filter(c => 
-      c.label.toLowerCase().includes(countrySearchQuery.toLowerCase())
+      c.label.toLowerCase().includes(searchLower) ||
+      c.name.toLowerCase().includes(searchLower)
     );
   };
 
-  // Get city options for selected country
-  const getCityOptions = () => {
+  // Get filtered cities - memoized (uses cache)
+  const filteredCities = useMemo(() => {
     if (!country) return [];
-    return CITIES_DATA[country] || [];
-  };
-
-  // Get filtered cities
-  const getFilteredCities = () => {
-    const cities = getCityOptions();
-    if (!citySearchQuery.trim()) return cities;
-    return cities.filter(c => 
-      c.toLowerCase().includes(citySearchQuery.toLowerCase())
-    );
-  };
+    
+    // Get cities from cache
+    const countryCities = citiesCache[country] || [];
+    
+    if (countryCities.length === 0) return [];
+    
+    const searchLower = citySearchQuery.toLowerCase();
+    
+    if (!searchLower) {
+      // Return top 100 cities if no search query (for performance)
+      return countryCities.slice(0, 100).map(city => city.name);
+    }
+    
+    // Filter by search query
+    return countryCities
+      .filter(city => city.name.toLowerCase().includes(searchLower))
+      .map(city => city.name)
+      .slice(0, 50); // Limit results for performance
+  }, [citiesCache, country, citySearchQuery]);
 
   // Get country label
   const getCountryLabel = (value) => {
-    const country = getCountryOptions().find(c => c.value === value);
-    return country ? country.label : value.charAt(0).toUpperCase() + value.slice(1);
+    if (!value) return '';
+    const countryObj = countries.find(c => c.value === value);
+    return countryObj ? countryObj.label : value;
   };
 
   // Validate username uniqueness
@@ -357,9 +438,8 @@ const ProfileScreen = () => {
     setShowCountryDropdown(false);
     setCountrySearchQuery('');
     // Reset city when country changes
-    if (city && !CITIES_DATA[countryValue]?.includes(city)) {
-      setCity('');
-    }
+    setCity('');
+    setCitySearchQuery('');
   };
 
   const handleCitySelect = (selectedCity) => {
@@ -961,7 +1041,7 @@ const ProfileScreen = () => {
                     )}
                     {showCityDropdown && (
                       <div className="profile-dropdown-list">
-                        {getFilteredCities().map((cityOption) => (
+                        {filteredCities.map((cityOption) => (
                           <div
                             key={cityOption}
                             className={`profile-dropdown-option ${city === cityOption ? 'profile-dropdown-option-selected' : ''}`}
@@ -970,7 +1050,7 @@ const ProfileScreen = () => {
                             {cityOption}
                           </div>
                         ))}
-                        {getFilteredCities().length === 0 && (
+                        {filteredCities.length === 0 && (
                           <div className="profile-dropdown-option">
                             No se encontraron ciudades
                           </div>

@@ -1,0 +1,484 @@
+.user-onboarding-container {
+  min-height: 100vh;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+
+.user-onboarding-content {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Header */
+.onboarding-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.onboarding-logo {
+  width: 100px;
+  height: auto;
+  margin-bottom: 20px;
+}
+
+.onboarding-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffffff;
+  margin: 0 0 12px 0;
+  line-height: 1.2;
+}
+
+.onboarding-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 24px 0;
+  line-height: 1.5;
+}
+
+/* Progress Indicator */
+.progress-indicator {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #BFA84D 0%, rgba(191, 168, 77, 0.8) 100%);
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+.progress-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+/* Form Sections */
+.onboarding-form {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.form-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  background-color: rgba(42, 42, 42, 0.5);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-badge {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.section-description {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: -12px 0 8px 0;
+  line-height: 1.4;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-section-half {
+  flex: 1;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.required-badge {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.optional-badge {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: -4px 0 0 0;
+  line-height: 1.4;
+}
+
+/* Profile Picture */
+.profile-picture-section {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.profile-picture-upload {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s;
+  background-color: rgba(42, 42, 42, 0.5);
+}
+
+.profile-picture-upload:hover {
+  border-color: rgba(191, 168, 77, 0.7);
+  transform: scale(1.02);
+}
+
+.profile-picture-upload.has-image {
+  border-color: rgba(191, 168, 77, 0.7);
+}
+
+.profile-picture-upload img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 8px;
+}
+
+.upload-placeholder svg {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.upload-placeholder p {
+  font-size: 11px;
+  margin: 0;
+  text-align: center;
+}
+
+.upload-progress {
+  margin-top: 8px;
+  text-align: center;
+  width: 100%;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #BFA84D;
+  transition: width 0.3s;
+}
+
+.upload-progress p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+/* Dropdown */
+.dropdown-container {
+  position: relative;
+}
+
+.dropdown-input-with-arrow {
+  width: 100%;
+  height: 56px;
+  background-color: #2a2a2a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 0 20px;
+  font-size: 16px;
+  font-weight: 400;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.dropdown-input-with-arrow:hover {
+  border-color: #333;
+}
+
+.dropdown-input-with-arrow.has-value {
+  border-color: #333;
+}
+
+.dropdown-input-with-arrow.has-error {
+  border-color: #FF6B6B;
+  background-color: #3a2a2a;
+}
+
+.dropdown-input-with-arrow.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-input-with-arrow .placeholder {
+  color: #999;
+}
+
+.dropdown-input-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  padding: 0;
+}
+
+.dropdown-input-field::placeholder {
+  color: #999;
+}
+
+.dropdown-input-field:disabled {
+  cursor: not-allowed;
+}
+
+.dropdown-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 998;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  margin-top: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Scrollbar styling for dropdown menus */
+.dropdown-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dropdown-menu::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.dropdown-item {
+  padding: 14px 16px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 16px;
+}
+
+.dropdown-item:hover {
+  background-color: rgba(191, 168, 77, 0.2);
+}
+
+.dropdown-item:first-child {
+  border-radius: 10px 10px 0 0;
+}
+
+.dropdown-item:last-child {
+  border-radius: 0 0 10px 10px;
+}
+
+.city-dropdown {
+  max-height: 300px;
+}
+
+/* Error Text */
+.error-text {
+  font-size: 12px;
+  color: #ff6b6b;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Actions */
+.onboarding-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.action-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  margin: 0;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .user-onboarding-container {
+    padding: 16px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .user-onboarding-content {
+    gap: 24px;
+  }
+
+  .onboarding-title {
+    font-size: 26px;
+  }
+
+  .onboarding-subtitle {
+    font-size: 14px;
+  }
+
+  .onboarding-logo {
+    width: 80px;
+    margin-bottom: 16px;
+  }
+
+  .form-section-group {
+    padding: 20px;
+    gap: 16px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .section-description {
+    font-size: 13px;
+  }
+
+  .form-section {
+    gap: 6px;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .form-section-half {
+    width: 100%;
+  }
+
+  .profile-picture-upload {
+    width: 90px;
+    height: 90px;
+  }
+
+  .dropdown-input {
+    padding: 12px 14px;
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .onboarding-title {
+    font-size: 24px;
+  }
+
+  .form-section-group {
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+  }
+
+  .form-label {
+    font-size: 13px;
+  }
+
+  .dropdown-input {
+    font-size: 15px;
+  }
+}
