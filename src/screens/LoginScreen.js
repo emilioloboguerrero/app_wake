@@ -15,11 +15,10 @@ import {
 import { auth } from '../config/firebase';
 import { 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile
 } from 'firebase/auth';
-import { createUserDocument } from '../services/firestoreService';
+import firestoreService from '../services/firestoreService';
 import googleAuthService from '../services/googleAuthService';
 import appleAuthService from '../services/appleAuthService';
 import Input from '../components/Input';
@@ -43,8 +42,6 @@ const LoginScreen = () => {
   const [emailError, setEmailError] = useState(null);
   const [passwordError, setPasswordError] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
   const [AppleButtonComponent, setAppleButtonComponent] = useState(null);
 
@@ -143,23 +140,16 @@ const LoginScreen = () => {
     } catch (error) {
       logger.error('Sign in error:', error);
       
-      // If user doesn't exist, show friendly prompt instead of error
+      // If user doesn't exist, direct them to website for registration
       if (error.code === 'auth/user-not-found') {
-        logger.log('User not found, showing create account prompt...');
+        logger.log('User not found, directing to website for registration...');
         Alert.alert(
-          '¿No tienes cuenta?',
-          'No encontramos una cuenta con este correo electrónico. ¿Te gustaría crear una nueva cuenta?',
+          'Cuenta no encontrada',
+          'No encontramos una cuenta con este correo electrónico.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí para iniciar sesión\n\nSi ya tienes una cuenta, verifica que el correo electrónico sea correcto.',
           [
             {
-              text: 'Cancelar',
-              style: 'cancel'
-            },
-            {
-              text: 'Crear Cuenta',
-              onPress: () => {
-                // Switch to sign up mode
-                setIsSignUp(true);
-              }
+              text: 'Entendido',
+              style: 'default'
             }
           ]
         );
@@ -192,103 +182,6 @@ const LoginScreen = () => {
     }
   };
 
-  const handleRegister = async () => {
-    // Clear previous errors
-    setEmailError(null);
-    setPasswordError(null);
-    setShowForgotPassword(false);
-
-    // Validate email
-    if (!email.trim()) {
-      setEmailError('Por favor ingresa tu correo electrónico');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setEmailError('Correo no válido');
-      return;
-    }
-
-    // Validate password
-    if (!password.trim()) {
-      setPasswordError('Por favor ingresa tu contraseña');
-      return;
-    }
-
-    if (!validatePassword(password)) {
-      setPasswordError('La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-
-    // Validate terms acceptance
-    if (!acceptTerms) {
-      Alert.alert('Términos y Condiciones', 'Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      logger.log('Attempting to create user with:', email);
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      logger.log('Firebase user created successfully:', user.uid);
-      
-      // Set initial displayName in Firebase Auth (using email prefix)
-      const initialDisplayName = email.split('@')[0];
-      try {
-        await updateProfile(user, {
-          displayName: initialDisplayName
-        });
-        // Reload user to trigger onAuthStateChanged with updated displayName
-        await user.reload();
-        logger.log('Firebase Auth displayName set to:', initialDisplayName);
-      } catch (profileError) {
-        logger.warn('Failed to set displayName in Firebase Auth:', profileError);
-        // Continue anyway, not critical
-      }
-      
-      // Try to create user document in Firestore
-      try {
-        await createUserDocument(user.uid, {
-          email: user.email,
-          displayName: initialDisplayName,
-          lastLoginAt: new Date(),
-          profileCompleted: false,     // Show Registro (OnboardingScreen) first
-          onboardingCompleted: false,  // Then show questions flow
-        });
-        logger.log('User document created successfully');
-      } catch (docError) {
-        logger.warn('Failed to create user document, but user account was created:', docError);
-        // Don't show error to user since the account was created successfully
-        // The user can still use the app, and we can retry document creation later
-      }
-
-      // Auth state will handle navigation automatically
-      
-    } catch (error) {
-      logger.error('Registration error:', error);
-      
-      // Handle specific Firebase errors
-      let errorMessage = 'Ocurrió un error al crear la cuenta. Por favor intenta de nuevo.';
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'Ya existe una cuenta con este correo electrónico';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'La contraseña es muy débil. Usa al menos 6 caracteres';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Correo electrónico no válido';
-          break;
-      }
-      
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -299,7 +192,15 @@ const LoginScreen = () => {
         logger.log('Google sign-in successful:', result.user.uid);
         // Auth state will handle navigation automatically
       } else {
-        Alert.alert('Error', result.error || 'Error al iniciar sesión con Google');
+        // Check if it's a registration required error
+        if (result.error === 'REGISTRATION_REQUIRED') {
+          Alert.alert(
+            'Cuenta no encontrada',
+            'No encontramos una cuenta asociada con este correo de Google.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Google\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+          );
+        } else {
+          Alert.alert('Error', result.error || 'Error al iniciar sesión con Google');
+        }
       }
     } catch (error) {
       logger.error('Google Sign-In Error:', error);
@@ -318,7 +219,15 @@ const LoginScreen = () => {
         logger.log('Apple sign-in successful:', result.user.uid);
         // Auth state will handle navigation automatically
       } else {
-        Alert.alert('Error', result.error || 'Error al iniciar sesión con Apple');
+        // Check if it's a registration required error
+        if (result.error === 'REGISTRATION_REQUIRED') {
+          Alert.alert(
+            'Cuenta no encontrada',
+            'No encontramos una cuenta asociada con este correo de Apple.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Apple\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+          );
+        } else {
+          Alert.alert('Error', result.error || 'Error al iniciar sesión con Apple');
+        }
       }
     } catch (error) {
       logger.error('Apple Sign-In Error:', error);
@@ -385,7 +294,7 @@ const LoginScreen = () => {
 
           {/* Welcome Text */}
           <Text style={styles.welcomeText}>
-            {isSignUp ? "Crear Cuenta" : "Inicio"}
+            Inicio de Sesión
           </Text>
 
           {/* Email Input */}
@@ -410,70 +319,31 @@ const LoginScreen = () => {
             autoCorrect={false}
             error={passwordError}
             returnKeyType="done"
-            onSubmitEditing={isSignUp ? handleRegister : handleContinue}
+            onSubmitEditing={handleContinue}
           />
-
-        {/* Terms and Conditions Agreement - Only show during signup */}
-        {isSignUp && (
-          <View style={styles.termsContainer}>
-            <View style={styles.termsRow}>
-              <Switch
-                value={acceptTerms}
-                onValueChange={setAcceptTerms}
-                trackColor={{ false: '#333', true: 'rgba(191, 168, 77, 0.3)' }}
-                thumbColor={acceptTerms ? 'rgba(191, 168, 77, 1)' : '#f4f3f4'}
-                ios_backgroundColor="#333"
-                style={styles.termsSwitch}
-              />
-              <View style={styles.termsTextContainer}>
-                <Text style={styles.termsText}>
-                  Acepto la{' '}
-                  <Text 
-                    style={styles.termsLink}
-                    onPress={() => setIsLegalWebViewVisible(true)}
-                  >
-                    política de privacidad
-                  </Text>
-                  {' '}y{' '}
-                  <Text 
-                    style={styles.termsLink}
-                    onPress={() => setIsLegalWebViewVisible(true)}
-                  >
-                    términos y condiciones
-                  </Text>
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* Main Action Button */}
         <Button
-          title={isSignUp ? "Crear Cuenta" : "Iniciar Sesión"}
-          onPress={isSignUp ? handleRegister : handleContinue}
+          title="Iniciar Sesión"
+          onPress={handleContinue}
           loading={isLoading}
-          disabled={isLoading || (isSignUp && (!validateEmail(email) || !validatePassword(password) || !acceptTerms)) || (!isSignUp && (!validateEmail(email) || !validatePassword(password)))}
-          active={isSignUp ? (validateEmail(email) && validatePassword(password) && acceptTerms) : (validateEmail(email) && validatePassword(password))}
+          disabled={isLoading || !validateEmail(email) || !validatePassword(password)}
+          active={validateEmail(email) && validatePassword(password)}
         />
 
-        {/* Toggle between Sign In and Sign Up */}
-        <TouchableOpacity 
-          onPress={() => {
-            setIsSignUp(!isSignUp);
-            setEmailError(null);
-            setPasswordError(null);
-            setShowForgotPassword(false);
-            setAcceptTerms(false); // Reset terms acceptance when switching modes
-          }}
-          style={styles.toggleContainer}
-        >
-          <Text style={styles.toggleText}>
-            {isSignUp ? "¿Ya tienes cuenta? " : "¿No tienes cuenta? "}
-            <Text style={styles.toggleLink}>
-              {isSignUp ? "Iniciar Sesión" : "Crear Cuenta"}
-            </Text>
+        {/* Registration Message */}
+        <View style={styles.registrationMessageContainer}>
+          <Text style={styles.registrationMessageText}>
+            ¿No tienes cuenta?
           </Text>
-        </TouchableOpacity>
+          <Text style={styles.registrationSubtext}>
+            Crea tu cuenta en{' '}
+            <Text style={styles.registrationLink}>
+              www.wakelab.co
+            </Text>
+            {' '}y luego inicia sesión aquí para acceder a tus programas de entrenamiento.
+          </Text>
+        </View>
 
         {/* Forgot Password Link - Only show when authentication fails */}
         {showForgotPassword && (
@@ -597,39 +467,34 @@ const styles = StyleSheet.create({
     color: '#cccccc',
     textAlign: 'center',
   },
-  toggleLink: {
-    color: 'rgba(191, 168, 77, 0.72)',
-    fontWeight: '500',
+  registrationMessageContainer: {
+    marginTop: 20,
+    marginBottom: 24,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(191, 168, 77, 0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 77, 0.2)',
   },
-  termsContainer: {
-    width: '100%',
-    marginBottom: 20,
-    marginTop: 10,
+  registrationMessageText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-  },
-  termsSwitch: {
-    marginRight: 12,
-    marginTop: 2,
-  },
-  termsText: {
-    flex: 1,
+  registrationSubtext: {
     fontSize: 13,
     fontWeight: '400',
     color: '#cccccc',
+    textAlign: 'center',
     lineHeight: 18,
   },
-  termsTextContainer: {
-    flex: 1,
-    flexShrink: 1,
-  },
-  termsLink: {
-    color: 'rgba(191, 168, 77, 0.72)',
-    fontWeight: '500',
-    textDecorationLine: 'underline',
+  registrationLink: {
+    color: 'rgba(191, 168, 77, 0.9)',
+    fontWeight: '600',
   },
   expoGoMessage: {
     marginTop: 20,

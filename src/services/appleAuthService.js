@@ -2,7 +2,6 @@
 // Expo-compatible Apple Sign-In with Firebase Web SDK
 import { OAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import { createUserDocument } from './firestoreService';
 import firestoreService from './firestoreService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -212,7 +211,21 @@ class AppleAuthService {
       
       logger.log('Apple sign-in successful:', firebaseUser.uid);
       
-      // Create or update user document in Firestore
+      // Check if user exists in Firestore before allowing access
+      const existingUser = await firestoreService.getUser(firebaseUser.uid);
+      
+      if (!existingUser) {
+        // User doesn't exist - sign them out and show message
+        await auth.signOut();
+        logger.log('New user attempted sign-in, redirecting to website');
+        return {
+          success: false,
+          error: 'REGISTRATION_REQUIRED',
+          message: 'No encontramos una cuenta asociada con este correo de Apple.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Apple\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+        };
+      }
+      
+      // User exists - update user document in Firestore
       await this.createOrUpdateUserDocument(firebaseUser);
       
       return { 
@@ -355,7 +368,7 @@ class AppleAuthService {
     }
   }
 
-  // Create or update user document in Firestore
+  // Update user document in Firestore (only for existing users)
   async createOrUpdateUserDocument(firebaseUser) {
     try {
       // Prepare user data from Firebase
@@ -378,20 +391,15 @@ class AppleAuthService {
         });
         logger.log('Updated existing user document');
       } else {
-        // New user - create with onboarding required
-        const newUserData = {
-          ...userData,
-          onboardingCompleted: false, // New users need to complete onboarding
-        };
-        
-        await createUserDocument(firebaseUser.uid, newUserData);
-        logger.log('Created new user document');
+        // This should not happen as we check before calling this function
+        // But if it does, log a warning
+        logger.warn('Attempted to update user document for non-existent user');
       }
       
     } catch (error) {
-      logger.error('Error creating/updating user document:', error);
+      logger.error('Error updating user document:', error);
       // Don't throw error - authentication was successful
-      // User document creation can be retried later
+      // User document update can be retried later
     }
   }
 
