@@ -66,9 +66,9 @@ class LibraryService {
   getExerciseCount(libraryData) {
     if (!libraryData) return 0;
     
-    // Count all fields minus the metadata fields: created_at, creator_id, creator_name, title, updated_at, id
+    // Count all fields minus the metadata fields: created_at, creator_id, creator_name, title, updated_at, id, icon_url
     // The 'id' field is added when we fetch the document, so we exclude it too
-    const metadataFields = ['created_at', 'creator_id', 'creator_name', 'title', 'updated_at', 'id'];
+    const metadataFields = ['created_at', 'creator_id', 'creator_name', 'title', 'updated_at', 'id', 'icon_url', 'icon'];
     const allFields = Object.keys(libraryData);
     const exerciseFields = allFields.filter(
       key => !metadataFields.includes(key)
@@ -111,11 +111,90 @@ class LibraryService {
     }
   }
 
+  // Upload library icon
+  async uploadLibraryIcon(libraryId, imageFile, onProgress = null) {
+    try {
+      // Validate file type
+      if (!imageFile.type.startsWith('image/')) {
+        throw new Error('El archivo debe ser una imagen');
+      }
+
+      // Validate file size (e.g., max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (imageFile.size > maxSize) {
+        throw new Error('El archivo es demasiado grande. El tamaño máximo es 5MB');
+      }
+
+      // Sanitize library ID for storage path
+      const sanitizedLibraryId = libraryId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      
+      // Get file extension
+      const fileExtension = imageFile.name.split('.').pop() || 'jpg';
+      
+      // Create storage reference: exercises_library/{libraryId}/icon.{ext}
+      const fileName = `icon.${fileExtension}`;
+      const storagePath = `exercises_library/${sanitizedLibraryId}/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+
+      // Upload file with progress tracking
+      const uploadTask = uploadBytesResumable(storageRef, imageFile);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            if (onProgress) {
+              onProgress(progress);
+            }
+          },
+          (error) => {
+            console.error('Error uploading library icon:', error);
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              // Update the library document with the icon URL
+              const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
+              await updateDoc(libraryDocRef, {
+                icon_url: downloadURL,
+                updated_at: serverTimestamp()
+              });
+
+              resolve(downloadURL);
+            } catch (error) {
+              reject(error);
+            }
+          }
+        );
+      });
+    } catch (error) {
+      console.error('Error uploading library icon:', error);
+      throw error;
+    }
+  }
+
+  // Update library (for updating title, etc.)
+  async updateLibrary(libraryId, updates) {
+    try {
+      const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
+      await updateDoc(libraryDocRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating library:', error);
+      throw error;
+    }
+  }
+
   // Get exercises from a library document
   getExercisesFromLibrary(libraryData) {
     if (!libraryData) return [];
     
-    const metadataFields = ['created_at', 'creator_id', 'creator_name', 'title', 'updated_at', 'id'];
+    const metadataFields = ['created_at', 'creator_id', 'creator_name', 'title', 'updated_at', 'id', 'icon_url', 'icon'];
     const exercises = [];
     
     Object.keys(libraryData).forEach(key => {

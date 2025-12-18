@@ -2,8 +2,9 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
-import LibrariesScreen from './screens/LibrariesScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
+import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
+import LibraryModuleDetailScreen from './screens/LibraryModuleDetailScreen';
 import ProgramsScreen from './screens/ProgramsScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
 import LibraryContentScreen from './screens/LibraryContentScreen';
@@ -68,6 +69,22 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <LibraryExercisesScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/content/sessions/:sessionId" 
+              element={
+                <ProtectedRoute>
+                  <LibrarySessionDetailScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/content/modules/:moduleId" 
+              element={
+                <ProtectedRoute>
+                  <LibraryModuleDetailScreen />
                 </ProtectedRoute>
               } 
             />

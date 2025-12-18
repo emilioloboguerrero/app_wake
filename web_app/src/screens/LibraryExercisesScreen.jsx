@@ -9,6 +9,7 @@ import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import libraryService from '../services/libraryService';
 import { firestore } from '../config/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { LIBRARY_ICONS, getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
   pecs: 'Pectorales',
@@ -183,7 +184,6 @@ const EXERCISE_PRESETS = {
     }
   }
 };
-import './LibraryExercisesScreen.css';
 
 const LibraryExercisesScreen = () => {
   const { libraryId } = useParams();
@@ -219,6 +219,7 @@ const LibraryExercisesScreen = () => {
   const [muscleLabelsScrollProgress, setMuscleLabelsScrollProgress] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
   const [selectedImplements, setSelectedImplements] = useState(new Set());
   const [isImplementsEditMode, setIsImplementsEditMode] = useState(false);
+  const [isIconSelectorModalOpen, setIsIconSelectorModalOpen] = useState(false);
   const muscleLabelsContainerRef = useRef(null);
 
   useEffect(() => {
@@ -967,6 +968,89 @@ const LibraryExercisesScreen = () => {
     });
   };
 
+  // Exercise and wellness SVG icons
+  const LIBRARY_ICONS = [
+    // Strength Training
+    { id: 'dumbbell', name: 'Mancuernas', path: 'M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.86 2.71 4.29l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29l-1.43-1.43z' },
+    { id: 'barbell', name: 'Barra', path: 'M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.86 2.71 4.29l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29l-1.43-1.43z' },
+    { id: 'weight', name: 'Peso', path: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+    
+    // Cardio
+    { id: 'running', name: 'Correr', path: 'M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z' },
+    { id: 'bike', name: 'Bicicleta', path: 'M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm11.5-7C13.7 13.5 12 15.2 12 17.5s1.7 4 3.5 4 3.5-1.7 3.5-4-1.7-3.5-3.5-3.5zm0 5.5c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zM10.2 5.5l2.8 3-1.4 1.4-5.5-5.9L7 3.5l3.2 2z' },
+    { id: 'swim', name: 'Natación', path: 'M22 15c0-1.66-1.34-3-3-3s-3 1.34-3 3 1.34 3 3 3 3-1.34 3-3zm-5.3-3.7c1.2 0 2.1-.9 2.1-2.1s-.9-2.1-2.1-2.1-2.1.9-2.1 2.1.9 2.1 2.1 2.1zm-4.9-2c1.2 0 2.1-.9 2.1-2.1s-.9-2.1-2.1-2.1-2.1.9-2.1 2.1.9 2.1 2.1 2.1zm-4.9-2c1.2 0 2.1-.9 2.1-2.1s-.9-2.1-2.1-2.1-2.1.9-2.1 2.1.9 2.1 2.1 2.1zM22 7c0-1.66-1.34-3-3-3s-3 1.34-3 3 1.34 3 3 3 3-1.34 3-3z' },
+    
+    // Yoga/Wellness
+    { id: 'yoga', name: 'Yoga', path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' },
+    { id: 'meditation', name: 'Meditación', path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z' },
+    { id: 'heart', name: 'Bienestar', path: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' },
+    
+    // Sports
+    { id: 'basketball', name: 'Baloncesto', path: 'M17.09 11l2.5-2.5c.39-.39.39-1.02 0-1.41l-3.18-3.18c-.39-.39-1.02-.39-1.41 0L12 8.09 8.5 5.59c-.39-.39-1.02-.39-1.41 0L3.91 8.77c-.39.39-.39 1.02 0 1.41L6.41 12l-2.5 2.5c-.39.39-.39 1.02 0 1.41l3.18 3.18c.39.39 1.02.39 1.41 0L12 15.91l3.5 2.5c.39.39 1.02.39 1.41 0l3.18-3.18c.39-.39.39-1.02 0-1.41L17.09 11z' },
+    { id: 'soccer', name: 'Fútbol', path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z' },
+    { id: 'tennis', name: 'Tenis', path: 'M19.5 8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3zm-16 0c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3zm2 3c0 .55-.45 1-1 1s-1-.45-1-1 .45-1 1-1 1 .45 1 1zm14 0c0 .55-.45 1-1 1s-1-.45-1-1 .45-1 1-1 1 .45 1 1zM12 5.5c1.38 0 2.5 1.12 2.5 2.5 0 .84-.41 1.58-1.04 2.03L13 11h-2l-.46-1.03C9.91 9.58 9.5 8.84 9.5 8c0-1.38 1.12-2.5 2.5-2.5zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z' },
+    { id: 'boxing', name: 'Boxeo', path: 'M14.5 2.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S12.17 1 13 1s1.5.67 1.5 1.5zM12 4.5c-1.38 0-2.5-1.12-2.5-2.5S10.62-.5 12-.5s2.5 1.12 2.5 2.5S13.38 4.5 12 4.5zm0 2c-1.38 0-2.5-1.12-2.5-2.5S10.62 1.5 12 1.5s2.5 1.12 2.5 2.5S13.38 6.5 12 6.5z' },
+    
+    // Body Parts
+    { id: 'arms', name: 'Brazos', path: 'M9 11.24V7.5a2.5 2.5 0 0 1 5 0v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.03-.24-.03-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.44 1.06.44h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.02-.14.02-.2 0-.62-.38-1.16-.91-1.38z' },
+    { id: 'legs', name: 'Piernas', path: 'M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7.01 5 5 7.01 5 9.5S7.01 14 9.5 14 14 11.99 14 9.5 11.99 5 9.5 5z' },
+    { id: 'core', name: 'Core', path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z' },
+    
+    // Equipment
+    { id: 'kettlebell', name: 'Pesa Rusa', path: 'M16 2c-1.1 0-2 .9-2 2v1.17c1.85.47 3.35 1.95 3.83 3.83H20c0-2.21-1.79-4-4-4zM4.27 5C4.1 5.32 4 5.65 4 6c0 1.1.9 2 2 2h.09C6.24 7.93 6 8.42 6 9v11c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V9c0-.58-.24-1.07-.09-1.5H16c1.1 0 2-.9 2-2 0-.35-.1-.68-.27-1C17.34 4.68 16.8 4 16 4H8c-.8 0-1.34.68-1.73 1z' },
+    { id: 'resistance', name: 'Bandas', path: 'M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.86 2.71 4.29l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29l-1.43-1.43z' },
+    { id: 'machine', name: 'Máquina', path: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z' },
+    
+    // Health/Wellness
+    { id: 'pulse', name: 'Ritmo Cardíaco', path: 'M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z' },
+    { id: 'leaf', name: 'Naturaleza', path: 'M17 8C8 10 5.9 16.17 3.82 21.34l5.71.98c.5-1.5 1.67-3.97 3.29-6.15C14.14 14.81 16.07 12.5 19 12.5V8z' },
+    { id: 'fire', name: 'Intensidad', path: 'M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z' },
+    { id: 'star', name: 'Destacado', path: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z' },
+    { id: 'target', name: 'Objetivo', path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z' },
+    
+    // General
+    { id: 'trophy', name: 'Logro', path: 'M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 13.63 21 11.55 21 9V7c0-1.1-.9-2-2-2zM5 9V7h2v3.82C5.84 10.4 5 9.3 5 9zm14 0c0 1.3-.84 2.4-2 2.82V7h2v2z' },
+    { id: 'chart', name: 'Progreso', path: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z' },
+    { id: 'calendar', name: 'Programa', path: 'M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z' },
+  ];
+
+  const handleIconSelect = async (iconId) => {
+    if (!libraryId || !user || !library || library.creator_id !== user.uid) {
+      alert('Solo el creador de la biblioteca puede cambiar el ícono.');
+      return;
+    }
+
+    try {
+      await libraryService.updateLibrary(libraryId, { icon: iconId });
+      
+      // Update library state immediately
+      setLibrary(prev => ({
+        ...prev,
+        icon: iconId
+      }));
+      
+      setIsIconSelectorModalOpen(false);
+    } catch (err) {
+      console.error('Error updating icon:', err);
+      alert('Error al actualizar el ícono. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const getIconById = (iconId) => {
+    return LIBRARY_ICONS.find(icon => icon.id === iconId);
+  };
+
+  const renderIcon = (iconId, size = 24) => {
+    const icon = getIconById(iconId);
+    if (!icon) return null;
+    
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d={icon.path} fill="currentColor"/>
+      </svg>
+    );
+  };
+
   // Get all unique muscles from all exercises
   const allMuscles = useMemo(() => {
     const musclesSet = new Set();
@@ -1032,11 +1116,19 @@ const LibraryExercisesScreen = () => {
     );
   }
 
+  const currentIcon = library?.icon ? getIconById(library.icon) : null;
+
   return (
     <DashboardLayout 
       screenName={library.title}
       showBackButton={true}
       backPath="/content"
+      headerIcon={currentIcon ? (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d={currentIcon.path} fill="currentColor"/>
+        </svg>
+      ) : null}
+      onHeaderEditClick={() => setIsIconSelectorModalOpen(true)}
     >
       <div className="library-exercises-content">
         <div className="library-exercises-legend">
@@ -1759,6 +1851,36 @@ const LibraryExercisesScreen = () => {
               onClick={handleCreateExercise}
               disabled={!newExerciseName.trim() || isCreatingExercise}
               loading={isCreatingExercise}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Icon Selector Modal */}
+      <Modal
+        isOpen={isIconSelectorModalOpen}
+        onClose={() => setIsIconSelectorModalOpen(false)}
+        title="Seleccionar Ícono"
+      >
+        <div className="icon-selector-modal-content">
+          <div className="icon-selector-grid">
+            {LIBRARY_ICONS.map((icon) => (
+              <button
+                key={icon.id}
+                className={`icon-selector-item ${(library?.icon === icon.id) ? 'icon-selector-item-selected' : ''}`}
+                onClick={() => handleIconSelect(icon.id)}
+                title={icon.name}
+              >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d={icon.path} fill="currentColor"/>
+                </svg>
+              </button>
+            ))}
+          </div>
+          <div className="icon-selector-actions">
+            <Button
+              title="Cerrar"
+              onClick={() => setIsIconSelectorModalOpen(false)}
             />
           </div>
         </div>

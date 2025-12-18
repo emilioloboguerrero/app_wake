@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './StickyHeader.css';
 
-const StickyHeader = ({ screenName, showBackButton = false, backPath = null, backgroundImage = null, onEditClick = null, onBack = null, purchaseButton = null, showMenuButton = false, onMenuClick = null }) => {
+const StickyHeader = ({ screenName, showBackButton = false, backPath = null, backgroundImage = null, onEditClick = null, onBack = null, purchaseButton = null, showMenuButton = false, onMenuClick = null, icon = null }) => {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const headerRef = useRef(null);
@@ -250,6 +250,9 @@ const StickyHeader = ({ screenName, showBackButton = false, backPath = null, bac
           className="sticky-header-logo"
         />
         <div className="sticky-header-title-container">
+          {icon && (
+            <div className="sticky-header-icon">{icon}</div>
+          )}
           <h2 className="sticky-header-title">{screenName}</h2>
           {onEditClick && (
             <button

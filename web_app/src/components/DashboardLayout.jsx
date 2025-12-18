@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import './DashboardLayout.css';
 
-const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null }) => {
+const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, headerIcon = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -175,6 +175,7 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
           onBack={onBack}
           onMenuClick={isMobile ? toggleSidebar : undefined}
           showMenuButton={isMobile}
+          icon={headerIcon}
         />
         {children}
       </main>

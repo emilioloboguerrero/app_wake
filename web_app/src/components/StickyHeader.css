@@ -153,6 +153,32 @@
   flex: 1;
 }
 
+.sticky-header-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sticky-header-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sticky-header-with-image .sticky-header-icon {
+  width: 32px;
+  height: 32px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sticky-header-with-image.sticky-header-scrolled .sticky-header-icon {
+  width: 24px;
+  height: 24px;
+}
+
 .sticky-header-title {
   font-size: 2.5rem;
   font-weight: 600;
@@ -363,6 +389,21 @@
 
   .sticky-header-with-image.sticky-header-scrolled .sticky-header-title {
     font-size: 1.125rem;
+  }
+
+  .sticky-header-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sticky-header-with-image .sticky-header-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sticky-header-with-image.sticky-header-scrolled .sticky-header-icon {
+    width: 20px;
+    height: 20px;
   }
 
   .sticky-header-purchase-button-container .course-detail-purchase-button {
