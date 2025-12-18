@@ -6,8 +6,12 @@ import CalendarView from '../components/CalendarView';
 import SessionAssignmentModal from '../components/SessionAssignmentModal';
 import SessionCreationModal from '../components/SessionCreationModal';
 import PlanningSidebar from '../components/PlanningSidebar';
+import PlansSidebar from '../components/PlansSidebar';
+import plansService from '../services/plansService';
 import oneOnOneService from '../services/oneOnOneService';
 import clientSessionService from '../services/clientSessionService';
+import clientProgramService from '../services/clientProgramService';
+import programService from '../services/programService';
 import './ClientProgramScreen.css';
 
 const TAB_CONFIG = [
@@ -28,10 +32,12 @@ const ClientProgramScreen = () => {
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [isSessionCreationModalOpen, setIsSessionCreationModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
-  const [selectedProgramId, setSelectedProgramId] = useState(null);
+  const [selectedProgramId, setSelectedProgramId] = useState(null); // Selected program (container/bin)
   const [assignedPrograms, setAssignedPrograms] = useState([]);
   const [plannedSessions, setPlannedSessions] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [planAssignments, setPlanAssignments] = useState({}); // Object mapping week keys to plan assignments
+  const [isLoadingPlanAssignments, setIsLoadingPlanAssignments] = useState(false);
 
   useEffect(() => {
     const loadClient = async () => {
@@ -90,6 +96,7 @@ const ClientProgramScreen = () => {
     }
   }, [clientId, currentDate]);
 
+
   // Create program colors map for calendar
   const programColors = useMemo(() => {
     const colors = {};
@@ -115,9 +122,11 @@ const ClientProgramScreen = () => {
 
   const handleSessionAssigned = async (sessionData) => {
     try {
+      // sessionData should include planId
       await clientSessionService.assignSessionToDate(
         clientId,
         sessionData.programId,
+        sessionData.planId, // NEW: plan ID is required
         sessionData.sessionId,
         sessionData.date,
         sessionData.moduleId
@@ -141,6 +150,73 @@ const ClientProgramScreen = () => {
     setIsSessionAssignmentModalOpen(true);
   };
 
+  const handlePlanAssignment = async (planId, weekKey, day) => {
+    if (!client?.clientUserId || !selectedProgramId || !planId || !weekKey) {
+      alert('Por favor, selecciona un programa primero');
+      return;
+    }
+
+    try {
+      // Ensure program is assigned to client
+      const clientProgram = await clientProgramService.getClientProgram(selectedProgramId, client.clientUserId);
+      if (!clientProgram) {
+        await clientProgramService.assignProgramToClient(selectedProgramId, client.clientUserId);
+        // Reload programs
+        const allPrograms = await programService.getProgramsByCreator(user.uid);
+        const oneOnOnePrograms = allPrograms.filter(
+          (p) => (p.deliveryType || 'low_ticket') === 'one_on_one'
+        );
+        const programsWithStatus = await Promise.all(
+          oneOnOnePrograms.map(async (program) => {
+            try {
+              const cp = await clientProgramService.getClientProgram(program.id, client.clientUserId);
+              return {
+                ...program,
+                isAssigned: !!cp,
+                clientProgramId: cp?.id
+              };
+            } catch (error) {
+              return {
+                ...program,
+                isAssigned: false
+              };
+            }
+          })
+        );
+        setAssignedPrograms(programsWithStatus);
+      }
+
+      // Determine which module index to assign (for now, assign module 0)
+      const moduleIndex = 0;
+      
+      // Assign plan to week in the context of the selected program
+      await clientProgramService.assignPlanToWeek(
+        selectedProgramId,
+        client.clientUserId,
+        planId,
+        weekKey,
+        moduleIndex
+      );
+
+      // Reload plan assignments to reflect the change
+      const assignments = await clientProgramService.getPlanAssignments(
+        selectedProgramId,
+        client.clientUserId
+      );
+      
+      setPlanAssignments(assignments || {});
+
+      console.log('✅ Plan assigned to week:', { programId: selectedProgramId, planId, weekKey, moduleIndex });
+    } catch (error) {
+      console.error('Error assigning plan to week:', error);
+      alert(`Error al asignar el plan a la semana: ${error.message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleProgramSelect = (programId) => {
+    setSelectedProgramId(programId);
+  };
+
   const renderTabContent = () => {
     const currentTab = TAB_CONFIG[currentTabIndex];
     
@@ -154,19 +230,34 @@ const ClientProgramScreen = () => {
       case 'planificacion':
         return (
           <div className="client-program-tab-content client-program-planning-content">
-            <PlanningSidebar
-              clientId={client?.clientUserId}
-              creatorId={user?.uid}
-              selectedProgramId={selectedProgramId}
-              onProgramSelect={setSelectedProgramId}
-              onProgramsChange={setAssignedPrograms}
-            />
+            <div className="client-program-planning-sidebars">
+              <PlanningSidebar
+                clientId={client?.clientUserId}
+                creatorId={user?.uid}
+                selectedProgramId={selectedProgramId}
+                onProgramSelect={handleProgramSelect}
+                onProgramsChange={setAssignedPrograms}
+              />
+              {selectedProgramId && (
+                <PlansSidebar
+                  creatorId={user?.uid}
+                  selectedPlanId={null}
+                  onPlanSelect={(planId) => {
+                    // Could allow selecting a plan to see details
+                    console.log('Plan selected:', planId);
+                  }}
+                />
+              )}
+            </div>
             <div className="client-program-planning-main">
               <CalendarView 
                 onDateSelect={handleDateSelect}
                 plannedSessions={plannedSessions}
                 programColors={programColors}
                 onMonthChange={setCurrentDate}
+                planAssignments={planAssignments}
+                onPlanAssignment={handlePlanAssignment}
+                assignedPrograms={assignedPrograms}
               />
               <SessionAssignmentModal
                 isOpen={isSessionAssignmentModalOpen}

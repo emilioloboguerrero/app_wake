@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
 import './CalendarView.css';
 
 const MONTHS = [
@@ -18,10 +19,20 @@ const PROGRAM_COLORS = [
   'rgba(255, 140, 0, 0.6)',    // Dark orange
 ];
 
-const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, onMonthChange }) => {
+const CalendarView = ({ 
+  onDateSelect, 
+  plannedSessions = [], 
+  programColors = {}, 
+  onMonthChange,
+  planAssignments = {}, // Object mapping week keys to plan assignments: { [weekKey]: { planId, moduleIndex, ... } }
+  onPlanAssignment, // Callback when a plan is assigned to a week: (planId, weekKey, day)
+  assignedPrograms = [] // List of assigned programs for display
+}) => {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
+  const [draggedOverDay, setDraggedOverDay] = useState(null);
+  const [selectedDayInfo, setSelectedDayInfo] = useState(null);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -77,6 +88,23 @@ const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, 
     if (day === null) return;
     const date = new Date(currentYear, currentMonth, day);
     setSelectedDate(date);
+    
+    // Collect information for this day
+    const daySessions = getSessionsForDay(day);
+    const planAssignmentsForDay = getPlanAssignmentsForDay(day);
+    const weekKey = getWeekKeyForDay(day);
+    
+    const dayInfo = {
+      date,
+      day,
+      weekKey,
+      sessions: daySessions,
+      planAssignments: planAssignmentsForDay,
+      hasContent: daySessions.length > 0 || planAssignmentsForDay.length > 0
+    };
+    
+    setSelectedDayInfo(dayInfo);
+    
     if (onDateSelect) {
       onDateSelect(date);
     }
@@ -154,6 +182,100 @@ const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, 
     return PROGRAM_COLORS[hash % PROGRAM_COLORS.length];
   };
 
+  // Get week key for a specific day
+  const getWeekKeyForDay = (day) => {
+    if (day === null) return null;
+    const date = new Date(currentYear, currentMonth, day);
+    return getMondayWeek(date);
+  };
+
+  // Get plan assignments for a specific day
+  const getPlanAssignmentsForDay = (day) => {
+    if (day === null) return [];
+    const weekKey = getWeekKeyForDay(day);
+    if (!weekKey) return [];
+    const assignment = planAssignments[weekKey];
+    
+    if (!assignment || !assignment.planId) return [];
+    
+    // Return single assignment (one plan per week)
+    return [{
+      planId: assignment.planId,
+      moduleIndex: assignment.moduleIndex || 0,
+      assignedAt: assignment.assignedAt
+    }];
+  };
+
+  // Check if a week has any sessions or assignments
+  const weekHasContent = useMemo(() => {
+    const weekMap = {};
+    
+    // Check sessions by week
+    plannedSessions.forEach(session => {
+      let dateStr = session.date;
+      if (!dateStr && session.date_timestamp) {
+        const timestamp = session.date_timestamp;
+        const dateObj = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+        dateStr = formatDateForStorage(dateObj);
+      }
+      if (dateStr) {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        const weekKey = getMondayWeek(date);
+        weekMap[weekKey] = true;
+      }
+    });
+
+    // Check plan assignments
+    Object.keys(planAssignments).forEach(weekKey => {
+      const assignment = planAssignments[weekKey];
+      if (assignment && assignment.planId) {
+        weekMap[weekKey] = true;
+      }
+    });
+
+    return weekMap;
+  }, [plannedSessions, planAssignments]);
+
+  // Handle drag over
+  const handleDragOver = (e, day) => {
+    if (day === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDraggedOverDay(day);
+  };
+
+  // Handle drag leave
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setDraggedOverDay(null);
+  };
+
+  // Handle drop
+  const handleDrop = (e, day) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggedOverDay(null);
+    
+    if (day === null) return;
+
+    try {
+      const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
+      const { planId, type } = dragData;
+      
+      if (!planId || type !== 'plan') return;
+
+      const date = new Date(currentYear, currentMonth, day);
+      const weekKey = getMondayWeek(date);
+      
+      if (onPlanAssignment) {
+        onPlanAssignment(planId, weekKey, day);
+      }
+    } catch (error) {
+      console.error('Error handling drop:', error);
+    }
+  };
+
   // Generate month-year options (current year ± 2 years)
   const currentYearValue = new Date().getFullYear();
   const monthYearOptions = [];
@@ -225,23 +347,46 @@ const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, 
           {calendarDays.map((day, index) => {
             const daySessions = getSessionsForDay(day);
             const hasSessions = daySessions.length > 0;
+            const dayPlanAssignments = getPlanAssignmentsForDay(day);
+            const hasPlanAssignments = dayPlanAssignments.length > 0;
+            const isDraggedOver = draggedOverDay === day;
+            const weekKey = getWeekKeyForDay(day);
+            const hasWeekContent = weekKey ? weekHasContent[weekKey] : false;
             
-            // Get primary session color (first session's program color)
-            const primaryColor = hasSessions ? getProgramColor(daySessions[0].program_id) : null;
+            // Get primary session color (first session's program color) or week assignment color
+            let primaryColor = null;
+            if (hasSessions) {
+              primaryColor = getProgramColor(daySessions[0].program_id);
+            } else if (hasPlanAssignments) {
+              // For plan assignments, use a default color (could load plan data to get custom color)
+              primaryColor = programColors[dayPlanAssignments[0].planId] || 'rgba(107, 142, 35, 0.6)';
+            }
             
             return (
               <button
                 key={index}
-                className={`calendar-day ${day === null ? 'calendar-day-empty' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${isSelected(day) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''}`}
+                className={`calendar-day ${day === null ? 'calendar-day-empty' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${isSelected(day) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''} ${hasPlanAssignments ? 'calendar-day-has-plan-assignment' : ''} ${isDraggedOver ? 'calendar-day-drag-over' : ''} ${hasWeekContent ? 'calendar-day-has-week-content' : ''}`}
                 onClick={() => handleDateClick(day)}
+                onDragOver={(e) => handleDragOver(e, day)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, day)}
                 disabled={day === null}
-                style={hasSessions && primaryColor ? {
-                  backgroundColor: primaryColor,
+                style={primaryColor ? {
+                  backgroundColor: hasPlanAssignments && !hasSessions ? `${primaryColor}80` : primaryColor,
                   borderColor: primaryColor
                 } : {}}
-                title={hasSessions ? `${daySessions.length} sesión${daySessions.length > 1 ? 'es' : ''} planificada${daySessions.length > 1 ? 's' : ''}` : ''}
               >
                 <span className="calendar-day-number">{day}</span>
+                
+                {/* Week tag indicator */}
+                {hasWeekContent && (
+                  <div className="calendar-day-tag">
+                    <span className="calendar-day-tag-text">
+                      {hasSessions ? 'Sesión' : hasPlanAssignments ? 'Plan' : 'Planificado'}
+                    </span>
+                  </div>
+                )}
+                
                 {hasSessions && (
                   <div className="calendar-day-session-indicator">
                     {daySessions.length > 1 && (
@@ -258,11 +403,115 @@ const CalendarView = ({ onDateSelect, plannedSessions = [], programColors = {}, 
                     </div>
                   </div>
                 )}
+                {hasPlanAssignments && !hasSessions && (
+                  <div className="calendar-day-plan-assignment-indicator">
+                    {dayPlanAssignments.map((assignment, idx) => (
+                      <div
+                        key={idx}
+                        className="calendar-day-plan-assignment-dot"
+                        style={{ backgroundColor: primaryColor || 'rgba(107, 142, 35, 0.6)' }}
+                        title="Plan asignado"
+                      />
+                    ))}
+                  </div>
+                )}
               </button>
             );
           })}
         </div>
       </div>
+
+      {/* Legend */}
+      <div className="calendar-legend">
+        <div className="calendar-legend-title">Leyenda</div>
+        <div className="calendar-legend-items">
+          <div className="calendar-legend-item">
+            <div className="calendar-legend-badge calendar-legend-badge-session">
+              <span className="calendar-legend-badge-text">Sesión</span>
+            </div>
+            <span className="calendar-legend-label">Día con sesión planificada</span>
+          </div>
+          <div className="calendar-legend-item">
+            <div className="calendar-legend-badge calendar-legend-badge-program">
+              <span className="calendar-legend-badge-text">Plan</span>
+            </div>
+            <span className="calendar-legend-label">Semana con plan asignado</span>
+          </div>
+          <div className="calendar-legend-item">
+            <div className="calendar-legend-badge calendar-legend-badge-planned">
+              <span className="calendar-legend-badge-text">Planificado</span>
+            </div>
+            <span className="calendar-legend-label">Semana con contenido planificado</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Day Info Modal */}
+      {selectedDayInfo && selectedDayInfo.hasContent && (
+        <div className="calendar-day-info-overlay" onClick={() => setSelectedDayInfo(null)}>
+          <div className="calendar-day-info-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="calendar-day-info-header">
+              <h3 className="calendar-day-info-title">
+                {selectedDayInfo.date.toLocaleDateString('es-ES', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </h3>
+              <button 
+                className="calendar-day-info-close"
+                onClick={() => setSelectedDayInfo(null)}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div className="calendar-day-info-content">
+              {selectedDayInfo.sessions.length > 0 && (
+                <div className="calendar-day-info-section">
+                  <h4 className="calendar-day-info-section-title">Sesiones Planificadas</h4>
+                  <div className="calendar-day-info-list">
+                    {selectedDayInfo.sessions.map((session, idx) => (
+                      <div key={idx} className="calendar-day-info-item">
+                        <div className="calendar-day-info-item-color" style={{ backgroundColor: getProgramColor(session.program_id) }} />
+                        <div className="calendar-day-info-item-content">
+                          <div className="calendar-day-info-item-title">{session.session_name || session.title || 'Sesión'}</div>
+                          {session.program_name && (
+                            <div className="calendar-day-info-item-subtitle">{session.program_name}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedDayInfo.planAssignments && selectedDayInfo.planAssignments.length > 0 && (
+                <div className="calendar-day-info-section">
+                  <h4 className="calendar-day-info-section-title">Plan de la Semana</h4>
+                  <div className="calendar-day-info-list">
+                    {selectedDayInfo.planAssignments.map((assignment, idx) => (
+                      <div key={idx} className="calendar-day-info-item">
+                        <div className="calendar-day-info-item-color" style={{ backgroundColor: programColors[assignment.planId] || 'rgba(107, 142, 35, 0.6)' }} />
+                        <div className="calendar-day-info-item-content">
+                          <div className="calendar-day-info-item-title">Plan asignado</div>
+                          <div className="calendar-day-info-item-subtitle">Módulo {assignment.moduleIndex + 1}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedDayInfo.sessions.length === 0 && (!selectedDayInfo.planAssignments || selectedDayInfo.planAssignments.length === 0) && (
+                <div className="calendar-day-info-empty">
+                  <p>No hay contenido planificado para este día.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

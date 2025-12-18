@@ -147,7 +147,10 @@ const PlanningSidebar = ({
   return (
     <div className="planning-sidebar">
       <div className="planning-sidebar-header">
-        <h3 className="planning-sidebar-title">Programas</h3>
+        <div>
+          <h3 className="planning-sidebar-title">Programas</h3>
+          <p className="planning-sidebar-subtitle">Arrastra para asignar semanas</p>
+        </div>
         {isAssigning && (
           <span className="planning-sidebar-loading-indicator">...</span>
         )}
@@ -162,9 +165,23 @@ const PlanningSidebar = ({
               {assignedPrograms.map((program) => (
                 <div
                   key={program.id}
-                  className={`planning-sidebar-program-item ${
+                  className={`planning-sidebar-program-item planning-sidebar-program-item-draggable ${
                     selectedProgramId === program.id ? 'planning-sidebar-program-item-selected' : ''
                   }`}
+                  draggable={true}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                      programId: program.id,
+                      programTitle: program.title,
+                      programImageUrl: program.image_url,
+                      isAssigned: true
+                    }));
+                    e.currentTarget.classList.add('planning-sidebar-program-item-dragging');
+                  }}
+                  onDragEnd={(e) => {
+                    e.currentTarget.classList.remove('planning-sidebar-program-item-dragging');
+                  }}
                   onClick={() => handleProgramClick(program.id)}
                 >
                   <div className="planning-sidebar-program-content">
@@ -211,7 +228,21 @@ const PlanningSidebar = ({
               {unassignedPrograms.map((program) => (
                 <div
                   key={program.id}
-                  className="planning-sidebar-program-item planning-sidebar-program-item-unassigned"
+                  className="planning-sidebar-program-item planning-sidebar-program-item-unassigned planning-sidebar-program-item-draggable"
+                  draggable={true}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                      programId: program.id,
+                      programTitle: program.title,
+                      programImageUrl: program.image_url,
+                      isAssigned: false
+                    }));
+                    e.currentTarget.classList.add('planning-sidebar-program-item-dragging');
+                  }}
+                  onDragEnd={(e) => {
+                    e.currentTarget.classList.remove('planning-sidebar-program-item-dragging');
+                  }}
                 >
                   <div className="planning-sidebar-program-content">
                     {program.image_url ? (
@@ -231,14 +262,11 @@ const PlanningSidebar = ({
                       </span>
                     </div>
                   </div>
-                  <button
-                    className="planning-sidebar-program-assign-button"
-                    onClick={() => handleAssignProgram(program.id)}
-                    disabled={isAssigning}
-                    title="Asignar programa"
-                  >
-                    +
-                  </button>
+                  <div className="planning-sidebar-program-drag-hint">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 5L15 5M9 12L15 12M9 19L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
                 </div>
               ))}
             </div>

@@ -219,6 +219,35 @@ class FirestoreService {
       const isWeeklyProgram = courseData?.weekly === true;
       const creatorId = courseData?.creator_id;
       
+      // Load client program overrides if userId provided (needed for one-on-one week assignments)
+      let clientProgram = null;
+      let isOneOnOneProgram = false;
+      let weekAssignment = null;
+      
+      if (userId) {
+        try {
+          clientProgram = await this.getClientProgram(userId, courseId);
+          
+          // Check if this is a one-on-one program (check user.courses)
+          try {
+            const userDoc = await this.getUser(userId);
+            const userCourseData = userDoc?.courses?.[courseId];
+            isOneOnOneProgram = userCourseData?.deliveryType === 'one_on_one';
+            
+            // If one-on-one, check weekAssignments for current week
+            if (isOneOnOneProgram && clientProgram?.weekAssignments) {
+              const currentWeek = getMondayWeek();
+              weekAssignment = clientProgram.weekAssignments[currentWeek];
+              console.log('📅 One-on-one program - week assignment for', currentWeek, ':', weekAssignment);
+            }
+          } catch (error) {
+            console.warn('⚠️ Could not check if one-on-one program:', error);
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not load client program, continuing without overrides:', error);
+        }
+      }
+      
       let modulesQuery;
       
       if (isWeeklyProgram) {
@@ -243,25 +272,16 @@ class FirestoreService {
       const modulesSnapshot = await getDocs(modulesQuery);
       
       if (isWeeklyProgram && modulesSnapshot.empty) {
+        const currentWeek = getMondayWeek();
         console.warn('⚠️ No modules found for current week:', currentWeek);
         // Could return empty array or show message to user
-      }
-      
-      // Load client program overrides if userId provided
-      let clientProgram = null;
-      if (userId) {
-        try {
-          clientProgram = await this.getClientProgram(userId, courseId);
-        } catch (error) {
-          console.warn('⚠️ Could not load client program, continuing without overrides:', error);
-        }
       }
       
       // Import library resolution service dynamically to avoid circular dependencies
       const { default: libraryResolutionService } = await import('./libraryResolutionService');
       
       // OPTIMIZED: Fetch all modules in parallel instead of sequential
-      const modules = await Promise.all(
+      const allModules = await Promise.all(
         modulesSnapshot.docs.map(async (moduleDoc) => {
           const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
           const clientModuleOverrides = clientProgram?.modules?.[moduleDoc.id];
@@ -352,7 +372,7 @@ class FirestoreService {
                     exercisesSnapshot.docs.map(async (exerciseDoc) => {
                       const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
                       
-                      // Get sets for this exercise
+                        // Get sets for this exercise
                       try {
                         const setsQuery = query(
                           collection(firestore, 'courses', courseId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises', exerciseDoc.id, 'sets'),
@@ -395,7 +415,32 @@ class FirestoreService {
         })
       );
       
-      return modules;
+      // ✅ NEW: For one-on-one programs with week assignments, filter modules by moduleIndex
+      // Sort modules by order first
+      allModules.sort((a, b) => {
+        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+      
+      // If one-on-one program has week assignment, filter to only that module
+      if (isOneOnOneProgram && weekAssignment && weekAssignment.moduleIndex !== undefined) {
+        const targetModuleIndex = weekAssignment.moduleIndex;
+        console.log('📅 Filtering one-on-one program modules to index:', targetModuleIndex);
+        
+        // Filter to only the assigned module (by index in sorted array)
+        const filteredModules = allModules.filter((module, index) => index === targetModuleIndex);
+        
+        if (filteredModules.length === 0) {
+          console.warn('⚠️ No module found at index', targetModuleIndex, 'for week assignment. Total modules:', allModules.length);
+          return allModules; // Return all modules as fallback
+        } else {
+          console.log('✅ Filtered to module:', filteredModules[0].id, filteredModules[0].title || `Module ${targetModuleIndex}`);
+          return filteredModules;
+        }
+      }
+      
+      return allModules;
     } catch (error) {
       console.error('Error in getCourseModules:', error);
       throw error;

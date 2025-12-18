@@ -20,16 +20,17 @@ class ClientSessionService {
    * Assign a session to a specific date for a client
    * 
    * @param {string} clientId - Client user ID
-   * @param {string} programId - Program ID
+   * @param {string} programId - Program ID (the container/bin)
+   * @param {string} planId - Plan ID (where the session content comes from)
    * @param {string} sessionId - Session ID
    * @param {Date} date - Date to assign session to
    * @param {string} moduleId - Optional module ID
    * @param {Object} metadata - Optional metadata (e.g., notes, customizations)
    * @returns {Promise<string>} Client session document ID
    */
-  async assignSessionToDate(clientId, programId, sessionId, date, moduleId = null, metadata = {}) {
+  async assignSessionToDate(clientId, programId, planId, sessionId, date, moduleId = null, metadata = {}) {
     try {
-      console.log('📅 Assigning session to date:', { clientId, programId, sessionId, date });
+      console.log('📅 Assigning session to date:', { clientId, programId, planId, sessionId, date });
       
       // Normalize date to YYYY-MM-DD format for consistent storage
       const dateStr = this.formatDateForStorage(date);
@@ -41,6 +42,7 @@ class ClientSessionService {
       const clientSessionData = {
         client_id: clientId,
         program_id: programId,
+        plan_id: planId, // NEW: Track which plan this session comes from
         session_id: sessionId,
         module_id: moduleId,
         date: dateStr,

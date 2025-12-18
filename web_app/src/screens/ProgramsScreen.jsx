@@ -31,10 +31,10 @@ const ProgramsScreen = () => {
   // General page fields
   const [discipline, setDiscipline] = useState('Fuerza - hipertrofia');
   const [programType, setProgramType] = useState('subscription'); // 'subscription' | 'one-time'
-  // NEW: delivery type – how the program is sold/used
-  // 'low_ticket' → general scalable programs
-  // 'one_on_one' → programs intended for 1:1 clients
-  const [deliveryType, setDeliveryType] = useState('low_ticket');
+                  // NEW: delivery type – how the program is sold/used
+                  // 'low_ticket' → general scalable programs (contains modules/sessions/exercises)
+                  // 'one_on_one' → programs are containers/bins for organizing clients (content is in Plans, not here)
+                  const [deliveryType, setDeliveryType] = useState('low_ticket');
   const [duration, setDuration] = useState(1); // Duration in weeks
   const [price, setPrice] = useState('');
   const [programImageFile, setProgramImageFile] = useState(null);

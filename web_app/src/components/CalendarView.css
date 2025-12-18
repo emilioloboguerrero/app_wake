@@ -209,3 +209,273 @@
   flex-shrink: 0;
 }
 
+.calendar-day-has-week-assignment {
+  border-width: 2px;
+}
+
+.calendar-day-drag-over {
+  background-color: rgba(191, 168, 77, 0.3) !important;
+  border-color: rgba(191, 168, 77, 0.8) !important;
+  transform: scale(1.05);
+}
+
+.calendar-day-plan-assignment-indicator,
+.calendar-day-week-assignment-indicator {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.calendar-day-plan-assignment-dot,
+.calendar-day-week-assignment-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.calendar-day-has-week-content {
+  position: relative;
+}
+
+.calendar-day-week-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  z-index: 1;
+}
+
+.calendar-day-week-tag-text {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  background-color: rgba(191, 168, 77, 0.9);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Legend */
+.calendar-legend {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.calendar-legend-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.calendar-legend-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0 8px;
+}
+
+.calendar-legend-badge-text {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.calendar-legend-badge-session {
+  background-color: rgba(70, 130, 180, 0.8);
+}
+
+.calendar-legend-badge-program {
+  background-color: rgba(191, 168, 77, 0.8);
+}
+
+.calendar-legend-badge-planned {
+  background-color: rgba(107, 142, 35, 0.8);
+}
+
+.calendar-legend-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Day Info Modal */
+.calendar-day-info-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.calendar-day-info-modal {
+  background-color: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.calendar-day-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.calendar-day-info-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  text-transform: capitalize;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-day-info-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.calendar-day-info-close:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+.calendar-day-info-content {
+  padding: 20px;
+}
+
+.calendar-day-info-section {
+  margin-bottom: 24px;
+}
+
+.calendar-day-info-section:last-child {
+  margin-bottom: 0;
+}
+
+.calendar-day-info-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 12px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-day-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-day-info-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.calendar-day-info-item-color {
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.calendar-day-info-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-day-info-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-day-info-item-subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-day-info-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Scrollbar for modal */
+.calendar-day-info-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.calendar-day-info-modal::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.calendar-day-info-modal::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.calendar-day-info-modal::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+

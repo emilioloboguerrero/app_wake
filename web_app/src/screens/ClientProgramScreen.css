@@ -109,6 +109,18 @@ body.header-scrolled .client-program-tab-bar {
   min-height: calc(100vh - 400px);
 }
 
+.client-program-planning-sidebars {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background-color: #1a1a1a;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-y: auto;
+}
+
 .client-program-planning-main {
   flex: 1;
   display: flex;
