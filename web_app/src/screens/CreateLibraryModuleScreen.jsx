@@ -27,8 +27,8 @@ const CreateLibraryModuleScreen = () => {
         sessionRefs: []
       });
       
-      // Navigate back to the previous page
-      navigate(-1);
+      // Navigate back to content hub
+      navigate('/content');
     } catch (err) {
       console.error('Error creating library module:', err);
       alert(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
@@ -42,7 +42,11 @@ const CreateLibraryModuleScreen = () => {
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      screenName="Nuevo Módulo"
+      showBackButton={true}
+      backPath="/content"
+    >
       <div style={{ 
         minHeight: '100vh', 
         backgroundColor: '#1a1a1a',

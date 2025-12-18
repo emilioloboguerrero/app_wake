@@ -17,6 +17,7 @@ body.header-scrolled .program-detail-container {
   top: 320px;
   z-index: 99;
   transition: top 0.3s ease-out;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body.header-scrolled .program-tab-bar {
@@ -28,69 +29,57 @@ body.header-scrolled .program-tab-bar {
   margin: 0 auto;
 }
 
-.program-tab-indicator-wrapper {
+.program-tabs {
   display: flex;
-  flex-direction: row;
-  position: relative;
-  align-items: center;
-  gap: 0;
+  gap: 12px;
+  padding-bottom: 0;
 }
 
-.program-tab-indicator {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 0;
-  width: 33.333%;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  pointer-events: none;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-sizing: border-box;
-  will-change: transform;
-}
-
-.program-tab-button {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 20px;
-  height: 32px;
-  min-width: 0;
-  border-radius: 999px;
+.program-tab {
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 20px;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  position: relative;
-  z-index: 1;
+  margin-bottom: -1px;
 }
 
-.program-tab-button:hover:not(.program-tab-button-active) {
-  background-color: rgba(255, 255, 255, 0.05);
+.program-tab:hover:not(.program-tab-disabled) {
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
-.program-tab-button-active {
-  background-color: transparent;
+.program-tab.active {
+  border-bottom-color: rgba(191, 168, 77, 1);
 }
 
-.program-tab-title-text {
+.program-tab-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.program-tab.active .program-tab-icon {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.program-tab-label {
   font-size: 14px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.6);
-  transition: all 0.2s ease;
 }
 
-.program-tab-button-active .program-tab-title-text {
-  color: rgba(255, 255, 255, 1);
+.program-tab.active .program-tab-label {
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
 }
 
-.program-tab-button-disabled {
+.program-tab-disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
@@ -192,6 +181,8 @@ body.header-scrolled .program-tab-bar {
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  padding: 32px;
+  box-sizing: border-box;
 }
 
 .program-tab-title {
@@ -227,23 +218,39 @@ body.header-scrolled .program-tab-bar {
 }
 
 .program-config-section:not(:first-child) {
-  margin-top: 48px;
+  margin-top: 40px;
+}
+
+.program-config-section-header {
+  margin-bottom: 20px;
 }
 
 .program-config-section-title {
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.9);
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.program-config-section-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 8px 0 0 0;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .program-config-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
+}
+
+.program-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
 }
 
 .program-config-card {
@@ -430,7 +437,79 @@ body.header-scrolled .program-tab-bar {
   text-transform: capitalize;
 }
 
-/* Pills Section */
+/* Config Items */
+.program-config-item {
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  transition: all 0.2s ease;
+}
+
+.program-config-item:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.program-config-item-clickable {
+  cursor: pointer;
+}
+
+.program-config-item-clickable:hover {
+  border-color: rgba(191, 168, 77, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.program-config-item-full {
+  grid-column: 1 / -1;
+}
+
+.program-config-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.program-config-item-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.program-config-item-header svg {
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.program-config-item-clickable:hover .program-config-item-header svg {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.program-config-item-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.program-config-item-content {
+  margin-top: 8px;
+}
+
+.program-config-item-draft .program-config-item-value {
+  color: rgba(255, 68, 68, 0.9);
+}
+
+.program-config-item-published .program-config-item-value {
+  color: rgba(76, 175, 80, 0.9);
+}
+
+/* Legacy Pills - kept for backward compatibility */
 .program-config-pills {
   display: flex;
   flex-direction: row;
@@ -2291,20 +2370,31 @@ body.header-scrolled .program-tab-bar {
 }
 
 .page-section-title {
-  font-size: 2rem;
+  font-size: 20px;
   font-weight: 600;
-  color: #ffffff;
-  margin: 0 0 24px 0;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
-.modules-actions {
+.exercises-header,
+.sessions-header,
+.modules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.modules-actions,
+.sessions-actions,
+.exercises-actions {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 12px;
-  margin-top: 24px;
-  margin-bottom: 32px;
 }
 
 .module-action-pill {
@@ -2359,8 +2449,7 @@ body.header-scrolled .program-tab-bar {
 .modules-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
-  margin-top: 24px;
+  gap: 20px;
 }
 
 .module-card {
@@ -2594,7 +2683,7 @@ body.header-scrolled .program-tab-bar {
 .sessions-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  gap: 20px;
 }
 
 .session-card {
@@ -2660,15 +2749,6 @@ body.header-scrolled .program-tab-bar {
   color: #cccccc;
   margin: 0;
   line-height: 1.5;
-}
-
-.sessions-actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-  margin-top: 24px;
-  margin-bottom: 32px;
 }
 
 .session-action-pill {
@@ -2866,7 +2946,6 @@ body.header-scrolled .program-tab-bar {
 /* Exercises Content */
 .exercises-content {
   width: 100%;
-  padding: 24px;
 }
 
 .exercises-loading,
@@ -2886,8 +2965,7 @@ body.header-scrolled .program-tab-bar {
 .exercises-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
-  margin-top: 24px;
+  gap: 20px;
 }
 
 /* When exercises-list contains series cards, use vertical layout */
@@ -4667,13 +4745,37 @@ body.header-scrolled .program-tab-bar {
   margin-bottom: 48px;
 }
 
+.lab-section-header {
+  margin-bottom: 24px;
+}
+
+.lab-section-header {
+  margin-bottom: 24px;
+}
+
 .lab-section-title {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 600;
   color: #ffffff;
-  margin: 0 0 24px 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.lab-section-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 8px 0 0 0;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.lab-section-overview {
+  margin-bottom: 48px;
+}
+
+.lab-metrics-grid-overview {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .lab-subsection-title {
@@ -4969,17 +5071,25 @@ body.header-scrolled .program-tab-bar {
 }
 
 .lab-metric-card {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   padding: 20px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  gap: 12px;
+  text-align: left;
   transition: all 0.2s ease;
   position: relative;
   cursor: pointer;
+}
+
+.lab-metric-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .lab-metric-card:hover {
@@ -5017,22 +5127,33 @@ body.header-scrolled .program-tab-bar {
   font-size: 2rem;
   font-weight: 700;
   color: #ffffff;
-  margin-bottom: 8px;
+  margin: 0;
   line-height: 1.2;
+  flex: 1;
+  min-width: 0;
 }
 
 .lab-metric-label {
   font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.4;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.lab-metric-description {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.5;
+  margin-top: 4px;
 }
 
 .lab-metric-change {
   font-size: 0.75rem;
   font-weight: 600;
-  margin-top: 4px;
-  margin-bottom: 4px;
+  margin: 0;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .lab-metric-change-positive {

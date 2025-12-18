@@ -147,10 +147,7 @@ const PlanningSidebar = ({
   return (
     <div className="planning-sidebar">
       <div className="planning-sidebar-header">
-        <div>
-          <h3 className="planning-sidebar-title">Programas</h3>
-          <p className="planning-sidebar-subtitle">Arrastra para asignar semanas</p>
-        </div>
+        <h3 className="planning-sidebar-title">Programas</h3>
         {isAssigning && (
           <span className="planning-sidebar-loading-indicator">...</span>
         )}
@@ -275,10 +272,7 @@ const PlanningSidebar = ({
 
         {programs.length === 0 && (
           <div className="planning-sidebar-empty">
-            <p>No hay programas disponibles.</p>
-            <p className="planning-sidebar-empty-hint">
-              Crea un programa 1-on-1 para comenzar.
-            </p>
+            <p>No hay programas disponibles</p>
           </div>
         )}
       </div>

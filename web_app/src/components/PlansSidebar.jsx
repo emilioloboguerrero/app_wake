@@ -58,10 +58,7 @@ const PlansSidebar = ({
   return (
     <div className="planning-sidebar">
       <div className="planning-sidebar-header">
-        <div>
-          <h3 className="planning-sidebar-title">Planes</h3>
-          <p className="planning-sidebar-subtitle">Arrastra para asignar a semanas</p>
-        </div>
+        <h3 className="planning-sidebar-title">Planes</h3>
       </div>
 
       <div className="planning-sidebar-content">
@@ -119,10 +116,7 @@ const PlansSidebar = ({
           </div>
         ) : (
           <div className="planning-sidebar-empty">
-            <p>No hay planes disponibles.</p>
-            <p className="planning-sidebar-empty-hint">
-              Crea un plan desde la sección de Planes.
-            </p>
+            <p>No hay planes disponibles</p>
           </div>
         )}
       </div>

@@ -56,9 +56,36 @@ import { CSS } from '@dnd-kit/utilities';
 import './ProgramDetailScreen.css';
 
 const TAB_CONFIG = [
-  { key: 'lab', title: 'Lab' },
-  { key: 'configuracion', title: 'Configuración' },
-  { key: 'contenido', title: 'Contenido' },
+  { 
+    key: 'lab', 
+    title: 'Lab',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19.5 3.5L18 2L4.5 15.5L2 22L8.5 19.5L19.5 3.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M13 6L18 11M8 11L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  },
+  { 
+    key: 'configuracion', 
+    title: 'Configuración',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7842 19.4468 14.532 19.6572 14.3543 19.9255C14.1766 20.1938 14.0813 20.5082 14.08 20.83V21C14.08 21.5304 13.8693 22.0391 13.4942 22.4142C13.1191 22.7893 12.6104 23 12.08 23C11.5496 23 11.0409 22.7893 10.6658 22.4142C10.2907 22.0391 10.08 21.5304 10.08 21V20.91C10.0723 20.579 9.96512 20.258 9.77251 19.9887C9.5799 19.7194 9.31074 19.5143 9 19.4C8.69838 19.2669 8.36381 19.2272 8.03941 19.286C7.71502 19.3448 7.41568 19.4995 7.18 19.73L7.12 19.79C6.93425 19.976 6.71368 20.1235 6.47088 20.2241C6.22808 20.3248 5.96783 20.3766 5.705 20.3766C5.44217 20.3766 5.18192 20.3248 4.93912 20.2241C4.69632 20.1235 4.47575 19.976 4.29 19.79C4.10405 19.6043 3.95653 19.3837 3.85588 19.1409C3.75523 18.8981 3.70343 18.6378 3.70343 18.375C3.70343 18.1122 3.75523 17.8519 3.85588 17.6091C3.95653 17.3663 4.10405 17.1457 4.29 16.96L4.35 16.9C4.58054 16.6643 4.73519 16.365 4.794 16.0406C4.85282 15.7162 4.81312 15.3816 4.68 15.08C4.55324 14.7842 4.34276 14.532 4.07447 14.3543C3.80618 14.1766 3.49179 14.0813 3.17 14.08H3C2.46957 14.08 1.96086 13.8693 1.58579 13.4942C1.21071 13.1191 1 12.6104 1 12.08C1 11.5496 1.21071 11.0409 1.58579 10.6658C1.96086 10.2907 2.46957 10.08 3 10.08H3.09C3.42099 10.0723 3.742 9.96512 4.0113 9.77251C4.28059 9.5799 4.48571 9.31074 4.6 9C4.73312 8.69838 4.77282 8.36381 4.714 8.03941C4.65519 7.71502 4.50054 7.41568 4.27 7.18L4.21 7.12C4.02405 6.93425 3.87653 6.71368 3.77588 6.47088C3.67523 6.22808 3.62343 5.96783 3.62343 5.705C3.62343 5.44217 3.67523 5.18192 3.77588 4.93912C3.87653 4.69632 4.02405 4.47575 4.21 4.29C4.39575 4.10405 4.61632 3.95653 4.85912 3.85588C5.10192 3.75523 5.36217 3.70343 5.625 3.70343C5.88783 3.70343 6.14808 3.75523 6.39088 3.85588C6.63368 3.95653 6.85425 4.10405 7.04 4.29L7.1 4.35C7.33568 4.58054 7.63502 4.73519 7.95941 4.794C8.28381 4.85282 8.61838 4.81312 8.92 4.68H9C9.29577 4.55324 9.54802 4.34276 9.72569 4.07447C9.90337 3.80618 9.99872 3.49179 10 3.17V3C10 2.46957 10.2107 1.96086 10.5858 1.58579C10.9609 1.21071 11.4696 1 12 1C12.5304 1 13.0391 1.21071 13.4142 1.58579C13.7893 1.96086 14 2.46957 14 3V3.09C14.0013 3.41179 14.0966 3.72618 14.2743 3.99447C14.452 4.26276 14.7042 4.47324 15 4.6C15.3016 4.73312 15.6362 4.77282 15.9606 4.714C16.285 4.65519 16.5843 4.50054 16.82 4.27L16.88 4.21C17.0657 4.02405 17.2863 3.87653 17.5291 3.77588C17.7719 3.67523 18.0322 3.62343 18.295 3.62343C18.5578 3.62343 18.8181 3.67523 19.0609 3.77588C19.3037 3.87653 19.5243 4.02405 19.71 4.21C19.896 4.39575 20.0435 4.61632 20.1441 4.85912C20.2448 5.10192 20.2966 5.36217 20.2966 5.625C20.2966 5.88783 20.2448 6.14808 20.1441 6.39088C20.0435 6.63368 19.896 6.85425 19.71 7.04L19.65 7.1C19.4195 7.33568 19.2648 7.63502 19.206 7.95941C19.1472 8.28381 19.1869 8.61838 19.32 8.92V9C19.4468 9.29577 19.6572 9.54802 19.9255 9.72569C20.1938 9.90337 20.5082 9.99872 20.83 10H21C21.5304 10 22.0391 10.2107 22.4142 10.5858C22.7893 10.9609 23 11.4696 23 12C23 12.5304 22.7893 13.0391 22.4142 13.4142C22.0391 13.7893 21.5304 14 21 14H20.91C20.5882 14.0013 20.2738 14.0966 20.0055 14.2743C19.7372 14.452 19.5268 14.7042 19.4 15H19.4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  },
+  { 
+    key: 'contenido', 
+    title: 'Contenido',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14.7519 11.1679L11.5547 9.03647C10.8901 8.59343 10 9.06982 10 9.86852V14.1315C10 14.9302 10.8901 15.4066 11.5547 14.9635L14.7519 12.8321C15.3457 12.4362 15.3457 11.5638 14.7519 11.1679Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  },
 ];
 
 // Stat explanations for Lab page
@@ -1188,23 +1215,30 @@ const ProgramDetailScreen = () => {
     setIsUserInfoModalOpen(true);
   };
 
-  // Helper component for metric card with info icon
-  const MetricCard = ({ statKey, value, label, onClick, percentageChange }) => (
-    <div className="lab-metric-card" onClick={() => handleShowStatExplanation(statKey)}>
-      <button className="lab-metric-info-icon" onClick={(e) => { e.stopPropagation(); handleShowStatExplanation(statKey); }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-          <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </button>
-      <div className="lab-metric-value">{value}</div>
-      {percentageChange !== null && (
-        <div className={`lab-metric-change ${percentageChange >= 0 ? 'lab-metric-change-positive' : 'lab-metric-change-negative'}`}>
-          {percentageChange >= 0 ? '↑' : '↓'} {Math.abs(percentageChange).toFixed(1)}%
-        </div>
-      )}
+  // Improved metric card with description
+  const MetricCard = ({ statKey, value, label, percentageChange, description }) => (
+    <div 
+      className="lab-metric-card"
+      onClick={() => {
+        if (STAT_EXPLANATIONS[statKey]) {
+          setStatExplanation(STAT_EXPLANATIONS[statKey]);
+          setIsStatExplanationModalOpen(true);
+        }
+      }}
+      style={{ cursor: STAT_EXPLANATIONS[statKey] ? 'pointer' : 'default' }}
+    >
+      <div className="lab-metric-header">
+        <div className="lab-metric-value">{value || 0}</div>
+        {percentageChange !== null && percentageChange !== undefined && !isNaN(percentageChange) && (
+          <div className={`lab-metric-change ${percentageChange >= 0 ? 'lab-metric-change-positive' : 'lab-metric-change-negative'}`}>
+            {percentageChange >= 0 ? '↑' : '↓'} {Math.abs(percentageChange).toFixed(1)}%
+          </div>
+        )}
+      </div>
       <div className="lab-metric-label">{label}</div>
+      {description && (
+        <div className="lab-metric-description">{description}</div>
+      )}
     </div>
   );
 
@@ -5618,512 +5652,152 @@ const ProgramDetailScreen = () => {
                 </div>
               ) : analytics ? (
                 <>
-                  {/* Enrollment Metrics */}
+                  {/* Overview Section */}
+                  <div className="lab-section lab-section-overview">
+                    <div className="lab-section-header">
+                      <h2 className="lab-section-title">Resumen General</h2>
+                    </div>
+                    <div className="lab-metrics-grid lab-metrics-grid-overview">
+                      <MetricCard 
+                        statKey="totalEnrolled"
+                        value={analytics.enrollment.totalEnrolled}
+                        label="Total Inscritos"
+                        description="Usuarios que se han inscrito en el programa"
+                      />
+                      <MetricCard 
+                        statKey="activeEnrollments"
+                        value={analytics.enrollment.activeEnrollments}
+                        label="Activos"
+                        description="Usuarios con inscripción activa actualmente"
+                      />
+                      <MetricCard 
+                        statKey="totalSessionsCompleted"
+                        value={analytics.engagement.totalSessionsCompleted}
+                        label="Sesiones Completadas"
+                        description="Total de sesiones completadas por todos los usuarios"
+                      />
+                      <MetricCard 
+                        statKey="completionRate"
+                        value={`${analytics.engagement.completionRate}%`}
+                        label="Tasa de Finalización"
+                        description="Porcentaje de usuarios que han completado al menos una sesión"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Enrollment Details */}
                   <div className="lab-section">
-                    <h3 className="lab-section-title">Inscripciones</h3>
-                    <div className="lab-enrollment-container">
-                      <div className="lab-metrics-grid">
-                        <MetricCard 
-                          statKey="totalEnrolled"
-                          value={analytics.enrollment.totalEnrolled}
-                          label="Total Inscritos"
-                        />
-                        <MetricCard 
-                          statKey="activeEnrollments"
-                          value={analytics.enrollment.activeEnrollments}
-                          label="Activos"
-                        />
-                        <MetricCard 
-                          statKey="trialUsers"
-                          value={analytics.enrollment.trialUsers}
-                          label="Pruebas Gratis"
-                        />
-                        <MetricCard 
-                          statKey="expiredEnrollments"
-                          value={analytics.enrollment.expiredEnrollments}
-                          label="Expirados"
-                        />
-                        <MetricCard 
-                          statKey="cancelledEnrollments"
-                          value={analytics.enrollment.cancelledEnrollments}
-                          label="Cancelados"
-                        />
+                    <div className="lab-section-header">
+                      <h2 className="lab-section-title">Inscripciones</h2>
+                    </div>
+                    <div className="lab-metrics-grid">
                       <MetricCard 
                         statKey="recentEnrollments30Days"
                         value={analytics.enrollment.recentEnrollments30Days}
                         label="Últimos 30 días"
+                        description="Nuevas inscripciones en el último mes"
                         percentageChange={analytics.enrollment.recentEnrollmentsPercentageChange}
                       />
-                        <MetricCard 
-                          statKey="averageEnrollmentDurationDays"
-                          value={analytics.enrollment.averageEnrollmentDurationDays}
-                          label="Duración Promedio (días)"
-                        />
-                      </div>
-                      
-                      {/* Enrollment Status Pie Chart */}
-                      {analytics.enrollment.totalEnrolled > 0 && (
-                        <div className="lab-chart-container">
-                          <h4 className="lab-subsection-title">Distribución de Inscripciones</h4>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                              <Pie
-                                data={[
-                                  { name: 'Activos', value: analytics.enrollment.activeEnrollments, color: 'rgba(150, 130, 60, 1)' },
-                                  { name: 'Pruebas Gratis', value: analytics.enrollment.trialUsers, color: 'rgba(191, 168, 77, 1)' },
-                                  { name: 'Expirados', value: analytics.enrollment.expiredEnrollments, color: 'rgba(100, 100, 100, 1)' },
-                                  { name: 'Cancelados', value: analytics.enrollment.cancelledEnrollments, color: 'rgba(191, 168, 77, 0.7)' }
-                                ].filter(item => item.value > 0)}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={false}
-                                stroke="none"
-                                label={false}
-                                outerRadius={100}
-                                fill="#8884d8"
-                                dataKey="value"
-                              >
-                                {[
-                                  { name: 'Activos', value: analytics.enrollment.activeEnrollments, color: 'rgba(150, 130, 60, 1)' },
-                                  { name: 'Pruebas Gratis', value: analytics.enrollment.trialUsers, color: 'rgba(191, 168, 77, 1)' },
-                                  { name: 'Expirados', value: analytics.enrollment.expiredEnrollments, color: 'rgba(100, 100, 100, 1)' },
-                                  { name: 'Cancelados', value: analytics.enrollment.cancelledEnrollments, color: 'rgba(191, 168, 77, 0.7)' }
-                                ].filter(item => item.value > 0).map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                                ))}
-                              </Pie>
-                              <Tooltip />
-                              <Legend 
-                                formatter={(value, entry) => {
-                                  // Calculate total for percentage calculation
-                                  const total = [
-                                    analytics.enrollment.activeEnrollments,
-                                    analytics.enrollment.trialUsers,
-                                    analytics.enrollment.expiredEnrollments,
-                                    analytics.enrollment.cancelledEnrollments
-                                  ].reduce((sum, val) => sum + val, 0);
-                                  
-                                  // Get the value for this legend item
-                                  const itemValue = entry.payload?.value || 0;
-                                  const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                                  
-                                  // Return name with percentage
-                                  return `${value} ${percent}%`;
-                                }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
+                      <MetricCard 
+                        statKey="trialUsers"
+                        value={analytics.enrollment.trialUsers}
+                        label="Pruebas Gratis"
+                        description="Usuarios que están usando o usaron prueba gratis"
+                      />
+                      <MetricCard 
+                        statKey="expiredEnrollments"
+                        value={analytics.enrollment.expiredEnrollments}
+                        label="Expirados"
+                        description="Inscripciones que han expirado"
+                      />
+                      <MetricCard 
+                        statKey="cancelledEnrollments"
+                        value={analytics.enrollment.cancelledEnrollments}
+                        label="Cancelados"
+                        description="Usuarios que cancelaron su suscripción"
+                      />
+                      <MetricCard 
+                        statKey="averageEnrollmentDurationDays"
+                        value={analytics.enrollment.averageEnrollmentDurationDays}
+                        label="Duración Promedio"
+                        description="Duración promedio de las inscripciones en días"
+                      />
                     </div>
-                    
-                    {/* Demographics Section */}
-                    {analytics.enrollment.demographics && (
-                      <div className="lab-demographics-section">
-                        <h4 className="lab-subsection-title">Demografía de Usuarios</h4>
-                        
-                        {/* Most Common Customer Profile */}
-                        {/* Customer Profile and Age Distribution */}
-                        {((analytics.enrollment.mostCommonCustomer) || 
-                          (analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution)) && (
-                          <div className="lab-profile-age-container">
-                            {/* Customer Profile */}
-                            {analytics.enrollment.mostCommonCustomer && (
-                              <div className="lab-customer-profile">
-                                <h5 className="lab-profile-title">Perfil del Cliente Más Común</h5>
-                                <div className="lab-profile-cards-scrollable">
-                                  {analytics.enrollment.mostCommonCustomer.age && (
-                                    <div className="lab-profile-card">
-                                      <span className="lab-profile-card-label">Edad</span>
-                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.age} años</span>
-                                    </div>
-                                  )}
-                                  {analytics.enrollment.mostCommonCustomer.gender && (
-                                    <div className="lab-profile-card">
-                                      <span className="lab-profile-card-label">Género</span>
-                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.gender}</span>
-                                    </div>
-                                  )}
-                                  {analytics.enrollment.mostCommonCustomer.city && (
-                                    <div className="lab-profile-card">
-                                      <span className="lab-profile-card-label">Ciudad</span>
-                                      <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.city}</span>
-                                    </div>
-                                  )}
-                                  {Object.keys(analytics.enrollment.mostCommonCustomer.onboardingAnswers || {}).length > 0 && (
-                                    <>
-                                      {Object.entries(analytics.enrollment.mostCommonCustomer.onboardingAnswers)
-                                        .filter(([key]) => key.toLowerCase() !== 'completedat' && key.toLowerCase() !== 'completed_at')
-                                        .map(([key, value]) => (
-                                        <div key={key} className="lab-profile-card">
-                                          <span className="lab-profile-card-label">{key}</span>
-                                          <span className="lab-profile-card-value">{value}</span>
-                                        </div>
-                                      ))}
-                                    </>
-                                  )}
-                                </div>
-                                <p className="lab-profile-sample-size">Basado en {analytics.enrollment.mostCommonCustomer.sampleSize} usuarios con datos completos</p>
-                              </div>
-                            )}
-                            
-                            {/* Age Distribution */}
-                            {analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution && (
-                              <div className="lab-chart-container">
-                                <h5 className="lab-chart-title">Distribución por Edad</h5>
-                                <ResponsiveContainer width="100%" height={300}>
-                                  <BarChart data={Object.entries(analytics.enrollment.demographics.age.distribution).map(([age, count]) => ({ age, count }))}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="age" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                                {analytics.enrollment.demographics.age.average && (
-                                  <p className="lab-chart-note">Edad promedio: {analytics.enrollment.demographics.age.average} años</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* Gender Distribution and Top Cities */}
-                        {(analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0) || 
-                         (analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0) ? (
-                          <div className="lab-demographics-container">
-                            {/* Gender Distribution */}
-                            {analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0 && (
-                              <div className="lab-chart-container">
-                                <h5 className="lab-chart-title">Distribución por Género</h5>
-                                <ResponsiveContainer width="100%" height={300}>
-                                  <PieChart>
-                                    <Pie
-                                      data={Object.entries(analytics.enrollment.demographics.gender).map(([gender, count]) => ({ name: gender, value: count }))}
-                                      cx="50%"
-                                      cy="50%"
-                                      labelLine={false}
-                                      stroke="none"
-                                      label={false}
-                                      outerRadius={100}
-                                      fill="#8884d8"
-                                      dataKey="value"
-                                    >
-                                      {Object.entries(analytics.enrollment.demographics.gender).map((entry, index) => {
-                                        // Use brand colors: darker gold for first item, current gold for others, dark gray for last
-                                        const colors = [
-                                          'rgba(150, 130, 60, 1)', // Darker gold (main)
-                                          'rgba(191, 168, 77, 1)', // Current gold (secondary)
-                                          'rgba(100, 100, 100, 1)' // Dark gray
-                                        ];
-                                        const colorIndex = index < colors.length ? index : index % colors.length;
-                                        return <Cell key={`cell-${index}`} fill={colors[colorIndex]} stroke="none" />;
-                                      })}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend 
-                                      formatter={(value, entry) => {
-                                        // Calculate total for percentage calculation
-                                        const genderData = Object.entries(analytics.enrollment.demographics.gender);
-                                        const total = genderData.reduce((sum, [, count]) => sum + count, 0);
-                                        
-                                        // Get the value for this legend item
-                                        const itemValue = entry.payload?.value || 0;
-                                        const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                                        
-                                        // Return name with percentage
-                                        return `${value} ${percent}%`;
-                                      }}
-                                    />
-                                  </PieChart>
-                                </ResponsiveContainer>
-                              </div>
-                            )}
-                            
-                            {/* Top Cities */}
-                            {analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0 && (
-                              <div className="lab-chart-container">
-                                <h5 className="lab-chart-title">Top 10 Ciudades</h5>
-                                <ResponsiveContainer width="100%" height={300}>
-                                  <BarChart data={analytics.enrollment.demographics.topCities} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis type="number" />
-                                    <YAxis dataKey="city" type="category" width={100} />
-                                    <Tooltip />
-                                    <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Engagement Metrics */}
+                  {/* Engagement Details */}
                   <div className="lab-section">
-                    <h3 className="lab-section-title">Compromiso</h3>
-                    <div className="lab-engagement-container">
-                      <div className="lab-metrics-grid">
-                        <MetricCard 
-                          statKey="totalSessionsCompleted"
-                          value={analytics.engagement.totalSessionsCompleted}
-                          label="Sesiones Completadas"
-                        />
-                        <MetricCard 
-                          statKey="averageSessionsPerUser"
-                          value={analytics.engagement.averageSessionsPerUser}
-                          label="Promedio por Usuario"
-                        />
-                        <MetricCard 
-                          statKey="completionRate"
-                          value={`${analytics.engagement.completionRate}%`}
-                          label="Tasa de Finalización"
-                        />
-                        <MetricCard 
-                          statKey="usersWithAtLeastOneSession"
-                          value={analytics.engagement.usersWithAtLeastOneSession}
-                          label="Usuarios Activos"
-                        />
-                      </div>
-                      
-                      {/* Completion Rate Gauge */}
-                      <div className="lab-chart-container">
-                        <h4 className="lab-subsection-title">Tasa de Finalización</h4>
-                        <div className="lab-gauge-container">
-                          <div className="lab-gauge-circle" style={{
-                            background: `conic-gradient(rgba(150, 130, 60, 1) 0% ${analytics.engagement.completionRate}%, rgba(255, 255, 255, 0.1) ${analytics.engagement.completionRate}% 100%)`
-                          }}>
-                            <div className="lab-gauge-inner">
-                              <span className="lab-gauge-value">{analytics.engagement.completionRate}%</span>
-                              <span className="lab-gauge-label">Completación</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="lab-section-header">
+                      <h2 className="lab-section-title">Compromiso</h2>
                     </div>
-                    
-                    {/* Sessions Completed Over Time */}
-                    {analytics.sessions.sessionsCompletedOverTime && analytics.sessions.sessionsCompletedOverTime.length > 0 && (
-                      <div className="lab-chart-container">
-                        <h4 className="lab-subsection-title">Sesiones Completadas en el Tiempo (Últimos 30 días)</h4>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <AreaChart data={analytics.sessions.sessionsCompletedOverTime}>
-                            <defs>
-                              <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="date" />
-                            <YAxis />
-                            <Tooltip />
-                            <Area type="monotone" dataKey="count" stroke="rgba(150, 130, 60, 1)" fillOpacity={1} fill="url(#colorSessions)" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                    
-                    {/* Top Active Users Bar Chart */}
-                    {analytics.engagement.topActiveUsers.length > 0 && (
-                      <div className="lab-top-users-container">
-                        <div className="lab-chart-container">
-                          <h4 className="lab-subsection-title">Top 10 Usuarios Más Activos</h4>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={analytics.engagement.topActiveUsers.map((user, index) => ({
-                              name: user.userName.length > 15 ? user.userName.substring(0, 15) + '...' : user.userName,
-                              sessions: user.sessionsCompleted
-                            }))}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                              <YAxis />
-                              <Tooltip />
-                              <Bar dataKey="sessions" fill="rgba(150, 130, 60, 1)" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="lab-top-users-list-container">
-                          <h4 className="lab-subsection-title">Lista de Usuarios</h4>
-                          <div className="lab-top-users-list">
-                            {analytics.engagement.topActiveUsers.map((user, index) => (
-                              <div key={user.userId} className="lab-top-user-item" onClick={() => handleShowUserInfo(user)}>
-                                <span className="lab-top-user-rank">#{index + 1}</span>
-                                <span className="lab-top-user-name lab-top-user-name-clickable">{user.userName}</span>
-                                <span className="lab-top-user-sessions">{user.sessionsCompleted} sesiones</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Session Performance */}
-                  <div className="lab-section">
-                    <h3 className="lab-section-title">Rendimiento de Sesiones</h3>
-                    {analytics.sessions.allSessionsWithCounts && analytics.sessions.allSessionsWithCounts.length > 0 ? (
-                      <div className="lab-session-performance-container">
-                        <div className="lab-metrics-grid">
-                          <MetricCard 
-                            statKey="totalCompletions"
-                            value={analytics.sessions.totalCompletions}
-                            label="Total Completadas"
-                          />
-                          <MetricCard 
-                            statKey="averageDuration"
-                            value={analytics.sessions.averageDuration > 0 
-                              ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
-                              : 'N/A'}
-                            label="Duración Promedio"
-                          />
-                          {analytics.sessions.mostCompletedSession && (
-                            <MetricCard 
-                              statKey="mostCompletedSession"
-                              value={analytics.sessions.mostCompletedSession.count}
-                              label={`Más Completada: ${analytics.sessions.mostCompletedSession.sessionName}`}
-                            />
-                          )}
-                          {analytics.sessions.leastCompletedSession && (
-                            <MetricCard 
-                              statKey="leastCompletedSession"
-                              value={analytics.sessions.leastCompletedSession.count}
-                              label={`Menos Completada: ${analytics.sessions.leastCompletedSession.sessionName}`}
-                            />
-                          )}
-                        </div>
-                        
-                        {/* Session Completion Comparison */}
-                        <div className="lab-chart-container">
-                          <h4 className="lab-subsection-title">Completaciones por Sesión</h4>
-                          <ResponsiveContainer width="100%" height={400}>
-                            <BarChart data={analytics.sessions.allSessionsWithCounts.slice(0, 20)} layout="vertical">
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis type="number" />
-                              <YAxis dataKey="name" type="category" width={150} angle={0} />
-                              <Tooltip />
-                              <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="lab-metrics-grid">
-                        <MetricCard 
-                          statKey="totalCompletions"
-                          value={analytics.sessions.totalCompletions}
-                          label="Total Completadas"
-                        />
-                        <MetricCard 
-                          statKey="averageDuration"
-                          value={analytics.sessions.averageDuration > 0 
-                            ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
-                            : 'N/A'}
-                          label="Duración Promedio"
-                        />
-                        {analytics.sessions.mostCompletedSession && (
-                          <MetricCard 
-                            statKey="mostCompletedSession"
-                            value={analytics.sessions.mostCompletedSession.count}
-                            label={`Más Completada: ${analytics.sessions.mostCompletedSession.sessionName}`}
-                          />
-                        )}
-                        {analytics.sessions.leastCompletedSession && (
-                          <MetricCard 
-                            statKey="leastCompletedSession"
-                            value={analytics.sessions.leastCompletedSession.count}
-                            label={`Menos Completada: ${analytics.sessions.leastCompletedSession.sessionName}`}
-                          />
-                        )}
-                      </div>
-                    )}
+                    <div className="lab-metrics-grid">
+                      <MetricCard 
+                        statKey="averageSessionsPerUser"
+                        value={analytics.engagement.averageSessionsPerUser}
+                        label="Promedio por Usuario"
+                        description="Sesiones completadas en promedio por usuario"
+                      />
+                      <MetricCard 
+                        statKey="usersWithAtLeastOneSession"
+                        value={analytics.engagement.usersWithAtLeastOneSession}
+                        label="Usuarios Activos"
+                        description="Usuarios que han completado al menos una sesión"
+                      />
+                      <MetricCard 
+                        statKey="averageDuration"
+                        value={analytics.sessions.averageDuration > 0 
+                          ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
+                          : 'N/A'}
+                        label="Duración Promedio"
+                        description="Tiempo promedio que tardan los usuarios en completar una sesión"
+                      />
+                      <MetricCard 
+                        statKey="totalCompletions"
+                        value={analytics.sessions.totalCompletions}
+                        label="Total Completadas"
+                        description="Número total de veces que se completaron sesiones"
+                      />
+                    </div>
                   </div>
 
                   {/* User Progression */}
                   <div className="lab-section">
-                    <h3 className="lab-section-title">Progresión de Usuarios</h3>
-                    <div className="lab-progression-container">
-                      <div className="lab-metrics-grid">
-                        <MetricCard 
-                          statKey="usersWithZeroSessions"
-                          value={analytics.progression.usersWithZeroSessions}
-                          label="0 Sesiones"
-                        />
-                        <MetricCard 
-                          statKey="usersWithOneToFiveSessions"
-                          value={analytics.progression.usersWithOneToFiveSessions}
-                          label="1-5 Sesiones"
-                        />
-                        <MetricCard 
-                          statKey="usersWithSixToTenSessions"
-                          value={analytics.progression.usersWithSixToTenSessions}
-                          label="6-10 Sesiones"
-                        />
-                        <MetricCard 
-                          statKey="usersWithTenPlusSessions"
-                          value={analytics.progression.usersWithTenPlusSessions}
-                          label="10+ Sesiones"
-                        />
+                    <div className="lab-section-header">
+                      <h2 className="lab-section-title">Progresión de Usuarios</h2>
+                    </div>
+                    <div className="lab-metrics-grid">
+                      <MetricCard 
+                        statKey="usersWithZeroSessions"
+                        value={analytics.progression.usersWithZeroSessions}
+                        label="0 Sesiones"
+                        description="Usuarios que aún no han completado ninguna sesión"
+                      />
+                      <MetricCard 
+                        statKey="usersWithOneToFiveSessions"
+                        value={analytics.progression.usersWithOneToFiveSessions}
+                        label="1-5 Sesiones"
+                        description="Usuarios que han completado entre 1 y 5 sesiones"
+                      />
+                      <MetricCard 
+                        statKey="usersWithSixToTenSessions"
+                        value={analytics.progression.usersWithSixToTenSessions}
+                        label="6-10 Sesiones"
+                        description="Usuarios que han completado entre 6 y 10 sesiones"
+                      />
+                      <MetricCard 
+                        statKey="usersWithTenPlusSessions"
+                        value={analytics.progression.usersWithTenPlusSessions}
+                        label="10+ Sesiones"
+                        description="Usuarios que han completado 10 o más sesiones"
+                      />
+                      {analytics.progression.averageWeeklyStreak !== undefined && (
                         <MetricCard 
                           statKey="averageWeeklyStreak"
                           value={analytics.progression.averageWeeklyStreak}
                           label="Racha Semanal Promedio"
+                          description="Promedio de semanas consecutivas completadas"
                         />
-                      </div>
-                      
-                      {/* User Progression Distribution */}
-                      <div className="lab-chart-container">
-                        <h4 className="lab-subsection-title">Distribución de Progresión de Usuarios</h4>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <PieChart>
-                            <Pie
-                              data={[
-                                { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
-                                { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
-                                { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
-                                { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
-                              ].filter(item => item.value > 0)}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              stroke="none"
-                              label={false}
-                              outerRadius={100}
-                              fill="#8884d8"
-                              dataKey="value"
-                            >
-                              {[
-                                { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
-                                { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
-                                { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
-                                { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
-                              ].filter(item => item.value > 0).map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend 
-                              formatter={(value, entry) => {
-                                // Calculate total for percentage calculation
-                                const total = [
-                                  analytics.progression.usersWithZeroSessions,
-                                  analytics.progression.usersWithOneToFiveSessions,
-                                  analytics.progression.usersWithSixToTenSessions,
-                                  analytics.progression.usersWithTenPlusSessions
-                                ].reduce((sum, val) => sum + val, 0);
-                                
-                                // Get the value for this legend item
-                                const itemValue = entry.payload?.value || 0;
-                                const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                                
-                                // Return name with percentage
-                                return `${value} ${percent}%`;
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -6139,136 +5813,116 @@ const ProgramDetailScreen = () => {
         return (
           <div className="program-tab-content">
             <div className="program-config-section">
-              <h3 className="program-config-section-title">General</h3>
-              <div className="program-config-cards">
-                {/* Pills Section */}
-                <div className="program-config-pills">
+              <div className="program-config-section-header">
+                <h2 className="program-config-section-title">General</h2>
+              </div>
+              <div className="program-config-grid">
                   <div 
-                    className="program-config-pill program-config-pill-clickable"
+                    className="program-config-item program-config-item-clickable"
                     onClick={handleIntroVideoCardClick}
                   >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.video_intro_url ? 'Sí' : 'No'}
-                      </span>
-                      <span className="program-config-pill-label">VIDEO INTRO</span>
-                    </div>
-                    <div className="program-config-pill-icon">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Video Intro</span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
+                    <span className="program-config-item-value">
+                      {program.video_intro_url ? 'Sí' : 'No'}
+                    </span>
                   </div>
                   <div 
-                    className="program-config-pill program-config-pill-clickable"
+                    className="program-config-item program-config-item-clickable"
                     onClick={handlePricePillClick}
                   >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.price ? `$${program.price}` : 'Gratis'}
-                      </span>
-                      <span className="program-config-pill-label">PRECIO</span>
-                    </div>
-                    <div className="program-config-pill-icon">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Precio</span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
+                    <span className="program-config-item-value">
+                      {program.price ? `$${program.price}` : 'Gratis'}
+                    </span>
                   </div>
                   <div 
-                    className="program-config-pill program-config-pill-clickable"
+                    className="program-config-item program-config-item-clickable"
                     onClick={handleFreeTrialPillClick}
                   >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.free_trial?.active ? 'Activa' : 'Inactiva'}
-                      </span>
-                      <span className="program-config-pill-label">PRUEBA GRATIS</span>
-                    </div>
-                    <div className="program-config-pill-icon">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Prueba Gratis</span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
+                    <span className="program-config-item-value">
+                      {program.free_trial?.active ? 'Activa' : 'Inactiva'}
+                    </span>
                   </div>
-                  <div className="program-config-pill">
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.discipline || 'No especificada'}
-                      </span>
-                      <span className="program-config-pill-label">DISCIPLINA</span>
+                  <div className="program-config-item">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Disciplina</span>
                     </div>
+                    <span className="program-config-item-value">
+                      {program.discipline || 'No especificada'}
+                    </span>
                   </div>
-                  <div className="program-config-pill">
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {getAccessTypeLabel(program.access_duration)}
-                      </span>
-                      <span className="program-config-pill-label">TIPO</span>
+                  <div className="program-config-item">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Tipo</span>
                     </div>
+                    <span className="program-config-item-value">
+                      {getAccessTypeLabel(program.access_duration)}
+                    </span>
                   </div>
                   <div 
-                    className={`program-config-pill ${isOneTimePayment() ? 'program-config-pill-clickable' : ''}`}
+                    className={`program-config-item ${isOneTimePayment() ? 'program-config-item-clickable' : ''}`}
                     onClick={isOneTimePayment() ? handleDurationPillClick : undefined}
                   >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {isOneTimePayment() ? getDurationLabel(program.duration) : 'Mensual'}
-                      </span>
-                      <span className="program-config-pill-label">DURACIÓN</span>
-                    </div>
-                    {isOneTimePayment() && (
-                      <div className="program-config-pill-icon">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Duración</span>
+                      {isOneTimePayment() && (
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <span className="program-config-item-value">
+                      {isOneTimePayment() ? getDurationLabel(program.duration) : 'Mensual'}
+                    </span>
                   </div>
                   <div 
-                    className={`program-config-pill program-config-pill-right program-config-pill-clickable ${program.status === 'draft' ? 'program-config-pill-draft' : program.status === 'published' ? 'program-config-pill-published' : ''}`}
+                    className={`program-config-item program-config-item-clickable ${program.status === 'draft' ? 'program-config-item-draft' : program.status === 'published' ? 'program-config-item-published' : ''}`}
                     onClick={handleStatusPillClick}
                   >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {getStatusLabel(program.status)}
-                      </span>
-                      <span className="program-config-pill-label">ESTADO</span>
-                    </div>
-                    <div className="program-config-pill-icon">
+                    <div className="program-config-item-header">
+                      <span className="program-config-item-label">Estado</span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
+                    <span className="program-config-item-value">
+                      {getStatusLabel(program.status)}
+                    </span>
                   </div>
-                </div>
 
                 {/* Description Card */}
                 <div 
-                  className={`program-config-card program-config-card-full ${!isEditingDescription ? 'program-config-card-clickable' : ''}`}
+                  className={`program-config-item program-config-item-full ${!isEditingDescription ? 'program-config-item-clickable' : ''}`}
                   onClick={!isEditingDescription ? () => {
                     setIsEditingDescription(true);
                     setDescriptionValue(program.description || '');
                   } : undefined}
                 >
-                  <div className="program-config-card-header">
-                    <span className="program-config-card-label">Descripción</span>
+                  <div className="program-config-item-header">
+                    <span className="program-config-item-label">Descripción</span>
                     {!isEditingDescription && (
-                      <button
-                        className="program-config-card-edit-button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsEditingDescription(true);
-                          setDescriptionValue(program.description || '');
-                        }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                     )}
                   </div>
-                  <div className="program-config-card-content">
+                  <div className="program-config-item-content">
                     {isEditingDescription ? (
                       <div className="program-config-description-edit">
                         <textarea
@@ -6322,81 +5976,73 @@ const ProgramDetailScreen = () => {
 
             {/* Ejecución Section */}
             <div className="program-config-section">
-              <h3 className="program-config-section-title">Ejecución</h3>
-              <div className="program-config-cards">
-                <div className="program-config-pills">
-                  <div 
-                    className="program-config-pill program-config-pill-clickable"
-                    onClick={handleStreakPillClick}
-                  >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.programSettings?.streakEnabled ? 'Activa' : 'Inactiva'}
-                      </span>
-                      <span className="program-config-pill-label">RACHA</span>
-                    </div>
-                    <div className="program-config-pill-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
+              <div className="program-config-section-header">
+                <h2 className="program-config-section-title">Ejecución</h2>
+              </div>
+              <div className="program-config-grid">
+                <div 
+                  className="program-config-item program-config-item-clickable"
+                  onClick={handleStreakPillClick}
+                >
+                  <div className="program-config-item-header">
+                    <span className="program-config-item-label">Racha</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
-                  <div 
-                    className="program-config-pill program-config-pill-clickable"
-                    onClick={handleWeightSuggestionsPillClick}
-                  >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.weight_suggestions ? 'Activa' : 'Inactiva'}
-                      </span>
-                      <span className="program-config-pill-label">SUGERENCIAS DE PESO</span>
-                    </div>
-                    <div className="program-config-pill-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
+                  <span className="program-config-item-value">
+                    {program.programSettings?.streakEnabled ? 'Activa' : 'Inactiva'}
+                  </span>
+                </div>
+                <div 
+                  className="program-config-item program-config-item-clickable"
+                  onClick={handleWeightSuggestionsPillClick}
+                >
+                  <div className="program-config-item-header">
+                    <span className="program-config-item-label">Sugerencias de Peso</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
-                  <div 
-                    className="program-config-pill program-config-pill-clickable"
-                    onClick={handleAuxiliaryLibrariesPillClick}
-                  >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {program.availableLibraries && program.availableLibraries.length > 0 
-                          ? `${program.availableLibraries.length}` 
-                          : '0'}
-                      </span>
-                      <span className="program-config-pill-label">BIBLIOTECAS AUXILIARES</span>
-                    </div>
-                    <div className="program-config-pill-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
+                  <span className="program-config-item-value">
+                    {program.weight_suggestions ? 'Activa' : 'Inactiva'}
+                  </span>
+                </div>
+                <div 
+                  className="program-config-item program-config-item-clickable"
+                  onClick={handleAuxiliaryLibrariesPillClick}
+                >
+                  <div className="program-config-item-header">
+                    <span className="program-config-item-label">Bibliotecas Auxiliares</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
-                  <div 
-                    className="program-config-pill program-config-pill-clickable"
-                    onClick={handleAnunciosPillClick}
-                  >
-                    <div className="program-config-pill-content">
-                      <span className="program-config-pill-value">
-                        {(() => {
-                          if (!program.tutorials) return '0';
-                          const totalVideos = Object.values(program.tutorials).reduce((sum, videos) => {
-                            return sum + (Array.isArray(videos) ? videos.length : 0);
-                          }, 0);
-                          return totalVideos > 0 ? `${totalVideos}` : '0';
-                        })()}
-                      </span>
-                      <span className="program-config-pill-label">ANUNCIOS</span>
-                    </div>
-                    <div className="program-config-pill-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
+                  <span className="program-config-item-value">
+                    {program.availableLibraries && program.availableLibraries.length > 0 
+                      ? `${program.availableLibraries.length}` 
+                      : '0'}
+                  </span>
+                </div>
+                <div 
+                  className="program-config-item program-config-item-clickable"
+                  onClick={handleAnunciosPillClick}
+                >
+                  <div className="program-config-item-header">
+                    <span className="program-config-item-label">Anuncios</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
+                  <span className="program-config-item-value">
+                    {(() => {
+                      if (!program.tutorials) return '0';
+                      const totalVideos = Object.values(program.tutorials).reduce((sum, videos) => {
+                        return sum + (Array.isArray(videos) ? videos.length : 0);
+                      }, 0);
+                      return totalVideos > 0 ? `${totalVideos}` : '0';
+                    })()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -6405,21 +6051,12 @@ const ProgramDetailScreen = () => {
       case 'contenido':
         // If a session is selected, show exercises view
         if (selectedSession && selectedModule) {
-        return (
-          <div className="program-tab-content">
+          return (
+            <div className="program-tab-content">
               <div className="exercises-content">
-                <div className="exercises-legend">
-                  <div className="exercises-legend-item">
-                    <div className="exercise-incomplete-icon-small">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="exercises-legend-text">Ejercicio incompleto</span>
-                  </div>
-                </div>
-                <h2 className="page-section-title">Ejercicios</h2>
-                <div className="exercises-actions">
+                <div className="exercises-header">
+                  <h2 className="page-section-title">Ejercicios</h2>
+                  <div className="exercises-actions">
                   <button 
                     className={`exercise-action-pill ${isExerciseEditMode ? 'exercise-action-pill-disabled' : ''}`}
                     disabled={isExerciseEditMode}
@@ -6452,6 +6089,7 @@ const ProgramDetailScreen = () => {
                   >
                     <span className="exercise-action-text">{isExerciseEditMode ? 'Guardar' : 'Editar'}</span>
                   </button>
+                  </div>
                 </div>
                 
                 {/* Exercises List */}
@@ -6557,21 +6195,12 @@ const ProgramDetailScreen = () => {
         // If a module is selected, show sessions view
         if (selectedModule) {
           const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
-        return (
-          <div className="program-tab-content">
+          return (
+            <div className="program-tab-content">
               <div className="sessions-content">
-                <div className="sessions-legend">
-                  <div className="sessions-legend-item">
-                    <div className="session-incomplete-icon-small">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="sessions-legend-text">Sesión incompleta</span>
-                  </div>
-                </div>
-                <h2 className="page-section-title">Sesiones</h2>
-                <div className="sessions-actions">
+                <div className="sessions-header">
+                  <h2 className="page-section-title">Sesiones</h2>
+                  <div className="sessions-actions">
                   <button 
                     className={`session-action-pill ${isSessionEditMode ? 'session-action-pill-disabled' : ''}`}
                     onClick={handleAddSession}
@@ -6586,6 +6215,7 @@ const ProgramDetailScreen = () => {
                     <span className="session-action-text">{isSessionEditMode ? 'Guardar' : 'Editar'}</span>
                   </button>
                 </div>
+              </div>
                 
                 {/* Sessions List */}
                 {isLoadingSessions ? (
@@ -6671,31 +6301,23 @@ const ProgramDetailScreen = () => {
         return (
           <div className="program-tab-content">
             <div className="modules-content">
-              <div className="modules-legend">
-                <div className="modules-legend-item">
-                  <div className="module-incomplete-icon-small">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <span className="modules-legend-text">Módulo incompleto</span>
+              <div className="modules-header">
+                <h2 className="page-section-title">Módulos</h2>
+                <div className="modules-actions">
+                  <button 
+                    className={`module-action-pill ${isModuleEditMode ? 'module-action-pill-disabled' : ''}`}
+                    onClick={handleAddModule}
+                    disabled={isModuleEditMode}
+                  >
+                    <span className="module-action-icon">+</span>
+                  </button>
+                  <button 
+                    className="module-action-pill"
+                    onClick={handleEditModules}
+                  >
+                    <span className="module-action-text">{isModuleEditMode ? 'Guardar' : 'Editar'}</span>
+                  </button>
                 </div>
-              </div>
-              <h2 className="page-section-title">Módulos</h2>
-              <div className="modules-actions">
-                <button 
-                  className={`module-action-pill ${isModuleEditMode ? 'module-action-pill-disabled' : ''}`}
-                  onClick={handleAddModule}
-                  disabled={isModuleEditMode}
-                >
-                  <span className="module-action-icon">+</span>
-                </button>
-                <button 
-                  className="module-action-pill"
-                  onClick={handleEditModules}
-                >
-                  <span className="module-action-text">{isModuleEditMode ? 'Guardar' : 'Editar'}</span>
-                </button>
               </div>
               
               {/* Modules List */}
@@ -6739,11 +6361,11 @@ const ProgramDetailScreen = () => {
                       {modules.map((module, index) => {
                         const moduleNumber = (module.order !== undefined && module.order !== null) ? module.order + 1 : index + 1;
                         return (
-                        <div
-                          key={module.id}
-                          className="module-card"
-                          onClick={() => handleModuleClick(module)}
-                        >
+                          <div
+                            key={module.id}
+                            className="module-card"
+                            onClick={() => handleModuleClick(module)}
+                          >
                             <div className="module-card-number">{moduleNumber}</div>
                             {isModuleIncomplete(module) && (
                               <div className="module-incomplete-icon">
@@ -6752,18 +6374,18 @@ const ProgramDetailScreen = () => {
                                 </svg>
                               </div>
                             )}
-                          <div className="module-card-header">
-                            <h3 className="module-card-title">
-                              {module.title || `Semana ${moduleNumber}`}
-                            </h3>
-                            {module.description && (
-                              <p className="module-card-description">{module.description}</p>
-                            )}
+                            <div className="module-card-header">
+                              <h3 className="module-card-title">
+                                {module.title || `Semana ${moduleNumber}`}
+                              </h3>
+                              {module.description && (
+                                <p className="module-card-description">{module.description}</p>
+                              )}
+                            </div>
+                            <div className="module-card-footer">
+                              {/* TODO: Add module count or other info */}
+                            </div>
                           </div>
-                          <div className="module-card-footer">
-                            {/* TODO: Add module count or other info */}
-                          </div>
-                        </div>
                         );
                       })}
                     </div>
@@ -6778,11 +6400,9 @@ const ProgramDetailScreen = () => {
     }
   }, [loading, error, program, currentTabIndex, isLoadingAnalytics, analyticsError, analytics, selectedModule, selectedSession, modules, sessions, exercises, isModuleEditMode, isSessionEditMode, isExerciseEditMode, moduleIncompleteMap, sessionIncompleteMap, handleModuleClick, handleSessionClick, handleExerciseClick, handleCreateModule, handleCreateSession, handleCreateNewExercise, handleDeleteModule, handleDeleteSession, handleDeleteExercise, handleSaveModuleOrder, handleSaveSessionOrder, handleSaveExerciseOrder, isExerciseIncomplete]);
 
-  // Determine screen name based on selected module or session
   const getScreenName = () => {
     if (selectedSession && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
-      const sessionName = selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8) || ''}`;
-      return sessionName;
+      return selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8) || ''}`;
     }
     if (selectedModule && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
       const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
@@ -6791,12 +6411,12 @@ const ProgramDetailScreen = () => {
     return program?.title || 'Programa';
   };
 
-  // Determine if back button should be shown
   const shouldShowBackButton = selectedSession || selectedModule;
+  
   const getBackPath = () => {
-    if (selectedSession) return null; // Use onBack handler instead
-    if (selectedModule) return null; // Use onBack handler instead
-    return '/programs'; // Default back to programs list
+    if (selectedSession) return null;
+    if (selectedModule) return null;
+    return '/programs';
   };
 
   return (
@@ -6812,23 +6432,18 @@ const ProgramDetailScreen = () => {
         {/* Tab Bar */}
         <div className="program-tab-bar">
           <div className="program-tab-header-container">
-            <div className="program-tab-indicator-wrapper">
+            <div className="program-tabs">
               {TAB_CONFIG.map((tab, index) => (
                 <button
                   key={tab.key}
-                  className={`program-tab-button ${currentTabIndex === index ? 'program-tab-button-active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-button-disabled' : ''}`}
+                  className={`program-tab ${currentTabIndex === index ? 'active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-disabled' : ''}`}
                   onClick={() => handleTabClick(index)}
                   disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
                 >
-                  <span className="program-tab-title-text">{tab.title}</span>
+                  <div className="program-tab-icon">{tab.icon}</div>
+                  <span className="program-tab-label">{tab.title}</span>
                 </button>
               ))}
-              <div 
-                className="program-tab-indicator"
-                style={{
-                  transform: `translateX(${currentTabIndex * 100}%)`,
-                }}
-              />
             </div>
           </div>
         </div>

@@ -94,8 +94,8 @@ const CreateLibrarySessionScreen = () => {
         }
       }
       
-      // Navigate back to the previous page
-      navigate(-1);
+      // Navigate back to content hub
+      navigate('/content');
     } catch (err) {
       console.error('Error creating library session:', err);
       alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
@@ -105,11 +105,15 @@ const CreateLibrarySessionScreen = () => {
   };
 
   const handleCancel = () => {
-    navigate(-1);
+    navigate('/content');
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      screenName="Nueva Sesión"
+      showBackButton={true}
+      backPath="/content"
+    >
       <div style={{ 
         minHeight: '100vh', 
         backgroundColor: '#1a1a1a',

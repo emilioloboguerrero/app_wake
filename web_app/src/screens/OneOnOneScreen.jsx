@@ -156,7 +156,7 @@ const OneOnOneScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="1 on 1">
+      <DashboardLayout screenName="Clientes">
       <div className="one-on-one-content">
         <div className="one-on-one-actions">
           <button 

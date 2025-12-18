@@ -1002,7 +1002,7 @@ const LibraryExercisesScreen = () => {
       <DashboardLayout 
         screenName={library?.title || 'Biblioteca'}
         showBackButton={true}
-        backPath="/libraries"
+        backPath="/content"
       >
         <div className="library-exercises-content">
           <div className="library-exercises-loading">
@@ -1018,13 +1018,13 @@ const LibraryExercisesScreen = () => {
       <DashboardLayout 
         screenName="Biblioteca"
         showBackButton={true}
-        backPath="/libraries"
+        backPath="/content"
       >
         <div className="library-exercises-content">
           <div className="library-exercises-error">
             <p>{error || 'Biblioteca no encontrada'}</p>
-            <button onClick={() => navigate('/libraries')} className="back-button">
-              Volver a Bibliotecas
+            <button onClick={() => navigate('/content')} className="back-button">
+              Volver a Contenido
             </button>
           </div>
         </div>
@@ -1036,7 +1036,7 @@ const LibraryExercisesScreen = () => {
     <DashboardLayout 
       screenName={library.title}
       showBackButton={true}
-      backPath="/libraries"
+      backPath="/content"
     >
       <div className="library-exercises-content">
         <div className="library-exercises-legend">

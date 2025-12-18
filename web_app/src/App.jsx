@@ -18,6 +18,8 @@ import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import SupportScreen from './screens/SupportScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
+import ContentHubScreen from './screens/ContentHubScreen';
+import ProductsScreen from './screens/ProductsScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -57,7 +59,7 @@ function AppContent() {
               path="/libraries" 
               element={
                 <ProtectedRoute>
-                  <LibrariesScreen />
+                  <Navigate to="/content" replace />
                 </ProtectedRoute>
               } 
             />
@@ -70,10 +72,42 @@ function AppContent() {
               } 
             />
             <Route 
+              path="/plans/new" 
+              element={
+                <ProtectedRoute>
+                  <ContentHubScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/plans/:planId" 
+              element={
+                <ProtectedRoute>
+                  <ContentHubScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/content" 
+              element={
+                <ProtectedRoute>
+                  <ContentHubScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/products" 
+              element={
+                <ProtectedRoute>
+                  <ProductsScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
               path="/programs" 
               element={
                 <ProtectedRoute>
-                  <ProgramsScreen />
+                  <Navigate to="/products" replace />
                 </ProtectedRoute>
               } 
             />
@@ -94,10 +128,26 @@ function AppContent() {
               } 
             />
             <Route 
+              path="/clients" 
+              element={
+                <ProtectedRoute>
+                  <OneOnOneScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
               path="/one-on-one" 
               element={
                 <ProtectedRoute>
                   <OneOnOneScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/clients/:clientId" 
+              element={
+                <ProtectedRoute>
+                  <ClientProgramScreen />
                 </ProtectedRoute>
               } 
             />
