@@ -46,11 +46,13 @@ class IAPService {
 
   /**
    * Set up listener for purchase updates
+   * IMPORTANT: Only call this if listener doesn't exist - keep it persistent
    */
   setupPurchaseListener() {
+      // Don't remove existing listener - keep it persistent to avoid timing issues
       if (this.purchaseUpdateListener) {
-        this.purchaseUpdateListener.remove();
-        this.purchaseUpdateListener = null;
+        logger.log('⚠️ Purchase listener already exists, keeping existing listener');
+        return;
       }
       
     logger.log('🔧 Setting up purchase listener...');
@@ -61,7 +63,8 @@ class IAPService {
             hasResponse: !!response,
             responseLength: response?.length || 0,
             hasError: !!error,
-            listenerActive: !!this.purchaseUpdateListener
+            listenerActive: !!this.purchaseUpdateListener,
+            timestamp: new Date().toISOString()
           });
 
         if (error) {
@@ -93,6 +96,13 @@ class IAPService {
 
           logger.log('✅ Processing purchases from listener:', response.length);
           for (const purchase of response) {
+            logger.log('🔄 Processing purchase from listener:', {
+              productId: purchase.productId,
+              orderId: purchase.orderId,
+              transactionId: purchase.transactionId,
+              hasTransactionReceipt: !!purchase.transactionReceipt,
+              hasReceipt: !!purchase.receipt
+            });
             await this.handlePurchase(purchase);
           }
         } else {
@@ -302,7 +312,7 @@ class IAPService {
           responseCodeName: this.getResponseCodeName(productsResult.responseCode || 0)
         },
         connectionStatus: {
-          isConnected: this.isConnected,
+        isConnected: this.isConnected,
           sandboxAccountSignedIn: null // Will be set below
         },
         verificationSteps: []
@@ -377,12 +387,12 @@ class IAPService {
                   'com.lab.wake.co';
       const version = Constants?.expoConfig?.version || 
                  Constants?.manifest?.version ||
-                 '1.1.11';
+                 '1.1.12';
       const buildNumber = Constants?.expoConfig?.ios?.buildNumber ||
                      Constants?.manifest?.ios?.buildNumber ||
                          '54';
       
-      return {
+        return { 
         bundleId,
         version,
         buildNumber
@@ -391,7 +401,7 @@ class IAPService {
       logger.error('❌ Error getting app info:', error);
       return {
         bundleId: 'com.lab.wake.co',
-        version: '1.1.11',
+        version: '1.1.12',
         buildNumber: '54'
       };
     }
@@ -448,7 +458,7 @@ class IAPService {
           const { responseCode, results } = await InAppPurchases.getProductsAsync([testId]);
           if (results && results.length > 0) {
             logger.log(`✅ Found product with test ID "${testId}":`, results);
-          } else {
+      } else {
             logger.log(`❌ No product found for test ID "${testId}" (response: ${this.getResponseCodeName(responseCode)})`);
           }
         } catch (testError) {
@@ -473,7 +483,7 @@ class IAPService {
       
       logger.log('🔬 ========== PRODUCT AVAILABILITY DEBUG END ==========');
       
-      return {
+          return { 
             success: true,
         message: 'Debug completed - check logs for all product availability tests',
         appInfo,
@@ -633,9 +643,9 @@ class IAPService {
         // If it's been stuck for too long, allow reset
         // This handles cases where purchase got stuck
         logger.log('💡 If purchase is stuck, call iapService.cancelPurchase() to reset');
-        
-        return { 
-          success: false, 
+          
+          return { 
+            success: false, 
           error: 'A purchase is already in progress. Please wait for it to complete or call cancelPurchase() to reset.'
         };
       }
@@ -648,21 +658,17 @@ class IAPService {
         }
       }
 
-      // CRITICAL: Always ensure listener is active before purchase
-      // Remove old listener if exists and set up fresh one
-      if (this.purchaseUpdateListener) {
-        logger.log('🔄 Removing old listener before setting up new one...');
-        this.purchaseUpdateListener.remove();
-        this.purchaseUpdateListener = null;
+      // CRITICAL: Ensure listener is active before purchase
+      // DON'T remove/re-add listener - keep it persistent to avoid timing issues
+      // Only set up if it doesn't exist
+      if (!this.purchaseUpdateListener) {
+        logger.log('🔧 Setting up purchase listener (none exists)...');
+        this.setupPurchaseListener();
+        // Small delay to ensure listener is fully registered
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } else {
+        logger.log('✅ Purchase listener already active');
       }
-      
-      // Set up listener with a small delay to ensure it's registered
-      logger.log('🔧 Setting up purchase listener before purchase...');
-      this.setupPurchaseListener();
-          
-      // Small delay to ensure listener is fully registered
-      await new Promise(resolve => setTimeout(resolve, 100));
-      logger.log('✅ Listener should now be active');
           
       // IMPORTANT: Fetch products first to ensure they're available
       logger.log('🔄 Fetching product before purchase:', productId);
@@ -684,31 +690,40 @@ class IAPService {
 
       try {
         // This will show the payment modal (or auto-complete in sandbox if already purchased)
-      await InAppPurchases.purchaseItemAsync(productId);
-      
+          await InAppPurchases.purchaseItemAsync(productId);
+          
         logger.log('✅ purchaseItemAsync returned');
-        logger.log('💡 If payment modal didn\'t appear, purchase may have auto-completed (sandbox behavior)');
+        logger.log('💡 Waiting for purchase listener to fire...');
         
-        // CRITICAL: If purchase completes instantly (sandbox), the listener might not fire
-        // Check purchase history immediately to catch it
-        logger.log('🔄 Checking if purchase completed instantly...');
-        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay for listener to fire
+        // Wait for listener to fire (it should fire within 1-2 seconds for real purchases)
+        // For sandbox auto-completions, it might be instant or slightly delayed
+        let waitTime = 0;
+        const maxWaitTime = 3000; // 3 seconds max wait
+        const checkInterval = 100; // Check every 100ms
+        
+        while (this.purchaseInProgress && waitTime < maxWaitTime) {
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          waitTime += checkInterval;
+        }
         
         // Check if listener handled it
         if (!this.purchaseInProgress) {
           logger.log('✅ Purchase was handled by listener');
-      return { success: true };
+          return { success: true };
         }
         
-        // If still in progress, purchase might have completed but listener didn't fire
-        // This happens in sandbox when subscription is already active
-        logger.log('⚠️ Purchase may have completed but listener didn\'t fire (sandbox auto-completion)');
+        // If still in progress after waiting, listener might not have fired
+        logger.log('⚠️ Purchase may have completed but listener didn\'t fire yet');
         logger.log('💡 The setTimeout fallback in CourseDetailScreen will handle verification');
+        logger.log('📊 Listener status:', {
+          hasListener: !!this.purchaseUpdateListener,
+          purchaseInProgress: this.purchaseInProgress
+        });
         
         // Purchase will be handled by the listener OR by the setTimeout fallback
         // Note: purchaseInProgress flag will be reset by handlePurchase() 
         // when the purchase completes (or by error handler if it fails)
-        return { success: true };
+      return { success: true };
       } catch (purchaseError) {
         // Reset flag immediately on error
         this.purchaseInProgress = false;
@@ -867,22 +882,22 @@ class IAPService {
         // Create AbortController for timeout (AbortSignal.timeout not available in React Native)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-        
-        const response = await fetch(
-          'https://us-central1-wolf-20b8b.cloudfunctions.net/verifyIAPReceipt',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+      
+      const response = await fetch(
+        'https://us-central1-wolf-20b8b.cloudfunctions.net/verifyIAPReceipt',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
               receipt: receipt, // Send transactionReceipt as receipt
-              transactionId: purchase.orderId || purchase.transactionId,
-              productId: purchase.productId,
-              userId: userId,
-              courseId: courseId
+            transactionId: purchase.orderId || purchase.transactionId,
+            productId: purchase.productId,
+            userId: userId,
+            courseId: courseId
             }),
             signal: controller.signal
-          }
-        );
+        }
+      );
         
         clearTimeout(timeoutId);
 

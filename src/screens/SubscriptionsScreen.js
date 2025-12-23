@@ -331,10 +331,10 @@ const SubscriptionsScreen = ({ navigation }) => {
 
     // IAP subscriptions - show manage button that opens iOS Settings
     if (isIAP) {
-      return (
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={styles.actionButton}
+    return (
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={styles.actionButton}
             onPress={() => {
               setSelectedSubscriptionType('iap');
               setShowSubscriptionInfoModal(true);
@@ -783,14 +783,14 @@ const SubscriptionsScreen = ({ navigation }) => {
             const statusColor = statusColors[statusKey] || '#ffffff';
 
             const isIAP = subscription.type === 'iap';
-            
+
             return (
               <View key={subscription.id} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={styles.cardHeaderLeft}>
-                    <Text style={styles.courseTitle}>
-                      {subscription.course_title || 'Programa'}
-                    </Text>
+                  <Text style={styles.courseTitle}>
+                    {subscription.course_title || 'Programa'}
+                  </Text>
                     {isIAP && (
                       <Text style={styles.subscriptionTypeBadge}>Apple</Text>
                     )}
@@ -814,15 +814,15 @@ const SubscriptionsScreen = ({ navigation }) => {
                 </View>
 
                 {!isIAP && (
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Monto:</Text>
-                    <Text style={styles.infoValue}>
-                      {formatCurrency(
-                        subscription.transaction_amount,
-                        subscription.currency_id || 'COP',
-                      )}
-                    </Text>
-                  </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Monto:</Text>
+                  <Text style={styles.infoValue}>
+                    {formatCurrency(
+                      subscription.transaction_amount,
+                      subscription.currency_id || 'COP',
+                    )}
+                  </Text>
+                </View>
                 )}
 
                 <View style={styles.infoRow}>
@@ -856,12 +856,12 @@ const SubscriptionsScreen = ({ navigation }) => {
                   </View>
                 )}
                 {!subscription.renewal_date && !subscription.expires_at && subscription.next_billing_date && (
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Próximo cobro:</Text>
-                    <Text style={styles.infoValue}>
-                      {formatDate(subscription.next_billing_date)}
-                    </Text>
-                  </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Próximo cobro:</Text>
+                  <Text style={styles.infoValue}>
+                    {formatDate(subscription.next_billing_date)}
+                  </Text>
+                </View>
                 )}
 
                 {renderActions(subscription)}
@@ -922,7 +922,7 @@ const SubscriptionsScreen = ({ navigation }) => {
                       También puedes:{'\n'}
                       • Ve a Configuración → [Tu nombre] → Suscripciones{'\n'}
                       • O Configuración → App Store → Suscripciones{'\n\n'}
-                      El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
+                  El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
                     </>
                   ) : (
                     <>

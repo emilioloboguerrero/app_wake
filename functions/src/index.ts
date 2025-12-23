@@ -2099,11 +2099,12 @@ export const verifyIAPReceipt = functions
         trimmedLength: appSecret.trim().length
       });
 
-      // Try sandbox first (for sandbox/test purchases)
-      functions.logger.info("🔄 Attempting receipt verification with sandbox URL...");
+      // Apple's recommended approach: Try production first (for TestFlight and App Store)
+      // Then fall back to sandbox if needed (for local testing)
+      functions.logger.info("🔄 Attempting receipt verification with production URL first (Apple recommended)...");
       
-      // Try with password first
-      let verifyResponse = await fetch(sandboxURL, {
+      // Try production first (for TestFlight and App Store purchases)
+      let verifyResponse = await fetch(productionURL, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -2115,17 +2116,19 @@ export const verifyIAPReceipt = functions
 
       let verifyResult = await verifyResponse.json() as ReceiptResponse;
 
-      functions.logger.info("📊 Sandbox verification result:", {
+      functions.logger.info("📊 Production verification result:", {
         status: verifyResult.status,
         statusDescription: getReceiptStatusDescription(verifyResult.status),
         hasReceipt: !!verifyResult.receipt,
         inAppPurchasesCount: verifyResult.receipt?.in_app?.length || 0
       });
 
-      // If sandbox returns 21007, the receipt is from production - retry with production URL
+      // If production returns 21007, the receipt is from sandbox (local testing) - retry with sandbox URL
+      // Status 21007: "This receipt is from the test environment, but it was sent to the production environment for verification"
+      // Status 21008: "This receipt is from the production environment, but it was sent to the test environment for verification"
       if (verifyResult.status === 21007) {
-        functions.logger.info("🔄 Sandbox returned 21007, trying production URL...");
-        verifyResponse = await fetch(productionURL, {
+        functions.logger.info("🔄 Production returned 21007 (sandbox receipt), trying sandbox URL...");
+        verifyResponse = await fetch(sandboxURL, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
@@ -2137,7 +2140,7 @@ export const verifyIAPReceipt = functions
 
         verifyResult = await verifyResponse.json() as ReceiptResponse;
         
-        functions.logger.info("📊 Production verification result:", {
+        functions.logger.info("📊 Sandbox verification result:", {
           status: verifyResult.status,
           statusDescription: getReceiptStatusDescription(verifyResult.status),
           hasReceipt: !!verifyResult.receipt,
@@ -2166,20 +2169,96 @@ export const verifyIAPReceipt = functions
 
       functions.logger.info("🔍 Searching for transaction in receipt:", {
         transactionId,
+        productId,
         inAppPurchasesCount: inAppPurchases.length,
         transactionIds: inAppPurchases.map(p => p.transaction_id),
+        originalTransactionIds: inAppPurchases.map(p => p.original_transaction_id),
         usingLatestReceiptInfo: !!receiptInfo?.latest_receipt_info
       });
 
-      const transaction = inAppPurchases.find(
+      // Try to find transaction by transaction_id first
+      let transaction = inAppPurchases.find(
         (purchase: ReceiptTransaction) => purchase.transaction_id === transactionId
       ) as ReceiptTransaction | undefined;
+
+      // If not found, try matching by product_id (for subscriptions, transaction IDs can differ)
+      // This handles cases where the purchase object has a different transaction ID than the receipt
+      // This is common with subscriptions where orderId might not match receipt transaction_id
+      if (!transaction && productId) {
+        functions.logger.warn("⚠️ Transaction ID not found, trying to match by product_id:", {
+          requestedTransactionId: transactionId,
+          productId,
+          availableTransactions: inAppPurchases.map(p => ({
+            transaction_id: p.transaction_id,
+            product_id: p.product_id,
+            original_transaction_id: p.original_transaction_id
+          }))
+        });
+        
+        // Find by product_id - prioritize most recent transaction for this product
+        const matchingByProduct = inAppPurchases.filter(
+          (purchase: ReceiptTransaction) => purchase.product_id === productId
+        );
+        
+        if (matchingByProduct.length > 0) {
+          // For subscriptions, use the most recent transaction for this product
+          // Try to sort by expiration date (most recent expiration = most recent purchase)
+          // If no expiration date, fall back to transaction_id comparison
+          transaction = matchingByProduct.sort((a, b) => {
+            const aExpires = a.expires_date_ms || a.expires_date || '0';
+            const bExpires = b.expires_date_ms || b.expires_date || '0';
+            if (aExpires !== '0' && bExpires !== '0') {
+              return parseInt(bExpires) - parseInt(aExpires); // Most recent expiration first
+            }
+            // Fall back to transaction_id comparison
+            return (b.transaction_id || '').localeCompare(a.transaction_id || '');
+          })[0] as ReceiptTransaction;
+          
+          functions.logger.info("✅ Found transaction by product_id match:", {
+            matchedTransactionId: transaction.transaction_id,
+            requestedTransactionId: transactionId,
+            productId,
+            matchedExpiresDate: transaction.expires_date_ms || transaction.expires_date,
+            originalTransactionId: transaction.original_transaction_id
+          });
+        }
+      }
+
+      // If still not found, try matching by original_transaction_id (for subscription renewals)
+      // This handles cases where the purchase object's orderId matches the original_transaction_id
+      if (!transaction && productId) {
+        const matchingByOriginal = inAppPurchases.find(
+          (purchase: ReceiptTransaction) => {
+            // Check if requested transactionId matches original_transaction_id
+            if (purchase.original_transaction_id === transactionId) {
+              return true;
+            }
+            // Or if product matches and we have an original_transaction_id
+            if (purchase.product_id === productId && purchase.original_transaction_id) {
+              return true;
+            }
+            return false;
+          }
+        ) as ReceiptTransaction | undefined;
+        
+        if (matchingByOriginal) {
+          transaction = matchingByOriginal;
+          functions.logger.info("✅ Found transaction by original_transaction_id match:", {
+            matchedTransactionId: transaction.transaction_id,
+            originalTransactionId: transaction.original_transaction_id,
+            requestedTransactionId: transactionId,
+            productId
+          });
+        }
+      }
 
       if (!transaction) {
         functions.logger.error("❌ Transaction not found in receipt:", {
           requestedTransactionId: transactionId,
+          requestedProductId: productId,
           availableTransactionIds: inAppPurchases.map(p => p.transaction_id),
-          productIds: inAppPurchases.map(p => p.product_id)
+          availableOriginalTransactionIds: inAppPurchases.map(p => p.original_transaction_id),
+          availableProductIds: inAppPurchases.map(p => p.product_id)
         });
         response.status(400).json({
           success: false,

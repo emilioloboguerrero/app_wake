@@ -1158,7 +1158,7 @@ const ProfileScreen = ({ navigation }) => {
             <SvgCreditCard width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.subscriptionCardIcon} />
             <Text style={styles.subscriptionCardTitle}>Suscripciones</Text>
           </TouchableOpacity>
-        </View>
+          </View>
 
         {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
