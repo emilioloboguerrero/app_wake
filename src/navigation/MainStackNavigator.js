@@ -12,7 +12,6 @@ import WarmupScreen from '../screens/WarmupScreen';
 import WorkoutCompletionScreen from '../screens/WorkoutCompletionScreen';
 import CourseStructureScreen from '../screens/CourseStructureScreen';
 import CreatorProfileScreen from '../screens/CreatorProfileScreen';
-import IAPTestScreen from '../screens/IAPTestScreen'; // Temporary test screen
 
 const Stack = createStackNavigator();
 
@@ -39,8 +38,6 @@ const MainStackNavigator = () => {
       <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
       <Stack.Screen name="WorkoutCompletion" component={WorkoutCompletionScreen} />
       <Stack.Screen name="CourseStructure" component={CourseStructureScreen} />
-      {/* Temporary test screen - remove when done testing */}
-      <Stack.Screen name="IAPTest" component={IAPTestScreen} />
     </Stack.Navigator>
   );
 };

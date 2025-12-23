@@ -10,13 +10,16 @@ import {
   Alert,
   Modal,
   Dimensions,
+  Linking,
+  Platform,
 } from 'react-native';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
+import iapService from '../services/iapService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -40,6 +43,7 @@ const statusColors = {
 const SubscriptionsScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [subscriptions, setSubscriptions] = useState([]);
+  const [iapSubscriptions, setIapSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState({});
   const [isInfoModalVisible, setInfoModalVisible] = useState(false);
@@ -48,6 +52,8 @@ const SubscriptionsScreen = ({ navigation }) => {
   const [pendingCancelSubscription, setPendingCancelSubscription] =
     useState(null);
   const [showSubscriptionInfoModal, setShowSubscriptionInfoModal] = useState(false);
+  const [selectedSubscriptionType, setSelectedSubscriptionType] = useState(null); // 'mercadopago' or 'iap'
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
 
   const createInitialSurveyAnswers = () => ({
     reason: null,
@@ -59,9 +65,11 @@ const SubscriptionsScreen = ({ navigation }) => {
     createInitialSurveyAnswers,
   );
 
+  // Load all subscriptions from subscriptions collection (primary source)
   useEffect(() => {
     if (!user?.uid) {
       setSubscriptions([]);
+      setIapSubscriptions([]);
       setLoading(false);
       return;
     }
@@ -75,12 +83,98 @@ const SubscriptionsScreen = ({ navigation }) => {
 
     const unsubscribe = onSnapshot(
       subscriptionsRef,
-      (snapshot) => {
-        const items = snapshot.docs.map((docSnap) => ({
+      async (snapshot) => {
+        const allItems = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...docSnap.data(),
         }));
-        setSubscriptions(items);
+
+        // Separate by type
+        const mercadopagoItems = allItems
+          .filter((sub) => !sub.type || sub.type === 'mercadopago')
+          .map((sub) => ({
+            ...sub,
+            type: 'mercadopago',
+          }));
+        
+        // IAP subscriptions from subscriptions collection (preferred source)
+        const iapItemsFromCollection = allItems
+          .filter((sub) => sub.type === 'iap')
+          .map((sub) => ({
+            ...sub,
+            type: 'iap',
+          }));
+
+        // Get course IDs from IAP subscriptions in collection
+        const iapCourseIdsFromCollection = new Set(
+          iapItemsFromCollection.map(sub => sub.course_id || sub.id)
+        );
+
+        setSubscriptions(mercadopagoItems);
+        
+        // Load fallback IAP subscriptions from courses (only if not in collection)
+        try {
+          const userRef = doc(firestore, 'users', user.uid);
+          const userDoc = await getDoc(userRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const courses = userData?.courses || {};
+            
+            // Find courses that are IAP subscriptions but NOT already in collection
+            const iapSubsFromCourses = Object.entries(courses)
+              .filter(([courseId, courseData]) => 
+                courseData?.is_subscription === true && 
+                courseData?.purchase_method === 'iap' &&
+                !iapCourseIdsFromCollection.has(courseId) // Only if not in collection
+              )
+              .map(([courseId, courseData]) => {
+                const expiresAt = courseData.expires_at 
+                  ? (typeof courseData.expires_at === 'string' 
+                      ? new Date(courseData.expires_at) 
+                      : courseData.expires_at.toDate?.() || new Date(courseData.expires_at))
+                  : null;
+                
+                return {
+                  id: courseId,
+                  course_id: courseId,
+                  course_title: courseData.title || 'Programa',
+                  status: expiresAt && expiresAt > new Date() ? 'active' : 'expired',
+                  transaction_amount: null,
+                  currency_id: null,
+                  payer_email: user?.email || null,
+                  created_at: courseData.purchased_at 
+                    ? { toDate: () => new Date(courseData.purchased_at) } 
+                    : null,
+                  renewal_date: courseData.renewal_date 
+                    ? (typeof courseData.renewal_date === 'string'
+                        ? { toDate: () => new Date(courseData.renewal_date) }
+                        : courseData.renewal_date)
+                    : null,
+                  expires_at: expiresAt 
+                    ? { toDate: () => expiresAt }
+                    : null,
+                  next_billing_date: expiresAt 
+                    ? { toDate: () => expiresAt } 
+                    : null,
+                  type: 'iap',
+                  iap_transaction_id: courseData.iap_transaction_id || null,
+                  iap_original_transaction_id: courseData.iap_original_transaction_id || courseData.iap_transaction_id || null,
+                };
+              });
+            
+            // Combine: collection subscriptions first, then courses fallback
+            setIapSubscriptions([...iapItemsFromCollection, ...iapSubsFromCourses]);
+          } else {
+            // No user doc, just use collection subscriptions
+            setIapSubscriptions(iapItemsFromCollection);
+          }
+        } catch (error) {
+          logger.error('Error loading IAP subscriptions from courses:', error);
+          // On error, just use collection subscriptions
+          setIapSubscriptions(iapItemsFromCollection);
+        }
+        
         setLoading(false);
       },
       (error) => {
@@ -97,24 +191,27 @@ const SubscriptionsScreen = ({ navigation }) => {
   }, [user?.uid]);
 
   const filteredSubscriptions = useMemo(() => {
-    const allowedStatuses = new Set(['active', 'authorized', 'cancelled']);
+    const allowedStatuses = new Set(['active', 'authorized', 'cancelled', 'expired']);
 
-    return [...subscriptions]
+    // Combine MercadoPago and IAP subscriptions
+    const allSubscriptions = [...subscriptions, ...iapSubscriptions];
+
+    return allSubscriptions
       .filter((subscription) =>
         allowedStatuses.has((subscription.status || '').toLowerCase()),
       )
       .sort((a, b) => {
         const aTime =
           (a.updated_at && a.updated_at.toMillis?.()) ||
-          (a.created_at && a.created_at.toMillis?.()) ||
+          (a.created_at && a.created_at?.toDate ? a.created_at.toDate().getTime() : (a.created_at?.toMillis?.() || 0)) ||
           0;
         const bTime =
           (b.updated_at && b.updated_at.toMillis?.()) ||
-          (b.created_at && b.created_at.toMillis?.()) ||
+          (b.created_at && b.created_at?.toDate ? b.created_at.toDate().getTime() : (b.created_at?.toMillis?.() || 0)) ||
           0;
         return bTime - aTime;
       });
-  }, [subscriptions]);
+  }, [subscriptions, iapSubscriptions]);
 
   const formatDate = (value) => {
     if (!value) {
@@ -159,25 +256,160 @@ const SubscriptionsScreen = ({ navigation }) => {
   };
 
 
+  // Open iOS Settings to manage subscriptions
+  const openSubscriptionSettings = async () => {
+    try {
+      if (Platform.OS === 'ios') {
+        // Open App Store subscription management
+        const url = 'https://apps.apple.com/account/subscriptions';
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) {
+          await Linking.openURL(url);
+        } else {
+          // Fallback: Open Settings app
+          await Linking.openURL('app-settings:');
+        }
+      } else {
+        Alert.alert('Información', 'Las suscripciones se gestionan desde la configuración de tu dispositivo.');
+      }
+    } catch (error) {
+      logger.error('Error opening subscription settings:', error);
+      Alert.alert('Error', 'No se pudo abrir la configuración de suscripciones.');
+    }
+  };
+
+  // Restore purchases (Apple requirement)
+  const handleRestorePurchases = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
+      return;
+    }
+
+    try {
+      setRestoringPurchases(true);
+      logger.log('🔄 Restoring purchases...');
+      
+      const result = await iapService.restorePurchases();
+      
+      if (result.success) {
+        const purchaseCount = result.purchases?.length || 0;
+        if (purchaseCount > 0) {
+          Alert.alert(
+            'Compras restauradas',
+            `Se encontraron ${purchaseCount} compra(s). Las suscripciones se están verificando y aparecerán pronto.`,
+            [{ text: 'Entendido' }]
+          );
+          // Refresh subscriptions after a short delay to allow verification
+          setTimeout(() => {
+            // The subscriptions will auto-update via the listeners
+          }, 2000);
+        } else {
+          Alert.alert(
+            'Sin compras',
+            'No se encontraron compras para restaurar.',
+            [{ text: 'Entendido' }]
+          );
+        }
+      } else {
+        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras.');
+      }
+    } catch (error) {
+      logger.error('Error restoring purchases:', error);
+      Alert.alert('Error', 'Ocurrió un error al restaurar las compras.');
+    } finally {
+      setRestoringPurchases(false);
+    }
+  };
+
   const renderActions = (subscription) => {
     const currentStatus = subscription.status || 'pending';
+    const isIAP = subscription.type === 'iap';
 
-    if (currentStatus === 'cancelled') {
+    if (currentStatus === 'cancelled' || currentStatus === 'expired') {
       return null;
     }
 
-    // Disabled: Show single button that opens info modal instead of action buttons
+    // IAP subscriptions - show manage button that opens iOS Settings
+    if (isIAP) {
+      return (
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              setSelectedSubscriptionType('iap');
+              setShowSubscriptionInfoModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionButtonTextSecondary}>Información</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionButtonPrimary]}
+            onPress={openSubscriptionSettings}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionButtonText}>Gestionar</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // MercadoPago subscriptions - show manage button
     return (
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => setShowSubscriptionInfoModal(true)}
+          onPress={() => {
+            setSelectedSubscriptionType('mercadopago');
+            setShowSubscriptionInfoModal(true);
+          }}
           activeOpacity={0.7}
         >
           <Text style={styles.actionButtonText}>Gestionar</Text>
         </TouchableOpacity>
       </View>
     );
+  };
+
+  // Perform action on MercadoPago subscription (cancel, pause, resume)
+  const performAction = async (subscriptionId, action, options = {}) => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'No hay usuario autenticado');
+      return;
+    }
+
+    try {
+      setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
+
+      const response = await fetch(
+        'https://us-central1-wolf-20b8b.cloudfunctions.net/updateSubscriptionStatus',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.uid,
+            subscriptionId,
+            action,
+            survey: options.survey,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Error al procesar la acción');
+      }
+
+      Alert.alert('Éxito', 'La suscripción ha sido actualizada correctamente');
+      setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false } }));
+    } catch (error) {
+      logger.error('Error performing subscription action:', error);
+      Alert.alert('Error', error.message || 'No se pudo procesar la acción');
+      setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false, error: error.message } }));
+    }
   };
 
   const reasonOptions = [
@@ -550,12 +782,19 @@ const SubscriptionsScreen = ({ navigation }) => {
             const statusLabel = statusLabels[statusKey] || statusKey;
             const statusColor = statusColors[statusKey] || '#ffffff';
 
+            const isIAP = subscription.type === 'iap';
+            
             return (
               <View key={subscription.id} style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <Text style={styles.courseTitle}>
-                    {subscription.course_title || 'Programa'}
-                  </Text>
+                  <View style={styles.cardHeaderLeft}>
+                    <Text style={styles.courseTitle}>
+                      {subscription.course_title || 'Programa'}
+                    </Text>
+                    {isIAP && (
+                      <Text style={styles.subscriptionTypeBadge}>Apple</Text>
+                    )}
+                  </View>
                   <View
                     style={[
                       styles.statusBadge,
@@ -574,15 +813,17 @@ const SubscriptionsScreen = ({ navigation }) => {
                   </View>
                 </View>
 
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Monto:</Text>
-                  <Text style={styles.infoValue}>
-                    {formatCurrency(
-                      subscription.transaction_amount,
-                      subscription.currency_id || 'COP',
-                    )}
-                  </Text>
-                </View>
+                {!isIAP && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Monto:</Text>
+                    <Text style={styles.infoValue}>
+                      {formatCurrency(
+                        subscription.transaction_amount,
+                        subscription.currency_id || 'COP',
+                      )}
+                    </Text>
+                  </View>
+                )}
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Email de pago:</Text>
@@ -598,18 +839,50 @@ const SubscriptionsScreen = ({ navigation }) => {
                   </Text>
                 </View>
 
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Próximo cobro:</Text>
-                  <Text style={styles.infoValue}>
-                    {formatDate(subscription.next_billing_date)}
-                  </Text>
-                </View>
+                {subscription.renewal_date && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Fecha de renovación:</Text>
+                    <Text style={styles.infoValue}>
+                      {formatDate(subscription.renewal_date)}
+                    </Text>
+                  </View>
+                )}
+                {subscription.expires_at && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Fecha de expiración:</Text>
+                    <Text style={styles.infoValue}>
+                      {formatDate(subscription.expires_at)}
+                    </Text>
+                  </View>
+                )}
+                {!subscription.renewal_date && !subscription.expires_at && subscription.next_billing_date && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Próximo cobro:</Text>
+                    <Text style={styles.infoValue}>
+                      {formatDate(subscription.next_billing_date)}
+                    </Text>
+                  </View>
+                )}
 
                 {renderActions(subscription)}
               </View>
             );
           })
         )}
+
+        {/* Restore Purchases Button (Apple Requirement) - Bottom of screen */}
+        <View style={styles.restorePurchasesContainer}>
+          <TouchableOpacity 
+            style={styles.restorePurchasesButton} 
+            onPress={handleRestorePurchases}
+            disabled={restoringPurchases}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.restorePurchasesButtonText}>
+              {restoringPurchases ? 'Restaurando...' : 'Restaurar Compras'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Subscription Management Info Modal */}
@@ -642,8 +915,22 @@ const SubscriptionsScreen = ({ navigation }) => {
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.subscriptionInfoModalDescription}>
-                  Las suscripciones y compras no se administran dentro de la app.{'\n\n'}
-                  El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
+                  {selectedSubscriptionType === 'iap' ? (
+                    <>
+                      Las suscripciones de Apple (IAP) se gestionan desde la configuración de tu dispositivo.{'\n\n'}
+                      Usa el botón "Gestionar" para abrir la configuración de suscripciones de Apple.{'\n\n'}
+                      También puedes:{'\n'}
+                      • Ve a Configuración → [Tu nombre] → Suscripciones{'\n'}
+                      • O Configuración → App Store → Suscripciones{'\n\n'}
+                      El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
+                    </>
+                  ) : (
+                    <>
+                      Las suscripciones de MercadoPago se pueden gestionar desde aquí.{'\n\n'}
+                      Para cancelar tu suscripción, usa el botón "Gestionar" y completa el formulario.{'\n\n'}
+                      El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
+                    </>
+                  )}
                 </Text>
               </ScrollView>
             </View>
@@ -679,6 +966,26 @@ const styles = StyleSheet.create({
   },
   titleIcon: {
     marginLeft: 8,
+  },
+  restorePurchasesContainer: {
+    marginTop: 30,
+    marginBottom: 20,
+    paddingHorizontal: 24,
+  },
+  restorePurchasesButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  restorePurchasesButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   loadingContainer: {
     alignItems: 'center',
@@ -725,12 +1032,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  cardHeaderLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
   courseTitle: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '600',
-    flex: 1,
-    marginRight: 12,
+    marginBottom: 4,
+  },
+  subscriptionTypeBadge: {
+    color: '#cccccc',
+    fontSize: 12,
+    fontWeight: '500',
   },
   statusBadge: {
     borderWidth: 1,
@@ -766,24 +1081,29 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     marginHorizontal: 4,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
+  },
+  actionButtonPrimary: {
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    borderColor: 'rgba(191, 168, 77, 0.5)',
   },
   actionButtonDisabled: {
     opacity: 0.6,
   },
   actionButtonText: {
+    color: 'rgba(191, 168, 77, 1)',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  actionButtonTextSecondary: {
     color: '#ffffff',
     fontWeight: '600',
+    fontSize: 14,
   },
   infoModalOverlay: {
     flex: 1,
@@ -819,15 +1139,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   infoModalButton: {
-    backgroundColor: '#3a3a3a',
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(191, 168, 77, 0.5)',
   },
   infoModalButtonText: {
-    color: '#ffffff',
+    color: 'rgba(191, 168, 77, 1)',
     fontWeight: '600',
   },
   surveyModalContent: {

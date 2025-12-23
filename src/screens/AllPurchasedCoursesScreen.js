@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,11 +17,13 @@ import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import logger from '../utils/logger.js';
+import iapService from '../services/iapService';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
 
   useEffect(() => {
     if (user?.uid) {
@@ -57,6 +60,53 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   const handleCoursePress = (purchaseData) => {
     navigation.navigate('CourseDetail', { course: purchaseData.courseDetails });
+  };
+
+  // Restore purchases (Apple requirement)
+  const handleRestorePurchases = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
+      return;
+    }
+
+    try {
+      setRestoringPurchases(true);
+      logger.log('🔄 Restoring purchases from AllPurchasedCoursesScreen...');
+      
+      const result = await iapService.restorePurchases();
+      
+      if (result.success) {
+        const purchaseCount = result.count || result.purchases?.length || 0;
+        if (purchaseCount > 0) {
+          Alert.alert(
+            'Compras restauradas',
+            `Se encontraron ${purchaseCount} compra(s). Las suscripciones se están verificando y aparecerán pronto.`,
+            [
+              { 
+                text: 'Actualizar', 
+                onPress: () => {
+                  fetchAllCourses();
+                }
+              },
+              { text: 'Entendido' }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Sin compras',
+            'No se encontraron compras para restaurar.',
+            [{ text: 'Entendido' }]
+          );
+        }
+      } else {
+        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras.');
+      }
+    } catch (error) {
+      logger.error('Error restoring purchases:', error);
+      Alert.alert('Error', 'Ocurrió un error al restaurar las compras.');
+    } finally {
+      setRestoringPurchases(false);
+    }
   };
 
   const getStatusBadge = (purchase) => {
@@ -188,6 +238,20 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Restore Purchases Button (Apple Requirement) - Bottom of screen */}
+          <View style={styles.restorePurchasesContainer}>
+            <TouchableOpacity 
+              style={styles.restorePurchasesButton} 
+              onPress={handleRestorePurchases}
+              disabled={restoringPurchases}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.restorePurchasesButtonText}>
+                {restoringPurchases ? 'Restaurando...' : 'Restaurar Compras'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -237,10 +301,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   retryButtonText: {
     color: '#ffffff',
@@ -368,13 +434,15 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   disciplineBadge: {
-    backgroundColor: '#007AFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   disciplineBadgeText: {
-    color: '#ffffff',
+    color: '#cccccc',
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -435,7 +503,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   purchaseDate: {
-    color: '#007AFF',
+    color: '#cccccc',
     fontSize: 12,
     fontWeight: '400',
     fontWeight: '500',
@@ -511,6 +579,26 @@ const styles = StyleSheet.create({
   },
   exploreButtonText: {
     color: 'rgba(191, 168, 77, 1)',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  restorePurchasesContainer: {
+    marginTop: 30,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  restorePurchasesButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  restorePurchasesButtonText: {
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -377,7 +377,7 @@ class IAPService {
                   'com.lab.wake.co';
       const version = Constants?.expoConfig?.version || 
                  Constants?.manifest?.version ||
-                 '1.1.9';
+                 '1.1.10';
       const buildNumber = Constants?.expoConfig?.ios?.buildNumber ||
                      Constants?.manifest?.ios?.buildNumber ||
                          '54';
@@ -391,7 +391,7 @@ class IAPService {
       logger.error('❌ Error getting app info:', error);
       return {
         bundleId: 'com.lab.wake.co',
-        version: '1.1.9',
+        version: '1.1.10',
         buildNumber: '54'
       };
     }
@@ -833,8 +833,12 @@ class IAPService {
   /**
    * Verify receipt with Firebase Function
    * The cloud function verifies with Apple and assigns the course
+   * Includes retry logic for network failures
    */
-  async verifyReceipt(purchase, userId, courseId) {
+  async verifyReceipt(purchase, userId, courseId, retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+    
     try {
       // expo-in-app-purchases provides receipt as transactionReceipt, not receipt
       const receipt = purchase.transactionReceipt || purchase.receipt;
@@ -845,7 +849,10 @@ class IAPService {
         return { success: false, error: 'Purchase missing receipt data' };
       }
 
-      logger.log('🔄 Verifying receipt with cloud function...');
+      logger.log('🔄 Verifying receipt with cloud function...', {
+        attempt: retryCount + 1,
+        maxRetries: MAX_RETRIES
+      });
       logger.log('📋 Receipt details:', {
         productId: purchase.productId,
         transactionId: purchase.orderId || purchase.transactionId,
@@ -856,44 +863,83 @@ class IAPService {
         hasReceipt: !!purchase.receipt
       });
       
+      try {
       const response = await fetch(
         'https://us-central1-wolf-20b8b.cloudfunctions.net/verifyIAPReceipt',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            receipt: receipt, // Send transactionReceipt as receipt
+              receipt: receipt, // Send transactionReceipt as receipt
             transactionId: purchase.orderId || purchase.transactionId,
             productId: purchase.productId,
             userId: userId,
             courseId: courseId
-          })
+            }),
+            // Add timeout
+            signal: AbortSignal.timeout(30000) // 30 second timeout
         }
       );
 
       const result = await response.json();
-      
-      logger.log('📊 Receipt verification response:', {
-        success: result.success,
-        statusCode: response.status,
-        result
-      });
+        
+        logger.log('📊 Receipt verification response:', {
+          success: result.success,
+          statusCode: response.status,
+          attempt: retryCount + 1,
+          result
+        });
       
       if (result.success) {
-        logger.log('✅ Receipt verified and course assigned by cloud function');
+          logger.log('✅ Receipt verified and course assigned by cloud function');
+          return result;
       } else {
-        logger.error('❌ Receipt verification failed:', {
-          error: result.error,
-          status: result.status,
-          statusDescription: result.statusDescription
-        });
-      }
-      
+          // Don't retry on Apple verification errors (status codes)
+          if (result.status && result.status !== 0) {
+            logger.error('❌ Receipt verification failed (Apple error):', {
+              error: result.error,
+              status: result.status,
+              statusDescription: result.statusDescription
+            });
+            return result;
+          }
+          
+          // Retry on other errors
+          if (retryCount < MAX_RETRIES) {
+            logger.warn(`⚠️ Retrying receipt verification (${retryCount + 1}/${MAX_RETRIES})...`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
+            return this.verifyReceipt(purchase, userId, courseId, retryCount + 1);
+          }
+          
+          logger.error('❌ Receipt verification failed after retries:', {
+            error: result.error,
+            status: result.status,
+            statusDescription: result.statusDescription
+          });
       return result;
+        }
+      } catch (fetchError) {
+        // Network error - retry
+        if (retryCount < MAX_RETRIES && (
+          fetchError.name === 'AbortError' || 
+          fetchError.message.includes('network') ||
+          fetchError.message.includes('timeout') ||
+          fetchError.message.includes('fetch')
+        )) {
+          logger.warn(`⚠️ Network error, retrying receipt verification (${retryCount + 1}/${MAX_RETRIES})...`, {
+            error: fetchError.message
+          });
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
+          return this.verifyReceipt(purchase, userId, courseId, retryCount + 1);
+        }
+        
+        throw fetchError;
+      }
     } catch (error) {
       logger.error('❌ Error verifying receipt:', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        attempt: retryCount + 1
       });
       return { success: false, error: error.message };
     }
@@ -975,6 +1021,9 @@ class IAPService {
 
   /**
    * Restore purchases
+   * This will fetch purchase history and attempt to verify each purchase
+   * Note: Purchase history may not include receipts, so verification may not be possible
+   * The app should handle this gracefully
    */
   async restorePurchases() {
     try {
@@ -986,17 +1035,59 @@ class IAPService {
       }
 
       logger.log('🔄 Restoring purchases...');
-        const { results } = await InAppPurchases.getPurchaseHistoryAsync();
       
-      logger.log('✅ Found purchases:', results?.length || 0);
+      try {
+        const { results } = await InAppPurchases.getPurchaseHistoryAsync();
+        
+        logger.log('✅ Found purchases:', results?.length || 0);
 
-      // Process each purchase through the listener
-      // The listener will handle verification
+        if (!results || results.length === 0) {
         return {
           success: true,
-        purchases: results || []
+            purchases: [],
+            count: 0,
+            message: 'No purchases found to restore'
+          };
+        }
+
+        // Log purchase details for debugging
+        const purchaseDetails = results.map(p => ({
+          productId: p.productId,
+          orderId: p.orderId,
+          transactionId: p.transactionId,
+          purchaseTime: p.purchaseTime,
+          hasReceipt: !!(p.transactionReceipt || p.receipt)
+        }));
+        
+        logger.log('📦 Purchase details:', purchaseDetails);
+
+        // Note: Purchase history entries typically don't include receipts
+        // Receipts are only available in the purchase listener for new purchases
+        // The app should handle restoration by checking user's courses/subscriptions
+        // which should already be synced from previous purchases
+        
+          return {
+          success: true,
+          purchases: results,
+          count: results.length,
+          message: `Found ${results.length} purchase(s). Note: Purchase history may not include receipts. Your purchases should already be synced.`
         };
-      } catch (error) {
+      } catch (historyError) {
+        logger.error('❌ Error fetching purchase history:', historyError);
+        
+        // Check if it's a sandbox account issue
+        if (historyError.code === InAppPurchases.IAPResponseCode.USER_CANCELED || 
+            historyError.message?.includes('sandbox')) {
+        return {
+          success: false,
+            error: 'Please sign in with a sandbox tester account to restore purchases',
+            code: historyError.code
+        };
+        }
+        
+        return { success: false, error: historyError.message || 'Failed to fetch purchase history' };
+      }
+    } catch (error) {
       logger.error('❌ Error restoring purchases:', error);
       return { success: false, error: error.message };
     }

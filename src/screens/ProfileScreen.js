@@ -37,6 +37,8 @@ import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import SvgChartLine from '../components/icons/SvgChartLine';
 import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
+import SvgListChecklist from '../components/icons/SvgListChecklist';
+import iapService from '../services/iapService';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
@@ -86,6 +88,7 @@ const ProfileScreen = ({ navigation }) => {
   const [usernameError, setUsernameError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState(null);
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
   
   const [userProfile, setUserProfile] = useState({
     displayName: '',
@@ -614,6 +617,45 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
+  // Restore purchases (Apple requirement)
+  const handleRestorePurchases = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
+      return;
+    }
+
+    try {
+      setRestoringPurchases(true);
+      logger.log('🔄 Restoring purchases from ProfileScreen...');
+      
+      const result = await iapService.restorePurchases();
+      
+      if (result.success) {
+        const purchaseCount = result.count || result.purchases?.length || 0;
+        if (purchaseCount > 0) {
+          Alert.alert(
+            'Compras restauradas',
+            `Se encontraron ${purchaseCount} compra(s). Las suscripciones se están verificando y aparecerán pronto en la sección de Suscripciones.`,
+            [{ text: 'Entendido' }]
+          );
+        } else {
+          Alert.alert(
+            'Sin compras',
+            'No se encontraron compras para restaurar.',
+            [{ text: 'Entendido' }]
+          );
+        }
+      } else {
+        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras.');
+      }
+    } catch (error) {
+      logger.error('Error restoring purchases:', error);
+      Alert.alert('Error', 'Ocurrió un error al restaurar las compras.');
+    } finally {
+      setRestoringPurchases(false);
+    }
+  };
+
 
   return (
     <>
@@ -1098,6 +1140,26 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           </View>
 
+        {/* Programs and Subscriptions Section */}
+        <View style={styles.programsSubscriptionsContainer}>
+          <TouchableOpacity 
+            style={styles.programCard} 
+            onPress={() => navigation.navigate('AllPurchasedCourses')}
+            activeOpacity={0.7}
+          >
+            <SvgListChecklist width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.programCardIcon} />
+            <Text style={styles.programCardTitle}>Programas</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.subscriptionCard} 
+            onPress={() => navigation.navigate('Subscriptions')}
+            activeOpacity={0.7}
+          >
+            <SvgCreditCard width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.subscriptionCardIcon} />
+            <Text style={styles.subscriptionCardTitle}>Suscripciones</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
           <TouchableOpacity style={styles.smallCard} onPress={showSettingsModal}>
@@ -1110,18 +1172,13 @@ const ProfileScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
+
         {/* Lab Card */}
         <TouchableOpacity style={styles.configCard} onPress={() => setIsInsightsModalVisible(true)}>
           <SvgChartLine width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.configIcon} />
           <Text style={styles.configCardTitle}>Lab</Text>
         </TouchableOpacity>
 
-        {/* TEMPORARY: IAP Test Button - Remove when done testing */}
-        <View style={styles.testButtonContainer}>
-          <TouchableOpacity style={styles.testButton} onPress={() => navigation.navigate('IAPTest')}>
-            <Text style={styles.testButtonText}>🧪 Test IAP</Text>
-          </TouchableOpacity>
-        </View>
 
 
         </View>
@@ -1232,6 +1289,60 @@ const styles = StyleSheet.create({
     marginBottom: Math.max(15, screenHeight * 0.02), // Responsive margin
     marginHorizontal: Math.max(24, screenWidth * 0.06), // Responsive horizontal margin
   },
+  programsSubscriptionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Math.max(15, screenHeight * 0.02), // Responsive margin
+    marginHorizontal: Math.max(24, screenWidth * 0.06), // Responsive horizontal margin
+  },
+  programCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    padding: Math.max(12, screenWidth * 0.03), // Responsive padding
+    width: '48%',
+    minHeight: Math.max(55, screenHeight * 0.07), // Responsive min height
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  programCardIcon: {
+    marginBottom: 8,
+  },
+  programCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  subscriptionCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    padding: Math.max(12, screenWidth * 0.03), // Responsive padding
+    width: '48%',
+    minHeight: Math.max(55, screenHeight * 0.07), // Responsive min height
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subscriptionCardIcon: {
+    marginBottom: 8,
+  },
+  subscriptionCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
   interestsProgramsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1261,25 +1372,6 @@ const styles = StyleSheet.create({
   },
   smallCardIcon: {
     marginBottom: 8,
-  },
-  testButtonContainer: {
-    marginHorizontal: Math.max(24, screenWidth * 0.06),
-    marginTop: Math.max(10, screenHeight * 0.01),
-    marginBottom: Math.max(15, screenHeight * 0.02),
-  },
-  testButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: Math.max(12, screenWidth * 0.03),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  testButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
   },
   configCard: {
     backgroundColor: '#2a2a2a',

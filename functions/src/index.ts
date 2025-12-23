@@ -2064,6 +2064,27 @@ export const verifyIAPReceipt = functions
       const sandboxURL = "https://sandbox.itunes.apple.com/verifyReceipt";
       const productionURL = "https://buy.itunes.apple.com/verifyReceipt";
 
+      // Type definition for receipt transaction
+      type ReceiptTransaction = {
+        transaction_id: string;
+        product_id: string;
+        expires_date_ms?: string;
+        expires_date?: string;
+        purchase_date_ms?: string;
+        purchase_date?: string;
+        original_transaction_id?: string;
+        is_trial_period?: string;
+        is_in_intro_offer_period?: string;
+      };
+
+      type ReceiptResponse = {
+        status: number;
+        receipt?: {
+          in_app?: ReceiptTransaction[];
+          latest_receipt_info?: ReceiptTransaction[];
+        };
+      };
+
       // Get app secret from Firebase Functions secrets
       const appSecret = iapAppSecret.value();
 
@@ -2092,15 +2113,7 @@ export const verifyIAPReceipt = functions
         }),
       });
 
-      let verifyResult = await verifyResponse.json() as {
-        status: number;
-        receipt?: {
-          in_app?: Array<{
-            transaction_id: string;
-            product_id: string;
-          }>;
-        };
-      };
+      let verifyResult = await verifyResponse.json() as ReceiptResponse;
 
       functions.logger.info("📊 Sandbox verification result:", {
         status: verifyResult.status,
@@ -2122,15 +2135,7 @@ export const verifyIAPReceipt = functions
           }),
         });
 
-        verifyResult = await verifyResponse.json() as {
-          status: number;
-          receipt?: {
-            in_app?: Array<{
-              transaction_id: string;
-              product_id: string;
-            }>;
-          };
-        };
+        verifyResult = await verifyResponse.json() as ReceiptResponse;
         
         functions.logger.info("📊 Production verification result:", {
           status: verifyResult.status,
@@ -2156,17 +2161,19 @@ export const verifyIAPReceipt = functions
 
       // Check if transaction is valid
       const receiptInfo = verifyResult.receipt;
-      const inAppPurchases = receiptInfo?.in_app || [];
+      // Use latest_receipt_info if available (more accurate for subscriptions), otherwise fall back to in_app
+      const inAppPurchases = receiptInfo?.latest_receipt_info || receiptInfo?.in_app || [];
 
       functions.logger.info("🔍 Searching for transaction in receipt:", {
         transactionId,
         inAppPurchasesCount: inAppPurchases.length,
-        transactionIds: inAppPurchases.map(p => p.transaction_id)
+        transactionIds: inAppPurchases.map(p => p.transaction_id),
+        usingLatestReceiptInfo: !!receiptInfo?.latest_receipt_info
       });
 
       const transaction = inAppPurchases.find(
-        (purchase) => purchase.transaction_id === transactionId
-      );
+        (purchase: ReceiptTransaction) => purchase.transaction_id === transactionId
+      ) as ReceiptTransaction | undefined;
 
       if (!transaction) {
         functions.logger.error("❌ Transaction not found in receipt:", {
@@ -2183,8 +2190,32 @@ export const verifyIAPReceipt = functions
       
       functions.logger.info("✅ Transaction found in receipt:", {
         transactionId: transaction.transaction_id,
-        productId: transaction.product_id
+        productId: transaction.product_id,
+        expires_date_ms: transaction.expires_date_ms,
+        expires_date: transaction.expires_date,
+        purchase_date_ms: transaction.purchase_date_ms,
+        purchase_date: transaction.purchase_date,
+        original_transaction_id: transaction.original_transaction_id
       });
+
+      // Extract dates from receipt (preferred over calculated dates)
+      let expirationDate: string | null = null;
+      let purchaseDate: string | null = null;
+      let renewalDate: string | null = null;
+
+      // Parse expiration date from receipt
+      if (transaction.expires_date_ms) {
+        expirationDate = new Date(parseInt(transaction.expires_date_ms)).toISOString();
+      } else if (transaction.expires_date) {
+        expirationDate = new Date(transaction.expires_date).toISOString();
+      }
+
+      // Parse purchase date from receipt
+      if (transaction.purchase_date_ms) {
+        purchaseDate = new Date(parseInt(transaction.purchase_date_ms)).toISOString();
+      } else if (transaction.purchase_date) {
+        purchaseDate = new Date(transaction.purchase_date).toISOString();
+      }
 
       // Validate user exists
       const userDoc = await db.collection("users").doc(userId).get();
@@ -2220,31 +2251,56 @@ export const verifyIAPReceipt = functions
       // Check if access_duration is a subscription (monthly, yearly, etc. that auto-renews)
       const isSubscription = courseAccessDuration === "monthly" || courseAccessDuration === "yearly";
 
+      // For subscriptions, renewal date is the same as expiration date (when it will renew)
+      if (isSubscription && expirationDate) {
+        renewalDate = expirationDate;
+      }
+
       // Check if user already owns course
       const existingPurchase = await checkUserOwnsCourse(userId, courseId);
       const isRenewal = existingPurchase && isSubscription;
 
-      let expirationDate: string;
+      // Use receipt dates if available, otherwise calculate
+      let finalExpirationDate: string;
+      let finalPurchaseDate: string;
 
-      if (isRenewal) {
+      if (expirationDate) {
+        // Use receipt expiration date (most accurate)
+        finalExpirationDate = expirationDate;
+        functions.logger.info("✅ Using expiration date from receipt:", finalExpirationDate);
+      } else if (isRenewal) {
         // Subscription renewal: extend expiration date from current expiration
-        functions.logger.info("Subscription renewal detected:", userId, courseId);
+        functions.logger.info("Subscription renewal detected, calculating expiration date:", userId, courseId);
         
         const userData = userDoc.data();
         const currentCourse = (userData?.courses || {})[courseId];
         const currentExpiration = currentCourse?.expires_at ?? null;
         
-        expirationDate = calculateExpirationDate(courseAccessDuration, {
+        finalExpirationDate = calculateExpirationDate(courseAccessDuration, {
           from: currentExpiration ?? undefined,
         });
         
         functions.logger.info(
           "Using calculated expiration date for renewal:",
-          expirationDate,
+          finalExpirationDate,
           "Base:",
           currentExpiration
         );
-      } else if (existingPurchase && !isSubscription) {
+      } else {
+        // Initial purchase (subscription or non-subscription) - calculate if no receipt date
+        finalExpirationDate = calculateExpirationDate(courseAccessDuration);
+        functions.logger.info("Using calculated expiration date:", finalExpirationDate);
+      }
+
+      if (purchaseDate) {
+        finalPurchaseDate = purchaseDate;
+        functions.logger.info("✅ Using purchase date from receipt:", finalPurchaseDate);
+      } else {
+        finalPurchaseDate = new Date().toISOString();
+        functions.logger.info("Using current date as purchase date:", finalPurchaseDate);
+      }
+
+      if (existingPurchase && !isSubscription) {
         // Non-subscription already owned - mark as processed
         functions.logger.info("User already owns course (non-subscription), marking transaction as processed");
         await processedRef.set({
@@ -2260,15 +2316,15 @@ export const verifyIAPReceipt = functions
           alreadyOwned: true,
         });
         return;
-      } else {
-        // Initial purchase (subscription or non-subscription)
-        expirationDate = calculateExpirationDate(courseAccessDuration);
       }
 
       // Use transaction for atomic update
-      await db.runTransaction(async (transaction) => {
+      // Note: Rename receipt transaction to avoid conflict with Firestore transaction parameter
+      const receiptTransaction = transaction;
+      
+      await db.runTransaction(async (firestoreTransaction) => {
         const userRef = db.collection("users").doc(userId);
-        const userDoc = await transaction.get(userRef);
+        const userDoc = await firestoreTransaction.get(userRef);
 
         if (!userDoc.exists) {
           throw new Error("User not found");
@@ -2294,7 +2350,8 @@ export const verifyIAPReceipt = functions
         if (isRenewal && courses[courseId]) {
           courses[courseId] = {
             ...courses[courseId],
-            expires_at: expirationDate,
+            expires_at: finalExpirationDate,
+            renewal_date: renewalDate || finalExpirationDate, // Store renewal date
             status: "active",
             // Keep all existing data (purchased_at, completedTutorials, etc.)
           };
@@ -2302,11 +2359,13 @@ export const verifyIAPReceipt = functions
           // Initial purchase: Add course to user (atomic write)
         courses[courseId] = {
           access_duration: courseAccessDuration,
-          expires_at: expirationDate,
+          expires_at: finalExpirationDate,
+          renewal_date: renewalDate || finalExpirationDate, // Store renewal date (when subscription will renew)
           status: "active",
-          purchased_at: new Date().toISOString(),
+          purchased_at: finalPurchaseDate,
           purchase_method: "iap", // Track purchase method
           iap_transaction_id: transactionId, // Store IAP transaction ID
+          iap_original_transaction_id: receiptTransaction.original_transaction_id || transactionId, // Store original transaction ID
             is_subscription: isSubscription, // Track if this is a subscription
           title: courseDetails?.title || "Untitled Course",
           image_url: courseDetails?.image_url || null,
@@ -2323,6 +2382,46 @@ export const verifyIAPReceipt = functions
         };
         }
 
+        // For subscriptions, also create/update subscription document
+        if (isSubscription) {
+          const subscriptionId = receiptTransaction.original_transaction_id || transactionId;
+          const subscriptionRef = db
+            .collection("users")
+            .doc(userId)
+            .collection("subscriptions")
+            .doc(subscriptionId);
+
+          const subscriptionData = {
+            subscription_id: subscriptionId,
+            user_id: userId,
+            course_id: courseId,
+            course_title: courseDetails?.title || "Subscription",
+            status: "active",
+            type: "iap", // Mark as IAP subscription
+            payer_email: userDoc.data()?.email || null,
+            transaction_amount: null, // IAP doesn't provide amount in receipt
+            currency_id: null,
+            created_at: admin.firestore.FieldValue.serverTimestamp(),
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            expires_at: admin.firestore.Timestamp.fromDate(new Date(finalExpirationDate)),
+            renewal_date: admin.firestore.Timestamp.fromDate(new Date(renewalDate || finalExpirationDate)),
+            next_billing_date: admin.firestore.Timestamp.fromDate(new Date(renewalDate || finalExpirationDate)),
+            iap_transaction_id: transactionId,
+            iap_original_transaction_id: receiptTransaction.original_transaction_id || transactionId,
+            iap_product_id: productId,
+            purchase_date: admin.firestore.Timestamp.fromDate(new Date(finalPurchaseDate)),
+          };
+
+          firestoreTransaction.set(subscriptionRef, subscriptionData, {merge: true});
+          
+          functions.logger.info("📝 Created/updated IAP subscription document:", {
+            subscriptionId,
+            courseId,
+            expires_at: finalExpirationDate,
+            renewal_date: renewalDate || finalExpirationDate
+          });
+        }
+
         functions.logger.info("📝 Updating user document with course:", {
           userId,
           courseId,
@@ -2330,7 +2429,7 @@ export const verifyIAPReceipt = functions
           totalCourses: Object.keys(courses).length
         });
 
-        transaction.update(userRef, {
+        firestoreTransaction.update(userRef, {
           courses: courses,
           purchased_courses: [
             ...new Set([...(userData?.purchased_courses || []), courseId]),
@@ -2338,7 +2437,7 @@ export const verifyIAPReceipt = functions
         });
 
         // Mark transaction as processed (atomic write)
-        transaction.set(
+        firestoreTransaction.set(
           processedRef,
           {
             userId,
