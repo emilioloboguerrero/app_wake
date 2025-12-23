@@ -11,6 +11,7 @@ import PRDetailScreen from '../screens/PRDetailScreen';
 import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen';
 import SessionsScreen from '../screens/SessionsScreen';
 import SessionDetailScreen from '../screens/SessionDetailScreen';
+import IAPTestScreen from '../screens/IAPTestScreen'; // Temporary test screen
 
 const Stack = createStackNavigator();
 
@@ -32,6 +33,8 @@ const ProfileStackNavigator = () => {
       <Stack.Screen name="WeeklyVolumeHistory" component={WeeklyVolumeHistoryScreen} />
       <Stack.Screen name="Sessions" component={SessionsScreen} />
       <Stack.Screen name="SessionDetail" component={SessionDetailScreen} />
+      {/* Temporary test screen - remove when done testing */}
+      <Stack.Screen name="IAPTest" component={IAPTestScreen} />
     </Stack.Navigator>
   );
 };

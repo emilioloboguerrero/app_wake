@@ -115,7 +115,7 @@ class GoogleAuthService {
         return {
           success: false,
           error: 'REGISTRATION_REQUIRED',
-          message: 'No encontramos una cuenta asociada con este correo de Google.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Google\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+          message: 'No encontramos una cuenta asociada con este correo de Google. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
         };
       }
       

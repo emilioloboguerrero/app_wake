@@ -140,12 +140,12 @@ const LoginScreen = () => {
     } catch (error) {
       logger.error('Sign in error:', error);
       
-      // If user doesn't exist, direct them to website for registration
+      // If user doesn't exist, show generic error
       if (error.code === 'auth/user-not-found') {
-        logger.log('User not found, directing to website for registration...');
+        logger.log('User not found');
         Alert.alert(
           'Cuenta no encontrada',
-          'No encontramos una cuenta con este correo electrónico.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí para iniciar sesión\n\nSi ya tienes una cuenta, verifica que el correo electrónico sea correcto.',
+          'No encontramos una cuenta con este correo electrónico. Verifica que el correo electrónico sea correcto.',
           [
             {
               text: 'Entendido',
@@ -196,7 +196,7 @@ const LoginScreen = () => {
         if (result.error === 'REGISTRATION_REQUIRED') {
           Alert.alert(
             'Cuenta no encontrada',
-            'No encontramos una cuenta asociada con este correo de Google.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Google\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+            'No encontramos una cuenta asociada con este correo de Google. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
           );
         } else {
           Alert.alert('Error', result.error || 'Error al iniciar sesión con Google');
@@ -223,7 +223,7 @@ const LoginScreen = () => {
         if (result.error === 'REGISTRATION_REQUIRED') {
           Alert.alert(
             'Cuenta no encontrada',
-            'No encontramos una cuenta asociada con este correo de Apple.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Apple\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+            'No encontramos una cuenta asociada con este correo de Apple. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
           );
         } else {
           Alert.alert('Error', result.error || 'Error al iniciar sesión con Apple');
@@ -331,19 +331,7 @@ const LoginScreen = () => {
           active={validateEmail(email) && validatePassword(password)}
         />
 
-        {/* Registration Message */}
-        <View style={styles.registrationMessageContainer}>
-          <Text style={styles.registrationMessageText}>
-            ¿No tienes cuenta?
-          </Text>
-          <Text style={styles.registrationSubtext}>
-            Crea tu cuenta en{' '}
-            <Text style={styles.registrationLink}>
-              www.wakelab.co
-            </Text>
-            {' '}y luego inicia sesión aquí para acceder a tus programas de entrenamiento.
-          </Text>
-        </View>
+        {/* Registration Message - Removed external website reference */}
 
         {/* Forgot Password Link - Only show when authentication fails */}
         {showForgotPassword && (

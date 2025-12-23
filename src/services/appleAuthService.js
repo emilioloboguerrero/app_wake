@@ -217,11 +217,11 @@ class AppleAuthService {
       if (!existingUser) {
         // User doesn't exist - sign them out and show message
         await auth.signOut();
-        logger.log('New user attempted sign-in, redirecting to website');
+        logger.log('New user attempted sign-in');
         return {
           success: false,
           error: 'REGISTRATION_REQUIRED',
-          message: 'No encontramos una cuenta asociada con este correo de Apple.\n\n¿Necesitas crear una cuenta?\n\nPara crear tu cuenta y acceder a los programas de entrenamiento:\n1. Visita www.wakelab.co\n2. Crea tu cuenta en el sitio web\n3. Una vez creada, regresa aquí e inicia sesión con Apple\n\nSi ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+          message: 'No encontramos una cuenta asociada con este correo de Apple. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
         };
       }
       

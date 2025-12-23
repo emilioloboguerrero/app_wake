@@ -643,7 +643,7 @@ const SubscriptionsScreen = ({ navigation }) => {
               >
                 <Text style={styles.subscriptionInfoModalDescription}>
                   Las suscripciones y compras no se administran dentro de la app.{'\n\n'}
-                  El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente fuera de Wake.
+                  El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
                 </Text>
               </ScrollView>
             </View>

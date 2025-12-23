@@ -22,6 +22,10 @@ const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
 
+const iapAppSecret = functions.params.defineSecret(
+  "IAP_APP_SECRET"
+);
+
 // Simple Mercado Pago client
 const getClient = () => {
   const token = mercadopagoAccessToken.value();
@@ -221,6 +225,23 @@ async function updateCheckoutIntent(
     },
     {merge: true}
   );
+}
+
+// Helper: Get human-readable description for receipt verification status codes
+function getReceiptStatusDescription(status: number): string {
+  const statusCodes: {[key: number]: string} = {
+    0: "Valid receipt",
+    21000: "The App Store could not read the JSON object you provided",
+    21002: "The data in the receipt-data property was malformed or missing",
+    21003: "The receipt could not be authenticated",
+    21004: "The shared secret you provided does not match the shared secret on file for your account",
+    21005: "The receipt server is not currently available",
+    21006: "This receipt is valid but the subscription has expired",
+    21007: "This receipt is from the test environment, but it was sent to the production environment for verification",
+    21008: "This receipt is from the production environment, but it was sent to the test environment for verification",
+    21010: "This receipt could not be authorized",
+  };
+  return statusCodes[status] || `Unknown status code: ${status}`;
 }
 
 // Helper: Calculate expiration date from access duration (same as app)
@@ -1971,5 +1992,394 @@ export const verifyToken = functions.https.onRequest(async (req, res) => {
     });
   }
 });
+
+// Verify IAP receipt with Apple and grant course access
+export const verifyIAPReceipt = functions
+  .runWith({secrets: [iapAppSecret]})
+  .https.onRequest(async (request, response) => {
+    response.set("Access-Control-Allow-Origin", "*");
+    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response.set("Access-Control-Allow-Headers", "Content-Type");
+
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+
+    try {
+      const {receipt, transactionId, productId, userId, courseId} = request.body;
+
+      functions.logger.info("📥 IAP receipt verification request received:", {
+        transactionId,
+        productId,
+        userId,
+        courseId,
+        receiptLength: receipt?.length || 0,
+        hasReceipt: !!receipt,
+        hasTransactionId: !!transactionId
+      });
+
+      if (!receipt || !transactionId || !productId || !userId || !courseId) {
+        functions.logger.error("❌ Missing required fields:", {
+          hasReceipt: !!receipt,
+          hasTransactionId: !!transactionId,
+          hasProductId: !!productId,
+          hasUserId: !!userId,
+          hasCourseId: !!courseId
+        });
+        response.status(400).json({
+          success: false,
+          error: "Missing required fields",
+        });
+        return;
+      }
+
+      // Check if transaction already processed
+      const processedRef = db
+        .collection("processed_iap_transactions")
+        .doc(transactionId);
+
+      const processedDoc = await processedRef.get();
+      if (processedDoc.exists) {
+        functions.logger.info("⚠️ Transaction already processed:", {
+          transactionId,
+          userId: processedDoc.data()?.userId,
+          courseId: processedDoc.data()?.courseId,
+          status: processedDoc.data()?.status
+        });
+        response.json({
+          success: true,
+          alreadyProcessed: true,
+          userId: processedDoc.data()?.userId,
+          courseId: processedDoc.data()?.courseId,
+        });
+        return;
+      }
+      
+      functions.logger.info("🔄 New transaction, proceeding with verification...");
+
+      // Verify with Apple's servers
+      // IMPORTANT: Always try sandbox first, then production if needed
+      // Status 21007 means receipt is from production but sent to sandbox
+      const sandboxURL = "https://sandbox.itunes.apple.com/verifyReceipt";
+      const productionURL = "https://buy.itunes.apple.com/verifyReceipt";
+
+      // Get app secret from Firebase Functions secrets
+      const appSecret = iapAppSecret.value();
+      
+      // Log secret info (first 4 and last 4 chars only for security)
+      const secretPreview = appSecret.length > 8 
+        ? `${appSecret.substring(0, 4)}...${appSecret.substring(appSecret.length - 4)}`
+        : "***";
+      functions.logger.info("🔐 Using shared secret:", {
+        length: appSecret.length,
+        preview: secretPreview,
+        hasWhitespace: /\s/.test(appSecret),
+        trimmedLength: appSecret.trim().length
+      });
+
+      // Try sandbox first (for sandbox/test purchases)
+      functions.logger.info("🔄 Attempting receipt verification with sandbox URL...");
+      
+      // Try with password first
+      let verifyResponse = await fetch(sandboxURL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          "receipt-data": receipt,
+          "password": appSecret.trim(), // Trim any whitespace
+          "exclude-old-transactions": true,
+        }),
+      });
+
+      let verifyResult = await verifyResponse.json() as {
+        status: number;
+        receipt?: {
+          in_app?: Array<{
+            transaction_id: string;
+            product_id: string;
+          }>;
+        };
+      };
+
+      functions.logger.info("📊 Sandbox verification result:", {
+        status: verifyResult.status,
+        statusDescription: getReceiptStatusDescription(verifyResult.status),
+        hasReceipt: !!verifyResult.receipt,
+        inAppPurchasesCount: verifyResult.receipt?.in_app?.length || 0
+      });
+
+      // If sandbox returns 21007, the receipt is from production - retry with production URL
+      if (verifyResult.status === 21007) {
+        functions.logger.info("🔄 Sandbox returned 21007, trying production URL...");
+        verifyResponse = await fetch(productionURL, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            "receipt-data": receipt,
+            "password": appSecret.trim(), // Trim any whitespace
+            "exclude-old-transactions": true,
+          }),
+        });
+
+        verifyResult = await verifyResponse.json() as {
+          status: number;
+          receipt?: {
+            in_app?: Array<{
+              transaction_id: string;
+              product_id: string;
+            }>;
+          };
+        };
+        
+        functions.logger.info("📊 Production verification result:", {
+          status: verifyResult.status,
+          statusDescription: getReceiptStatusDescription(verifyResult.status),
+          hasReceipt: !!verifyResult.receipt,
+          inAppPurchasesCount: verifyResult.receipt?.in_app?.length || 0
+        });
+      }
+
+      if (verifyResult.status !== 0) {
+        functions.logger.error("Apple receipt verification failed:", {
+          status: verifyResult.status,
+          statusDescription: getReceiptStatusDescription(verifyResult.status)
+        });
+        response.status(400).json({
+          success: false,
+          error: "Receipt verification failed",
+          status: verifyResult.status,
+          statusDescription: getReceiptStatusDescription(verifyResult.status),
+        });
+        return;
+      }
+
+      // Check if transaction is valid
+      const receiptInfo = verifyResult.receipt;
+      const inAppPurchases = receiptInfo?.in_app || [];
+
+      functions.logger.info("🔍 Searching for transaction in receipt:", {
+        transactionId,
+        inAppPurchasesCount: inAppPurchases.length,
+        transactionIds: inAppPurchases.map(p => p.transaction_id)
+      });
+
+      const transaction = inAppPurchases.find(
+        (purchase) => purchase.transaction_id === transactionId
+      );
+
+      if (!transaction) {
+        functions.logger.error("❌ Transaction not found in receipt:", {
+          requestedTransactionId: transactionId,
+          availableTransactionIds: inAppPurchases.map(p => p.transaction_id),
+          productIds: inAppPurchases.map(p => p.product_id)
+        });
+        response.status(400).json({
+          success: false,
+          error: "Transaction not found in receipt",
+        });
+        return;
+      }
+      
+      functions.logger.info("✅ Transaction found in receipt:", {
+        transactionId: transaction.transaction_id,
+        productId: transaction.product_id
+      });
+
+      // Validate user exists
+      const userDoc = await db.collection("users").doc(userId).get();
+      if (!userDoc.exists) {
+        response.status(404).json({
+          success: false,
+          error: "User not found",
+        });
+        return;
+      }
+
+      // Validate course exists
+      const courseDoc = await db.collection("courses").doc(courseId).get();
+      if (!courseDoc.exists) {
+        response.status(404).json({
+          success: false,
+          error: "Course not found",
+        });
+        return;
+      }
+
+      const courseDetails = courseDoc.data();
+      const courseAccessDuration = courseDetails?.access_duration;
+
+      if (!courseAccessDuration) {
+        response.status(400).json({
+          success: false,
+          error: "Course missing access_duration",
+        });
+        return;
+      }
+
+      // Check if access_duration is a subscription (monthly, yearly, etc. that auto-renews)
+      const isSubscription = courseAccessDuration === "monthly" || courseAccessDuration === "yearly";
+
+      // Check if user already owns course
+      const existingPurchase = await checkUserOwnsCourse(userId, courseId);
+      const isRenewal = existingPurchase && isSubscription;
+
+      let expirationDate: string;
+
+      if (isRenewal) {
+        // Subscription renewal: extend expiration date from current expiration
+        functions.logger.info("Subscription renewal detected:", userId, courseId);
+        
+        const userData = userDoc.data();
+        const currentCourse = (userData?.courses || {})[courseId];
+        const currentExpiration = currentCourse?.expires_at ?? null;
+        
+        expirationDate = calculateExpirationDate(courseAccessDuration, {
+          from: currentExpiration ?? undefined,
+        });
+        
+        functions.logger.info(
+          "Using calculated expiration date for renewal:",
+          expirationDate,
+          "Base:",
+          currentExpiration
+        );
+      } else if (existingPurchase && !isSubscription) {
+        // Non-subscription already owned - mark as processed
+        functions.logger.info("User already owns course (non-subscription), marking transaction as processed");
+        await processedRef.set({
+          userId,
+          courseId,
+          productId,
+          transactionId,
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "already_owned",
+        });
+        response.json({
+          success: true,
+          alreadyOwned: true,
+        });
+        return;
+      } else {
+        // Initial purchase (subscription or non-subscription)
+        expirationDate = calculateExpirationDate(courseAccessDuration);
+      }
+
+      // Use transaction for atomic update
+      await db.runTransaction(async (transaction) => {
+        const userRef = db.collection("users").doc(userId);
+        const userDoc = await transaction.get(userRef);
+
+        if (!userDoc.exists) {
+          throw new Error("User not found");
+        }
+
+        const userData = userDoc.data();
+        const courses = userData?.courses || {};
+
+        // Check if course already assigned (atomic check)
+        // For renewals, we want to update even if active (to extend expiration)
+        if (courses[courseId] && !isRenewal) {
+          const courseData = courses[courseId];
+          const isActive = courseData.status === "active";
+          const isNotExpired = new Date(courseData.expires_at) > new Date();
+
+          if (isActive && isNotExpired) {
+            functions.logger.info("Course already assigned, skipping");
+            return;
+          }
+        }
+
+        // For renewals, keep existing data and just update expiration
+        if (isRenewal && courses[courseId]) {
+          courses[courseId] = {
+            ...courses[courseId],
+            expires_at: expirationDate,
+            status: "active",
+            // Keep all existing data (purchased_at, completedTutorials, etc.)
+          };
+        } else {
+          // Initial purchase: Add course to user (atomic write)
+          courses[courseId] = {
+            access_duration: courseAccessDuration,
+            expires_at: expirationDate,
+            status: "active",
+            purchased_at: new Date().toISOString(),
+            purchase_method: "iap", // Track purchase method
+            iap_transaction_id: transactionId, // Store IAP transaction ID
+            is_subscription: isSubscription, // Track if this is a subscription
+            title: courseDetails?.title || "Untitled Course",
+            image_url: courseDetails?.image_url || null,
+            discipline: courseDetails?.discipline || "General",
+            creatorName: courseDetails?.creatorName ||
+              courseDetails?.creator_name ||
+              "Unknown Creator",
+            completedTutorials: {
+              dailyWorkout: [],
+              warmup: [],
+              workoutExecution: [],
+              workoutCompletion: [],
+            },
+          };
+        }
+
+        functions.logger.info("📝 Updating user document with course:", {
+          userId,
+          courseId,
+          courseData: courses[courseId],
+          totalCourses: Object.keys(courses).length
+        });
+
+        transaction.update(userRef, {
+          courses: courses,
+          purchased_courses: [
+            ...new Set([...(userData?.purchased_courses || []), courseId]),
+          ],
+        });
+
+        // Mark transaction as processed (atomic write)
+        transaction.set(
+          processedRef,
+          {
+            userId,
+            courseId,
+            productId,
+            transactionId,
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "approved",
+          },
+          {merge: true}
+        );
+      });
+
+      functions.logger.info("✅ IAP purchase processed successfully - transaction committed:", {
+        transactionId,
+        userId,
+        courseId,
+        productId
+      });
+
+      response.json({
+        success: true,
+        transactionId,
+        courseId,
+        userId,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const stack = error instanceof Error ? error.stack : undefined;
+      functions.logger.error("❌ Error verifying IAP receipt:", {
+        error: message,
+        stack,
+        transactionId: request.body?.transactionId,
+        userId: request.body?.userId,
+        courseId: request.body?.courseId
+      });
+      response.status(500).json({
+        success: false,
+        error: message,
+      });
+    }
+  });
 
 

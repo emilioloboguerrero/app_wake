@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -25,6 +26,7 @@ import SvgArrowReload from '../components/icons/SvgArrowReload';
 import SvgCircleHelp from '../components/icons/SvgCircleHelp';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
+import iapService from '../services/iapService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
@@ -238,6 +240,24 @@ useEffect(() => {
     }
   };
 }, []);
+
+  // Handle app state changes - only cancel if app truly goes to background
+  // Don't cancel on 'inactive' as that's normal during IAP payment modal
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // Only cancel if app truly goes to background (user switched apps)
+      // 'inactive' is normal during IAP payment modal - don't cancel then
+      if (nextAppState === 'background' && purchasing) {
+        logger.log('📱 App went to background during purchase, resetting purchase state...');
+        iapService.cancelPurchase();
+        setPurchasing(false);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [purchasing]);
 
   // Re-check ownership when screen comes into focus (handles expiration case)
   useFocusEffect(
@@ -688,10 +708,201 @@ useEffect(() => {
       return; // Exit early - free flow handled
     }
 
+    // Handle IAP purchases
+    if (course.iap_product_id) {
+      await handleIAPPurchase();
+      return;
+    }
+
     // Unified system: Catalog only - no purchases, no redirects
     // Library serves as catalog only for all platforms
     setPurchasing(false);
     setShowInfoModal(true);
+  };
+
+  const handleIAPPurchase = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'Debes iniciar sesión para comprar');
+      return;
+    }
+
+    if (userOwnsCourse) {
+      Alert.alert('Ya tienes este curso', 'Este curso ya está en tu biblioteca');
+      return;
+    }
+
+    if (!course.iap_product_id) {
+      Alert.alert('Error', 'Este programa no está disponible para compra');
+      return;
+    }
+
+    try {
+      // Check if purchase is stuck and reset if needed
+      const purchaseState = iapService.getPurchaseState();
+      logger.log('📊 Purchase state before starting:', purchaseState);
+      
+      if (purchaseState.purchaseInProgress) {
+        logger.warn('⚠️ Purchase appears to be stuck, resetting...');
+        iapService.cancelPurchase();
+      }
+
+      setPurchasing(true);
+
+      // Initialize IAP connection
+      logger.log('🔄 Initializing IAP...');
+      const initResult = await iapService.initialize();
+      if (!initResult.success) {
+        throw new Error('Error inicializando compras: ' + (initResult.error || 'Unknown error'));
+      }
+
+      // Get product from App Store
+      logger.log('🔄 Fetching product:', course.iap_product_id);
+      const productsResult = await iapService.getProducts([course.iap_product_id]);
+
+      if (!productsResult.success || productsResult.products.length === 0) {
+        // Get app info for detailed error message
+        const appInfo = await iapService.getAppInfo();
+        
+        let errorMessage = 'El producto no está disponible.\n\n';
+        errorMessage += '✅ IAP está conectado correctamente\n';
+        errorMessage += '✅ Cuenta de sandbox detectada\n';
+        errorMessage += '❌ Producto no encontrado en sandbox\n\n';
+        errorMessage += '⚠️ PROBLEMA COMÚN:\n';
+        errorMessage += 'Si la versión de la app está "Developer Rejected"\n';
+        errorMessage += 'los productos IAP NO se sincronizan a sandbox.\n\n';
+        errorMessage += 'SOLUCIÓN:\n';
+        errorMessage += '1. Crea una NUEVA versión (ej: 1.1.10)\n';
+        errorMessage += '2. Asocia el producto con la nueva versión\n';
+        errorMessage += '3. Guarda la versión\n';
+        errorMessage += '4. Espera 2-24 horas para sincronización\n\n';
+        errorMessage += 'VERIFICA EN APP STORE CONNECT:\n\n';
+        errorMessage += `1. Product ID exacto:\n   "${course.iap_product_id}"\n`;
+        errorMessage += `   (Debe coincidir EXACTAMENTE)\n\n`;
+        errorMessage += `2. Bundle ID:\n   ${appInfo.bundleId}\n\n`;
+        errorMessage += `3. Versión de app:\n   ${appInfo.version} (Build ${appInfo.buildNumber})\n`;
+        errorMessage += `   ⚠️ Estado: Verifica que NO esté "Rejected"\n\n`;
+        errorMessage += '4. El producto DEBE estar asociado con esta versión:\n';
+        errorMessage += '   App Store Connect → Tu App → Versiones\n';
+        errorMessage += '   → Encuentra versión ' + appInfo.version + '\n';
+        errorMessage += '   → "In-App Purchases and Subscriptions"\n';
+        errorMessage += '   → Tu producto DEBE estar listado ahí\n\n';
+        errorMessage += '5. Estado del producto:\n';
+        errorMessage += '   Debe ser "Ready to Submit" (verde)\n';
+        errorMessage += '   NO "Draft" o "Waiting for Review"\n\n';
+        errorMessage += '6. Tiempo de espera:\n';
+        errorMessage += '   Si acabas de crear/asociar el producto,\n';
+        errorMessage += '   espera 2-24 horas para sincronización\n\n';
+        
+        if (productsResult.responseCode !== undefined) {
+          const codeName = iapService.getResponseCodeName(productsResult.responseCode);
+          errorMessage += `Código de respuesta: ${codeName} (${productsResult.responseCode})\n`;
+          errorMessage += 'Esto significa: La solicitud fue exitosa pero el producto no está disponible.\n';
+        }
+
+        Alert.alert(
+          'Producto no disponible',
+          errorMessage,
+          [
+            {
+              text: 'Verificar en App Store Connect',
+              onPress: () => {
+                // Could open App Store Connect URL if needed
+                logger.log('💡 User should check App Store Connect');
+              }
+            },
+            {
+              text: 'Entendido',
+              style: 'cancel'
+            }
+          ]
+        );
+        setPurchasing(false);
+        return;
+      }
+
+      // Product found - store user and course info for receipt verification
+      const product = productsResult.products[0];
+      logger.log('✅ Product found:', product.productId, product.title, product.price);
+
+      // Store purchase info for the listener
+      iapService.setPendingPurchase(course.iap_product_id, {
+        userId: user.uid,
+        courseId: course.id
+      });
+
+      // Purchase the product
+      logger.log('🔄 Initiating purchase...');
+      const purchaseResult = await iapService.purchaseProduct(course.iap_product_id);
+
+      if (!purchaseResult.success) {
+        iapService.clearPendingPurchase(course.iap_product_id);
+        throw new Error(purchaseResult.error || 'Error al realizar la compra');
+      }
+
+      // Purchase is now in progress - verify the latest purchase after a delay
+      // This handles cases where the listener doesn't fire
+      setTimeout(async () => {
+        try {
+          logger.log('🔄 Verifying purchase after delay...');
+          
+          // Verify the latest purchase for this product
+          const verifyResult = await iapService.verifyLatestPurchase(
+            course.iap_product_id,
+            user.uid,
+            course.id
+          );
+
+          if (verifyResult.success) {
+            logger.log('✅ Purchase verified successfully');
+            
+            // Wait a moment for Firestore to update
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Check ownership and sync
+            await checkCourseOwnership();
+            await hybridDataService.syncCourses(user.uid);
+            purchaseEventManager.notifyPurchaseComplete(course.id);
+            
+            try {
+              await courseDownloadService.downloadCourse(course.id);
+            } catch (downloadError) {
+              logger.error('❌ Error downloading course:', downloadError);
+            }
+
+            Alert.alert(
+              '¡Compra Exitosa!',
+              'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
+              [
+                {
+                  text: 'Ir a Página Principal',
+                  onPress: () => navigation.navigate('MainScreen')
+                },
+                {
+                  text: 'Aceptar',
+                  style: 'cancel'
+                }
+              ]
+            );
+          } else {
+            logger.error('❌ Purchase verification failed:', verifyResult.error);
+            Alert.alert(
+              'Error',
+              'No se pudo verificar la compra. Por favor contacta soporte si el problema persiste.'
+            );
+          }
+        } catch (error) {
+          logger.error('❌ Error in purchase verification timeout:', error);
+          Alert.alert('Error', 'Ocurrió un error al procesar la compra.');
+        } finally {
+          setPurchasing(false);
+        }
+      }, 2000);
+
+    } catch (error) {
+      logger.error('❌ Error in IAP purchase:', error);
+      Alert.alert('Error', error.message || 'Error al procesar la compra');
+      setPurchasing(false);
+    }
   };
 
   const handleStartTrial = async () => {
@@ -808,7 +1019,9 @@ useEffect(() => {
       return (
         <TouchableOpacity style={[styles.primaryButton, styles.disabledButton]} disabled>
           <ActivityIndicator size="small" color="#ffffff" />
-          <Text style={styles.primaryButtonText}>Procesando compra...</Text>
+          <Text style={styles.primaryButtonText}>
+            Procesando compra...
+          </Text>
         </TouchableOpacity>
       );
     }
@@ -831,6 +1044,9 @@ useEffect(() => {
       );
     }
 
+    // Check if this is an IAP course
+    const isIAPCourse = course.iap_product_id;
+
     if (shouldUseFreeFlow()) {
       return (
         <TouchableOpacity 
@@ -850,12 +1066,33 @@ useEffect(() => {
       );
     }
 
+    // IAP course - show purchase button
+    if (isIAPCourse) {
+      return (
+        <TouchableOpacity 
+          style={[styles.primaryButton, purchasing && styles.disabledButton]} 
+          onPress={handlePurchaseCourse}
+          disabled={purchasing}
+        >
+          {purchasing ? (
+            <>
+              <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryButtonText}>Procesando compra...</Text>
+            </>
+          ) : (
+            <Text style={styles.primaryButtonText}>Comprar con Apple</Text>
+          )}
+        </TouchableOpacity>
+      );
+    }
+
     if (canShowTrialCta) {
       // Unified system: Catalog only - no trial buttons, no redirects
       // Library serves as catalog only for all platforms
       return null;
     }
 
+    // Web-only course - show info button
     return (
       <TouchableOpacity 
         style={[styles.primaryButton, purchasing && styles.disabledButton]} 
@@ -1198,11 +1435,9 @@ useEffect(() => {
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.catalogInfoModalDescription}>
-                  Wake te permite acceder a programas de entrenamiento que ya has adquirido previamente fuera de la app.{'\n\n'}
+                  Wake te permite acceder a programas de entrenamiento que ya has adquirido previamente.{'\n\n'}
                   La aplicación no procesa pagos ni suscripciones.{'\n\n'}
-                  Todos los programas y planes se adquieren a través de nuestro sitio web oficial.{'\n'}
-                  Una vez realizada la compra, solo debes iniciar sesión en la app para acceder a tu biblioteca.{'\n\n'}
-                  Sitio web oficial: www.wakelab.co
+                  Una vez realizada la compra, solo debes iniciar sesión en la app para acceder a tu biblioteca.
                 </Text>
               </ScrollView>
             </View>

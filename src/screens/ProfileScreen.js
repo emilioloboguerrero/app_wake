@@ -1116,6 +1116,13 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.configCardTitle}>Lab</Text>
         </TouchableOpacity>
 
+        {/* TEMPORARY: IAP Test Button - Remove when done testing */}
+        <View style={styles.testButtonContainer}>
+          <TouchableOpacity style={styles.testButton} onPress={() => navigation.navigate('IAPTest')}>
+            <Text style={styles.testButtonText}>🧪 Test IAP</Text>
+          </TouchableOpacity>
+        </View>
+
 
         </View>
       </ScrollView>
@@ -1174,7 +1181,7 @@ const ProfileScreen = ({ navigation }) => {
                 >
                   <Text style={styles.subscriptionsInfoModalDescription}>
                     Las suscripciones y compras no se administran dentro de la app.{'\n\n'}
-                    El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente fuera de Wake.
+                    El acceso a los programas disponibles en tu biblioteca corresponde únicamente a contenido adquirido previamente.
                   </Text>
                 </ScrollView>
               </View>
@@ -1254,6 +1261,25 @@ const styles = StyleSheet.create({
   },
   smallCardIcon: {
     marginBottom: 8,
+  },
+  testButtonContainer: {
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+    marginTop: Math.max(10, screenHeight * 0.01),
+    marginBottom: Math.max(15, screenHeight * 0.02),
+  },
+  testButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    padding: Math.max(12, screenWidth * 0.03),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  testButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   configCard: {
     backgroundColor: '#2a2a2a',
