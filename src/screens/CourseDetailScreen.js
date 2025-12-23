@@ -758,7 +758,7 @@ useEffect(() => {
       // Get product from App Store
       logger.log('🔄 Fetching product:', course.iap_product_id);
       const productsResult = await iapService.getProducts([course.iap_product_id]);
-
+      
       if (!productsResult.success || productsResult.products.length === 0) {
         // Get app info for detailed error message
         const appInfo = await iapService.getAppInfo();
@@ -798,7 +798,7 @@ useEffect(() => {
           errorMessage += `Código de respuesta: ${codeName} (${productsResult.responseCode})\n`;
           errorMessage += 'Esto significa: La solicitud fue exitosa pero el producto no está disponible.\n';
         }
-
+        
         Alert.alert(
           'Producto no disponible',
           errorMessage,
@@ -819,7 +819,7 @@ useEffect(() => {
         setPurchasing(false);
         return;
       }
-
+      
       // Product found - store user and course info for receipt verification
       const product = productsResult.products[0];
       logger.log('✅ Product found:', product.productId, product.title, product.price);
@@ -847,10 +847,10 @@ useEffect(() => {
           
           // Verify the latest purchase for this product
           const verifyResult = await iapService.verifyLatestPurchase(
-            course.iap_product_id,
-            user.uid,
-            course.id
-          );
+        course.iap_product_id,
+        user.uid,
+        course.id
+      );
 
           if (verifyResult.success) {
             logger.log('✅ Purchase verified successfully');
@@ -859,30 +859,30 @@ useEffect(() => {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Check ownership and sync
-            await checkCourseOwnership();
-            await hybridDataService.syncCourses(user.uid);
-            purchaseEventManager.notifyPurchaseComplete(course.id);
-            
-            try {
-              await courseDownloadService.downloadCourse(course.id);
-            } catch (downloadError) {
-              logger.error('❌ Error downloading course:', downloadError);
-            }
+        await checkCourseOwnership();
+        await hybridDataService.syncCourses(user.uid);
+        purchaseEventManager.notifyPurchaseComplete(course.id);
+        
+        try {
+          await courseDownloadService.downloadCourse(course.id);
+        } catch (downloadError) {
+          logger.error('❌ Error downloading course:', downloadError);
+        }
 
-            Alert.alert(
-              '¡Compra Exitosa!',
-              'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
-              [
-                {
-                  text: 'Ir a Página Principal',
-                  onPress: () => navigation.navigate('MainScreen')
-                },
-                {
-                  text: 'Aceptar',
-                  style: 'cancel'
-                }
-              ]
-            );
+        Alert.alert(
+          '¡Compra Exitosa!',
+          'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
+          [
+            {
+              text: 'Ir a Página Principal',
+              onPress: () => navigation.navigate('MainScreen')
+            },
+            {
+              text: 'Aceptar',
+              style: 'cancel'
+            }
+          ]
+        );
           } else {
             logger.error('❌ Purchase verification failed:', verifyResult.error);
             Alert.alert(

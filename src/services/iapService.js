@@ -101,7 +101,7 @@ class IAPService {
           this.purchaseInProgress = false;
         }
       }
-      );
+    );
       logger.log('✅ Purchase listener set up successfully');
     } catch (error) {
       logger.error('❌ Error setting up purchase listener:', error);
@@ -228,7 +228,7 @@ class IAPService {
         const initResult = await this.initialize();
         logger.log('📊 Init result:', initResult);
       }
-
+      
       // Ensure listener is set up
       if (!this.purchaseUpdateListener) {
         logger.log('🔄 Setting up purchase listener...');
@@ -411,7 +411,7 @@ class IAPService {
           return { success: false, error: 'Failed to initialize IAP' };
         }
       }
-
+      
       // Test with empty array first (should return error, but helps test connection)
       logger.log('🔄 Testing connection with empty product array...');
       try {
@@ -420,7 +420,7 @@ class IAPService {
       } catch (emptyError) {
         logger.log('📊 Empty array error (expected):', emptyError.message);
       }
-
+      
       // Test with the requested product IDs
       if (testProductIds.length > 0) {
         logger.log('🔄 Testing with requested product IDs:', testProductIds);
@@ -470,7 +470,7 @@ class IAPService {
       logger.log(`   4. Product ID in App Store Connect: ${testProductIds[0] || 'N/A'}`);
       logger.log('   5. Product is associated with this version/build');
       logger.log('   6. Product status is "Ready to Submit"');
-
+      
       logger.log('🔬 ========== PRODUCT AVAILABILITY DEBUG END ==========');
       
       return {
@@ -659,11 +659,11 @@ class IAPService {
       // Set up listener with a small delay to ensure it's registered
       logger.log('🔧 Setting up purchase listener before purchase...');
       this.setupPurchaseListener();
-      
+          
       // Small delay to ensure listener is fully registered
       await new Promise(resolve => setTimeout(resolve, 100));
       logger.log('✅ Listener should now be active');
-
+          
       // IMPORTANT: Fetch products first to ensure they're available
       logger.log('🔄 Fetching product before purchase:', productId);
       const productsResult = await this.getProducts([productId]);
@@ -986,7 +986,7 @@ class IAPService {
       }
 
       logger.log('🔄 Restoring purchases...');
-      const { results } = await InAppPurchases.getPurchaseHistoryAsync();
+        const { results } = await InAppPurchases.getPurchaseHistoryAsync();
       
       logger.log('✅ Found purchases:', results?.length || 0);
 
@@ -1020,7 +1020,7 @@ class IAPService {
       
       // Try to get purchase history - this often triggers sandbox sign-in
       try {
-        const { results } = await InAppPurchases.getPurchaseHistoryAsync();
+      const { results } = await InAppPurchases.getPurchaseHistoryAsync();
         logger.log('✅ Purchase history accessible - sandbox account may be signed in');
         return { 
           success: true, 

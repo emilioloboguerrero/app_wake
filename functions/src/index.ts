@@ -2066,7 +2066,7 @@ export const verifyIAPReceipt = functions
 
       // Get app secret from Firebase Functions secrets
       const appSecret = iapAppSecret.value();
-      
+
       // Log secret info (first 4 and last 4 chars only for security)
       const secretPreview = appSecret.length > 8 
         ? `${appSecret.substring(0, 4)}...${appSecret.substring(appSecret.length - 4)}`
@@ -2300,27 +2300,27 @@ export const verifyIAPReceipt = functions
           };
         } else {
           // Initial purchase: Add course to user (atomic write)
-          courses[courseId] = {
-            access_duration: courseAccessDuration,
-            expires_at: expirationDate,
-            status: "active",
-            purchased_at: new Date().toISOString(),
-            purchase_method: "iap", // Track purchase method
-            iap_transaction_id: transactionId, // Store IAP transaction ID
+        courses[courseId] = {
+          access_duration: courseAccessDuration,
+          expires_at: expirationDate,
+          status: "active",
+          purchased_at: new Date().toISOString(),
+          purchase_method: "iap", // Track purchase method
+          iap_transaction_id: transactionId, // Store IAP transaction ID
             is_subscription: isSubscription, // Track if this is a subscription
-            title: courseDetails?.title || "Untitled Course",
-            image_url: courseDetails?.image_url || null,
-            discipline: courseDetails?.discipline || "General",
-            creatorName: courseDetails?.creatorName ||
-              courseDetails?.creator_name ||
-              "Unknown Creator",
-            completedTutorials: {
-              dailyWorkout: [],
-              warmup: [],
-              workoutExecution: [],
-              workoutCompletion: [],
-            },
-          };
+          title: courseDetails?.title || "Untitled Course",
+          image_url: courseDetails?.image_url || null,
+          discipline: courseDetails?.discipline || "General",
+          creatorName: courseDetails?.creatorName ||
+            courseDetails?.creator_name ||
+            "Unknown Creator",
+          completedTutorials: {
+            dailyWorkout: [],
+            warmup: [],
+            workoutExecution: [],
+            workoutCompletion: [],
+          },
+        };
         }
 
         functions.logger.info("📝 Updating user document with course:", {
