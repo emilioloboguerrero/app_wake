@@ -377,7 +377,7 @@ class IAPService {
                   'com.lab.wake.co';
       const version = Constants?.expoConfig?.version || 
                  Constants?.manifest?.version ||
-                 '1.1.10';
+                 '1.1.11';
       const buildNumber = Constants?.expoConfig?.ios?.buildNumber ||
                      Constants?.manifest?.ios?.buildNumber ||
                          '54';
@@ -391,7 +391,7 @@ class IAPService {
       logger.error('❌ Error getting app info:', error);
       return {
         bundleId: 'com.lab.wake.co',
-        version: '1.1.10',
+        version: '1.1.11',
         buildNumber: '54'
       };
     }
@@ -864,22 +864,27 @@ class IAPService {
       });
       
       try {
-      const response = await fetch(
-        'https://us-central1-wolf-20b8b.cloudfunctions.net/verifyIAPReceipt',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // Create AbortController for timeout (AbortSignal.timeout not available in React Native)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        const response = await fetch(
+          'https://us-central1-wolf-20b8b.cloudfunctions.net/verifyIAPReceipt',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               receipt: receipt, // Send transactionReceipt as receipt
-            transactionId: purchase.orderId || purchase.transactionId,
-            productId: purchase.productId,
-            userId: userId,
-            courseId: courseId
+              transactionId: purchase.orderId || purchase.transactionId,
+              productId: purchase.productId,
+              userId: userId,
+              courseId: courseId
             }),
-            // Add timeout
-            signal: AbortSignal.timeout(30000) // 30 second timeout
-        }
-      );
+            signal: controller.signal
+          }
+        );
+        
+        clearTimeout(timeoutId);
 
       const result = await response.json();
         
@@ -924,10 +929,12 @@ class IAPService {
           fetchError.name === 'AbortError' || 
           fetchError.message.includes('network') ||
           fetchError.message.includes('timeout') ||
-          fetchError.message.includes('fetch')
+          fetchError.message.includes('fetch') ||
+          fetchError.message.includes('aborted')
         )) {
           logger.warn(`⚠️ Network error, retrying receipt verification (${retryCount + 1}/${MAX_RETRIES})...`, {
-            error: fetchError.message
+            error: fetchError.message,
+            name: fetchError.name
           });
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
           return this.verifyReceipt(purchase, userId, courseId, retryCount + 1);
