@@ -3,8 +3,9 @@ import * as InAppPurchases from 'expo-in-app-purchases';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
 
-// Check if we're in development mode and can use StoreKit Configuration
-const isDevelopment = __DEV__ || Constants.executionEnvironment === 'standalone';
+// Check if we're in development mode
+// __DEV__ is true in development, false in production builds (TestFlight, App Store)
+const isDevelopment = __DEV__;
 
 class IAPService {
   constructor() {
@@ -46,13 +47,26 @@ class IAPService {
 
   /**
    * Set up listener for purchase updates
-   * IMPORTANT: Only call this if listener doesn't exist - keep it persistent
+   * IMPORTANT: In production, we need to ensure the listener is fresh and active
+   * We'll re-setup if needed, but carefully to avoid timing issues
    */
-  setupPurchaseListener() {
-      // Don't remove existing listener - keep it persistent to avoid timing issues
-      if (this.purchaseUpdateListener) {
+  setupPurchaseListener(forceReset = false) {
+      // In production, force reset to ensure listener is fresh
+      // This helps with cases where listener stops working
+      if (this.purchaseUpdateListener && !forceReset) {
         logger.log('⚠️ Purchase listener already exists, keeping existing listener');
         return;
+      }
+      
+      // Remove existing listener if forcing reset
+      if (this.purchaseUpdateListener && forceReset) {
+        logger.log('🔄 Force resetting purchase listener...');
+        try {
+        this.purchaseUpdateListener.remove();
+        } catch (removeError) {
+          logger.warn('⚠️ Error removing old listener (may already be removed):', removeError);
+        }
+        this.purchaseUpdateListener = null;
       }
       
     logger.log('🔧 Setting up purchase listener...');
@@ -64,7 +78,8 @@ class IAPService {
             responseLength: response?.length || 0,
             hasError: !!error,
             listenerActive: !!this.purchaseUpdateListener,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            environment: isDevelopment ? 'development' : 'production'
           });
 
         if (error) {
@@ -659,13 +674,17 @@ class IAPService {
       }
 
       // CRITICAL: Ensure listener is active before purchase
-      // DON'T remove/re-add listener - keep it persistent to avoid timing issues
-      // Only set up if it doesn't exist
-      if (!this.purchaseUpdateListener) {
-        logger.log('🔧 Setting up purchase listener (none exists)...');
-        this.setupPurchaseListener();
-        // Small delay to ensure listener is fully registered
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // In production, re-setup listener to ensure it's fresh and working
+      // This helps prevent listener not firing in production builds
+      const needsReset = !isDevelopment; // Force reset in production for reliability
+      
+      if (!this.purchaseUpdateListener || needsReset) {
+        logger.log(`🔧 ${needsReset ? 'Re-setting up' : 'Setting up'} purchase listener before purchase...`);
+        this.setupPurchaseListener(needsReset);
+        // Longer delay in production to ensure listener is fully registered
+        const delay = needsReset ? 300 : 100;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        logger.log('✅ Purchase listener ready');
       } else {
         logger.log('✅ Purchase listener already active');
       }
@@ -695,15 +714,22 @@ class IAPService {
         logger.log('✅ purchaseItemAsync returned');
         logger.log('💡 Waiting for purchase listener to fire...');
         
-        // Wait for listener to fire (it should fire within 1-2 seconds for real purchases)
-        // For sandbox auto-completions, it might be instant or slightly delayed
-        let waitTime = 0;
-        const maxWaitTime = 3000; // 3 seconds max wait
+        // Wait longer in production - listener can take more time in production builds
+        // Production builds may have different timing due to code optimization
+        const maxWaitTime = isDevelopment ? 3000 : 8000; // 3s dev, 8s production
         const checkInterval = 100; // Check every 100ms
+        let waitTime = 0;
+        
+        logger.log(`⏱️ Waiting up to ${maxWaitTime/1000}s for listener (${isDevelopment ? 'dev' : 'production'} mode)...`);
         
         while (this.purchaseInProgress && waitTime < maxWaitTime) {
           await new Promise(resolve => setTimeout(resolve, checkInterval));
           waitTime += checkInterval;
+          
+          // Log progress every second
+          if (waitTime % 1000 === 0) {
+            logger.log(`⏳ Still waiting... ${waitTime/1000}s elapsed`);
+          }
         }
         
         // Check if listener handled it
@@ -712,12 +738,33 @@ class IAPService {
           return { success: true };
         }
         
-        // If still in progress after waiting, listener might not have fired
-        logger.log('⚠️ Purchase may have completed but listener didn\'t fire yet');
+        // If still in progress after waiting, try to refresh listener and wait a bit more
+        // This handles cases where listener got into a bad state
+        if (waitTime >= maxWaitTime && !isDevelopment) {
+          logger.warn('⚠️ Listener didn\'t fire after extended wait - attempting listener refresh...');
+          try {
+            // Re-setup listener
+            this.setupPurchaseListener(true);
+            // Wait a bit more with refreshed listener
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            if (!this.purchaseInProgress) {
+              logger.log('✅ Purchase handled after listener refresh');
+              return { success: true };
+            }
+          } catch (refreshError) {
+            logger.error('❌ Error refreshing listener:', refreshError);
+          }
+        }
+        
+        // If still in progress, listener might not have fired
+        logger.log('⚠️ Purchase may have completed but listener didn\'t fire');
         logger.log('💡 The setTimeout fallback in CourseDetailScreen will handle verification');
         logger.log('📊 Listener status:', {
           hasListener: !!this.purchaseUpdateListener,
-          purchaseInProgress: this.purchaseInProgress
+          purchaseInProgress: this.purchaseInProgress,
+          waitTimeMs: waitTime,
+          environment: isDevelopment ? 'development' : 'production'
         });
         
         // Purchase will be handled by the listener OR by the setTimeout fallback
@@ -1012,14 +1059,62 @@ class IAPService {
       });
 
       // Check if purchase has receipt data
-      const receipt = latestPurchase.transactionReceipt || latestPurchase.receipt;
+      let receipt = latestPurchase.transactionReceipt || latestPurchase.receipt;
+      
       if (!receipt) {
-        logger.warn('⚠️ Purchase history entry missing receipt - cannot verify');
-        logger.warn('💡 This is normal - receipts are only available in purchase listener');
+        logger.warn('⚠️ Purchase history entry missing receipt - trying to get app receipt...');
+        logger.warn('💡 This can happen if listener didn\'t fire - attempting alternative method');
+        
+        // In production, if listener didn't fire and purchase history has no receipt,
+        // we need to rely on the CourseDetailScreen setTimeout fallback or user restore
+        // Unfortunately, expo-in-app-purchases doesn't provide a way to get receipt 
+        // without the listener callback
+        
+        // However, we can try to refresh the connection and check again
+        // This sometimes helps in production scenarios
+        try {
+          logger.log('🔄 Attempting to refresh IAP connection...');
+          await InAppPurchases.disconnectAsync();
+          this.isConnected = false;
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await InAppPurchases.connectAsync();
+          this.isConnected = true;
+          
+          // Re-setup listener after reconnection
+          this.setupPurchaseListener(true);
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Re-check purchase history after reconnection
+          const { results: refreshedResults } = await InAppPurchases.getPurchaseHistoryAsync();
+          if (refreshedResults && refreshedResults.length > 0) {
+            const refreshedProductPurchases = refreshedResults
+              .filter(p => p.productId === productId)
+              .sort((a, b) => (b.purchaseTime || 0) - (a.purchaseTime || 0));
+            
+            if (refreshedProductPurchases.length > 0) {
+              const refreshedPurchase = refreshedProductPurchases[0];
+              receipt = refreshedPurchase.transactionReceipt || refreshedPurchase.receipt;
+              if (receipt) {
+                logger.log('✅ Got receipt after reconnection');
+                // Use the refreshed purchase object
+                Object.assign(latestPurchase, refreshedPurchase);
+              }
+            }
+          }
+        } catch (reconnectError) {
+          logger.error('❌ Error during reconnection attempt:', reconnectError);
+        }
+        
+        // If still no receipt, return error
+        if (!receipt) {
+          logger.warn('⚠️ Still no receipt after reconnection attempt');
+          logger.warn('💡 Purchase should be handled by listener, but it may not have fired');
+          logger.warn('💡 User should try "Restore Purchases" if purchase completed');
         return { 
           success: false, 
-          error: 'Purchase history entry missing receipt. Purchase should be handled by listener.' 
-        };
+            error: 'Purchase history entry missing receipt. The purchase listener may not have fired. Please try "Restore Purchases" if the purchase completed.' 
+          };
+        }
       }
 
       // Verify receipt with cloud function (which will assign the course)
