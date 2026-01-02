@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wake Error Log Viewer</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #1a1a1a;
+      color: #fff;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #bfa84d;
+      margin-bottom: 20px;
+    }
+    .controls {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #2a2a2a;
+      border-radius: 8px;
+    }
+    button {
+      background: #bfa84d;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button:hover {
+      background: #d4b85a;
+    }
+    button.danger {
+      background: #ff6b6b;
+      color: #fff;
+    }
+    button.danger:hover {
+      background: #ff5252;
+    }
+    .status {
+      padding: 10px;
+      background: #2a2a2a;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .status.success {
+      background: #2d5a2d;
+    }
+    .status.error {
+      background: #5a2d2d;
+    }
+    .log-entry {
+      background: #2a2a2a;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border-left: 4px solid #bfa84d;
+    }
+    .log-entry.extension_error {
+      border-left-color: #666;
+      opacity: 0.7;
+    }
+    .log-entry.global_error,
+    .log-entry.console_error,
+    .log-entry.unhandled_rejection {
+      border-left-color: #ff6b6b;
+    }
+    .log-entry.freeze_detected {
+      border-left-color: #ff9800;
+    }
+    .log-entry-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .log-entry-type {
+      color: #bfa84d;
+    }
+    .log-entry-timestamp {
+      color: #999;
+      font-size: 0.9em;
+    }
+    .log-entry-message {
+      color: #fff;
+      margin: 10px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .log-entry-stack {
+      color: #999;
+      font-size: 0.85em;
+      margin-top: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .filter-controls {
+      margin-bottom: 20px;
+    }
+    .filter-controls label {
+      margin-right: 15px;
+      color: #ccc;
+    }
+    .filter-controls input[type="checkbox"] {
+      margin-right: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Wake Error Log Viewer</h1>
+    
+    <div class="controls">
+      <button onclick="loadLogs()">🔄 Refresh</button>
+      <button onclick="exportLogs()">💾 Export JSON</button>
+      <button onclick="clearLogs()" class="danger">🗑️ Clear Logs</button>
+      <button onclick="checkFreezeStatus()">⚠️ Check Freeze Status</button>
+    </div>
+    
+    <div id="status" class="status"></div>
+    
+    <div class="filter-controls">
+      <label><input type="checkbox" id="showExtension" checked> Show Extension Errors</label>
+      <label><input type="checkbox" id="showSystem" checked> Show System Messages</label>
+      <label><input type="checkbox" id="showErrors" checked> Show Real Errors</label>
+    </div>
+    
+    <div id="logs"></div>
+  </div>
+
+  <script>
+    const ERROR_LOG_KEY = 'WAKE_ERROR_LOG';
+    
+    function showStatus(message, type = '') {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = message;
+      statusEl.className = 'status ' + type;
+      setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'status';
+      }, 3000);
+    }
+    
+    function loadLogs() {
+      try {
+        const logsJson = localStorage.getItem(ERROR_LOG_KEY);
+        if (!logsJson) {
+          document.getElementById('logs').innerHTML = '<div class="empty">No error logs found. Errors will appear here when they occur.</div>';
+          showStatus('No logs found', 'error');
+          return;
+        }
+        
+        const logs = JSON.parse(logsJson);
+        if (!Array.isArray(logs) || logs.length === 0) {
+          document.getElementById('logs').innerHTML = '<div class="empty">Error log is empty.</div>';
+          showStatus('Log is empty', 'error');
+          return;
+        }
+        
+        // Filter logs based on checkboxes
+        const showExtension = document.getElementById('showExtension').checked;
+        const showSystem = document.getElementById('showSystem').checked;
+        const showErrors = document.getElementById('showErrors').checked;
+        
+        const filteredLogs = logs.filter(log => {
+          if (log.type === 'extension_error' && !showExtension) return false;
+          if (log.type === 'system' && !showSystem) return false;
+          if ((log.type === 'global_error' || log.type === 'console_error' || log.type === 'unhandled_rejection') && !showErrors) return false;
+          return true;
+        });
+        
+        if (filteredLogs.length === 0) {
+          document.getElementById('logs').innerHTML = '<div class="empty">No logs match the current filters.</div>';
+          return;
+        }
+        
+        // Sort by timestamp (newest first)
+        filteredLogs.sort((a, b) => {
+          const timeA = new Date(a.timestamp || 0).getTime();
+          const timeB = new Date(b.timestamp || 0).getTime();
+          return timeB - timeA;
+        });
+        
+        const logsHtml = filteredLogs.map(log => {
+          const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Unknown time';
+          const type = log.type || 'unknown';
+          const message = log.message || log.reason || 'No message';
+          const stack = log.stack || '';
+          const source = log.source || '';
+          const suppressed = log.suppressed ? ' (suppressed)' : '';
+          
+          return `
+            <div class="log-entry ${type}">
+              <div class="log-entry-header">
+                <span class="log-entry-type">${type}${suppressed}</span>
+                <span class="log-entry-timestamp">${timestamp}</span>
+              </div>
+              ${source ? `<div style="color: #999; font-size: 0.9em; margin-bottom: 5px;">Source: ${source}</div>` : ''}
+              <div class="log-entry-message">${escapeHtml(String(message))}</div>
+              ${stack ? `<div class="log-entry-stack">Stack:\n${escapeHtml(stack)}</div>` : ''}
+              ${log.args ? `<div style="color: #999; font-size: 0.85em; margin-top: 5px;">Args: ${escapeHtml(JSON.stringify(log.args, null, 2))}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+        
+        document.getElementById('logs').innerHTML = logsHtml;
+        showStatus(`Loaded ${filteredLogs.length} log entries (${logs.length} total)`, 'success');
+      } catch (e) {
+        document.getElementById('logs').innerHTML = '<div class="empty">Error loading logs: ' + escapeHtml(String(e)) + '</div>';
+        showStatus('Error loading logs: ' + e.message, 'error');
+      }
+    }
+    
+    function exportLogs() {
+      try {
+        const logsJson = localStorage.getItem(ERROR_LOG_KEY);
+        if (!logsJson) {
+          showStatus('No logs to export', 'error');
+          return;
+        }
+        
+        const logs = JSON.parse(logsJson);
+        const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wake-errors-${new Date().toISOString()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showStatus('Logs exported successfully', 'success');
+      } catch (e) {
+        showStatus('Error exporting logs: ' + e.message, 'error');
+      }
+    }
+    
+    function clearLogs() {
+      if (!confirm('Are you sure you want to clear all error logs? This cannot be undone.')) {
+        return;
+      }
+      
+      try {
+        localStorage.removeItem(ERROR_LOG_KEY);
+        localStorage.removeItem('WAKE_ERROR_LOG_READY');
+        localStorage.removeItem('WAKE_CRITICAL_ERROR');
+        localStorage.removeItem('WAKE_CRITICAL_REJECTION');
+        localStorage.removeItem('WAKE_ERROR_LOG_INIT_FAILED');
+        document.getElementById('logs').innerHTML = '<div class="empty">Logs cleared.</div>';
+        showStatus('Logs cleared', 'success');
+      } catch (e) {
+        showStatus('Error clearing logs: ' + e.message, 'error');
+      }
+    }
+    
+    function checkFreezeStatus() {
+      const checks = {
+        'Error log ready': localStorage.getItem('WAKE_ERROR_LOG_READY'),
+        'Critical error flag': localStorage.getItem('WAKE_CRITICAL_ERROR'),
+        'Critical rejection flag': localStorage.getItem('WAKE_CRITICAL_REJECTION'),
+        'Init failed flag': localStorage.getItem('WAKE_ERROR_LOG_INIT_FAILED'),
+        'Freeze detected': localStorage.getItem('WAKE_ERROR_LOG_FREEZE')
+      };
+      
+      const status = Object.entries(checks)
+        .map(([key, value]) => `${key}: ${value || 'not set'}`)
+        .join('\n');
+      
+      alert('Freeze Status Checks:\n\n' + status);
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Load logs on page load
+    loadLogs();
+    
+    // Auto-refresh every 5 seconds
+    setInterval(loadLogs, 5000);
+    
+    // Update filters when checkboxes change
+    document.getElementById('showExtension').addEventListener('change', loadLogs);
+    document.getElementById('showSystem').addEventListener('change', loadLogs);
+    document.getElementById('showErrors').addEventListener('change', loadLogs);
+  </script>
+</body>
+</html>
+

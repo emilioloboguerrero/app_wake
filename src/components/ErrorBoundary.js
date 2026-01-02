@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { currentConfig } from '../config/environment';
 import logger from '../utils/logger';
-import { reportError } from '../services/monitoringService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -25,12 +24,19 @@ class ErrorBoundary extends React.Component {
     });
 
     // In production, you might want to send this to a crash reporting service
-    if (currentConfig.enableCrashReporting) {
-      reportError(error, {
-        component: 'ErrorBoundary',
-        errorInfo: errorInfo?.componentStack,
-        timestamp: new Date().toISOString()
-      });
+    // Skip on web (monitoring service uses React Native Firebase)
+    if (currentConfig.enableCrashReporting && typeof window === 'undefined') {
+      try {
+        const { reportError } = require('../services/monitoringService');
+        reportError(error, {
+          component: 'ErrorBoundary',
+          errorInfo: errorInfo?.componentStack,
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        // Monitoring service not available (e.g., on web)
+        logger.warn('Monitoring service not available for error reporting');
+      }
     }
   }
 
@@ -40,6 +46,11 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      // Check for debug mode
+      const isDebugMode = typeof window !== 'undefined' && 
+        (localStorage.getItem('WAKE_DEBUG') === 'true' || 
+         window.location.search.includes('debug=true'));
+      
       // Fallback UI
       return (
         <View style={styles.container}>
@@ -48,13 +59,20 @@ class ErrorBoundary extends React.Component {
             La aplicación encontró un error inesperado. Por favor, intenta de nuevo.
           </Text>
           
-          {currentConfig.debugMode && this.state.error && (
+          {(isDebugMode || currentConfig.debugMode) && this.state.error && (
             <View style={styles.debugContainer}>
               <Text style={styles.debugTitle}>Error Details (Debug Mode):</Text>
-              <Text style={styles.debugText}>{this.state.error.toString()}</Text>
+              <Text style={styles.debugText}>
+                {this.state.error.toString()}
+              </Text>
+              {this.state.error?.stack && (
+                <Text style={styles.debugText}>
+                  Stack: {this.state.error.stack.split('\n').slice(0, 10).join('\n')}
+                </Text>
+              )}
               {this.state.errorInfo && (
                 <Text style={styles.debugText}>
-                  {this.state.errorInfo.componentStack}
+                  Component Stack: {this.state.errorInfo.componentStack}
                 </Text>
               )}
             </View>
@@ -63,6 +81,20 @@ class ErrorBoundary extends React.Component {
           <TouchableOpacity style={styles.retryButton} onPress={this.handleRetry}>
             <Text style={styles.retryButtonText}>Reintentar</Text>
           </TouchableOpacity>
+          
+          {typeof window !== 'undefined' && (
+            <TouchableOpacity 
+              style={[styles.retryButton, { marginTop: 12, backgroundColor: '#333' }]} 
+              onPress={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('WAKE_DEBUG', 'true');
+                  window.location.reload();
+                }
+              }}
+            >
+              <Text style={styles.retryButtonText}>Enable Debug Mode & Reload</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }

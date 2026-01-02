@@ -23,7 +23,6 @@ import firestoreService from '../services/firestoreService';
 import { auth, firestore } from '../config/firebase';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import googleAuthService from '../services/googleAuthService';
-import appleAuthService from '../services/appleAuthService';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import hybridDataService from '../services/hybridDataService';
 import tutorialManager from '../services/tutorialManager';
@@ -38,7 +37,6 @@ import SvgChartLine from '../components/icons/SvgChartLine';
 import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
-import iapService from '../services/iapService';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
@@ -88,7 +86,6 @@ const ProfileScreen = ({ navigation }) => {
   const [usernameError, setUsernameError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState(null);
-  const [restoringPurchases, setRestoringPurchases] = useState(false);
   
   const [userProfile, setUserProfile] = useState({
     displayName: '',
@@ -516,21 +513,8 @@ const ProfileScreen = ({ navigation }) => {
           throw new Error('No se pudo reautenticar con Google. Por favor intenta de nuevo.');
         }
       } else if (providerId === 'apple.com') {
-        // Apple authentication - reauthenticate with Apple
-        try {
-          const { appleAuth: appleAuthModule } = await appleAuthService.loadAppleSignIn();
-          const { identityToken } = await appleAuthModule.performRequest({
-            requestedOperation: appleAuthModule.Operation.REFRESH,
-          });
-          if (identityToken) {
-            credential = OAuthProvider.credential('apple.com', identityToken);
-          } else {
-            throw new Error('No se obtuvo el token de Apple');
-          }
-        } catch (error) {
-          console.error('Apple reauthentication error:', error);
-          throw new Error('No se pudo reautenticar con Apple. Por favor intenta de nuevo.');
-        }
+        // Apple authentication is no longer supported
+        throw new Error('La autenticación con Apple ya no está disponible. Por favor contacta al soporte.');
       }
 
       // Delete the account
@@ -617,44 +601,6 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  // Restore purchases (Apple requirement)
-  const handleRestorePurchases = async () => {
-    if (!user?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
-      return;
-    }
-
-    try {
-      setRestoringPurchases(true);
-      logger.log('🔄 Restoring purchases from ProfileScreen...');
-      
-      const result = await iapService.restorePurchases();
-      
-      if (result.success) {
-        const purchaseCount = result.count || result.purchases?.length || 0;
-        if (purchaseCount > 0) {
-          Alert.alert(
-            'Compras restauradas',
-            `Se encontraron ${purchaseCount} compra(s). Las suscripciones se están verificando y aparecerán pronto en la sección de Suscripciones.`,
-            [{ text: 'Entendido' }]
-          );
-        } else {
-          Alert.alert(
-            'Sin compras',
-            'No se encontraron compras para restaurar.',
-            [{ text: 'Entendido' }]
-          );
-        }
-      } else {
-        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras.');
-      }
-    } catch (error) {
-      logger.error('Error restoring purchases:', error);
-      Alert.alert('Error', 'Ocurrió un error al restaurar las compras.');
-    } finally {
-      setRestoringPurchases(false);
-    }
-  };
 
 
   return (
@@ -2127,4 +2073,6 @@ const styles = StyleSheet.create({
   },
 });
 
+// Export both default and named for web wrapper compatibility
+export { ProfileScreen as ProfileScreenBase };
 export default ProfileScreen;

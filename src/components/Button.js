@@ -8,8 +8,15 @@ TouchableOpacity,
   View,
   Dimensions,
 } from 'react-native';
+import { isWeb } from '../utils/platform';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+// Lazy get dimensions to prevent freeze on web
+const getScreenDimensions = () => {
+  if (isWeb) {
+    return { width: window.innerWidth || 375, height: window.innerHeight || 667 };
+  }
+  return Dimensions.get('window');
+};
 
 const Button = ({
   title,
@@ -21,18 +28,26 @@ const Button = ({
   active = false, // Active state for golden color
   ...props
 }) => {
+  // Get dynamic dimensions for button sizing
+  const { width: screenWidth, height: screenHeight } = getScreenDimensions();
+  const dynamicButtonStyle = {
+    width: Math.max(280, screenWidth * 0.7),
+    height: Math.max(50, screenHeight * 0.06),
+    borderRadius: Math.max(12, screenWidth * 0.04),
+  };
+
   const getButtonStyle = () => {
     if (active && !disabled) {
-      return [styles.button, styles.activeButton];
+      return [styles.button, dynamicButtonStyle, styles.activeButton];
     }
     
     switch (variant) {
       case 'secondary':
-        return [styles.button, styles.secondaryButton, disabled && styles.disabledButton];
+        return [styles.button, dynamicButtonStyle, styles.secondaryButton, disabled && styles.disabledButton];
       case 'social':
-        return [styles.button, styles.socialButton, disabled && styles.disabledButton];
+        return [styles.button, dynamicButtonStyle, styles.socialButton, disabled && styles.disabledButton];
       default:
-        return [styles.button, styles.primaryButton, disabled && styles.disabledButton];
+        return [styles.button, dynamicButtonStyle, styles.primaryButton, disabled && styles.disabledButton];
     }
   };
 
@@ -89,9 +104,6 @@ const Button = ({
 
 const styles = StyleSheet.create({
   button: {
-    width: Math.max(280, screenWidth * 0.7),
-    height: Math.max(50, screenHeight * 0.06),
-    borderRadius: Math.max(12, screenWidth * 0.04),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,

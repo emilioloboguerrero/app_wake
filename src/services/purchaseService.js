@@ -269,8 +269,11 @@ class PurchaseService {
       // Check if subscription (monthly)
       if (courseDetails.access_duration === "monthly") {
         // Subscription - requires Mercado Pago sign-in (handled by Mercado Pago checkout)
+        // Get user email for subscription
+        const userDoc = await firestoreService.getUser(userId);
+        const payerEmail = userDoc?.email || null;
         // Call subscription function
-        return await this.prepareSubscription(userId, courseId);
+        return await this.prepareSubscription(userId, courseId, payerEmail);
       } else {
         // One-time payment - call existing function
         const response = await fetch(
@@ -330,14 +333,29 @@ class PurchaseService {
       
       // For AllPurchasedCoursesScreen, get all courses from user document
       const userDoc = await firestoreService.getUser(userId);
-      if (!userDoc) return [];
+      if (!userDoc) {
+        console.log('❌ getUserPurchasedCourses: User document not found for:', userId);
+        return [];
+      }
       
       const userCourses = userDoc.courses || {};
+      console.log('🔍 getUserPurchasedCourses: User courses object:', {
+        userId,
+        coursesCount: Object.keys(userCourses).length,
+        courseIds: Object.keys(userCourses)
+      });
+      
+      if (Object.keys(userCourses).length === 0) {
+        console.log('⚠️ getUserPurchasedCourses: No courses found in user document');
+        return [];
+      }
+      
       const now = new Date();
       
       // Get all courses with status information
       const coursesWithDetails = await Promise.all(
         Object.entries(userCourses).map(async ([courseId, courseData]) => {
+          console.log('🔍 Processing course:', courseId, courseData);
           const courseDetails = await firestoreService.getCourse(courseId);
           
           // Determine status
@@ -360,6 +378,7 @@ class PurchaseService {
         })
       );
       
+      console.log('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
       return coursesWithDetails;
     } catch (error) {
       console.error('❌ Error getting user courses:', error);

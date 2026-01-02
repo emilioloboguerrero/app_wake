@@ -11,7 +11,6 @@ import assetBundleService from './src/services/assetBundleService';
 import { useMontserratFonts } from './src/config/fonts';
 import { initializeMonitoring } from './src/services/monitoringService';
 import { auth } from './src/config/firebase';
-import iapService from './src/services/iapService';
 import logger from './src/utils/logger';
 
 // Global font configuration - this approach is more reliable
@@ -56,15 +55,6 @@ export default function App() {
         await initializeMonitoring();
         logger.log('✅ Monitoring service initialized');
         
-        // Initialize IAP service
-        logger.log('💳 Initializing IAP service...');
-        try {
-          await iapService.initialize();
-          logger.log('✅ IAP service initialized');
-        } catch (iapError) {
-          logger.warn('⚠️ IAP initialization failed (may not be available on this device):', iapError.message);
-          // Continue - IAP may not be available on all devices
-        }
         
         logger.log('✅ App initialization completed successfully');
       } catch (error) {
@@ -86,12 +76,6 @@ export default function App() {
     }
   }, [fontsLoaded]);
 
-  // Cleanup IAP on unmount
-  useEffect(() => {
-    return () => {
-      iapService.disconnect();
-    };
-  }, []);
 
   if (!fontsLoaded) {
     return null; // Wait for fonts to load

@@ -1,0 +1,449 @@
+// ============================================
+// CRITICAL: ERROR LOGGING SYSTEM
+// Must run BEFORE any imports to catch early errors
+// ============================================
+(function() {
+  'use strict';
+  
+  if (typeof window === 'undefined') return;
+  
+  const ERROR_LOG_KEY = 'WAKE_ERROR_LOG';
+  const MAX_LOG_ENTRIES = 100;
+  
+  // Initialize error log storage
+  function initErrorLog() {
+    try {
+      if (!localStorage.getItem(ERROR_LOG_KEY)) {
+        localStorage.setItem(ERROR_LOG_KEY, JSON.stringify([]));
+      }
+      localStorage.setItem('WAKE_ERROR_LOG_READY', 'true');
+    } catch (e) {
+      // localStorage might not be available
+    }
+  }
+  
+  // Save error log (synchronous, no async operations)
+  function saveErrorLog(entry) {
+    try {
+      const existing = localStorage.getItem(ERROR_LOG_KEY);
+      const logs = existing ? JSON.parse(existing) : [];
+      
+      logs.push({
+        ...entry,
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+        userAgent: navigator.userAgent
+      });
+      
+      if (logs.length > MAX_LOG_ENTRIES) {
+        logs.splice(0, logs.length - MAX_LOG_ENTRIES);
+      }
+      
+      localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(logs));
+    } catch (e) {
+      // If logging fails, try to save at least a simple message
+      try {
+        const simpleMsg = String(entry.message || entry.type || 'Unknown error');
+        localStorage.setItem(ERROR_LOG_KEY + '_LAST', simpleMsg + ' | ' + Date.now());
+      } catch {}
+    }
+  }
+  
+  // Initialize immediately
+  initErrorLog();
+  
+  // Log initialization
+  saveErrorLog({
+    type: 'system',
+    message: 'Error logging system initialized in App.web.js'
+  });
+  
+  // Catch errors immediately (before React loads)
+  window.addEventListener('error', function(event) {
+    try {
+      const message = String(event.message || '');
+      const source = String(event.filename || event.target?.src || '');
+      
+      // Suppress extension errors but still log them
+      if (message.includes('chrome-extension://') ||
+          source.includes('chrome-extension://') ||
+          message.includes('ERR_FILE_NOT_FOUND') ||
+          message.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+        saveErrorLog({
+          type: 'extension_error',
+          message: message,
+          source: source,
+          suppressed: true
+        });
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+      
+      // Log real errors
+      saveErrorLog({
+        type: 'global_error',
+        message: message,
+        source: source,
+        lineno: event.lineno,
+        colno: event.colno,
+        stack: event.error?.stack,
+        errorName: event.error?.name
+      });
+    } catch (e) {
+      // If error logging fails, at least try to save a flag
+      try {
+        localStorage.setItem('WAKE_CRITICAL_ERROR', Date.now().toString());
+      } catch {}
+    }
+  }, true);
+  
+  // Catch unhandled promise rejections
+  window.addEventListener('unhandledrejection', function(event) {
+    try {
+      const reason = String(event.reason || '');
+      
+      if (reason.includes('chrome-extension://') ||
+          reason.includes('ERR_FILE_NOT_FOUND') ||
+          reason.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+        saveErrorLog({
+          type: 'extension_rejection',
+          reason: reason,
+          suppressed: true
+        });
+        event.preventDefault();
+        return false;
+      }
+      
+      saveErrorLog({
+        type: 'unhandled_rejection',
+        reason: reason,
+        stack: event.reason?.stack,
+        errorName: event.reason?.name
+      });
+    } catch (e) {
+      try {
+        localStorage.setItem('WAKE_CRITICAL_REJECTION', Date.now().toString());
+      } catch {}
+    }
+  }, true);
+  
+  // Override console.error to capture errors
+  const originalError = console.error;
+  console.error = function(...args) {
+    try {
+      const message = args.map(a => String(a)).join(' ');
+      
+      if (message.includes('chrome-extension://') ||
+          message.includes('ERR_FILE_NOT_FOUND') ||
+          message.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+        saveErrorLog({
+          type: 'extension_error',
+          message: message,
+          suppressed: true
+        });
+        return; // Suppress from console
+      }
+      
+      saveErrorLog({
+        type: 'console_error',
+        message: message,
+        stack: args.find(a => a && a.stack)?.stack
+      });
+    } catch (e) {
+      // If logging fails, still show original error
+    }
+    
+    originalError.apply(console, args);
+  };
+  
+  // Expose functions globally
+  window.getWakeErrorLog = function() {
+    try {
+      const logs = localStorage.getItem(ERROR_LOG_KEY);
+      return logs ? JSON.parse(logs) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  
+  window.exportWakeErrorLog = function() {
+    try {
+      const logs = window.getWakeErrorLog();
+      const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `wake-errors-${new Date().toISOString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (e) {
+      alert('Error exporting logs: ' + e.message);
+    }
+  };
+  
+  console.log('[WAKE] ✅ Error logging initialized in App.web.js');
+})();
+
+// Web-specific App entry point
+import React, { useEffect } from 'react';
+import { BrowserRouter } from 'react-router-dom';
+import { StatusBar } from 'expo-status-bar';
+import './styles/global.css';
+import { AuthProvider } from './contexts/AuthContext';
+import { VideoProvider } from './contexts/VideoContext';
+import WebAppNavigator from './navigation/WebAppNavigator';
+import ErrorBoundary from './components/ErrorBoundary';
+import { useMontserratFonts } from './config/fonts';
+import { auth } from './config/firebase';
+import logger from './utils/logger';
+import webStorageService from './services/webStorageService';
+
+// Initialize Service Worker
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        logger.log('✅ Service Worker registered:', registration);
+      })
+      .catch((error) => {
+        logger.error('❌ Service Worker registration failed:', error);
+      });
+  });
+}
+
+export default function App() {
+  const fontsLoaded = useMontserratFonts();
+  const [initError, setInitError] = React.useState(null);
+  const [debugMode] = React.useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('WAKE_DEBUG') === 'true' || 
+             window.location.search.includes('debug=true');
+    }
+    return false;
+  });
+
+  // Enhanced error logging (with extension error filtering)
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Log unhandled errors (but filter extension errors)
+      window.addEventListener('error', (event) => {
+        const message = String(event.message || '');
+        const source = String(event.filename || '');
+        
+        // Skip Chrome extension errors
+        if (message.includes('chrome-extension://') ||
+            message.includes('ERR_FILE_NOT_FOUND') ||
+            source.includes('chrome-extension://') ||
+            source.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+          return; // Don't log extension errors
+        }
+        
+        logger.error('❌ Unhandled Error:', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          error: event.error
+        });
+      }, true);
+
+      // Log unhandled promise rejections (but filter extension errors)
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = String(event.reason || '');
+        
+        // Skip Chrome extension promise rejections
+        if (reason.includes('chrome-extension://') ||
+            reason.includes('ERR_FILE_NOT_FOUND') ||
+            reason.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+          return; // Don't log extension errors
+        }
+        
+        logger.error('❌ Unhandled Promise Rejection:', event.reason);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    // Prevent multiple initializations
+    let mounted = true;
+    
+    // Initialize web storage (non-blocking)
+    const initializeApp = async () => {
+      if (!mounted) return;
+      
+      try {
+        logger.log('🚀 Starting web app initialization...');
+        if (debugMode) {
+          console.log('[DEBUG] Environment:', {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            language: navigator.language,
+            cookieEnabled: navigator.cookieEnabled,
+            onLine: navigator.onLine
+          });
+        }
+        
+        // Initialize web storage service first (critical for web)
+        // Don't await - let it initialize in background with timeout
+        Promise.race([
+          webStorageService.init().then(() => {
+            if (mounted) logger.log('✅ Web storage initialized');
+          }),
+          new Promise(resolve => setTimeout(resolve, 2000)) // 2 second timeout
+        ]).catch((error) => {
+          if (mounted) {
+            logger.error('⚠️ Web storage initialization failed (non-critical):', error);
+            if (debugMode) {
+              console.error('[DEBUG] Storage error details:', error);
+            }
+          }
+        });
+        
+        // Check auth state (non-blocking)
+        try {
+          const currentUser = auth.currentUser;
+          if (mounted) {
+            logger.log('🔐 Auth state:', {
+              isAuthenticated: !!currentUser,
+              userId: currentUser?.uid || 'none'
+            });
+            if (debugMode && currentUser) {
+              console.log('[DEBUG] User details:', {
+                uid: currentUser.uid,
+                email: currentUser.email,
+                emailVerified: currentUser.emailVerified
+              });
+            }
+          }
+        } catch (authError) {
+          if (mounted) {
+            logger.error('❌ Auth check failed:', authError);
+            if (debugMode) {
+              console.error('[DEBUG] Auth error details:', authError);
+            }
+          }
+        }
+        
+        // Skip native-only services on web (they use AsyncStorage/AppState which don't work)
+        // These services are not critical for web functionality
+        if (mounted) logger.log('ℹ️ Skipping native-only services on web (session manager, workout progress)');
+        
+        // Skip monitoring on web (uses React Native Firebase which doesn't work on web)
+        if (mounted) logger.log('ℹ️ Skipping monitoring service on web (React Native Firebase not available)');
+        
+        // Request persistent storage for better quota (non-blocking with timeout)
+        if (navigator.storage && navigator.storage.persist) {
+          // Use Promise.race to prevent hanging
+          Promise.race([
+            navigator.storage.persist().then(isPersistent => {
+              if (mounted) logger.log('💾 Persistent storage:', isPersistent ? 'granted' : 'not granted');
+            }),
+            new Promise(resolve => setTimeout(resolve, 1000)) // 1 second timeout
+          ]).catch((error) => {
+            if (mounted) logger.warn('⚠️ Persistent storage request failed:', error);
+          });
+        }
+        
+        if (mounted) logger.log('✅ Web app initialization completed');
+      } catch (error) {
+        if (mounted) {
+          logger.error('❌ App initialization failed:', error);
+          if (debugMode) {
+            console.error('[DEBUG] Initialization error stack:', error.stack);
+            console.error('[DEBUG] Error details:', {
+              name: error.name,
+              message: error.message,
+              code: error.code,
+              stack: error.stack
+            });
+          }
+          setInitError(error);
+        }
+        // Don't block app from loading even if initialization fails
+      }
+    };
+    
+    if (fontsLoaded) {
+      // Run initialization asynchronously without blocking render
+      initializeApp().catch(err => {
+        if (mounted) {
+          logger.error('Unhandled initialization error:', err);
+          if (debugMode) {
+            console.error('[DEBUG] Unhandled init error:', err);
+          }
+          setInitError(err);
+        }
+      });
+    } else {
+      logger.log('⏳ Waiting for fonts to load...');
+    }
+    
+    return () => {
+      mounted = false;
+    };
+  }, [fontsLoaded, debugMode]);
+
+  // Debug: Log render - MUST be before any conditional returns
+  React.useEffect(() => {
+    if (fontsLoaded) {
+      logger.log('🎨 App rendered, fonts loaded:', fontsLoaded);
+      if (debugMode) {
+        const root = document.getElementById('root');
+        console.log('[DEBUG] Root element:', root);
+        console.log('[DEBUG] Root children:', root?.children.length || 0);
+        console.log('[DEBUG] Window size:', {
+          width: window.innerWidth,
+          height: window.innerHeight
+        });
+        console.log('[DEBUG] React render count:', performance.now());
+      }
+    }
+  }, [fontsLoaded, debugMode]);
+  
+  // Freeze detection - log if component renders too many times
+  const renderCountRef = React.useRef(0);
+  React.useEffect(() => {
+    renderCountRef.current += 1;
+    if (renderCountRef.current > 5) {
+      console.warn(`⚠️ [FREEZE DETECTOR] App component rendered ${renderCountRef.current} times - potential infinite loop!`);
+    }
+  });
+
+  // Conditional returns MUST come after all hooks
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  // Show error if initialization failed critically
+  if (initError && initError.message?.includes('critical')) {
+    return (
+      <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
+        <h1>Error Loading App</h1>
+        <p>{initError.message}</p>
+        <button onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
+        <AuthProvider>
+          <VideoProvider>
+            <WebAppNavigator />
+            <StatusBar style="light" />
+          </VideoProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
+  );
+}
+

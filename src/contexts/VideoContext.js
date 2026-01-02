@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 
 const VideoContext = createContext();
 
@@ -13,19 +13,21 @@ export const useVideo = () => {
 export const VideoProvider = ({ children }) => {
   const [isMuted, setIsMuted] = useState(false); // false = sound on, true = muted
 
-  const toggleMute = () => {
+  // Memoize callbacks to prevent re-creation on every render
+  const toggleMute = useCallback(() => {
     setIsMuted(prev => !prev);
-  };
+  }, []);
 
-  const setMuted = (muted) => {
+  const setMuted = useCallback((muted) => {
     setIsMuted(muted);
-  };
+  }, []);
 
-  const value = {
+  // Memoize value object to prevent unnecessary re-renders
+  const value = useMemo(() => ({
     isMuted,
     toggleMute,
     setMuted,
-  };
+  }), [isMuted, toggleMute, setMuted]);
 
   return (
     <VideoContext.Provider value={value}>

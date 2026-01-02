@@ -1,16 +1,19 @@
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFirestore, doc, updateDoc, deleteField, serverTimestamp, getDoc } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { isWeb } from '../utils/platform';
+import webStorageService from './webStorageService';
 
 class ProfilePictureService {
   constructor() {
     this.cache = new Map();
   }
 
-  // Request camera/photo library permissions
+  // Request camera/photo library permissions (React Native only)
   async requestPermissions() {
+    if (isWeb) {
+      return true; // No permissions needed on web
+    }
+    const ImagePicker = require('expo-image-picker');
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       throw new Error('Permission to access photo library was denied');
@@ -20,42 +23,110 @@ class ProfilePictureService {
 
   // Compress image before upload
   async compressImage(uri) {
-    try {
+    if (isWeb) {
+      // Web: Use canvas API for compression
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxWidth = 400;
+          const maxHeight = 400;
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              const url = URL.createObjectURL(blob);
+              resolve(url);
+            },
+            'image/jpeg',
+            0.8
+          );
+        };
+        img.onerror = reject;
+        img.src = uri;
+      });
+    } else {
+      // React Native: Use expo-image-manipulator
+      const { manipulateAsync, SaveFormat } = require('expo-image-manipulator');
       const result = await manipulateAsync(
         uri,
-        [{ resize: { width: 400 } }], // Resize to 400px width (good quality for profile pics)
+        [{ resize: { width: 400 } }],
         { 
           compress: 0.8, 
           format: SaveFormat.JPEG 
         }
       );
       return result.uri;
-    } catch (error) {
-      console.error('Error compressing image:', error);
-      throw error;
     }
   }
 
   // Pick image from library
   async pickImage() {
-    try {
-      await this.requestPermissions();
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1], // Square aspect ratio for profile pictures
-        quality: 0.8,
+    if (isWeb) {
+      // Web: Use HTML5 file input
+      return new Promise((resolve, reject) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.style.display = 'none';
+        
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          if (!file) {
+            resolve(null);
+            return;
+          }
+
+          // Create object URL for the file
+          const objectUrl = URL.createObjectURL(file);
+          resolve(objectUrl);
+        };
+
+        input.onerror = reject;
+        document.body.appendChild(input);
+        input.click();
+        document.body.removeChild(input);
       });
+    } else {
+      // React Native: Use expo-image-picker
+      try {
+        await this.requestPermissions();
+        const ImagePicker = require('expo-image-picker');
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
 
-      if (result.canceled) {
-        return null;
+        if (result.canceled) {
+          return null;
+        }
+
+        return result.assets[0].uri;
+      } catch (error) {
+        console.error('Error picking image:', error);
+        throw error;
       }
-
-      return result.assets[0].uri;
-    } catch (error) {
-      console.error('Error picking image:', error);
-      throw error;
     }
   }
 
@@ -90,7 +161,12 @@ class ProfilePictureService {
 
       // Cache the URL
       this.cache.set(userId, downloadUrl);
-      await AsyncStorage.setItem(`profile_${userId}`, downloadUrl);
+      if (isWeb) {
+        await webStorageService.setItem(`profile_${userId}`, downloadUrl);
+      } else {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.setItem(`profile_${userId}`, downloadUrl);
+      }
 
       return downloadUrl;
     } catch (error) {
@@ -107,8 +183,14 @@ class ProfilePictureService {
         return this.cache.get(userId);
       }
 
-      // Check AsyncStorage
-      const cached = await AsyncStorage.getItem(`profile_${userId}`);
+      // Check storage
+      let cached;
+      if (isWeb) {
+        cached = await webStorageService.getItem(`profile_${userId}`);
+      } else {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        cached = await AsyncStorage.getItem(`profile_${userId}`);
+      }
       if (cached) {
         this.cache.set(userId, cached);
         return cached;
@@ -123,7 +205,12 @@ class ProfilePictureService {
       if (profilePictureUrl) {
         // Cache the result
         this.cache.set(userId, profilePictureUrl);
-        await AsyncStorage.setItem(`profile_${userId}`, profilePictureUrl);
+        if (isWeb) {
+          await webStorageService.setItem(`profile_${userId}`, profilePictureUrl);
+        } else {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.setItem(`profile_${userId}`, profilePictureUrl);
+        }
       }
 
       return profilePictureUrl || null;
@@ -175,7 +262,12 @@ class ProfilePictureService {
       // Clear cache (this should always work)
       this.cache.delete(userId);
       try {
-        await AsyncStorage.removeItem(`profile_${userId}`);
+        if (isWeb) {
+          await webStorageService.removeItem(`profile_${userId}`);
+        } else {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.removeItem(`profile_${userId}`);
+        }
       } catch (cacheError) {
         // Ignore cache errors
         console.log('Could not clear cache');
@@ -210,8 +302,13 @@ class ProfilePictureService {
       // Clear from memory cache
       this.cache.delete(userId);
       
-      // Clear from AsyncStorage
-      await AsyncStorage.removeItem(`profile_${userId}`);
+      // Clear from storage
+      if (isWeb) {
+        await webStorageService.removeItem(`profile_${userId}`);
+      } else {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.removeItem(`profile_${userId}`);
+      }
       
       console.log(`✅ Cleared profile picture cache for user: ${userId}`);
     } catch (error) {

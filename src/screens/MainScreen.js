@@ -17,8 +17,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
+import { getStorage } from '../utils/platform';
+import { isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
@@ -45,14 +46,18 @@ logger.log('📚 Library image imported:', libraryImage);
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// Responsive dimensions
-const CARD_MARGIN = screenWidth * 0.06; // 5% of screen width for margins (was 8%)
-const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Responsive card width
-const CARD_SPACING = 0; // 2% of screen width, min 8 (reduced from 4%)
+// Responsive dimensions - keep original mobile proportions
+// Cards should be narrower - make them about 75% of screen width for better carousel feel
+const CARD_MARGIN = screenWidth * 0.125; // 12.5% of screen width for margins on each side (25% total)
+const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 75% of screen width
+const CARD_SPACING = 0; // No spacing - cards overlap for 3D carousel effect
 const CARD_HEIGHT = Math.max(450, screenHeight * 0.6); // 65% of screen height, min 450
 
 const MainScreen = ({ navigation, route }) => {
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
+  // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
+  const user = contextUser || auth.currentUser;
   const [userProfile, setUserProfile] = useState({
     displayName: '',
     username: '',
@@ -115,19 +120,22 @@ const MainScreen = ({ navigation, route }) => {
     };
   }, []);
 
-  // Save selected card index to AsyncStorage
+  // Get platform-specific storage
+  const storage = getStorage();
+
+  // Save selected card index to storage
   const saveSelectedCardIndex = async (index) => {
     try {
-      await AsyncStorage.setItem('selectedCardIndex', index.toString());
+      await storage.setItem('selectedCardIndex', index.toString());
     } catch (error) {
       // Handle error silently
     }
   };
 
-  // Load selected card index from AsyncStorage
+  // Load selected card index from storage
   const loadSelectedCardIndex = async () => {
     try {
-      const savedIndex = await AsyncStorage.getItem('selectedCardIndex');
+      const savedIndex = await storage.getItem('selectedCardIndex');
       return savedIndex ? parseInt(savedIndex, 10) : 0;
     } catch (error) {
       return 0;
@@ -142,7 +150,7 @@ const MainScreen = ({ navigation, route }) => {
         timestamp: Date.now(),
         userId: user?.uid
       };
-      await AsyncStorage.setItem('cachedCourseData', JSON.stringify(cacheData));
+      await storage.setItem('cachedCourseData', JSON.stringify(cacheData));
       setCachedCourseData(cacheData);
     } catch (error) {
       logger.error('Error caching course data:', error);
@@ -152,9 +160,9 @@ const MainScreen = ({ navigation, route }) => {
   // Load cached course data
   const loadCachedCourseData = async () => {
     try {
-      const cached = await AsyncStorage.getItem('cachedCourseData');
+      const cached = await storage.getItem('cachedCourseData');
       if (cached) {
-        const cacheData = JSON.parse(cached);
+        const cacheData = typeof cached === 'string' ? JSON.parse(cached) : cached;
         // Check if cache is for current user and not too old (24 hours)
         const isCurrentUser = cacheData.userId === user?.uid;
         const isNotExpired = Date.now() - cacheData.timestamp < 24 * 60 * 60 * 1000;
@@ -170,15 +178,45 @@ const MainScreen = ({ navigation, route }) => {
     return null;
   };
 
+  // Track if we've attempted to load courses
+  const coursesLoadAttemptedRef = useRef(false);
+  
   useEffect(() => {
     // Track screen view
     trackScreenView('MainScreen');
     
-    if (user?.uid) {
-      // Initialize hybrid system with callbacks
-      initializeHybridSystem();
+    if (user?.uid && !coursesLoadAttemptedRef.current) {
+      coursesLoadAttemptedRef.current = true;
+      logger.log('🔄 User available, starting course loading...');
+      
+      // Initialize hybrid system with callbacks, but add timeout
+      const initPromise = initializeHybridSystem();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('initializeHybridSystem timeout after 10s')), 10000)
+      );
+      
+      Promise.race([initPromise, timeoutPromise])
+        .then(() => {
+          logger.log('✅ initializeHybridSystem completed successfully');
+        })
+        .catch((error) => {
+          logger.error('❌ Error in initializeHybridSystem (or timeout), falling back to loadCoursesFromCache:', error);
+          // Fallback: Load courses directly if initialization fails or times out
+          loadCoursesFromCache();
+        });
     }
-  }, [user]);
+  }, [user?.uid]);
+  
+  // CRITICAL: Ensure courses are loaded when user becomes available
+  // This is a fallback in case initializeHybridSystem doesn't complete or user wasn't available initially
+  useEffect(() => {
+    if (user?.uid && !coursesLoadAttemptedRef.current) {
+      // If we have a user but haven't attempted to load courses yet, load them
+      coursesLoadAttemptedRef.current = true;
+      logger.log('🔄 User available, loading courses (fallback useEffect)...');
+      loadCoursesFromCache();
+    }
+  }, [user?.uid]);
 
   // Handle refresh parameter from navigation (e.g., after purchase)
   useEffect(() => {
@@ -233,10 +271,12 @@ const MainScreen = ({ navigation, route }) => {
   // Initialize hybrid system (clear old cache, etc.)
   const initializeHybridSystem = async () => {
     try {
+      logger.log('🔄 initializeHybridSystem: Starting initialization...');
       await hybridDataService.initialize();
+      logger.log('✅ initializeHybridSystem: Hybrid service initialized');
       
       // Set up UI refresh callbacks for version updates
-      console.log('🔧 CALLBACK SETUP: Setting up UI update callbacks...');
+      logger.log('🔧 CALLBACK SETUP: Setting up UI update callbacks...');
       courseDownloadService.setUIUpdateCallbacks(
         (courseId, newVersion, status) => {
           console.log('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
@@ -294,10 +334,14 @@ const MainScreen = ({ navigation, route }) => {
       );
       
       // Load courses WITHOUT triggering tutorials
+      logger.log('🔄 initializeHybridSystem: Loading courses without tutorials...');
       await loadCoursesFromCacheWithoutTutorials();
+      logger.log('✅ initializeHybridSystem: Courses loaded successfully');
     } catch (error) {
-      logger.error('Error initializing hybrid system:', error);
+      logger.error('❌ Error initializing hybrid system:', error);
+      logger.error('❌ Error details:', error.message, error.stack);
       // Fallback to regular course loading
+      logger.log('🔄 Falling back to loadCoursesFromCache...');
       await loadCoursesFromCache();
     }
   };
@@ -416,23 +460,34 @@ const MainScreen = ({ navigation, route }) => {
 
   // Refresh courses when MainScreen comes into focus (only if updates completed)
   // This ensures "actualizando" status is cleared after program updates complete
-  useFocusEffect(
-    React.useCallback(() => {
-      if (user?.uid && hasPendingUpdates) {
-        logger.log('🔄 MainScreen focused - refreshing due to completed updates...');
-        // Clear consolidated cache to ensure fresh data
-        consolidatedDataService.clearUserCache(user.uid);
-        // Refresh courses from database
-        refreshCoursesFromDatabase();
-        
-        // Clear the pending updates flag
-        updateEventManager.clearPendingUpdates();
-        setHasPendingUpdates(false);
-      } else {
-        logger.log('⏭️ MainScreen focused - no pending updates, skipping refresh');
+  const focusEffectCallback = React.useCallback(() => {
+    if (user?.uid && hasPendingUpdates) {
+      logger.log('🔄 MainScreen focused - refreshing due to completed updates...');
+      // Clear consolidated cache to ensure fresh data
+      consolidatedDataService.clearUserCache(user.uid);
+      // Refresh courses from database
+      refreshCoursesFromDatabase();
+      
+      // Clear the pending updates flag
+      updateEventManager.clearPendingUpdates();
+      setHasPendingUpdates(false);
+    } else {
+      logger.log('⏭️ MainScreen focused - no pending updates, skipping refresh');
+    }
+  }, [user?.uid, hasPendingUpdates]);
+
+  // Use platform-specific focus effect
+  // On web, we'll use useEffect; on native, use useFocusEffect
+  if (!isWeb) {
+    useFocusEffect(focusEffectCallback);
+  } else {
+    // On web, check location pathname
+    React.useEffect(() => {
+      if (typeof window !== 'undefined' && window.location.pathname === '/') {
+        focusEffectCallback();
       }
-    }, [user?.uid, hasPendingUpdates])
-  );
+    }, [focusEffectCallback]);
+  }
 
   // Load courses using consolidated service with fallback (Phase 1 optimization)
   const loadCoursesFromCache = async () => {
@@ -441,56 +496,86 @@ const MainScreen = ({ navigation, route }) => {
       setError(null);
       
       logger.log('🔄 Loading courses using consolidated service...');
+      logger.log('🔄 User ID:', user?.uid);
+      
+      if (!user?.uid) {
+        logger.error('❌ No user ID available, cannot load courses');
+        setLoading(false);
+        return;
+      }
       
       // Try consolidated service first
       let courses = [];
       let downloadedData = {};
       
       try {
+        logger.log('🔄 Calling consolidatedDataService.getUserCoursesWithDetails...');
         const result = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
-        courses = result.courses;
-        downloadedData = result.downloadedData;
+        courses = result.courses || [];
+        downloadedData = result.downloadedData || {};
         logger.log(`✅ Loaded ${courses.length} courses with consolidated service`);
       } catch (consolidatedError) {
+        logger.error('⚠️ Consolidated service failed:', consolidatedError);
         logger.warn('⚠️ Consolidated service failed, trying direct loading...', consolidatedError.message);
+        logger.error('⚠️ Error stack:', consolidatedError.stack);
         
         // Fallback: Direct Firestore loading
-        const purchasedCourses = await purchaseService.getUserPurchasedCourses(user.uid);
-        logger.log('📚 Direct loading: Found', purchasedCourses.length, 'purchased courses');
-        
-        // Get course details directly from Firestore
-        courses = [];
-        for (const purchased of purchasedCourses) {
-          try {
-            const courseDetails = await firestoreService.getCourse(purchased.courseId);
-            if (courseDetails) {
-              courses.push({
-                ...courseDetails,
-                courseId: courseDetails.id,
-                purchasedAt: purchased.purchasedAt
-              });
+        try {
+          logger.log('🔄 Trying direct Firestore loading...');
+          const purchasedCourses = await purchaseService.getUserPurchasedCourses(user.uid);
+          logger.log('📚 Direct loading: Found', purchasedCourses.length, 'purchased courses');
+          
+          // Get course details directly from Firestore
+          courses = [];
+          for (const purchased of purchasedCourses) {
+            try {
+              const courseId = purchased.courseId || purchased.id;
+              if (!courseId) {
+                logger.warn('⚠️ Purchased course missing courseId:', purchased);
+                continue;
+              }
+              const courseDetails = await firestoreService.getCourse(courseId);
+              if (courseDetails) {
+                courses.push({
+                  ...courseDetails,
+                  courseId: courseDetails.id,
+                  purchasedAt: purchased.purchasedAt
+                });
+              }
+            } catch (courseError) {
+              logger.warn('⚠️ Failed to load course details for:', purchased.courseId, courseError);
             }
-          } catch (courseError) {
-            logger.warn('⚠️ Failed to load course details for:', purchased.courseId);
           }
+          
+          // Set downloaded data to empty (will be loaded on demand)
+          downloadedData = {};
+          logger.log(`✅ Fallback loaded ${courses.length} courses directly`);
+        } catch (fallbackError) {
+          logger.error('❌ Fallback loading also failed:', fallbackError);
+          throw fallbackError;
         }
-        
-        // Set downloaded data to empty (will be loaded on demand)
-        downloadedData = {};
-        logger.log(`✅ Fallback loaded ${courses.length} courses directly`);
       }
+      
+      logger.log('📚 Final courses count:', courses.length);
       
       if (courses.length > 0) {
         // Update cache with fresh data
-        await simpleCourseCache.updateCache(user.uid, courses);
-        await cacheCourseData(courses);
+        try {
+          await simpleCourseCache.updateCache(user.uid, courses);
+          await cacheCourseData(courses);
+        } catch (cacheError) {
+          logger.warn('⚠️ Error updating cache:', cacheError);
+          // Continue anyway - cache errors are not critical
+        }
         
         // Set courses and downloaded data
         setPurchasedCourses(courses);
         setDownloadedCourses(downloadedData);
         setError(null);
+        logger.log('✅ Courses set in state, loading should complete');
       } else {
         // No active courses, but still show the library card
+        logger.log('ℹ️ No courses found, showing empty state');
         setPurchasedCourses([]);
         setDownloadedCourses({});
         setError(null);
@@ -498,11 +583,21 @@ const MainScreen = ({ navigation, route }) => {
       
     } catch (error) {
       logger.error('❌ Error loading courses:', error);
+      logger.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       setError('Error al cargar tus cursos. Inténtalo de nuevo.');
     } finally {
+      logger.log('🔄 Setting loading to false...');
       setLoading(false);
       // Check for tutorials after loading is complete
-      await checkForTutorials();
+      try {
+        await checkForTutorials();
+      } catch (tutorialError) {
+        logger.warn('⚠️ Error checking tutorials:', tutorialError);
+      }
     }
   };
 
@@ -933,7 +1028,7 @@ const MainScreen = ({ navigation, route }) => {
   // Handle scroll events to update current index and preload images
   const handleScroll = (event) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const cardWidth = CARD_WIDTH + CARD_SPACING; // Card width + spacing
+    const cardWidth = CARD_WIDTH; // No spacing, cards overlap
     const index = Math.round(contentOffsetX / cardWidth);
     
     if (index !== currentIndex) {
@@ -947,10 +1042,49 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
+  // Navigation button handlers
+  const scrollToPrevious = () => {
+    const cards = getSwipeableCards();
+    if (currentIndex > 0 && flatListRef.current) {
+      const newIndex = currentIndex - 1;
+      const cardWidth = CARD_WIDTH; // No spacing
+      const targetOffset = newIndex * cardWidth;
+      
+      flatListRef.current.scrollToOffset({
+        offset: targetOffset,
+        animated: true,
+      });
+      
+      // The onScroll event will update scrollX automatically
+      // But we update currentIndex immediately for button visibility
+      setCurrentIndex(newIndex);
+      saveSelectedCardIndex(newIndex);
+    }
+  };
+
+  const scrollToNext = () => {
+    const cards = getSwipeableCards();
+    if (currentIndex < cards.length - 1 && flatListRef.current) {
+      const newIndex = currentIndex + 1;
+      const cardWidth = CARD_WIDTH; // No spacing
+      const targetOffset = newIndex * cardWidth;
+      
+      flatListRef.current.scrollToOffset({
+        offset: targetOffset,
+        animated: true,
+      });
+      
+      // The onScroll event will update scrollX automatically
+      // But we update currentIndex immediately for button visibility
+      setCurrentIndex(newIndex);
+      saveSelectedCardIndex(newIndex);
+    }
+  };
+
   // Render pagination indicators - native driver compatible
   const renderPaginationIndicators = () => {
     const cards = getSwipeableCards();
-    const cardWidth = CARD_WIDTH + CARD_SPACING;
+    const cardWidth = CARD_WIDTH; // No spacing
     
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
@@ -994,7 +1128,7 @@ const MainScreen = ({ navigation, route }) => {
   };
 
   const renderSwipeableCard = ({ item, index }) => {
-    const cardWidth = CARD_WIDTH + CARD_SPACING;
+    const cardWidth = CARD_WIDTH; // No spacing, cards overlap
     const inputRange = [
       (index - 1) * cardWidth,
       index * cardWidth,
@@ -1004,21 +1138,33 @@ const MainScreen = ({ navigation, route }) => {
     // Scale: side cards smaller, center card full size
     const scale = scrollX.interpolate({
       inputRange,
-      outputRange: [0.92, 1.0, 0.92], // Side cards 92% size, center card 100%
+      outputRange: [0.85, 1.0, 0.85], // Side cards 85% size, center card 100%
       extrapolate: 'clamp',
     });
     
-    // Opacity: side cards more transparent
+    // Opacity: side cards more transparent (behind effect)
     const opacity = scrollX.interpolate({
       inputRange,
-      outputRange: [0.75, 1.0, 0.75], // Side cards 75% opacity, center card 100%
+      outputRange: [0.5, 1.0, 0.5], // Side cards 50% opacity, center card 100%
       extrapolate: 'clamp',
     });
     
+    // Calculate z-index based on distance from center
+    // Center card should be in front, side cards behind
+    // We'll use currentIndex state to determine which card is centered
+    const distanceFromCenter = Math.abs(index - currentIndex);
+    const cardZIndex = distanceFromCenter === 0 ? 10 : 
+                       distanceFromCenter === 1 ? 5 : 0;
+    
+    // Cards stay centered - no translateX needed
+    // The scale and opacity create the "behind" effect
     const cardStyle = {
       transform: [{ scale: scale }],
       opacity: opacity,
       alignSelf: 'center',
+      // Use elevation for Android and zIndex for web - center card in front
+      elevation: cardZIndex,
+      zIndex: cardZIndex,
     };
     
     if (item.type === 'course') {
@@ -1248,7 +1394,7 @@ const MainScreen = ({ navigation, route }) => {
           <ImageBackground
             // Cloud/remote download disabled: always use bundled fallback
             source={libraryImage}
-            style={styles.cardContent}
+            style={styles.cardContentWithImage}
             imageStyle={styles.cardBackgroundImage}
             resizeMode="cover"
           >
@@ -1326,7 +1472,33 @@ const MainScreen = ({ navigation, route }) => {
               </View>
             ) : (
               <View style={styles.swipeableContainer}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, position: 'relative' }}>
+                    {/* Left Navigation Button */}
+                    {currentIndex > 0 && (
+                      <TouchableOpacity
+                        style={styles.navButtonLeft}
+                        onPress={scrollToPrevious}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.navButtonContent}>
+                          <Text style={styles.navButtonText}>‹</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    
+                    {/* Right Navigation Button */}
+                    {currentIndex < getSwipeableCards().length - 1 && (
+                      <TouchableOpacity
+                        style={styles.navButtonRight}
+                        onPress={scrollToNext}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.navButtonContent}>
+                          <Text style={styles.navButtonText}>›</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    
                     <Animated.FlatList
                       ref={flatListRef}
                       data={getSwipeableCards()}
@@ -1334,22 +1506,22 @@ const MainScreen = ({ navigation, route }) => {
                       keyExtractor={(item, index) => item?.id || `item_${index}`}
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      snapToInterval={CARD_WIDTH + CARD_SPACING}
-                      snapToAlignment="start"
+                      snapToInterval={CARD_WIDTH}
+                      snapToAlignment="center"
                       decelerationRate="fast"
                       contentContainerStyle={styles.flatListContent}
                       ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
                       onScroll={Animated.event(
                         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                        { useNativeDriver: true }
+                        { useNativeDriver: false } // Must be false for zIndex to work
                       )}
                       onScrollEndDrag={handleScroll}
                       onMomentumScrollEnd={handleScroll}
                       scrollEventThrottle={16}
                       style={{ flex: 1 }}
                       getItemLayout={(data, index) => ({
-                        length: CARD_WIDTH + CARD_SPACING,
-                        offset: (CARD_WIDTH + CARD_SPACING) * index,
+                        length: CARD_WIDTH,
+                        offset: CARD_WIDTH * index,
                         index,
                       })}
                       // Virtual scrolling optimizations
@@ -1413,13 +1585,15 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
+    alignItems: 'center',
   },
   cardSeparator: {
-    width: CARD_SPACING,
+    width: 0, // No separator - cards overlap
   },
   swipeableCard: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
+    // Cards will overlap naturally due to negative margins or transform
   },
   cardContent: {
     flex: 1,
@@ -1439,6 +1613,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 0, // No border when image is present
     overflow: 'hidden', // Ensure image respects border radius
+    width: '100%',
+    height: '100%',
     // No padding here - let cardOverlay handle positioning
   },
   cardHeader: {
@@ -1466,6 +1642,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    width: '100%',
+    height: '100%',
     borderRadius: 16,
     opacity: 1, // Ensure 100% opacity
   },
@@ -1624,6 +1802,47 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  // Navigation buttons
+  navButtonLeft: {
+    position: 'absolute',
+    left: Math.max(10, screenWidth * 0.02),
+    top: '50%',
+    marginTop: -25, // Half of button height to center vertically
+    zIndex: 1000,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navButtonRight: {
+    position: 'absolute',
+    right: Math.max(10, screenWidth * 0.02),
+    top: '50%',
+    marginTop: -25, // Half of button height to center vertically
+    zIndex: 1000,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navButtonContent: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  navButtonText: {
+    color: '#ffffff',
+    fontSize: 32,
+    fontWeight: '300',
+    lineHeight: 32,
+  },
 });
 
+// Export both default and named for web wrapper compatibility
 export default MainScreen;
+export { MainScreen as MainScreenBase };

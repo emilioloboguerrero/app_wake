@@ -1,11 +1,12 @@
 // Google Authentication Service for Wake
 // Expo-compatible Google Sign-In with Firebase Web SDK
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import firestoreService from './firestoreService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
+import { isWeb } from '../utils/platform';
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -62,8 +63,64 @@ class GoogleAuthService {
     }
   }
 
-  // Sign in with Google using React Native Google Sign-In
+  // Sign in with Google using React Native Google Sign-In or Web Popup
   async signIn() {
+    // Web: Use Firebase signInWithPopup
+    if (isWeb) {
+      try {
+        logger.log('Google Sign-In initiated (Web)');
+        const provider = new GoogleAuthProvider();
+        const userCredential = await signInWithPopup(auth, provider);
+        const firebaseUser = userCredential.user;
+        
+        logger.log('Google sign-in successful (Web):', firebaseUser.uid);
+        
+        // Check if user exists in Firestore before allowing access
+        const existingUser = await firestoreService.getUser(firebaseUser.uid);
+        
+        if (!existingUser) {
+          // User doesn't exist - sign them out and show message
+          await auth.signOut();
+          logger.log('New user attempted sign-in, redirecting to website');
+          return {
+            success: false,
+            error: 'REGISTRATION_REQUIRED',
+            message: 'No encontramos una cuenta asociada con este correo de Google. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
+          };
+        }
+        
+        // User exists - update user document in Firestore
+        await this.createOrUpdateUserDocument(firebaseUser);
+        
+        return { 
+          success: true, 
+          user: firebaseUser
+        };
+      } catch (error) {
+        logger.error('Google Sign-In error (Web):', error);
+        
+        if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+          return { 
+            success: false, 
+            error: 'Inicio de sesión cancelado' 
+          };
+        }
+        
+        if (error.code === 'auth/account-exists-with-different-credential') {
+          return { 
+            success: false, 
+            error: 'Ya existe una cuenta con este correo electrónico usando otro método de inicio de sesión' 
+          };
+        }
+        
+        return { 
+          success: false, 
+          error: 'Error al iniciar sesión con Google. Por favor intenta de nuevo' 
+        };
+      }
+    }
+    
+    // React Native: Use React Native Google Sign-In
     // Check if running in Expo Go
     if (isExpoGo) {
       return {
@@ -73,7 +130,7 @@ class GoogleAuthService {
     }
 
     try {
-      logger.log('Google Sign-In initiated');
+      logger.log('Google Sign-In initiated (Native)');
       
       // Dynamically load Google Sign-In module
       const GoogleSigninModule = await this.loadGoogleSignIn();

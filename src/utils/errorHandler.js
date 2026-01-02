@@ -213,8 +213,25 @@ export async function withErrorHandling(asyncFn, options = {}) {
 
 /**
  * Check network connectivity
+ * On web, uses navigator.onLine API (more reliable and doesn't require CORS)
+ * On native, tries to fetch a simple endpoint
  */
 export async function checkNetworkConnectivity() {
+  // Web: Use navigator.onLine API (no CORS issues)
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+    // Check if browser reports online status
+    if (!navigator.onLine) {
+      return false;
+    }
+    
+    // For web, we can trust navigator.onLine for most cases
+    // Firebase will handle actual network errors gracefully
+    // If we want a more thorough check, we could ping Firebase directly
+    // but that's unnecessary since Firebase operations will fail if offline
+    return true;
+  }
+  
+  // Native: Try to fetch a simple endpoint (original behavior)
   try {
     const response = await fetch('https://www.google.com', {
       method: 'HEAD',
@@ -237,7 +254,10 @@ export async function handleNetworkOperation(asyncFn, options = {}) {
   } = options;
   
   // Check connection if requested
-  if (checkConnection) {
+  // On web, skip network check - Firebase will handle network errors gracefully
+  // Network checks are more useful on native where we want to fail fast
+  if (checkConnection && typeof window === 'undefined') {
+    // Only check on native (React Native) - window is undefined on native
     const isConnected = await checkNetworkConnectivity();
     if (!isConnected) {
       const error = new Error(offlineMessage);
@@ -246,6 +266,7 @@ export async function handleNetworkOperation(asyncFn, options = {}) {
       throw error;
     }
   }
+  // On web (window is defined), skip the network check entirely
   
   // Execute operation with error handling
   return withErrorHandling(asyncFn, otherOptions);

@@ -22,9 +22,6 @@ const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
 
-const iapAppSecret = functions.params.defineSecret(
-  "IAP_APP_SECRET"
-);
 
 // Simple Mercado Pago client
 const getClient = () => {
@@ -1993,10 +1990,7 @@ export const verifyToken = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// Verify IAP receipt with Apple and grant course access
-export const verifyIAPReceipt = functions
-  .runWith({secrets: [iapAppSecret]})
-  .https.onRequest(async (request, response) => {
+// IAP function removed - using MercadoPago only
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     response.set("Access-Control-Allow-Headers", "Content-Type");

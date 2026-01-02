@@ -9,17 +9,31 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import { isWeb } from '../utils/platform';
 import purchaseService from '../services/purchaseService';
+import consolidatedDataService from '../services/consolidatedDataService';
+import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import logger from '../utils/logger.js';
-import iapService from '../services/iapService';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
+  
+  // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
+  // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
+  const user = contextUser || auth.currentUser;
+  
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
   const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,29 +41,105 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   useEffect(() => {
     if (user?.uid) {
+      logger.log('🔄 AllPurchasedCoursesScreen: useEffect triggered, user.uid:', user.uid);
       fetchAllCourses();
+    } else {
+      logger.log('⚠️ AllPurchasedCoursesScreen: useEffect triggered but no user.uid');
     }
   }, [user]);
 
   // Refresh when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
+  // On web, useFocusEffect doesn't work (no NavigationContainer), so we use useEffect instead
+  const focusCallback = React.useCallback(() => {
+    if (user?.uid) {
+      logger.log('🔄 AllPurchasedCoursesScreen focused - refreshing...');
+      fetchAllCourses();
+    }
+  }, [user?.uid]);
+
+  // Use platform-specific focus effect
+  // On web, we'll use useEffect; on native, use useFocusEffect
+  // Note: isWeb is constant at module level, so conditional hook call is safe
+  if (!isWeb) {
+    useFocusEffect(focusCallback);
+  } else {
+    // On web, use useEffect since there's no NavigationContainer
+    useEffect(() => {
       if (user?.uid) {
-        logger.log('🔄 AllPurchasedCoursesScreen focused - refreshing...');
-        fetchAllCourses();
+        focusCallback();
       }
-    }, [user?.uid])
-  );
+    }, [user?.uid, focusCallback]);
+  }
 
   const fetchAllCourses = async () => {
     try {
+      logger.log('🚀 AllPurchasedCoursesScreen.fetchAllCourses: START');
       setLoading(true);
       setError(null);
       logger.log('📚 Fetching ALL purchased courses for user:', user.uid);
-      // includeInactive = true to get all courses including expired/completed
-      const courses = await purchaseService.getUserPurchasedCourses(user.uid, true);
-      logger.log('✅ Fetched all courses:', courses.length, courses);
+      
+      // Get all courses (including inactive/expired) from purchaseService
+      // This gives us the status information (isActive, isExpired, etc.)
+      const allPurchasedCourses = await purchaseService.getUserPurchasedCourses(user.uid, true);
+      logger.log('✅ AllPurchasedCoursesScreen: Fetched all purchased courses:', allPurchasedCourses.length);
+      logger.log('📋 AllPurchasedCoursesScreen: Course data:', allPurchasedCourses);
+      
+      // Use the same service that MainScreen uses for consistency
+      // This ensures we get the same data structure and course details
+      const result = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
+      logger.log('✅ AllPurchasedCoursesScreen: Consolidated service result:', {
+        coursesCount: result?.courses?.length || 0,
+        hasDownloadedData: !!result?.downloadedData
+      });
+      
+      // Use purchaseService data if available (it has status info)
+      // Otherwise fallback to consolidated service
+      let courses = [];
+      if (allPurchasedCourses.length > 0) {
+        logger.log('✅ AllPurchasedCoursesScreen: Using purchaseService courses');
+        courses = allPurchasedCourses;
+      } else if (result?.courses && result.courses.length > 0) {
+        // Fallback: build course structure from consolidated service
+        logger.log('⚠️ AllPurchasedCoursesScreen: purchaseService returned empty, using consolidated service data');
+        const now = new Date();
+        courses = result.courses.map(course => {
+          // Try to get status from course data if available
+          const isActive = course.status === 'active' || course.isActive === true;
+          const expiresAt = course.expires_at || course.expiresAt;
+          const isNotExpired = expiresAt ? new Date(expiresAt) > now : true;
+          const isCancelled = course.status === 'cancelled';
+          
+          return {
+            id: `${user.uid}-${course.id}`,
+            courseId: course.id,
+            courseData: {
+              status: course.status || 'active',
+              expires_at: expiresAt,
+              purchased_at: course.purchased_at || new Date().toISOString()
+            },
+            courseDetails: course,
+            isActive: isActive && isNotExpired,
+            isExpired: !isNotExpired && !isCancelled,
+            isCompleted: false,
+            status: course.status || 'active',
+            expires_at: expiresAt
+          };
+        });
+      }
+      
+      logger.log('✅ AllPurchasedCoursesScreen: Final courses to display:', courses.length);
+      logger.log('📋 AllPurchasedCoursesScreen: Course data structure:', courses.map(c => ({
+        id: c.id,
+        courseId: c.courseId,
+        title: c.courseDetails?.title,
+        isActive: c.isActive,
+        isExpired: c.isExpired,
+        isCompleted: c.isCompleted,
+        status: c.status
+      })));
+      logger.log('💾 AllPurchasedCoursesScreen: Setting allCourses state with', courses.length, 'courses');
       setAllCourses(courses);
+      logger.log('✅ AllPurchasedCoursesScreen: setAllCourses called, state should update');
     } catch (error) {
       logger.error('❌ Error fetching all purchased courses:', error);
       setError('Error al cargar tus cursos');
@@ -63,7 +153,16 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   };
 
   // Restore purchases (Apple requirement)
+  // On web, this is not applicable - purchases are managed via Epayco
   const handleRestorePurchases = async () => {
+    if (isWeb) {
+      Alert.alert(
+        'No disponible en web',
+        'La restauración de compras solo está disponible en dispositivos móviles. En web, tus compras se sincronizan automáticamente con tu cuenta.'
+      );
+      return;
+    }
+
     if (!user?.uid) {
       Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
       return;
@@ -72,6 +171,20 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     try {
       setRestoringPurchases(true);
       logger.log('🔄 Restoring purchases from AllPurchasedCoursesScreen...');
+      
+      // Import iapService dynamically - only available on native platforms
+      let iapService;
+      try {
+        iapService = require('../services/iapService').default;
+      } catch (error) {
+        // iapService not available (e.g., on web)
+        Alert.alert(
+          'No disponible',
+          'La restauración de compras no está disponible en esta plataforma.'
+        );
+        setRestoringPurchases(false);
+        return;
+      }
       
       const result = await iapService.restorePurchases();
       
@@ -164,11 +277,36 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     );
   };
 
-  const categorizedCourses = {
-    active: allCourses.filter(course => course.isActive),
-    completed: allCourses.filter(course => course.isCompleted),
-    expired: allCourses.filter(course => course.isExpired)
-  };
+  // Categorize courses - ensure all courses are shown even if they don't match a category
+  const categorizedCourses = React.useMemo(() => {
+    logger.log('🔍 Categorizing courses, allCourses.length:', allCourses.length);
+    logger.log('🔍 allCourses array:', allCourses);
+    
+    const active = allCourses.filter(course => course.isActive === true);
+    const expired = allCourses.filter(course => course.isExpired === true);
+    const completed = allCourses.filter(course => course.isCompleted === true);
+    // Get uncategorized courses (fallback - show all courses that don't fit other categories)
+    const uncategorized = allCourses.filter(course => 
+      !course.isActive && !course.isExpired && !course.isCompleted
+    );
+    
+    logger.log('🔍 AllPurchasedCoursesScreen - Course categorization:', {
+      total: allCourses.length,
+      active: active.length,
+      expired: expired.length,
+      completed: completed.length,
+      uncategorized: uncategorized.length,
+      courses: allCourses.map(c => ({
+        title: c.courseDetails?.title,
+        isActive: c.isActive,
+        isExpired: c.isExpired,
+        isCompleted: c.isCompleted,
+        status: c.status
+      }))
+    });
+    
+    return { active, expired, completed, uncategorized };
+  }, [allCourses]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -184,8 +322,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          {/* Spacer for fixed header */}
-          <WakeHeaderSpacer />
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
 
           {/* Title */}
           <Text style={styles.screenTitle}>Todos mis programas</Text>
@@ -206,24 +344,28 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
           ) : allCourses.length > 0 ? (
             <View style={styles.coursesContainer}>
               {/* Activos Section */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryTitle}>Activos ({categorizedCourses.active.length})</Text>
-                {categorizedCourses.active.length > 0 ? (
-                  categorizedCourses.active.map((purchaseData, index) => renderCourseCard(purchaseData, index))
-                ) : (
-                  <Text style={styles.emptySectionText}>No hay programas activos</Text>
-                )}
-              </View>
+              {categorizedCourses.active.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryTitle}>Activos ({categorizedCourses.active.length})</Text>
+                  {categorizedCourses.active.map((purchaseData, index) => renderCourseCard(purchaseData, index))}
+                </View>
+              )}
 
               {/* Expirados Section */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryTitle}>Expirados ({categorizedCourses.expired.length})</Text>
-                {categorizedCourses.expired.length > 0 ? (
-                  categorizedCourses.expired.map((purchaseData, index) => renderCourseCard(purchaseData, index))
-                ) : (
-                  <Text style={styles.emptySectionText}>No hay programas expirados</Text>
-                )}
-              </View>
+              {categorizedCourses.expired.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryTitle}>Expirados ({categorizedCourses.expired.length})</Text>
+                  {categorizedCourses.expired.map((purchaseData, index) => renderCourseCard(purchaseData, index))}
+                </View>
+              )}
+              
+              {/* Uncategorized Section - Show courses that don't fit other categories */}
+              {categorizedCourses.uncategorized.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryTitle}>Todos ({categorizedCourses.uncategorized.length})</Text>
+                  {categorizedCourses.uncategorized.map((purchaseData, index) => renderCourseCard(purchaseData, index))}
+                </View>
+              )}
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -268,7 +410,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 10,
+    paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: 80,
   },
   screenTitle: {
@@ -276,6 +418,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'left',
+    marginTop: 0, // No margin - spacer positions it correctly
     marginBottom: 20,
     marginLeft: 20,
   },
@@ -604,4 +747,6 @@ const styles = StyleSheet.create({
   },
 });
 
+// Export both default and named for web wrapper compatibility
+export { AllPurchasedCoursesScreen as AllPurchasedCoursesScreenBase };
 export default AllPurchasedCoursesScreen;

@@ -1,5 +1,7 @@
 // Hybrid Data Service - Cache-first loading with selective cloud sync
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Use storage adapter for platform-agnostic storage
+import storageAdapter from '../utils/storageAdapter';
+const AsyncStorage = storageAdapter; // Use adapter instead of direct import
 import firestoreService from './firestoreService';
 import userProgressService from './userProgressService';
 

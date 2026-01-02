@@ -1,0 +1,335 @@
+/* Global CSS for PWA - Responsive Design System */
+
+/* Import Montserrat fonts from Google Fonts for web */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Colors */
+  --color-background: #1a1a1a;
+  --color-surface: #2a2a2a;
+  --color-surface-light: #3a3a3a;
+  --color-text: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.8);
+  --color-text-tertiary: rgba(255, 255, 255, 0.6);
+  --color-primary: rgba(191, 168, 77, 1);
+  --color-primary-dark: rgba(191, 168, 77, 0.8);
+  --color-primary-light: rgba(191, 168, 77, 0.2);
+  --color-accent: #007AFF;
+  --color-border: rgba(255, 255, 255, 0.2);
+  --color-shadow: rgba(255, 255, 255, 0.4);
+
+  /* Spacing - Responsive */
+  --spacing-xs: clamp(4px, 1vw, 8px);
+  --spacing-sm: clamp(8px, 2vw, 16px);
+  --spacing-md: clamp(12px, 3vw, 24px);
+  --spacing-lg: clamp(16px, 4vw, 32px);
+  --spacing-xl: clamp(24px, 6vw, 48px);
+
+  /* Typography - Responsive */
+  --font-size-xs: clamp(10px, 2.5vw, 12px);
+  --font-size-sm: clamp(12px, 3vw, 14px);
+  --font-size-base: clamp(14px, 3.5vw, 16px);
+  --font-size-md: clamp(16px, 4vw, 18px);
+  --font-size-lg: clamp(18px, 4.5vw, 20px);
+  --font-size-xl: clamp(20px, 5vw, 24px);
+  --font-size-2xl: clamp(24px, 6vw, 32px);
+  --font-size-3xl: clamp(28px, 7vw, 40px);
+
+  /* Layout */
+  --header-height: clamp(60px, 8vh, 80px);
+  --tab-bar-height: clamp(50px, 10vh, 70px);
+  --card-border-radius: clamp(12px, 4vw, 16px);
+  --button-height: clamp(44px, 6vh, 56px);
+
+  /* Safe Area Insets (for notched devices) */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+}
+
+/* Reset and Base Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  height: 100vh;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+}
+
+/* Mobile: full width, fixed positioning */
+@media (max-width: 480px) {
+  body {
+    position: fixed;
+    width: 100%;
+  }
+  
+  #root {
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--color-background);
+  }
+}
+
+/* Desktop: center the app container - BUT full screen for login */
+@media (min-width: 481px) {
+  /* Default: full screen (for login) */
+  body {
+    padding: 0;
+    background: #1a1a1a;
+    display: block;
+    min-height: 100vh;
+  }
+  
+  #root {
+    max-width: 100%;
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    background-color: var(--color-background);
+    overflow: hidden;
+    position: relative;
+  }
+  
+  /* Full screen for all routes - no card container */
+  /* Removed card styles - PWA should be full screen */
+}
+
+/* Prevent text selection on UI elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Touch-friendly tap targets */
+button,
+a,
+[role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbars but allow scrolling */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* Responsive Images */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Focus styles for accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Disable pull-to-refresh on mobile */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Prevent zoom on double tap (iOS) */
+* {
+  touch-action: pan-x pan-y;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Media Queries */
+@media (max-width: 480px) {
+  :root {
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+  }
+}
+
+@media (min-width: 769px) {
+  :root {
+    --spacing-md: 24px;
+    --spacing-lg: 32px;
+  }
+}
+
+/* PWA specific styles */
+@media (display-mode: standalone) {
+  body {
+    /* Adjust for standalone mode */
+    padding-top: var(--safe-area-inset-top);
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+}
+
+/* Dark mode (always dark for this app) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Already dark, no changes needed */
+  }
+}
+
+/* Removed duplicate media query - handled above */
+
+/* Ensure screens fill container properly */
+.web-container > * {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fix for React Native components on web */
+[data-react-native-root] {
+  width: 100%;
+  height: 100%;
+}
+
+/* Login screen specific - full page override */
+body[data-login-route="true"] {
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+body[data-login-route="true"] #root {
+  max-width: 100% !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
+  position: relative !important;
+}
+
+.login-page {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1 !important;
+}
+
+/* SafeAreaView replacement for web */
+.SafeAreaView,
+[data-testid="SafeAreaView"] {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-background);
+}
+
+/* ScrollView on web */
+.ScrollView,
+[data-testid="ScrollView"] {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* View component on web */
+.View,
+[data-testid="View"] {
+  display: flex;
+}
+
+/* Ensure proper flex behavior */
+.flex-1 {
+  flex: 1;
+}
+
+/* Fix for React Native Text on web */
+.Text {
+  display: inline;
+}
+

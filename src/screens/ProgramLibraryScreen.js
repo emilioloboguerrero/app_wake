@@ -119,96 +119,31 @@ const ProgramLibraryScreen = ({ navigation }) => {
         return;
       }
       
-      // Get user role to determine what courses to show
-      let userRole = 'user';
-      try {
-        const userDoc = await firestoreService.getUser(user.uid);
-        userRole = userDoc?.role || 'user';
-        logger.log('👤 User role:', userRole);
-      } catch (error) {
-        logger.error('❌ Error getting user role:', error);
-        // Default to 'user' if error
-      }
+      // Show ALL published courses to all users (catalog view)
+      logger.log('🔍 Loading all published courses...');
+      const allCourses = await firestoreService.getCourses(user.uid);
       
-      let coursesData = [];
+      // Filter to only published courses
+      const publishedCourses = allCourses.filter(course => course.status === 'published');
       
-      // Admins and creators see all courses (with role-based filtering)
-      if (userRole === 'admin' || userRole === 'creator') {
-        logger.log('🔍 Loading all courses for admin/creator...');
-        const allCourses = await firestoreService.getCourses(user.uid);
-        
-        // Transform to match expected format
-        coursesData = allCourses.map(course => ({
-          id: course.id,
-          courseId: course.id,
-          title: course.title || 'Programa sin título',
-          image_url: course.image_url || null,
-          discipline: course.discipline || 'General',
-          creator_id: course.creator_id || null,
-          creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
-          description: course.description || null,
-          difficulty: course.difficulty || null,
-          duration: course.duration || null,
-          iap_product_id: course.iap_product_id || null, // Include IAP product ID
-          ...course // Include any other properties
-        }));
-        
-        logger.log('✅ All courses loaded for admin/creator:', coursesData.length);
-      } else {
-        // Regular users: Show purchased courses + IAP-available courses
-        logger.log('🔍 Loading courses for regular user...');
-        
-        // Get purchased courses
-        const purchasedCoursesData = await purchaseService.getUserPurchasedCourses(user.uid);
-        logger.log('✅ Purchased courses loaded:', purchasedCoursesData.length);
-        
-        // Get all courses to find IAP-available ones
-        const allCourses = await firestoreService.getCourses(user.uid);
-        const iapCourses = allCourses.filter(course => course.iap_product_id);
-        logger.log('✅ IAP-available courses found:', iapCourses.length);
-        
-        // Transform purchased courses
-        const purchasedCourses = purchasedCoursesData.map(purchase => {
-          const course = purchase.courseDetails || purchase;
-          return {
-            id: course.id || purchase.courseId,
-            courseId: purchase.courseId || course.id,
-            title: course.title || 'Programa sin título',
-            image_url: course.image_url || null,
-            discipline: course.discipline || 'General',
-            creator_id: course.creator_id || null,
-            creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
-            description: course.description || null,
-            difficulty: course.difficulty || null,
-            duration: course.duration || null,
-            iap_product_id: course.iap_product_id || null,
-            ...course
-          };
-        });
-        
-        // Add IAP courses that user doesn't own yet
-        const purchasedCourseIds = new Set(purchasedCourses.map(c => c.id));
-        const availableIAPCourses = iapCourses
-          .filter(course => !purchasedCourseIds.has(course.id))
-          .map(course => ({
-            id: course.id,
-            courseId: course.id,
-            title: course.title || 'Programa sin título',
-            image_url: course.image_url || null,
-            discipline: course.discipline || 'General',
-            creator_id: course.creator_id || null,
-            creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
-            description: course.description || null,
-            difficulty: course.difficulty || null,
-            duration: course.duration || null,
-            iap_product_id: course.iap_product_id || null,
-            ...course
-          }));
-        
-        // Combine purchased + available IAP courses
-        coursesData = [...purchasedCourses, ...availableIAPCourses];
-        logger.log('✅ Total courses (purchased + IAP available):', coursesData.length);
-      }
+      // Transform to match expected format
+      const coursesData = publishedCourses.map(course => ({
+        id: course.id,
+        courseId: course.id,
+        title: course.title || 'Programa sin título',
+        image_url: course.image_url || null,
+        discipline: course.discipline || 'General',
+        creator_id: course.creator_id || null,
+        creatorName: course.creatorName || course.creator_name || 'Creador no especificado',
+        description: course.description || null,
+        difficulty: course.difficulty || null,
+        duration: course.duration || null,
+        price: course.price || null,
+        access_duration: course.access_duration || null,
+        ...course // Include any other properties
+      }));
+      
+      logger.log('✅ Published courses loaded:', coursesData.length);
       
       logger.log('📊 Transformed courses data sample:', coursesData.slice(0, 2));
       
@@ -219,7 +154,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
         creators: [], // No longer needed
         disciplines: [], // No longer needed
         loading: false,
-        error: coursesData.length === 0 ? 'No tienes contenido disponible en esta cuenta.' : null
+        error: coursesData.length === 0 ? 'No hay programas disponibles en este momento.' : null
       }));
       
       // Check for tutorials after loading is complete
@@ -613,8 +548,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
                 showsVerticalScrollIndicator={true}
               >
                 <Text style={styles.infoModalDescription}>
-                  Esta sección muestra únicamente el contenido disponible para tu cuenta.{'\n\n'}
-                  Si no ves contenido, asegúrate de haber iniciado sesión con la cuenta correcta.
+                  Esta sección muestra todos los programas publicados disponibles.{'\n\n'}
+                  Puedes explorar y comprar programas directamente desde aquí.
                 </Text>
               </ScrollView>
             </View>

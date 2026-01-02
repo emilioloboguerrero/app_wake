@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Find Your App's HTML</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #1a1a1a;
+      color: #fff;
+      padding: 20px;
+    }
+    .instructions {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .step {
+      margin: 15px 0;
+      padding: 10px;
+      background: #333;
+      border-left: 4px solid #bfa84d;
+    }
+    code {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #bfa84d;
+    }
+    button {
+      background: #bfa84d;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 5px;
+    }
+    .result {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    pre {
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 6px;
+      overflow: auto;
+      max-height: 500px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 How to Find Your App's HTML Request</h1>
+  
+  <div class="instructions">
+    <h2>Step-by-Step Instructions:</h2>
+    
+    <div class="step">
+      <strong>Step 1:</strong> Open your app in a new tab: <code>http://localhost:8081</code>
+    </div>
+    
+    <div class="step">
+      <strong>Step 2:</strong> Open DevTools (F12 or Cmd+Option+I)
+    </div>
+    
+    <div class="step">
+      <strong>Step 3:</strong> Go to the <strong>Network</strong> tab
+    </div>
+    
+    <div class="step">
+      <strong>Step 4:</strong> Clear the network log (trash icon or Cmd+Shift+R)
+    </div>
+    
+    <div class="step">
+      <strong>Step 5:</strong> Reload the page (F5 or Cmd+R)
+    </div>
+    
+    <div class="step">
+      <strong>Step 6:</strong> In the Network tab, look for:
+      <ul>
+        <li><strong>Type:</strong> "document" or "html"</li>
+        <li><strong>Name:</strong> Should be just "/" or "localhost:8081"</li>
+        <li><strong>Status:</strong> Should be 200</li>
+      </ul>
+    </div>
+    
+    <div class="step">
+      <strong>Step 7:</strong> Click on that request, then:
+      <ul>
+        <li>Go to the <strong>Response</strong> tab</li>
+        <li>Copy the HTML content</li>
+        <li>Or take a screenshot of the first 50-100 lines</li>
+      </ul>
+    </div>
+    
+    <h3>What to Look For:</h3>
+    <p>The HTML should contain things like:</p>
+    <ul>
+      <li><code>&lt;html&gt;</code> tag</li>
+      <li><code>&lt;head&gt;</code> section</li>
+      <li><code>&lt;script&gt;</code> tags loading your app</li>
+      <li>References to <code>index.bundle</code> or <code>App.web.js</code></li>
+    </ul>
+    
+    <h3>Important:</h3>
+    <p style="color: #ff6b6b;">
+      <strong>DO NOT</strong> look at requests to:
+    </p>
+    <ul style="color: #ff6b6b;">
+      <li><code>ogs.google.com</code> (Google services)</li>
+      <li><code>chrome-extension://</code> (Browser extensions)</li>
+      <li><code>apis.google.com</code> (Google APIs)</li>
+    </ul>
+    <p>These are NOT your app's HTML!</p>
+  </div>
+  
+  <div class="instructions">
+    <h2>Alternative: View Page Source</h2>
+    <p>If the Network tab is confusing, try this:</p>
+    <ol>
+      <li>Open your app: <code>http://localhost:8081</code></li>
+      <li>Right-click on the page → <strong>"View Page Source"</strong></li>
+      <li>Or press <code>Cmd+Option+U</code> (Mac) or <code>Ctrl+U</code> (Windows)</li>
+      <li>Copy the first 100-200 lines of HTML</li>
+    </ol>
+  </div>
+  
+  <div class="instructions">
+    <h2>Quick Test: Try This Button</h2>
+    <button onclick="fetchAppHTML()">Try to Fetch App HTML</button>
+    <div id="result" class="result" style="display: none;"></div>
+  </div>
+
+  <script>
+    function fetchAppHTML() {
+      var resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<p>Fetching...</p>';
+      
+      fetch('/')
+        .then(function(response) {
+          if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+          }
+          return response.text();
+        })
+        .then(function(html) {
+          var info = '<h3>✅ Successfully fetched HTML!</h3>';
+          info += '<p><strong>Length:</strong> ' + html.length + ' characters</p>';
+          
+          // Check for key indicators
+          var checks = {
+            'Contains &lt;html&gt;': html.indexOf('<html') !== -1,
+            'Contains &lt;head&gt;': html.indexOf('<head') !== -1,
+            'Contains &lt;body&gt;': html.indexOf('<body') !== -1,
+            'Contains script tags': (html.match(/<script/gi) || []).length,
+            'Contains index.bundle': html.indexOf('index.bundle') !== -1,
+            'Contains App.web.js': html.indexOf('App.web.js') !== -1,
+            'Contains early-error-logger': html.indexOf('early-error-logger') !== -1
+          };
+          
+          info += '<h4>HTML Analysis:</h4><ul>';
+          for (var key in checks) {
+            var value = checks[key];
+            var icon = typeof value === 'boolean' ? (value ? '✅' : '❌') : '📊';
+            info += '<li>' + icon + ' <strong>' + key + ':</strong> ' + value + '</li>';
+          }
+          info += '</ul>';
+          
+          // Show first 500 characters
+          info += '<h4>First 500 characters of HTML:</h4>';
+          info += '<pre>' + escapeHtml(html.substring(0, 500)) + '...</pre>';
+          
+          resultDiv.innerHTML = info;
+        })
+        .catch(function(error) {
+          resultDiv.innerHTML = '<p style="color: #ff6b6b;">❌ Error: ' + error.message + '</p>' +
+            '<p>This might mean you need to check the Network tab manually.</p>';
+        });
+    }
+    
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
+

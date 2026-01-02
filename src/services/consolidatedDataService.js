@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Use storage adapter for platform-agnostic storage
+import storageAdapter from '../utils/storageAdapter';
 import firestoreService from './firestoreService';
 import hybridDataService from './hybridDataService';
 import purchaseService from './purchaseService';
@@ -67,31 +68,93 @@ class ConsolidatedDataService {
       } else {
         logger.log('🔄 Fetching fresh user courses data...');
         
-        // Get user's purchased courses
-        const purchasedCourses = await purchaseService.getUserPurchasedCourses(userId);
-        logger.log('📚 Purchased courses:', purchasedCourses.length);
+        // Get user's active courses only (MainScreen should only show active courses)
+        // For AllPurchasedCoursesScreen, it will call getUserPurchasedCourses with includeInactive=true directly
+        const purchasedCourses = await purchaseService.getUserPurchasedCourses(userId, false);
+        logger.log('📚 Active purchased courses:', purchasedCourses.length);
+        
+        // Log course details for debugging
+        if (purchasedCourses.length > 0) {
+          logger.log('📋 Course details:', purchasedCourses.map(c => ({
+            courseId: c.courseId || c.id,
+            title: c.courseDetails?.title || c.title,
+            status: c.status || c.courseData?.status,
+            expires_at: c.expires_at || c.courseData?.expires_at,
+            isActive: c.isActive
+          })));
+        } else {
+          logger.warn('⚠️ No purchased courses found for user:', userId);
+        }
 
         // Get course details from hybrid service
-        const allCourses = await hybridDataService.loadCourses();
-        logger.log('📖 All available courses:', allCourses.length);
+        // Add timeout to prevent hanging if storage is slow
+        let allCourses = [];
+        try {
+          const coursesPromise = hybridDataService.loadCourses();
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('loadCourses timeout')), 5000)
+          );
+          allCourses = await Promise.race([coursesPromise, timeoutPromise]);
+          logger.log('📖 All available courses from hybrid service:', allCourses.length);
+        } catch (coursesError) {
+          logger.warn('⚠️ Error loading courses from hybrid service (non-critical):', coursesError.message);
+          // Continue with empty array - we'll use courseDetails from purchaseService instead
+          allCourses = [];
+        }
 
-        // Filter to only purchased courses with details
+        // Map purchased courses to include details
+        // If course details aren't found in hybrid service, use the courseDetails from purchaseService
         courses = purchasedCourses
           .map(purchased => {
-            const courseDetails = allCourses.find(course => course.id === purchased.courseId);
-            return courseDetails ? { 
+            const courseId = purchased.courseId || purchased.id?.replace(`${userId}-`, '') || purchased.id;
+            const courseDetails = allCourses.find(course => course.id === courseId) || purchased.courseDetails;
+            
+            // If we still don't have course details, try to get them from Firestore
+            if (!courseDetails || !courseDetails.title) {
+              logger.warn(`⚠️ Course ${courseId} not found in hybrid service, using purchase data`);
+              // Use basic data from purchaseService
+              return {
+                id: courseId,
+                courseId: courseId,
+                title: purchased.courseDetails?.title || purchased.title || 'Curso sin título',
+                image_url: purchased.courseDetails?.image_url || purchased.imageUrl || '',
+                description: purchased.courseDetails?.description || purchased.description || 'No hay descripción disponible',
+                creatorName: purchased.courseDetails?.creatorName || purchased.creator_name || 'Desconocido',
+                purchasedAt: purchased.purchasedAt || purchased.paid_at?.toDate?.() || null,
+                userCourseData: purchased.courseData || null,
+                trialInfo: purchased.trialInfo || null,
+                trialHistory: purchased.trialHistory || null,
+                isTrialCourse: purchased.isTrialCourse || false,
+                status: purchased.status || purchased.courseData?.status,
+                expires_at: purchased.expires_at || purchased.courseData?.expires_at,
+              };
+            }
+            
+            // We have course details from hybrid service
+            return { 
               ...courseDetails, 
-              courseId: courseDetails.id, // Add courseId property for MainScreen compatibility
-              purchasedAt: purchased.purchasedAt,
+              courseId: courseDetails.id || courseId, // Add courseId property for MainScreen compatibility
+              purchasedAt: purchased.purchasedAt || purchased.paid_at?.toDate?.() || null,
               userCourseData: purchased.courseData || null,
               trialInfo: purchased.trialInfo || null,
               trialHistory: purchased.trialHistory || null,
               isTrialCourse: purchased.isTrialCourse || false,
-            } : null;
+              status: purchased.status || purchased.courseData?.status,
+              expires_at: purchased.expires_at || purchased.courseData?.expires_at,
+            };
           })
-          .filter(Boolean);
+          .filter(Boolean); // Remove any null entries
 
-        logger.log('✅ Filtered courses with details:', courses.length);
+        logger.log('✅ Mapped courses with details:', courses.length);
+        
+        // Log final course list for debugging
+        if (courses.length > 0) {
+          logger.log('📚 Final courses list:', courses.map(c => ({
+            id: c.id || c.courseId,
+            title: c.title,
+            hasImage: !!c.image_url
+          })));
+        }
       }
 
       // CRITICAL FIX: Always set current user ID and check versions, even when using cache

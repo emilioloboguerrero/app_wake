@@ -796,9 +796,28 @@ class FirestoreService {
   async getUserActiveCourses(userId) {
     try {
       console.log('🔍 Getting user courses:', userId);
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
+      
+      // Add timeout to prevent hanging (10 seconds)
+      let timeoutId;
+      const userDocPromise = getDoc(doc(firestore, 'users', userId));
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Firestore query timeout - please check your internet connection'));
+        }, 10000);
+      });
+      
+      let userDoc;
+      try {
+        userDoc = await Promise.race([userDocPromise, timeoutPromise]);
+        if (timeoutId) clearTimeout(timeoutId);
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.error('❌ Firestore query error:', error);
+        throw error;
+      }
       
       if (!userDoc.exists()) {
+        console.log('⚠️ User document does not exist');
         return [];
       }
 

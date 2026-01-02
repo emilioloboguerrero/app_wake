@@ -18,7 +18,6 @@ import profilePictureService from './profilePictureService';
 import hybridDataService from './hybridDataService';
 import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
-import appleAuthService from './appleAuthService';
 import { handleError, handleNetworkOperation } from '../utils/errorHandler';
 import Constants from 'expo-constants';
 
@@ -29,30 +28,26 @@ class AuthService {
   // Register new user
   async registerUser(email, password, displayName) {
     try {
-      const userCredential = await handleNetworkOperation(
-        async () => {
-          const cred = await createUserWithEmailAndPassword(auth, email, password);
-          
-          // Update user profile
-          await updateProfile(cred.user, {
-            displayName: displayName
-          });
-
-          return cred.user;
-        },
-        {
-          context: 'Register User',
-          title: 'Error al registrarse',
-          checkConnection: true,
-          showAlert: false, // Let calling code handle UI
-        }
+      // Add timeout to prevent hanging (30 seconds)
+      const createUserPromise = createUserWithEmailAndPassword(auth, email, password);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Registration timeout - please try again')), 30000)
       );
       
-      return userCredential;
+      const cred = await Promise.race([createUserPromise, timeoutPromise]);
+      
+      // Update user profile
+      await updateProfile(cred.user, {
+        displayName: displayName
+      });
+
+      return cred.user;
     } catch (error) {
+      // Don't use handleNetworkOperation for web - it can cause freezes
+      // Firebase will handle network errors gracefully
       handleError(error, {
         context: 'Register User',
-        showAlert: true,
+        showAlert: false, // Let calling code handle UI
         title: 'Error al registrarse',
       });
       throw error;
@@ -61,24 +56,26 @@ class AuthService {
 
   // Sign in user
   async signInUser(email, password) {
+    console.log('[AUTH] signInUser called');
     try {
-      const userCredential = await handleNetworkOperation(
-        async () => {
-          return await signInWithEmailAndPassword(auth, email, password);
-        },
-        {
-          context: 'Sign In',
-          title: 'Error al iniciar sesión',
-          checkConnection: true,
-          showAlert: false, // Let calling code handle UI
-        }
+      console.log('[AUTH] Calling Firebase signInWithEmailAndPassword...');
+      // Add timeout to prevent hanging (30 seconds)
+      const signInPromise = signInWithEmailAndPassword(auth, email, password);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign in timeout - please try again')), 30000)
       );
+      
+      const userCredential = await Promise.race([signInPromise, timeoutPromise]);
+      console.log('[AUTH] Sign in successful:', userCredential.user?.uid);
       
       return userCredential.user;
     } catch (error) {
+      console.error('[AUTH] Sign in error:', error.code, error.message);
+      // Don't use handleNetworkOperation for web - it can cause freezes
+      // Firebase will handle network errors gracefully
       handleError(error, {
         context: 'Sign In',
-        showAlert: true,
+        showAlert: false, // Let calling code handle UI
         title: 'Error al iniciar sesión',
       });
       throw error;
@@ -91,16 +88,11 @@ class AuthService {
       const currentUser = auth.currentUser;
       const userId = currentUser?.uid;
       
-      // Check if user signed in with Google or Apple and sign out (only if not in Expo Go)
+      // Check if user signed in with Google and sign out (only if not in Expo Go)
       if (!isExpoGo) {
         const isGoogleSignedIn = await googleAuthService.isSignedIn();
         if (isGoogleSignedIn) {
           await googleAuthService.signOut();
-        }
-        
-        const isAppleSignedIn = await appleAuthService.isSignedIn();
-        if (isAppleSignedIn) {
-          await appleAuthService.signOut();
         }
       }
       
@@ -189,15 +181,6 @@ class AuthService {
           }
         } catch (error) {
           console.warn('Failed to revoke Google token:', error);
-        }
-
-        try {
-          const isAppleSignedIn = await appleAuthService.isSignedIn();
-          if (isAppleSignedIn) {
-            await appleAuthService.revokeToken();
-          }
-        } catch (error) {
-          console.warn('Failed to revoke Apple token:', error);
         }
       }
 

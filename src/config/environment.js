@@ -9,7 +9,12 @@ const ENV = {
 
 // Get current environment
 const getEnvironment = () => {
-  if (__DEV__) {
+  // Check if __DEV__ is defined (React Native) or if we're in development mode (web)
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : 
+                (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') ||
+                (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+  
+  if (isDev) {
     return ENV.DEVELOPMENT;
   }
   
