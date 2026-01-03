@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Image, StyleSheet, Dimensions, TouchableOpacity, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 // Fixed header container that stays above ScrollView
@@ -8,6 +8,9 @@ export const FixedWakeHeader = ({
   onBackPress = null,
   profileImageUrl = null,
   onProfilePress = null,
+  showResetButton = false,
+  onResetPress = null,
+  resetButtonText = 'Resetear',
   backgroundColor = '#1a1a1a'
 }) => {
   const insets = useSafeAreaInsets();
@@ -62,17 +65,38 @@ export const FixedWakeHeader = ({
         resizeMode="contain"
       />
       
-      {/* Back Button - absolute positioned like three-dot menu */}
+      {/* Back Button - aligned with logo center inside header */}
       {showBackButton && onBackPress && (
         <TouchableOpacity 
           style={[styles.backButton, { 
-            top: Math.max(19, screenHeight * 0.021) + Math.max(0, insets.top - 20),  // Add padding offset
-            left: Math.max(32, screenWidth * 0.08)    // More separated: increased from 24 to 32, and 0.06 to 0.08
+            // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
+            // Logo center is at: paddingTop + headerHeight / 2
+            // Position back button to align with logo center
+            top: Math.max(0, insets.top - 20) + headerHeight / 2 - iconSize / 2, // Center icon with logo, no padding offset needed
+            left: Math.max(32, screenWidth * 0.08)
           }]}
           onPress={onBackPress}
           activeOpacity={0.7}
         >
           <SvgChevronLeft width={iconSize} height={iconSize} stroke="#ffffff" />
+        </TouchableOpacity>
+      )}
+      
+      {/* Reset Button - aligned with logo center inside header, on the right */}
+      {showResetButton && onResetPress && (
+        <TouchableOpacity 
+          style={[styles.resetButton, { 
+            // Position reset button to align with logo center, on the right side
+            // Logo center is at: paddingTop + headerHeight / 2
+            // Button center should align: top + buttonHeight/2 = paddingTop + headerHeight / 2
+            top: Math.max(0, insets.top - 20) + headerHeight / 2,
+            right: Math.max(32, screenWidth * 0.08),
+            transform: [{ translateY: -16 }] // Half of button height (padding 8*2 + text ~16 = ~32, so -16)
+          }]}
+          onPress={onResetPress}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.resetButtonText}>{resetButtonText}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -107,8 +131,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 8,
+    width: 40, // Fixed width for consistent alignment
+    height: 40, // Fixed height for consistent alignment
     zIndex: 1001,
+  },
+  resetButton: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 68, 68, 0.4)',
+    zIndex: 1001,
+  },
+  resetButtonText: {
+    color: '#ff4444',
+    fontSize: 14,
+    fontWeight: '600',
   },
   profileButton: {
     position: 'absolute',

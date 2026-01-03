@@ -11,11 +11,12 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { getMondayWeek, formatWeekDisplay } from '../utils/weekCalculation';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleVolumeStats from '../components/MuscleVolumeStats';
@@ -28,6 +29,10 @@ import logger from '../utils/logger';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const WeeklyVolumeHistoryScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
   const { user } = useAuth();
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(null);
@@ -70,6 +75,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
       const userDocRef = doc(firestore, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
+      const currentWeekKey = getMondayWeek();
+      
       if (userDoc.exists()) {
         const data = userDoc.data();
         const weeklyMuscleVolumeData = data.weeklyMuscleVolume || {};
@@ -79,39 +86,64 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         const weeksWithData = Object.keys(weeklyMuscleVolumeData)
           .filter(week => Object.keys(weeklyMuscleVolumeData[week]).length > 0);
         
-        // Add current week if not already present
-        const currentWeekKey = getMondayWeek();
-        const allWeeks = [...new Set([...weeksWithData, currentWeekKey])];
+        // Generate all weeks from the first week with data (or 12 weeks ago) to current week
+        let startDate;
+        if (weeksWithData.length > 0) {
+          // Find the earliest week with data
+          const sortedWeeksWithData = weeksWithData.sort((a, b) => a.localeCompare(b));
+          const firstWeekWithData = sortedWeeksWithData[0];
+          // Parse the first week to get its start date
+          const [year, weekWithW] = firstWeekWithData.split('-');
+          const week = weekWithW.replace('W', '');
+          const jan1 = new Date(year, 0, 1);
+          const jan1Day = jan1.getDay();
+          const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
+          const firstMonday = new Date(jan1);
+          firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
+          const weekStart = new Date(firstMonday);
+          weekStart.setDate(firstMonday.getDate() + (parseInt(week) - 1) * 7);
+          startDate = weekStart;
+        } else {
+          // If no data, show last 12 weeks
+          startDate = new Date();
+          startDate.setDate(startDate.getDate() - (12 * 7));
+        }
+        
+        // Generate all weeks from start date to current week
+        const allWeeks = getWeeksBetween(startDate, new Date());
         
         // Sort them (oldest first, newest last)
         const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
         
         setAvailableWeeks(weeks);
         
-        // Set current week as default, fallback to newest if current week not available
-        if (weeks.includes(currentWeekKey)) {
-          setSelectedWeek(currentWeekKey);
-        } else if (weeks.length > 0) {
-          setSelectedWeek(weeks[weeks.length - 1]); // Last item (newest)
-        }
+        // Set current week as default
+        setSelectedWeek(currentWeekKey);
         
-        logger.log('✅ Available weeks loaded:', weeks);
-        logger.log('🔍 DEBUG: Weeks with data:', weeksWithData);
+        logger.log('✅ Available weeks loaded:', weeks.length, 'weeks');
+        logger.log('🔍 DEBUG: Weeks with data:', weeksWithData.length);
         logger.log('🔍 DEBUG: Current week key:', currentWeekKey);
       } else {
-        // Even if no data exists, include current week
-        const currentWeekKey = getMondayWeek();
-        setAvailableWeeks([currentWeekKey]);
+        // Even if no data exists, show last 12 weeks
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - (12 * 7));
+        const allWeeks = getWeeksBetween(startDate, new Date());
+        const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
+        setAvailableWeeks(weeks);
         setSelectedWeek(currentWeekKey);
-        logger.log('✅ No data found, showing current week:', currentWeekKey);
+        logger.log('✅ No data found, showing last 12 weeks:', weeks.length);
       }
     } catch (error) {
       logger.error('❌ Error loading available weeks:', error);
-      // Fallback: include current week
+      // Fallback: show last 12 weeks
       const currentWeekKey = getMondayWeek();
-      setAvailableWeeks([currentWeekKey]);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - (12 * 7));
+      const allWeeks = getWeeksBetween(startDate, new Date());
+      const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
+      setAvailableWeeks(weeks);
       setSelectedWeek(currentWeekKey);
-      logger.log('✅ Error fallback, showing current week:', currentWeekKey);
+      logger.log('✅ Error fallback, showing last 12 weeks:', weeks.length);
     } finally {
       setLoading(false);
     }
@@ -167,7 +199,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.loadingContainer}>
-          <WakeHeaderSpacer />
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           <ActivityIndicator size="large" color="#ffffff" />
           <Text style={styles.loadingText}>Cargando historial...</Text>
         </View>
@@ -183,7 +216,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.emptyContainer}>
-          <WakeHeaderSpacer />
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           <Text style={styles.emptyTitle}>No hay datos de volumen</Text>
           <Text style={styles.emptyText}>
             Completa algunos entrenamientos para ver tu historial de volumen semanal.
@@ -201,7 +235,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
       />
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          <WakeHeaderSpacer />
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           
           {/* Title */}
           <Text style={styles.title}>Historial de Volumen</Text>
@@ -371,6 +406,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
+    paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: 40,
     overflow: 'visible',
   },
@@ -411,6 +447,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     paddingLeft: Math.max(24, screenWidth * 0.06),
+    marginTop: 0, // No margin - spacer positions it correctly
     marginBottom: Math.max(20, screenHeight * 0.025),
   },
   weekLoadingContainer: {
@@ -572,4 +609,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export { WeeklyVolumeHistoryScreen as WeeklyVolumeHistoryScreenBase };
 export default WeeklyVolumeHistoryScreen;

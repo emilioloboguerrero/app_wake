@@ -33,7 +33,10 @@ const LoginScreen = ({ navigation }) => {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (!loading && user) {
+    // Check both AuthContext user and Firebase currentUser directly
+    const currentUser = user || auth.currentUser;
+    if (!loading && currentUser) {
+      console.log('[LOGIN SCREEN] User detected, redirecting to MainApp');
       navigation.replace('MainApp');
     }
   }, [user, loading, navigation]);
@@ -90,9 +93,15 @@ const LoginScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      await authService.signInUser(email, password);
+      const user = await authService.signInUser(email, password);
       setIsLoading(false);
-      // Navigation will happen via useEffect when user state updates
+      // Immediately navigate after successful login
+      // Check both the returned user and auth.currentUser as fallback
+      if (user || auth.currentUser) {
+        console.log('[LOGIN SCREEN] Login successful, navigating to MainApp');
+        navigation.replace('MainApp');
+      }
+      // Navigation will also happen via useEffect when user state updates (backup)
     } catch (error) {
       setIsLoading(false);
       
@@ -162,9 +171,15 @@ const LoginScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const initialDisplayName = email.split('@')[0];
-      await authService.registerUser(email, password, initialDisplayName);
+      const user = await authService.registerUser(email, password, initialDisplayName);
       setIsLoading(false);
-      // Navigation will happen via useEffect when user state updates
+      // Immediately navigate after successful registration
+      // Check both the returned user and auth.currentUser as fallback
+      if (user || auth.currentUser) {
+        console.log('[LOGIN SCREEN] Registration successful, navigating to MainApp');
+        navigation.replace('MainApp');
+      }
+      // Navigation will also happen via useEffect when user state updates (backup)
     } catch (error) {
       setIsLoading(false);
       
@@ -319,7 +334,10 @@ const LoginScreen = ({ navigation }) => {
               {isLoading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.buttonText}>
+                <Text style={[
+                  styles.buttonText,
+                  (isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)) && styles.buttonTextDisabled
+                ]}>
                   {isSignUp ? "Crear Cuenta" : "Iniciar Sesión"}
                 </Text>
               )}
@@ -489,6 +507,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: 'rgba(191, 168, 77, 1)',
+  },
+  buttonTextDisabled: {
+    color: '#ffffff',
   },
   toggleButton: {
     marginTop: 16,

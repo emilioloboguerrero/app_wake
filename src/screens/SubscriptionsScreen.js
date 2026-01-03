@@ -13,11 +13,12 @@ import {
   Linking,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -40,6 +41,10 @@ const statusColors = {
 };
 
 const SubscriptionsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
   const { user } = useAuth();
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -185,13 +190,31 @@ const SubscriptionsScreen = ({ navigation }) => {
     }
 
     // MercadoPago subscriptions - show manage button
+    const handleManageSubscription = async () => {
+      // If subscription has a management URL, open it
+      if (subscription.management_url) {
+        try {
+          const canOpen = await Linking.canOpenURL(subscription.management_url);
+          if (canOpen) {
+            await Linking.openURL(subscription.management_url);
+          } else {
+            Alert.alert('Error', 'No se pudo abrir la página de gestión de suscripciones');
+          }
+        } catch (error) {
+          logger.error('Error opening management URL:', error);
+          Alert.alert('Error', 'No se pudo abrir la página de gestión de suscripciones');
+        }
+      } else {
+        // Fallback: Show cancel survey flow if no management URL
+        handleCancelIntent(subscription);
+      }
+    };
+
     return (
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => {
-            setShowSubscriptionInfoModal(true);
-          }}
+          onPress={handleManageSubscription}
           activeOpacity={0.7}
         >
           <Text style={styles.actionButtonText}>Gestionar</Text>
@@ -575,8 +598,9 @@ const SubscriptionsScreen = ({ navigation }) => {
         showBackButton
         onBackPress={() => navigation.goBack()}
       />
-      <WakeHeaderSpacer />
       <ScrollView contentContainerStyle={styles.contentContainer}>
+        {/* Spacer for fixed header - matches header height */}
+        <View style={{ height: headerTotalHeight }} />
         <View style={styles.titleWrapper}>
           <TouchableOpacity
             style={styles.titleButton}
@@ -744,7 +768,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 0,
-    paddingTop: 32,
+    paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: 40,
   },
   title: {
@@ -754,6 +778,7 @@ const styles = StyleSheet.create({
   },
   titleWrapper: {
     paddingHorizontal: 40,
+    marginTop: 0, // No margin - spacer positions it correctly
     marginBottom: 24,
   },
   titleButton: {
@@ -1158,5 +1183,6 @@ const styles = StyleSheet.create({
   },
 });
 
+export { SubscriptionsScreen as SubscriptionsScreenBase };
 export default SubscriptionsScreen;
 

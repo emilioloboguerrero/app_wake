@@ -26,7 +26,20 @@ export const filterSessionsByPeriod = (sessions, period) => {
   }
   
   return sessions.filter(session => {
-    const sessionDate = new Date(session.date);
+    // Support both 'date' and 'completedAt' fields
+    const dateValue = session.date || session.completedAt;
+    if (!dateValue) {
+      // If no date field, include the session (don't filter it out)
+      return true;
+    }
+    
+    const sessionDate = new Date(dateValue);
+    // Check if date is valid
+    if (isNaN(sessionDate.getTime())) {
+      // Invalid date, include it anyway to avoid losing data
+      return true;
+    }
+    
     return sessionDate >= cutoffDate;
   });
 };

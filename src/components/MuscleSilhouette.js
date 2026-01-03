@@ -47,18 +47,8 @@ const MuscleSilhouette = ({
     }
     setIsWeekSelectorVisible(false);
   };
-  if (!normalizedVolumes || Object.keys(normalizedVolumes).length === 0) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Visualización de Músculos</Text>
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            No hay datos de volumen muscular para mostrar
-          </Text>
-        </View>
-      </View>
-    );
-  }
+  // Show empty state if no data, but still allow week selection
+  const hasData = normalizedVolumes && Object.keys(normalizedVolumes).length > 0;
 
   const hasInfo = muscleVolumeInfoService.hasInfo('series_efectivas');
 
@@ -108,7 +98,15 @@ const MuscleSilhouette = ({
       
       {/* Muscle Silhouette - All Views */}
       <View style={styles.silhouetteContainer}>
-        <MuscleSilhouetteSVG muscleVolumes={normalizedVolumes} />
+        {hasData ? (
+          <MuscleSilhouetteSVG muscleVolumes={normalizedVolumes} />
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>
+              No hay datos de volumen muscular para esta semana
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Legend */}

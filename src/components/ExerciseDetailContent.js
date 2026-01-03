@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,11 +36,26 @@ const ExerciseDetailContent = ({
   onViewAllHistory,
   showResetButton = false,
   showInfoModal = true,
-  showTitle = true
+  showTitle = true,
+  headerSpacerHeight = 0
 }) => {
   const { user } = useAuth();
   const [history, setHistory] = useState([]);
   const [exerciseHistory, setExerciseHistory] = useState([]);
+  
+  // Debug: Log when exerciseHistory changes
+  useEffect(() => {
+    logger.log('📊 ExerciseDetailContent: exerciseHistory state changed:', {
+      length: exerciseHistory.length,
+      isArray: Array.isArray(exerciseHistory),
+      firstSession: exerciseHistory[0] ? {
+        hasDate: !!exerciseHistory[0].date,
+        date: exerciseHistory[0].date,
+        hasCompletedAt: !!exerciseHistory[0].completedAt,
+        completedAt: exerciseHistory[0].completedAt
+      } : null
+    });
+  }, [exerciseHistory]);
   const [loading, setLoading] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
@@ -55,13 +70,18 @@ const ExerciseDetailContent = ({
   };
 
   useEffect(() => {
-    if (exerciseKey && libraryId && exerciseName) {
+    if (exerciseKey && libraryId && exerciseName && user?.uid) {
       loadHistory();
       loadExerciseHistory();
     }
-  }, [exerciseKey, libraryId, exerciseName]);
+  }, [exerciseKey, libraryId, exerciseName, user?.uid]);
 
   const loadHistory = async () => {
+    if (!user?.uid) {
+      logger.warn('⚠️ ExerciseDetailContent: Cannot load history - user not available');
+      return;
+    }
+    
     try {
       setLoading(true);
       logger.log('📊 Loading PR history for:', { exerciseKey, libraryId, exerciseName });
@@ -80,12 +100,28 @@ const ExerciseDetailContent = ({
   };
 
   const loadExerciseHistory = async () => {
+    if (!user?.uid) {
+      logger.warn('⚠️ ExerciseDetailContent: Cannot load exercise history - user not available');
+      return;
+    }
+    
     try {
       setLoadingHistory(true);
       logger.log('📊 Loading exercise history for:', exerciseKey);
       const data = await exerciseHistoryService.getExerciseHistory(user.uid, exerciseKey);
-      setExerciseHistory(data.sessions || []);
-      logger.log('✅ Exercise history loaded:', data.sessions?.length || 0, 'sessions for', exerciseKey);
+      const sessions = data.sessions || [];
+      logger.log('✅ Exercise history loaded:', sessions.length, 'sessions for', exerciseKey);
+      logger.log('📊 Exercise history data structure:', {
+        hasSessions: !!sessions,
+        sessionsLength: sessions.length,
+        firstSession: sessions[0] ? {
+          hasDate: !!sessions[0].date,
+          date: sessions[0].date,
+          hasSets: !!sessions[0].sets,
+          setsLength: sessions[0].sets?.length || 0
+        } : null
+      });
+      setExerciseHistory(sessions);
     } catch (error) {
       logger.error('❌ Error loading exercise history:', error);
     } finally {
@@ -105,9 +141,21 @@ const ExerciseDetailContent = ({
     setSelectedPeriod(period);
   };
 
-  const getFilteredSessions = () => {
-    return filterSessionsByPeriod(exerciseHistory, selectedPeriod);
-  };
+  const filteredSessions = useMemo(() => {
+    logger.log('📊 ExerciseDetailContent: Calculating filteredSessions:', {
+      exerciseHistoryLength: exerciseHistory.length,
+      selectedPeriod,
+      exerciseHistoryType: Array.isArray(exerciseHistory) ? 'array' : typeof exerciseHistory
+    });
+    const filtered = filterSessionsByPeriod(exerciseHistory, selectedPeriod);
+    logger.log('📊 ExerciseDetailContent: Filtered sessions result:', {
+      totalSessions: exerciseHistory.length,
+      filteredCount: filtered.length,
+      period: selectedPeriod,
+      filteredType: Array.isArray(filtered) ? 'array' : typeof filtered
+    });
+    return filtered;
+  }, [exerciseHistory, selectedPeriod]);
 
   const renderPaginationIndicators = () => {
     return (
@@ -154,6 +202,9 @@ const ExerciseDetailContent = ({
   return (
     <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
+        {/* Spacer for fixed header - matches header height */}
+        {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
+        
         {/* Title */}
         {showTitle && <Text style={styles.title}>{exerciseName}</Text>}
         
@@ -215,7 +266,7 @@ const ExerciseDetailContent = ({
             <ExerciseProgressChart 
               exerciseKey={exerciseKey}
               exerciseName={exerciseName}
-              sessions={getFilteredSessions()} 
+              sessions={filteredSessions} 
               loading={loadingHistory}
               selectedPeriod={selectedPeriod}
               onPeriodChange={handlePeriodChange}
@@ -225,7 +276,7 @@ const ExerciseDetailContent = ({
             <ExerciseHistoryCard 
               exerciseKey={exerciseKey}
               exerciseName={exerciseName}
-              sessions={getFilteredSessions()} 
+              sessions={filteredSessions} 
               loading={loadingHistory}
               maxSessions={5}
               onViewAll={onViewAllHistory}
@@ -345,6 +396,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     paddingLeft: Math.max(24, screenWidth * 0.06),
+    marginTop: 0, // No margin - spacer in parent handles it
     marginBottom: Math.max(20, screenHeight * 0.025),
   },
   currentPRCard: {

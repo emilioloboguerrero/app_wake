@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,29 +14,85 @@ import {
   TextInput,
   Keyboard,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
-import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
 import logger from '../utils/logger.js';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const PRsScreen = ({ navigation }) => {
+const PRsScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
+  
+  // Safety check for navigation - provide fallback if undefined
+  // Log when navigation is undefined to help debug
+  if (!navigation) {
+    logger.error('❌ PRsScreen: navigation prop is undefined when component renders');
+  }
+  
+  // Create fallback navigation object first (always defined)
+  const fallbackNavigation = React.useMemo(() => ({
+    navigate: (routeName, params) => {
+      logger.error('❌ PRsScreen: navigation.navigate called but navigation is undefined', { routeName, params });
+      // Try to navigate using window.location as fallback
+      if (typeof window !== 'undefined' && routeName === 'ExerciseDetail') {
+        const exerciseKey = params?.exerciseKey || 
+                           (params?.libraryId && params?.exerciseName 
+                             ? `${params.libraryId}_${params.exerciseName}` 
+                             : '');
+        if (exerciseKey) {
+          window.location.href = `/prs/${encodeURIComponent(exerciseKey)}`;
+        }
+      }
+    },
+    goBack: () => {
+      logger.error('❌ PRsScreen: navigation.goBack called but navigation is undefined');
+      // Try browser back as fallback
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.back();
+      }
+    },
+    replace: (routeName, params) => {
+      logger.error('❌ PRsScreen: navigation.replace called but navigation is undefined', { routeName, params });
+    },
+  }), []);
+
+  // Create safe navigation object - ensure it's always defined using useMemo
+  const safeNavigation = React.useMemo(() => {
+    console.log('[PRsScreen] Creating safeNavigation, navigation prop:', {
+      hasNavigation: !!navigation,
+      hasNavigate: !!(navigation && navigation.navigate),
+      hasGoBack: !!(navigation && navigation.goBack),
+      navigationType: typeof navigation
+    });
+    
+    if (navigation && typeof navigation.navigate === 'function' && typeof navigation.goBack === 'function') {
+      return navigation;
+    }
+    
+    // Return fallback if navigation is invalid
+    return fallbackNavigation;
+  }, [navigation, fallbackNavigation]);
+  
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
   const { user } = useAuth();
   const [estimates, setEstimates] = useState({});
   const [loading, setLoading] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    loadEstimates();
-  }, []);
-
-  const loadEstimates = async () => {
+  const loadEstimates = useCallback(async () => {
+    if (!user?.uid) {
+      logger.warn('⚠️ PRsScreen: Cannot load estimates - user not available');
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -69,7 +125,13 @@ const PRsScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      loadEstimates();
+    }
+  }, [user?.uid, loadEstimates]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -87,23 +149,50 @@ const PRsScreen = ({ navigation }) => {
     return { libraryId, exerciseName };
   };
 
-  const handleExercisePress = (exerciseKey) => {
+  const handleExercisePress = useCallback((exerciseKey) => {
+    // Always check safeNavigation at call time, not closure time
+    const nav = safeNavigation;
+    
+    if (!nav || typeof nav.navigate !== 'function') {
+      logger.error('❌ PRsScreen: safeNavigation is undefined or invalid in handleExercisePress', { 
+        safeNavigation: nav, 
+        navigation,
+        hasNavigate: nav?.navigate ? 'yes' : 'no'
+      });
+      // Fallback: try direct navigation
+      if (typeof window !== 'undefined') {
+        window.location.href = `/prs/${encodeURIComponent(exerciseKey)}`;
+      }
+      return;
+    }
+    
     const { libraryId, exerciseName } = parseExerciseKey(exerciseKey);
     const estimate = estimates[exerciseKey];
     
-    navigation.navigate('ExerciseDetail', {
-      exerciseKey,
-      exerciseName,
-      libraryId,
-      currentEstimate: estimate.current,
-      lastUpdated: estimate.lastUpdated,
-    });
-  };
+    try {
+      nav.navigate('ExerciseDetail', {
+        exerciseKey,
+        exerciseName,
+        libraryId,
+        currentEstimate: estimate?.current,
+        lastUpdated: estimate?.lastUpdated,
+      });
+    } catch (error) {
+      logger.error('❌ PRsScreen: Error navigating to ExerciseDetail', error);
+      // Fallback: try direct navigation
+      if (typeof window !== 'undefined') {
+        window.location.href = `/prs/${encodeURIComponent(exerciseKey)}`;
+      }
+    }
+  }, [safeNavigation, estimates]);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <FixedWakeHeader />
+        <FixedWakeHeader 
+          showBackButton
+          onBackPress={() => safeNavigation.goBack()}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#ffffff" />
           <Text style={styles.loadingText}>Cargando panel de ejercicios...</Text>
@@ -123,20 +212,15 @@ const PRsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FixedWakeHeader />
-      
-      {/* Back Button */}
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
-      </TouchableOpacity>
+        <FixedWakeHeader 
+          showBackButton
+          onBackPress={() => safeNavigation.goBack()}
+        />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <WakeHeaderSpacer />
-        
         <View style={styles.content}>
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           <TouchableOpacity 
             style={styles.titleContainer}
             onPress={() => setIsInfoModalVisible(true)}
@@ -161,7 +245,7 @@ const PRsScreen = ({ navigation }) => {
               <TextInput
                 style={styles.searchInput}
                 placeholder="Buscar ejercicios..."
-                placeholderTextColor="#ffffff"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 returnKeyType="done"
@@ -276,31 +360,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  backButton: {
-    position: 'absolute',
-    top: Math.max(50, screenHeight * 0.075),
-    left: Math.max(24, screenWidth * 0.06),
-    zIndex: 1000,
-    padding: Math.max(8, screenWidth * 0.02),
-  },
   scrollView: {
     flex: 1,
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: Math.max(40, screenHeight * 0.05),
   },
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 0, // No margin - spacer positions it correctly
     marginBottom: Math.max(20, screenHeight * 0.025),
-    paddingLeft: Math.max(24, screenWidth * 0.06),
   },
   title: {
     fontSize: Math.min(screenWidth * 0.08, 32),
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'left',
+    marginTop: 0, // No margin - spacer positions it correctly
   },
   infoButton: {
     padding: Math.max(8, screenWidth * 0.02),
@@ -475,5 +554,6 @@ const styles = StyleSheet.create({
   },
 });
 
+export { PRsScreen as PRsScreenBase };
 export default PRsScreen;
 

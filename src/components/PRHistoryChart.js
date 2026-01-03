@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Animated, Pressable } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import logger from '../utils/logger.js';
 
@@ -162,7 +162,7 @@ const PRHistoryChart = ({ history }) => {
   };
   
   return (
-    <TouchableWithoutFeedback onPress={dismissTooltip}>
+    <Pressable onPress={dismissTooltip}>
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Historial de los PRs</Text>
@@ -196,7 +196,7 @@ const PRHistoryChart = ({ history }) => {
           />
         )}
       </View>
-    </TouchableWithoutFeedback>
+    </Pressable>
   );
 };
 

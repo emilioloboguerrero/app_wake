@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
-import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger.js';
@@ -17,6 +17,11 @@ import logger from '../utils/logger.js';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const SessionDetailScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  
   const { sessionId, sessionName, date, sessionData } = route.params;
   const { user } = useAuth();
   const [session, setSession] = useState(sessionData);
@@ -130,14 +135,11 @@ const SessionDetailScreen = ({ navigation, route }) => {
   if (!session) {
     return (
       <SafeAreaView style={styles.container}>
-        <FixedWakeHeader />
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={handleBackPress}
-        >
-          <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
-        </TouchableOpacity>
-        <View style={styles.errorContainer}>
+        <FixedWakeHeader 
+          showBackButton={true}
+          onBackPress={handleBackPress}
+        />
+        <View style={[styles.errorContainer, { marginTop: headerTotalHeight }]}>
           <Text style={styles.errorText}>No se pudo cargar la sesión</Text>
         </View>
       </SafeAreaView>
@@ -149,20 +151,15 @@ const SessionDetailScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FixedWakeHeader />
-      
-      {/* Back Button */}
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={handleBackPress}
-      >
-        <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
-      </TouchableOpacity>
+      <FixedWakeHeader 
+        showBackButton={true}
+        onBackPress={handleBackPress}
+      />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <WakeHeaderSpacer />
-        
         <View style={styles.content}>
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           {/* Session Header */}
           <View style={styles.sessionHeader}>
             <Text style={styles.sessionName}>{sessionName}</Text>
@@ -227,19 +224,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  backButton: {
-    position: 'absolute',
-    top: Math.max(50, screenHeight * 0.075),
-    left: Math.max(24, screenWidth * 0.06),
-    zIndex: 1000,
-    padding: Math.max(8, screenWidth * 0.02),
-  },
   scrollView: {
     flex: 1,
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingTop: 0, // No extra padding - spacer handles it
   },
   sessionHeader: {
     flexDirection: 'row',
@@ -253,7 +244,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     flex: 1,
-    paddingLeft: Math.max(24, screenWidth * 0.06),
+    paddingLeft: 0, // Removed padding - content already has horizontal padding
   },
   sessionDateTime: {
     alignItems: 'flex-end',
@@ -403,4 +394,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export { SessionDetailScreen as SessionDetailScreenBase };
 export default SessionDetailScreen;

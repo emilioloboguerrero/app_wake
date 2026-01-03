@@ -258,18 +258,55 @@ class ExerciseHistoryService {
       logger.log('📊 Getting all session history for user:', userId);
       
       const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
-      const q = query(sessionHistoryRef, orderBy('completedAt', 'desc'));
-      const querySnapshot = await getDocs(q);
+      
+      // Try with orderBy first, but fallback to query without orderBy if index is missing
+      let querySnapshot;
+      try {
+        const q = query(sessionHistoryRef, orderBy('completedAt', 'desc'));
+        querySnapshot = await getDocs(q);
+        logger.log('✅ Session history query with orderBy succeeded');
+      } catch (orderByError) {
+        // If orderBy fails (likely missing index), try without orderBy
+        logger.warn('⚠️ OrderBy query failed, trying without orderBy:', orderByError.message);
+        querySnapshot = await getDocs(sessionHistoryRef);
+        logger.log('✅ Session history query without orderBy succeeded');
+      }
       
       const sessionHistory = {};
       querySnapshot.forEach((doc) => {
-        sessionHistory[doc.id] = doc.data();
+        const data = doc.data();
+        sessionHistory[doc.id] = {
+          ...data,
+          id: doc.id, // Include document ID
+        };
       });
+      
+      // If we didn't use orderBy, sort manually by completedAt
+      if (Object.keys(sessionHistory).length > 0) {
+        const sortedEntries = Object.entries(sessionHistory).sort((a, b) => {
+          const dateA = a[1].completedAt ? new Date(a[1].completedAt) : new Date(0);
+          const dateB = b[1].completedAt ? new Date(b[1].completedAt) : new Date(0);
+          return dateB - dateA; // Descending order (newest first)
+        });
+        
+        const sortedHistory = {};
+        sortedEntries.forEach(([id, data]) => {
+          sortedHistory[id] = data;
+        });
+        
+        logger.log('✅ Retrieved session history:', Object.keys(sortedHistory).length, 'sessions');
+        return sortedHistory;
+      }
       
       logger.log('✅ Retrieved session history:', Object.keys(sessionHistory).length, 'sessions');
       return sessionHistory;
     } catch (error) {
       logger.error('❌ Error getting all session history:', error);
+      logger.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
       return {};
     }
   }

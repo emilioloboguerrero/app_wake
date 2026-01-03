@@ -12,16 +12,30 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import ExerciseDetailContent from '../components/ExerciseDetailContent';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
-import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const PRDetailScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  // Safety check for route
+  if (!route || !route.params) {
+    logger.error('❌ PRDetailScreen: route or route.params is undefined', { route, navigation });
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#ffffff' }}>Error: Missing route parameters</Text>
+      </SafeAreaView>
+    );
+  }
+  
   const { exerciseKey, exerciseName, libraryId, currentEstimate, lastUpdated } = route.params;
   const { user } = useAuth();
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
@@ -62,33 +76,30 @@ const PRDetailScreen = ({ navigation, route }) => {
 
   const handleBackPress = () => {
     // Simple back navigation - just go back
-    navigation.goBack();
+    if (navigation && navigation.goBack) {
+      navigation.goBack();
+    } else {
+      logger.error('❌ PRDetailScreen: navigation.goBack is not available');
+      // Fallback: try browser back
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.back();
+      }
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <FixedWakeHeader />
-      
-      {/* Back Button */}
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={handleBackPress}
-      >
-        <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
-      </TouchableOpacity>
-      
-      {/* Reset Button */}
-      <TouchableOpacity 
-        style={styles.resetButton}
-        onPress={handleResetPR}
-      >
-        <Text style={styles.resetButtonText}>Resetear</Text>
-      </TouchableOpacity>
-
-      <WakeHeaderSpacer />
+      <FixedWakeHeader 
+        showBackButton={true}
+        onBackPress={handleBackPress}
+        showResetButton={true}
+        onResetPress={handleResetPR}
+        resetButtonText="Resetear"
+      />
       
       {/* Shared Content Component */}
       <ExerciseDetailContent
+        headerSpacerHeight={headerTotalHeight}
         exerciseKey={exerciseKey}
         exerciseName={exerciseName}
         libraryId={libraryId}
@@ -109,31 +120,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  backButton: {
-    position: 'absolute',
-    top: Math.max(50, screenHeight * 0.075),
-    left: Math.max(24, screenWidth * 0.06),
-    zIndex: 1000,
-    padding: Math.max(8, screenWidth * 0.02),
-  },
-  resetButton: {
-    position: 'absolute',
-    top: Math.max(50, screenHeight * 0.075),
-    right: Math.max(24, screenWidth * 0.06),
-    zIndex: 1000,
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 68, 68, 0.4)',
-  },
-  resetButtonText: {
-    color: '#ff4444',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-  },
 });
 
+export { PRDetailScreen as PRDetailScreenBase };
 export default PRDetailScreen;
 

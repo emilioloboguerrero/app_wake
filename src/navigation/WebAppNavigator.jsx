@@ -16,18 +16,20 @@ import MainScreen from '../screens/MainScreen.web';
 import ProfileScreen from '../screens/ProfileScreen.web';
 // Import AllPurchasedCoursesScreen directly (not lazy) to avoid hook order issues with fonts.js
 import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web';
+// Import SubscriptionsScreen directly - using require in web wrapper causes Metro issues with lazy loading
+import SubscriptionsScreen from '../screens/SubscriptionsScreen.web';
 const DailyWorkoutScreen = lazy(() => import('../screens/DailyWorkoutScreen'));
 const WorkoutExecutionScreen = lazy(() => import('../screens/WorkoutExecutionScreen'));
 const WorkoutCompletionScreen = lazy(() => import('../screens/WorkoutCompletionScreen'));
 const CourseDetailScreen = lazy(() => import('../screens/CourseDetailScreen'));
 const CourseStructureScreen = lazy(() => import('../screens/CourseStructureScreen'));
 const ProgramLibraryScreen = lazy(() => import('../screens/ProgramLibraryScreen'));
-const SessionsScreen = lazy(() => import('../screens/SessionsScreen'));
-const SessionDetailScreen = lazy(() => import('../screens/SessionDetailScreen'));
-const PRsScreen = lazy(() => import('../screens/PRsScreen'));
-const PRDetailScreen = lazy(() => import('../screens/PRDetailScreen'));
-const WeeklyVolumeHistoryScreen = lazy(() => import('../screens/WeeklyVolumeHistoryScreen'));
-const SubscriptionsScreen = lazy(() => import('../screens/SubscriptionsScreen'));
+// Import screens with web wrappers directly to avoid Metro bundler issues
+import SessionsScreen from '../screens/SessionsScreen.web';
+import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web';
+import PRsScreen from '../screens/PRsScreen.web';
+import SessionDetailScreen from '../screens/SessionDetailScreen.web';
+import PRDetailScreen from '../screens/PRDetailScreen.web';
 // AllPurchasedCoursesScreen is imported directly above (not lazy) to avoid hook order issues
 const WarmupScreen = lazy(() => import('../screens/WarmupScreen'));
 const WorkoutExercisesScreen = lazy(() => import('../screens/WorkoutExercisesScreen'));
@@ -484,9 +486,7 @@ const WebAppNavigator = () => {
         path="/sessions"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <SessionsScreen />
-            </Suspense>
+            <SessionsScreen />
           </AuthenticatedLayout>
         }
       />
@@ -495,9 +495,7 @@ const WebAppNavigator = () => {
         path="/sessions/:sessionId"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <SessionDetailScreen />
-            </Suspense>
+            <SessionDetailScreen />
           </AuthenticatedLayout>
         }
       />
@@ -506,9 +504,7 @@ const WebAppNavigator = () => {
         path="/prs"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <PRsScreen />
-            </Suspense>
+            <PRsScreen />
           </AuthenticatedLayout>
         }
       />
@@ -517,9 +513,7 @@ const WebAppNavigator = () => {
         path="/prs/:exerciseId"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <PRDetailScreen />
-            </Suspense>
+            <PRDetailScreen />
           </AuthenticatedLayout>
         }
       />
@@ -528,9 +522,7 @@ const WebAppNavigator = () => {
         path="/volume"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <WeeklyVolumeHistoryScreen />
-            </Suspense>
+            <WeeklyVolumeHistoryScreen />
           </AuthenticatedLayout>
         }
       />
@@ -539,9 +531,7 @@ const WebAppNavigator = () => {
         path="/subscriptions"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <SubscriptionsScreen />
-            </Suspense>
+            <SubscriptionsScreen />
           </AuthenticatedLayout>
         }
       />

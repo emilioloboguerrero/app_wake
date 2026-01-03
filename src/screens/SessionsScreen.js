@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,25 +9,31 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
-import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
+import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const SessionsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  // Calculate header height to match FixedWakeHeader
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
+    if (!user?.uid) {
+      logger.warn('⚠️ SessionsScreen: Cannot load sessions - user not available');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       logger.log('📊 Loading sessions for user:', user.uid);
@@ -35,19 +41,47 @@ const SessionsScreen = ({ navigation }) => {
       // Get all session history
       const sessionHistory = await exerciseHistoryService.getAllSessionHistory(user.uid);
       
+      logger.log('📊 Session history received:', {
+        isObject: typeof sessionHistory === 'object',
+        isArray: Array.isArray(sessionHistory),
+        keysCount: Object.keys(sessionHistory || {}).length,
+        firstSession: sessionHistory && Object.keys(sessionHistory).length > 0 ? Object.values(sessionHistory)[0] : null
+      });
+      
       // Convert to array and sort by date (newest first)
-      const sessionsArray = Object.values(sessionHistory).sort((a, b) => {
-        return new Date(b.completedAt) - new Date(a.completedAt);
+      const sessionsArray = Object.values(sessionHistory || {}).sort((a, b) => {
+        const dateA = a.completedAt ? new Date(a.completedAt) : new Date(0);
+        const dateB = b.completedAt ? new Date(b.completedAt) : new Date(0);
+        return dateB - dateA; // Descending order (newest first)
+      });
+      
+      logger.log('📊 Sessions array after sorting:', {
+        length: sessionsArray.length,
+        firstSessionDate: sessionsArray[0]?.completedAt,
+        lastSessionDate: sessionsArray[sessionsArray.length - 1]?.completedAt
       });
       
       setSessions(sessionsArray);
       logger.log('✅ Sessions loaded:', sessionsArray.length, 'sessions');
     } catch (error) {
       logger.error('❌ Error loading sessions:', error);
+      logger.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      setSessions([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      loadSessions();
+    } else {
+      setLoading(false);
+    }
+  }, [user?.uid, loadSessions]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -230,20 +264,15 @@ const SessionsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FixedWakeHeader />
-      
-      {/* Back Button */}
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={handleBackPress}
-      >
-        <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
-      </TouchableOpacity>
+      <FixedWakeHeader 
+        showBackButton
+        onBackPress={handleBackPress}
+      />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <WakeHeaderSpacer />
-        
         <View style={styles.content}>
+          {/* Spacer for fixed header - matches header height */}
+          <View style={{ height: headerTotalHeight }} />
           {/* Title */}
           <Text style={styles.title}>Sesiones</Text>
           
@@ -279,18 +308,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  backButton: {
-    position: 'absolute',
-    top: Math.max(50, screenHeight * 0.075),
-    left: Math.max(24, screenWidth * 0.06),
-    zIndex: 1000,
-    padding: Math.max(8, screenWidth * 0.02),
-  },
   scrollView: {
     flex: 1,
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: Math.max(40, screenHeight * 0.05),
   },
   title: {
@@ -299,6 +322,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     paddingLeft: Math.max(24, screenWidth * 0.06),
+    marginTop: 0, // No margin - spacer positions it correctly
     marginBottom: Math.max(20, screenHeight * 0.025),
   },
   loadingContainer: {
@@ -459,4 +483,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export { SessionsScreen as SessionsScreenBase };
 export default SessionsScreen;
