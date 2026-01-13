@@ -21,7 +21,8 @@
     "eject": "expo eject",
     "test": "jest",
     "lint": "eslint .",
-    "setup:firebase": "echo 'Please configure Firebase manually using the documentation'"
+    "setup:firebase": "echo 'Please configure Firebase manually using the documentation'",
+    "deploy:preview": "./scripts/deploy-preview.sh"
   },
   "dependencies": {
     "@expo-google-fonts/montserrat": "^0.4.2",

@@ -18,8 +18,16 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(APP_SHELL_CACHE).then((cache) => {
       console.log('[SW] Caching app shell');
-      return cache.addAll(APP_SHELL_FILES).catch((err) => {
-        console.warn('[SW] Some files failed to cache:', err);
+      // Try to cache files, but don't fail if some are missing (dev mode)
+      return Promise.allSettled(
+        APP_SHELL_FILES.map(url => 
+          cache.add(url).catch(err => {
+            console.warn('[SW] Failed to cache:', url, err);
+            return null; // Don't fail installation if file doesn't exist
+          })
+        )
+      ).then(() => {
+        console.log('[SW] App shell caching complete');
       });
     })
   );

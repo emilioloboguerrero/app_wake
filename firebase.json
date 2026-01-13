@@ -18,7 +18,8 @@
   ],
 
   "hosting": {
-    "public": "web_app/build",
+    "site": "wolf-20b8b",
+    "public": "build/web",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -48,13 +49,39 @@
             "value": "no-cache, no-store, must-revalidate"
           }
         ]
+      },
+      {
+        "source": "manifest.json",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/manifest+json"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
+        "source": "sw.js",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/javascript"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
       }
     ]
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "config/firebase/firestore.rules"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "config/firebase/storage.rules"
   }
 }

@@ -228,7 +228,47 @@ export const FixedWakeHeader = ({
 
 // Header spacer component
 export const WakeHeaderSpacer = () => {
-  return <div style={{ height: 0 }} />; // No safe area on web
+  // Responsive dimensions - use state to handle window resize
+  const [dimensions, setDimensions] = React.useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth > 0 && window.innerHeight > 0) {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    }
+    return { width: 375, height: 667 };
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const updateDimensions = () => {
+      if (window.innerWidth > 0 && window.innerHeight > 0) {
+        setDimensions({
+          width: window.innerWidth,
+          height: window.innerHeight
+        });
+      }
+    };
+    
+    updateDimensions();
+    const timeoutId = setTimeout(updateDimensions, 100);
+    window.addEventListener('resize', updateDimensions);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateDimensions);
+    };
+  }, []);
+  
+  const screenHeight = dimensions.height;
+  const headerHeight = Math.max(60, screenHeight * 0.08);
+  const safeAreaTop = typeof window !== 'undefined' && window.visualViewport 
+    ? Math.max(0, (window.innerHeight - window.visualViewport.height) / 2)
+    : 0;
+  const totalHeight = headerHeight + safeAreaTop;
+  
+  return <div style={{ height: totalHeight }} />;
 };
 
 export default FixedWakeHeader;

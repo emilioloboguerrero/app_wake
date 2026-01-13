@@ -20,12 +20,17 @@ dist/
 web-build/
 
 # ============================================
-# Web App Build Output
+# Build Output
 # ============================================
-web_app/build/
-web_app/dist/
-web_app/.cache/
-web_app/node_modules/
+build/
+dist/
+web-build/
+
+# ============================================
+# Config (keep structure, ignore sensitive)
+# ============================================
+config/firebase/*.local
+config/firebase/*.backup
 
 # ============================================
 # Native builds
@@ -126,8 +131,8 @@ coverage/
 # Uncomment these if you want extra privacy
 # (They're needed for builds, so keep them locally)
 # ============================================
-google-services.json
-GoogleService-Info.plist
+config/firebase/google-services.json
+config/firebase/GoogleService-Info.plist
 
 # ============================================
 # Large media files (use cloud storage/CDN instead)
@@ -151,7 +156,7 @@ assets/videos/**/*
 # ============================================
 # Scripts and Documentation
 # ============================================
-scripts/
+# Note: scripts/ is kept, only docs/ are ignored
 docs/
 
 # ============================================

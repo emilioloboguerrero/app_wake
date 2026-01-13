@@ -1472,7 +1472,7 @@ const MainScreen = ({ navigation, route }) => {
               </View>
             ) : (
               <View style={styles.swipeableContainer}>
-                <View style={{ flex: 1, position: 'relative' }}>
+                <View style={{ flex: 1, position: 'relative', overflow: 'visible' }}>
                     {/* Left Navigation Button */}
                     {currentIndex > 0 && (
                       <TouchableOpacity
@@ -1499,47 +1499,44 @@ const MainScreen = ({ navigation, route }) => {
                       </TouchableOpacity>
                     )}
                     
-                    <Animated.FlatList
-                      ref={flatListRef}
-                      data={getSwipeableCards()}
-                      renderItem={renderSwipeableCard}
-                      keyExtractor={(item, index) => item?.id || `item_${index}`}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      snapToInterval={CARD_WIDTH}
-                      snapToAlignment="center"
-                      decelerationRate="fast"
-                      contentContainerStyle={styles.flatListContent}
-                      ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
-                      onScroll={Animated.event(
-                        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                        { useNativeDriver: false } // Must be false for zIndex to work
-                      )}
-                      onScrollEndDrag={handleScroll}
-                      onMomentumScrollEnd={handleScroll}
-                      scrollEventThrottle={16}
-                      style={{ flex: 1 }}
-                      getItemLayout={(data, index) => ({
-                        length: CARD_WIDTH,
-                        offset: CARD_WIDTH * index,
-                        index,
-                      })}
-                      // Virtual scrolling optimizations
-                      initialNumToRender={2}
-                      maxToRenderPerBatch={3}
-                      windowSize={5}
-                      removeClippedSubviews={true}
-                      updateCellsBatchingPeriod={50}
-                    />
-                    {/* Pagination indicators positioned directly below cards */}
-                     <View style={{ 
-                       height: Math.max(15, screenHeight * 0.02), 
-                       justifyContent: 'center', 
-                       paddingBottom: Math.max(100, screenHeight * 0.12), 
-                       marginTop: Math.max(-50, screenHeight * -0.06)
-                     }}>
-                       {renderPaginationIndicators()}
-                     </View>
+                    <View style={styles.cardsAndPaginationWrapper}>
+                      <Animated.FlatList
+                        ref={flatListRef}
+                        data={getSwipeableCards()}
+                        renderItem={renderSwipeableCard}
+                        keyExtractor={(item, index) => item?.id || `item_${index}`}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        snapToInterval={CARD_WIDTH}
+                        snapToAlignment="center"
+                        decelerationRate="fast"
+                        contentContainerStyle={styles.flatListContent}
+                        ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
+                        onScroll={Animated.event(
+                          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                          { useNativeDriver: false } // Must be false for zIndex to work
+                        )}
+                        onScrollEndDrag={handleScroll}
+                        onMomentumScrollEnd={handleScroll}
+                        scrollEventThrottle={16}
+                        style={styles.flatListStyle}
+                        getItemLayout={(data, index) => ({
+                          length: CARD_WIDTH,
+                          offset: CARD_WIDTH * index,
+                          index,
+                        })}
+                        // Virtual scrolling optimizations
+                        initialNumToRender={2}
+                        maxToRenderPerBatch={3}
+                        windowSize={5}
+                        removeClippedSubviews={false}
+                        updateCellsBatchingPeriod={50}
+                      />
+                      {/* Pagination indicators positioned directly below cards */}
+                      <View style={styles.paginationContainer}>
+                        {renderPaginationIndicators()}
+                      </View>
+                    </View>
                   </View>
               </View>
             )}
@@ -1568,12 +1565,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: Math.max(100, screenHeight * 0.15), // Extra padding to ensure pagination is visible
   },
   contentWrapper: {
     flex: 1,
   },
   userSection: {
-    marginBottom: Math.max(-60, screenHeight * -0.08), // 5% of screen height, min -40
+    marginBottom: Math.max(-60, screenHeight * -0.08), // Space between title and cards - less space
     paddingTop: 0,
     marginTop: 0,
   },
@@ -1582,10 +1580,32 @@ const styles = StyleSheet.create({
   },
   swipeableContainer: {
     flex: 1,
+    overflow: 'visible', // Ensure pagination indicators are not clipped
   },
   flatListContent: {
     paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
     alignItems: 'center',
+  },
+  cardsAndPaginationWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    overflow: 'visible', // Ensure pagination indicators are not clipped
+    marginTop: Math.max(80, screenHeight * 0.12), // Push cards and pagination down
+  },
+  flatListStyle: {
+    height: CARD_HEIGHT,
+    width: '100%',
+  },
+  paginationContainer: {
+    width: '100%',
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10, // Position exactly 10px below the card bottom
+    paddingTop: 10,
+    paddingBottom: Math.max(60, screenHeight * 0.1), // Account for bottom menu
+    zIndex: 1000, // Very high z-index to ensure visibility above cards
+    backgroundColor: 'transparent', // Ensure background doesn't hide anything
   },
   cardSeparator: {
     width: 0, // No separator - cards overlap

@@ -106,11 +106,14 @@ export const FixedWakeHeader = ({
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
   
-  // Minimal spacer - just enough to account for safe area
-  const minimalSpacer = insets.top;
+  // Account for full header height plus safe area
+  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
+  const safeAreaTop = Math.max(0, insets.top - 20);
+  const totalHeight = headerHeight + safeAreaTop;
   
-  return <View style={{ height: minimalSpacer }} />;
+  return <View style={{ height: totalHeight }} />;
 };
 
 
