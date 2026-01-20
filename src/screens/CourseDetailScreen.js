@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppState } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   StyleSheet,
@@ -37,6 +36,7 @@ import logger from '../utils/logger.js';
 import { firestore, auth } from '../config/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import profilePictureService from '../services/profilePictureService';
+import { isWeb } from '../utils/platform';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const CourseDetailScreen = ({ navigation, route }) => {
@@ -135,137 +135,51 @@ const CourseDetailScreen = ({ navigation, route }) => {
     }
   });
 
-  useEffect(() => {
-    fetchCourseModules();
-    checkCourseOwnership();
-    fetchUserRole();
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadCreatorProfileImage = async () => {
-      if (!creatorId) {
-        if (isMounted) {
-          setCreatorProfileImage(null);
-        }
-        return;
-      }
-
-      try {
-        const creatorDoc = await firestoreService.getUser(creatorId);
-        if (!isMounted) {
-          return;
-        }
-
-        let imageUrl =
-          creatorDoc?.profilePictureUrl ||
-          creatorDoc?.image_url ||
-          creatorDoc?.imageUrl ||
-          null;
-
-        if (!imageUrl) {
-          try {
-            imageUrl = await profilePictureService.getProfilePictureUrl(creatorId);
-          } catch (imageError) {
-            logger.error('Error loading creator profile picture from service:', imageError);
-          }
-        }
-
-        setCreatorProfileImage(imageUrl);
-      } catch (error) {
-        if (isMounted) {
-          logger.error('Error fetching creator profile image:', error);
-          setCreatorProfileImage(null);
-        }
-      }
-    };
-
-    loadCreatorProfileImage();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [creatorId]);
-
-useEffect(() => {
-  readyNotificationSentRef.current = false;
-  successAlertShownRef.current = false; // Reset alert flag when course changes
-}, [course.id]);
-
-// Show alert when button changes to "¡Ya tienes este programa!" (same trigger)
-useEffect(() => {
-  // Show alert when both userOwnsCourse and ownershipReady are true (same condition as button)
-  if (userOwnsCourse && ownershipReady && processingPurchase && !successAlertShownRef.current) {
-    successAlertShownRef.current = true;
+  // Define functions with useCallback before using them in effects
+  // Note: handlePostPurchaseFlow needs to be defined first as it's used by checkCourseOwnership
+  
+  const fetchUserRole = React.useCallback(async () => {
+    if (!user?.uid) return;
     
-    logger.log('📢 Button shows "¡Ya tienes este programa!" - showing success alert');
-    
-    // Small delay to ensure UI has updated
-    setTimeout(() => {
-      Alert.alert(
-        '¡Compra exitosa!', 
-        'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
-        [
-          {
-            text: 'Ir a Página Principal',
-            onPress: () => {
-              logger.log('📱 User chose: Navigate to MainScreen');
-              navigation.navigate('MainScreen');
-            }
-          },
-          {
-            text: 'Aceptar',
-            onPress: () => {
-              logger.log('✅ User chose: Aceptar (staying on page)');
-            },
-            style: 'cancel'
-          }
-        ]
-      );
+    try {
+      console.log('🔍 DEBUG fetchUserRole:');
+      console.log('  - user.uid:', user.uid);
       
-      // Clean up processing state
-      processingPurchaseRef.current = false;
-      pendingPostPurchaseRef.current = false;
-      setProcessingPurchase(false);
-    }, 300);
-  }
-}, [userOwnsCourse, ownershipReady, processingPurchase, navigation]);
-
-useEffect(() => {
-  return () => {
-    if (postPurchaseTimeoutRef.current) {
-      clearTimeout(postPurchaseTimeoutRef.current);
-      postPurchaseTimeoutRef.current = null;
-    }
-  };
-}, []);
-
-
-  // Re-check ownership when screen comes into focus (handles expiration case)
-  useFocusEffect(
-    React.useCallback(() => {
-      if (user?.uid) {
-        // Check ownership when screen is focused
-        checkCourseOwnership().then(async () => {
-          // After checking ownership, see if we need to trigger post-purchase flow
-          // This handles the case where user navigated away during payment and came back
-          if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
-            logger.log('💳 Screen focused while processing purchase - checking if course was assigned...');
-            
-            // Check if course is now owned
-            const courseState = await purchaseService.getUserCourseState(user.uid, course.id);
-            if (courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-              logger.log('✅ Course found after screen focus - triggering post-purchase flow');
-              handlePostPurchaseFlow();
-            }
-          }
-        });
+      const userDoc = await firestoreService.getUser(user.uid);
+      console.log('  - userDoc:', userDoc);
+      console.log('  - userDoc.role:', userDoc?.role);
+      
+      if (userDoc && userDoc.role) {
+        setUserRole(userDoc.role);
+        console.log('  - Set userRole to:', userDoc.role);
+      } else {
+        console.log('  - No role found, keeping default:', userRole);
       }
-    }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow])
-  );
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+    }
+  }, [user?.uid]);
+
+  const fetchCourseModules = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('🔍 Fetching modules for course:', course.id);
+      const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
+      
+      console.log('✅ Modules fetched:', coursesModules.length);
+      setModules(coursesModules);
+    } catch (error) {
+      console.error('❌ Error fetching course modules:', error);
+      setError('Error al cargar los módulos del curso.');
+    } finally {
+      setLoading(false);
+    }
+  }, [course.id, user?.uid]);
 
   // Post-purchase flow: sync cache, notify, download, and show success
+  // Define BEFORE checkCourseOwnership so it can be used
   const handlePostPurchaseFlow = React.useCallback(async () => {
     // Prevent duplicate execution
     if (postPurchaseFlowTriggeredRef.current) {
@@ -371,11 +285,8 @@ useEffect(() => {
         'Hubo un problema al procesar tu compra. El programa debería estar disponible en breve.',
         [
           {
-            text: 'Revisar',
-            onPress: () => {
-              // Refresh ownership status
-              checkCourseOwnership();
-            }
+            text: 'Aceptar',
+            style: 'cancel'
           },
           {
             text: 'Ir a Página Principal',
@@ -386,7 +297,165 @@ useEffect(() => {
         ]
       );
     }
-  }, [user?.uid, course.id, navigation, checkCourseOwnership]);
+  }, [user?.uid, course.id, navigation]);
+
+  const checkCourseOwnership = React.useCallback(async () => {
+    if (!user?.uid) return;
+    
+    try {
+      setCheckingOwnership(true);
+      const courseState = await purchaseService.getUserCourseState(user.uid, course.id);
+      
+      const isProcessing = processingPurchaseRef.current || pendingPostPurchaseRef.current;
+      
+      // If we're processing a purchase and course is now owned, trigger post-purchase flow
+      if (isProcessing && courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
+        logger.log('✅ Course ownership confirmed during purchase processing - triggering post-purchase flow');
+        handlePostPurchaseFlow();
+        return;
+      }
+      
+      // If processing, defer UI update but still check ownership
+      if (isProcessing) {
+        logger.log('⏳ Ownership check during purchase processing - course owned:', courseState.ownsCourse);
+        // Don't update UI yet, but don't return - let the post-purchase flow handle it
+        return;
+      }
+
+      setUserCourseEntry(courseState.courseData);
+      setUserTrialHistory(courseState.trialHistory);
+      setUserOwnsCourse(courseState.ownsCourse);
+      setOwnershipReady(courseState.ownsCourse && !processingPurchaseRef.current && !pendingPostPurchaseRef.current);
+    } catch (error) {
+      console.error('Error checking course ownership:', error);
+    } finally {
+      setCheckingOwnership(false);
+    }
+  }, [user?.uid, course.id, handlePostPurchaseFlow]);
+
+  useEffect(() => {
+    fetchCourseModules();
+    checkCourseOwnership();
+    fetchUserRole();
+  }, [fetchCourseModules, checkCourseOwnership, fetchUserRole]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCreatorProfileImage = async () => {
+      if (!creatorId) {
+        if (isMounted) {
+          setCreatorProfileImage(null);
+        }
+        return;
+      }
+
+      try {
+        const creatorDoc = await firestoreService.getUser(creatorId);
+        if (!isMounted) {
+          return;
+        }
+
+        let imageUrl =
+          creatorDoc?.profilePictureUrl ||
+          creatorDoc?.image_url ||
+          creatorDoc?.imageUrl ||
+          null;
+
+        if (!imageUrl) {
+          try {
+            imageUrl = await profilePictureService.getProfilePictureUrl(creatorId);
+          } catch (imageError) {
+            logger.error('Error loading creator profile picture from service:', imageError);
+          }
+        }
+
+        setCreatorProfileImage(imageUrl);
+      } catch (error) {
+        if (isMounted) {
+          logger.error('Error fetching creator profile image:', error);
+          setCreatorProfileImage(null);
+        }
+      }
+    };
+
+    loadCreatorProfileImage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [creatorId]);
+
+useEffect(() => {
+  readyNotificationSentRef.current = false;
+  successAlertShownRef.current = false; // Reset alert flag when course changes
+}, [course.id]);
+
+// Show alert when button changes to "¡Ya tienes este programa!" (same trigger)
+useEffect(() => {
+  // Show alert when both userOwnsCourse and ownershipReady are true (same condition as button)
+  if (userOwnsCourse && ownershipReady && processingPurchase && !successAlertShownRef.current) {
+    successAlertShownRef.current = true;
+    
+    logger.log('📢 Button shows "¡Ya tienes este programa!" - showing success alert');
+    
+    // Small delay to ensure UI has updated
+    setTimeout(() => {
+      Alert.alert(
+        '¡Compra exitosa!', 
+        'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
+        [
+          {
+            text: 'Ir a Página Principal',
+            onPress: () => {
+              logger.log('📱 User chose: Navigate to MainScreen');
+              navigation.navigate('MainScreen');
+            }
+          },
+          {
+            text: 'Aceptar',
+            onPress: () => {
+              logger.log('✅ User chose: Aceptar (staying on page)');
+            },
+            style: 'cancel'
+          }
+        ]
+      );
+      
+      // Clean up processing state
+      processingPurchaseRef.current = false;
+      pendingPostPurchaseRef.current = false;
+      setProcessingPurchase(false);
+    }, 300);
+  }
+}, [userOwnsCourse, ownershipReady, processingPurchase, navigation]);
+
+useEffect(() => {
+  return () => {
+    if (postPurchaseTimeoutRef.current) {
+      clearTimeout(postPurchaseTimeoutRef.current);
+      postPurchaseTimeoutRef.current = null;
+    }
+  };
+}, []);
+
+  // Re-check ownership when screen comes into focus (handles expiration case)
+  // On web, use useEffect. On native, useFocusEffect is handled by wrapper
+  React.useEffect(() => {
+    // On web, run the check on mount
+    if (isWeb && user?.uid) {
+      checkCourseOwnership().then(async () => {
+        if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
+          logger.log('💳 Screen mounted while processing purchase - checking if course was assigned...');
+          const courseState = await purchaseService.getUserCourseState(user.uid, course.id);
+          if (courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
+            logger.log('✅ Course found on mount - triggering post-purchase flow');
+            handlePostPurchaseFlow();
+          }
+        }
+      });
+    }
+  }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow]);
 
   // Fix #7: Set up Firestore real-time listener for course ownership (optimized)
   useEffect(() => {
@@ -457,26 +526,32 @@ useEffect(() => {
   }, [user?.uid, course.id, userOwnsCourse, handlePostPurchaseFlow]);
 
   // Handle screen focus changes - pause video when screen loses focus
-  useFocusEffect(
-    React.useCallback(() => {
-      // Screen is focused
-      logger.log('🎬 CourseDetail screen focused');
-      
-      return () => {
-        // Screen loses focus - pause video
-        logger.log('🛑 CourseDetail screen lost focus - pausing video');
+  // Only needed on native - on web, browser handles this
+  React.useEffect(() => {
+    if (isWeb) return; // Skip on web
+
+    // On native, set up focus/blur handling
+    const handleAppStateChange = (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        logger.log('🛑 App went to background - pausing video');
         try {
           if (videoPlayer) {
             videoPlayer.pause();
-            videoPlayer.muted = true; // Mute as extra safety
-            setIsVideoPaused(true); // Update local state
+            videoPlayer.muted = true;
+            setIsVideoPaused(true);
           }
         } catch (error) {
           logger.log('⚠️ Error pausing video player:', error.message);
         }
-      };
-    }, [videoPlayer])
-  );
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [videoPlayer]);
 
   // Set video URI when course data is available
   useEffect(() => {
@@ -510,80 +585,6 @@ useEffect(() => {
       videoPlayer.currentTime = 0;
       videoPlayer.play();
       setIsVideoPaused(false);
-    }
-  };
-
-  const fetchUserRole = async () => {
-    if (!user?.uid) return;
-    
-    try {
-      console.log('🔍 DEBUG fetchUserRole:');
-      console.log('  - user.uid:', user.uid);
-      
-      const userDoc = await firestoreService.getUser(user.uid);
-      console.log('  - userDoc:', userDoc);
-      console.log('  - userDoc.role:', userDoc?.role);
-      
-      if (userDoc && userDoc.role) {
-        setUserRole(userDoc.role);
-        console.log('  - Set userRole to:', userDoc.role);
-      } else {
-        console.log('  - No role found, keeping default:', userRole);
-      }
-    } catch (error) {
-      console.error('Error fetching user role:', error);
-    }
-  };
-
-  const checkCourseOwnership = async () => {
-    if (!user?.uid) return;
-    
-    try {
-      setCheckingOwnership(true);
-      const courseState = await purchaseService.getUserCourseState(user.uid, course.id);
-      
-      const isProcessing = processingPurchaseRef.current || pendingPostPurchaseRef.current;
-      
-      // If we're processing a purchase and course is now owned, trigger post-purchase flow
-      if (isProcessing && courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-        logger.log('✅ Course ownership confirmed during purchase processing - triggering post-purchase flow');
-        handlePostPurchaseFlow();
-        return;
-      }
-      
-      // If processing, defer UI update but still check ownership
-      if (isProcessing) {
-        logger.log('⏳ Ownership check during purchase processing - course owned:', courseState.ownsCourse);
-        // Don't update UI yet, but don't return - let the post-purchase flow handle it
-        return;
-      }
-
-      setUserCourseEntry(courseState.courseData);
-      setUserTrialHistory(courseState.trialHistory);
-      setUserOwnsCourse(courseState.ownsCourse);
-      setOwnershipReady(courseState.ownsCourse && !processingPurchaseRef.current && !pendingPostPurchaseRef.current);
-    } catch (error) {
-      console.error('Error checking course ownership:', error);
-    } finally {
-      setCheckingOwnership(false);
-    }
-  };
-
-  const fetchCourseModules = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('🔍 Fetching modules for course:', course.id);
-      const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
-      
-      console.log('✅ Modules fetched:', coursesModules.length);
-      setModules(coursesModules);
-    } catch (error) {
-      console.error('❌ Error fetching course modules:', error);
-      setError('Error al cargar los módulos del curso.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1284,7 +1285,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   horizontalScrollView: {
-    height: Math.max(500, screenHeight * 0.60), // Match taller image card height
+    height: Math.max(550, screenHeight * 0.70), // Match taller image card height
     overflow: 'visible',
   },
   swipeableCard: {
@@ -1313,7 +1314,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(500, screenHeight * 0.60), // Made taller: 55% of screen height, min 450px
+    height: Math.max(550, screenHeight * 0.70), // Made taller: 70% of screen height, min 550px
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1396,7 +1397,7 @@ const styles = StyleSheet.create({
   },
   infoCardsStackContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(500, screenHeight * 0.6), // Match taller image card height
+    height: Math.max(550, screenHeight * 0.70), // Match taller image card height
     gap: Math.max(15, screenHeight * 0.02),
     overflow: 'visible', // Ensure shadows are not clipped
   },
@@ -1945,3 +1946,4 @@ const styles = StyleSheet.create({
 });
 
 export default CourseDetailScreen;
+export { CourseDetailScreen as CourseDetailScreenBase };

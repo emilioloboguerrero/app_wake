@@ -31,7 +31,8 @@ export const FixedWakeHeader = ({
       height: headerHeight + Math.max(0, insets.top - 20), // Extend to cover gap
       paddingTop: Math.max(0, insets.top - 20), // Push content to original position
       paddingHorizontal: screenWidth * 0.06, // 6% of screen width
-      backgroundColor
+      backgroundColor,
+      pointerEvents: 'box-none' // Allow touches to pass through to content below
     }]}>
       {shouldShowProfileButton && (
         <TouchableOpacity

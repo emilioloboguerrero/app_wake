@@ -19,9 +19,9 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import warmupData from '../../assets/data/warmup_data.json';
-import { useFocusEffect } from '@react-navigation/native';
 import assetBundleService from '../services/assetBundleService';
 import logger from '../utils/logger';
+import { isWeb } from '../utils/platform';
 const WarmupScreen = ({ navigation, route }) => {
   const { course, workout, sessionId } = route.params;
   const { user } = useAuth();
@@ -296,30 +296,36 @@ const WarmupScreen = ({ navigation, route }) => {
   }, [isActive, currentExerciseIndex, isResting, getExerciseDuration, navigation, course, workout, sessionId]);
 
   // Handle screen focus changes - pause video when screen loses focus
-  useFocusEffect(
-    useCallback(() => {
-      // Screen is focused
-      logger.log('🔥 Warmup screen focused');
-      
-      return () => {
-        // Screen loses focus - pause video and stop warmup
-        logger.log('🛑 Warmup screen lost focus - pausing video and stopping warmup');
-        setIsActive(false);
-        try {
-          if (videoPlayer) {
-            videoPlayer.pause();
-            videoPlayer.muted = true; // Mute as extra safety
+  // On web, browser handles this automatically when tab is hidden
+  useEffect(() => {
+    if (isWeb) {
+      // On web, handle visibility change
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          logger.log('🛑 Warmup page hidden - pausing video and stopping warmup');
+          setIsActive(false);
+          try {
+            if (videoPlayer) {
+              videoPlayer.pause();
+              videoPlayer.muted = true;
+            }
+          } catch (error) {
+            logger.log('⚠️ Error pausing video player:', error.message);
           }
-        } catch (error) {
-          logger.log('⚠️ Error pausing video player:', error.message);
-        }
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
         }
       };
-    }, [videoPlayer])
-  );
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+    // On native, this would be handled by useFocusEffect which doesn't work on web
+  }, [isWeb, videoPlayer]);
   
   // Memoized event handlers
   const selectExercise = useCallback((index) => {
@@ -620,7 +626,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
   },
   videoCard: {
-    height: Math.max(450, screenHeight * 0.55), // Responsive height
+    height: Math.max(500, screenHeight * 0.60), // Responsive height - TALLER
     backgroundColor: '#1a1a1a',
     borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
     overflow: 'hidden',

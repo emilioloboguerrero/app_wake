@@ -32,7 +32,24 @@ import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgInfo from '../components/icons/SvgInfo';
 import logger from '../utils/logger.js';
 const ProgramLibraryScreen = ({ navigation }) => {
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  
+  // FALLBACK: If AuthContext doesn't have user, check Firebase directly
+  const [fallbackUser, setFallbackUser] = React.useState(null);
+  React.useEffect(() => {
+    if (!contextUser) {
+      // Try to get user directly from Firebase as fallback
+      import('../config/firebase').then(({ auth }) => {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+          logger.log('⚠️ ProgramLibraryScreen: Using fallback Firebase user (AuthContext failed)');
+          setFallbackUser(firebaseUser);
+        }
+      });
+    }
+  }, [contextUser]);
+  
+  const user = contextUser || fallbackUser;
   
   // Consolidated state management
   const [state, setState] = useState({
@@ -44,9 +61,11 @@ const ProgramLibraryScreen = ({ navigation }) => {
     creators: [],
     disciplines: [],
     courseModules: {},
-    swipedCourses: {},
-    imageLoadingStates: {}
+    swipedCourses: {}
   });
+  
+  // Use ref for image loading states to prevent re-renders
+  const imageLoadingStatesRef = useRef({});
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
@@ -62,46 +81,28 @@ const ProgramLibraryScreen = ({ navigation }) => {
   // Debounced search timer
   const searchTimeoutRef = useRef(null);
 
-  useEffect(() => {
-    if (user?.uid) {
-      fetchCourses();
-    }
-    
-    // Cleanup search timeout on unmount
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [user?.uid]); // Refetch when user changes
+  // Check for tutorials to show (defined before fetchCourses since fetchCourses calls it)
+  const checkForTutorials = useCallback(async () => {
+    if (!user?.uid) return;
 
-  // Debounced search function
-  const debouncedSearch = useCallback((query) => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    searchTimeoutRef.current = setTimeout(() => {
-      if (query.trim() === '') {
-        setState(prev => ({ ...prev, filteredCourses: prev.courses }));
+    try {
+      logger.log('🎬 Checking for library screen tutorials...');
+      const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'library');
+      
+      if (tutorials.length > 0) {
+        logger.log('📚 Found tutorials to show:', tutorials.length);
+        setTutorialData(tutorials);
+        setCurrentTutorialIndex(0);
+        setTutorialVisible(true);
       } else {
-        const filtered = state.courses.filter(course =>
-          course.title?.toLowerCase().includes(query.toLowerCase()) ||
-          course.description?.toLowerCase().includes(query.toLowerCase()) ||
-          course.discipline?.toLowerCase().includes(query.toLowerCase()) ||
-          course.creator_id?.toLowerCase().includes(query.toLowerCase())
-        );
-        setState(prev => ({ ...prev, filteredCourses: filtered }));
+        logger.log('✅ No tutorials to show for library screen');
       }
-    }, 300); // 300ms debounce delay
-  }, [state.courses]);
+    } catch (error) {
+      logger.error('❌ Error checking for tutorials:', error);
+    }
+  }, [user?.uid]);
 
-  // Handle search input changes
-  const handleSearchChange = useCallback((query) => {
-    setState(prev => ({ ...prev, searchQuery: query }));
-    debouncedSearch(query);
-  }, [debouncedSearch]);
-
+  // Define fetchCourses BEFORE useEffect so it can be called
   const fetchCourses = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -170,7 +171,62 @@ const ProgramLibraryScreen = ({ navigation }) => {
         error: 'Error al cargar tus programas. Inténtalo de nuevo.'
       }));
     }
-  }, [user?.uid]);
+  }, [user?.uid]); // Removed checkForTutorials from dependencies - it's called inside but doesn't need to be a dependency
+
+  useEffect(() => {
+    // Check if user is available, or wait for it to become available
+    if (user?.uid) {
+      fetchCourses();
+    } else {
+      // On web, user might not be available immediately
+      // Set loading to false with empty state if no user after a delay
+      const timeoutId = setTimeout(() => {
+        if (!user?.uid) {
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            error: 'Debes iniciar sesión para ver tus programas.'
+          }));
+        }
+      }, 2000); // Wait 2 seconds for user to load
+      
+      return () => clearTimeout(timeoutId);
+    }
+    
+    // Cleanup search timeout on unmount
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [user?.uid]); // Only depend on user?.uid - fetchCourses will use latest closure
+
+  // Debounced search function
+  const debouncedSearch = useCallback((query) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      if (query.trim() === '') {
+        setState(prev => ({ ...prev, filteredCourses: prev.courses }));
+      } else {
+        const filtered = state.courses.filter(course =>
+          course.title?.toLowerCase().includes(query.toLowerCase()) ||
+          course.description?.toLowerCase().includes(query.toLowerCase()) ||
+          course.discipline?.toLowerCase().includes(query.toLowerCase()) ||
+          course.creator_id?.toLowerCase().includes(query.toLowerCase())
+        );
+        setState(prev => ({ ...prev, filteredCourses: filtered }));
+      }
+    }, 300); // 300ms debounce delay
+  }, [state.courses]);
+
+  // Handle search input changes
+  const handleSearchChange = useCallback((query) => {
+    setState(prev => ({ ...prev, searchQuery: query }));
+    debouncedSearch(query);
+  }, [debouncedSearch]);
 
   const fetchCourseModules = useCallback(async (courseId) => {
     // Check cache first
@@ -208,29 +264,23 @@ const ProgramLibraryScreen = ({ navigation }) => {
     }
   }, [state.courseModules]);
 
-  const handleCoursePress = (course) => {
+  const handleCoursePress = useCallback((course) => {
     navigation.navigate('CourseDetail', { course });
-  };
+  }, [navigation]);
 
   const handleImageLoadStart = useCallback((courseId) => {
-    setState(prev => ({
-      ...prev,
-      imageLoadingStates: { ...prev.imageLoadingStates, [courseId]: true }
-    }));
+    // Use ref to avoid triggering re-renders
+    imageLoadingStatesRef.current[courseId] = true;
   }, []);
 
   const handleImageLoad = useCallback((courseId) => {
-    setState(prev => ({
-      ...prev,
-      imageLoadingStates: { ...prev.imageLoadingStates, [courseId]: false }
-    }));
+    // Use ref to avoid triggering re-renders
+    imageLoadingStatesRef.current[courseId] = false;
   }, []);
 
   const handleImageError = useCallback((courseId) => {
-    setState(prev => ({
-      ...prev,
-      imageLoadingStates: { ...prev.imageLoadingStates, [courseId]: false }
-    }));
+    // Use ref to avoid triggering re-renders
+    imageLoadingStatesRef.current[courseId] = false;
   }, []);
 
   const handleSwipeRight = useCallback(async (course) => {
@@ -258,27 +308,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
     } catch (error) {
       logger.error('❌ Error refreshing courses:', error);
       await fetchCourses();
-    }
-  };
-
-  // Check for tutorials to show
-  const checkForTutorials = async () => {
-    if (!user?.uid) return;
-
-    try {
-      logger.log('🎬 Checking for library screen tutorials...');
-      const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'library');
-      
-      if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
-        setTutorialData(tutorials);
-        setCurrentTutorialIndex(0);
-        setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for library screen');
-      }
-    } catch (error) {
-      logger.error('❌ Error checking for tutorials:', error);
     }
   };
 
@@ -340,11 +369,10 @@ const ProgramLibraryScreen = ({ navigation }) => {
         </ScrollView>
       </View>
     );
-  }, [state.courseModules]);
+  }, [state.courseModules, handleSwipeLeft]); // Added handleSwipeLeft to dependencies
 
   const renderCourseCard = useCallback((course, index) => {
     const isSwipedRight = state.swipedCourses[course.id];
-    const isImageLoading = state.imageLoadingStates[course.id] === true;
     
     return (
       <View key={course.id || index} style={styles.courseCardWrapper}>
@@ -358,26 +386,15 @@ const ProgramLibraryScreen = ({ navigation }) => {
             >
               <View style={styles.courseImagePlaceholder}>
                 {course.image_url ? (
-                  <>
-                    <Image
-                      source={{ uri: course.image_url }}
-                      style={styles.courseImage}
-                      resizeMode="cover"
-                      onLoadStart={() => handleImageLoadStart(course.id)}
-                      onLoad={() => handleImageLoad(course.id)}
-                      onError={() => handleImageError(course.id)}
-                    />
-                    {isImageLoading && (
-                      <View style={styles.courseImageLoadingOverlay}>
-                        <SvgCloudOff 
-                          width={32} 
-                          height={32} 
-                          stroke="#ffffff" 
-                          strokeWidth={1.5} 
-                        />
-                      </View>
-                    )}
-                  </>
+                  <Image
+                    key={`img-${course.id}`}
+                    source={{ uri: course.image_url }}
+                    style={styles.courseImage}
+                    resizeMode="cover"
+                    onLoadStart={() => handleImageLoadStart(course.id)}
+                    onLoad={() => handleImageLoad(course.id)}
+                    onError={() => handleImageError(course.id)}
+                  />
                 ) : (
                   <View style={styles.courseImageFallback}>
                     <SvgCloudOff 
@@ -409,7 +426,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
         </View>
       </View>
     );
-  }, [state.swipedCourses, state.imageLoadingStates, handleCoursePress, handleImageLoadStart, handleImageLoad, handleImageError, renderModulesView]);
+  }, [state.swipedCourses, handleCoursePress, handleImageLoadStart, handleImageLoad, handleImageError, renderModulesView]); // Removed state.imageLoadingStates to prevent infinite loop
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1027,4 +1044,6 @@ const styles = StyleSheet.create({
   },
 });
 
+// Export both default and named for web wrapper compatibility
 export default ProgramLibraryScreen;
+export { ProgramLibraryScreen as ProgramLibraryScreenBase };

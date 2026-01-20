@@ -14,9 +14,10 @@ import logger from '../utils/logger';
  */
 class ProgramMediaService {
   constructor() {
-    this.BASE_DIR = FileSystem.documentDirectory
-      ? `${FileSystem.documentDirectory}program_media`
-      : null;
+    // FIX: Defer FileSystem access to prevent blocking on web
+    // FileSystem.documentDirectory can block when accessed at import time
+    this._baseDir = null;
+    this._baseDirInitialized = false;
     this.MANIFESTS_KEY = 'program_media_manifests';
     this._manifests = {}; // Initialize as empty for immediate access
     this._downloadPromises = new Map(); // Track ongoing downloads
@@ -28,6 +29,22 @@ class ProgramMediaService {
         logger.error('❌ Error loading manifests:', error);
       });
     }, 500); // Delay to not block app startup
+  }
+
+  // Lazy getter for BASE_DIR - only access FileSystem when actually needed
+  get BASE_DIR() {
+    if (!this._baseDirInitialized) {
+      try {
+        this._baseDir = FileSystem.documentDirectory
+          ? `${FileSystem.documentDirectory}program_media`
+          : null;
+      } catch (error) {
+        logger.error('❌ Error accessing FileSystem.documentDirectory:', error);
+        this._baseDir = null;
+      }
+      this._baseDirInitialized = true;
+    }
+    return this._baseDir;
   }
 
   /**

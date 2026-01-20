@@ -171,6 +171,53 @@ export default function App() {
     }
   }, [isLoginPath]);
 
+  // Suppress React Native chart-kit warnings on web (development only)
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      const originalWarn = console.warn;
+      const originalError = console.error;
+      
+      // Filter out specific chart-related warnings
+      console.warn = (...args) => {
+        const message = args.join(' ');
+        // Suppress react-native-chart-kit warnings
+        if (
+          message.includes('Invalid DOM property') ||
+          message.includes('Unknown event handler property') ||
+          message.includes('onStartShouldSetResponder') ||
+          message.includes('onResponderTerminationRequest') ||
+          message.includes('onResponderGrant') ||
+          message.includes('onResponderMove') ||
+          message.includes('onResponderRelease') ||
+          message.includes('onResponderTerminate') ||
+          message.includes('transform-origin') ||
+          message.includes('TouchableMixin is deprecated')
+        ) {
+          return; // Don't log these warnings
+        }
+        originalWarn.apply(console, args);
+      };
+      
+      console.error = (...args) => {
+        const message = args.join(' ');
+        // Suppress chart-related errors
+        if (
+          message.includes('Invalid DOM property') ||
+          message.includes('Unknown event handler property') ||
+          message.includes('transform-origin')
+        ) {
+          return; // Don't log these errors
+        }
+        originalError.apply(console, args);
+      };
+      
+      return () => {
+        console.warn = originalWarn;
+        console.error = originalError;
+      };
+    }
+  }, []);
+
   // Enhanced error logging (with extension error filtering)
   // This runs for both login and non-login routes (safeLog handles missing logger)
   React.useEffect(() => {

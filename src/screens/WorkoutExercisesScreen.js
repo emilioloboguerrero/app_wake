@@ -194,7 +194,25 @@ const ExerciseItem = React.memo(({ exercise, index, isExpanded, onToggleExpansio
 });
 const WorkoutExercisesScreen = ({ navigation, route }) => {
   const { course, sessionData, workoutData, sessionState } = route.params || {};
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  
+  // FALLBACK: If AuthContext doesn't have user, check Firebase directly
+  const [fallbackUser, setFallbackUser] = React.useState(null);
+  React.useEffect(() => {
+    if (!contextUser) {
+      // Try to get user directly from Firebase as fallback
+      import('../config/firebase').then(({ auth }) => {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+          logger.log('⚠️ WorkoutExercisesScreen: Using fallback Firebase user (AuthContext failed)');
+          setFallbackUser(firebaseUser);
+        }
+      });
+    }
+  }, [contextUser]);
+  
+  const user = contextUser || fallbackUser;
+  
   const [todayWorkout, setTodayWorkout] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

@@ -18,21 +18,30 @@ import ProfileScreen from '../screens/ProfileScreen.web';
 import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web';
 // Import SubscriptionsScreen directly - using require in web wrapper causes Metro issues with lazy loading
 import SubscriptionsScreen from '../screens/SubscriptionsScreen.web';
-const DailyWorkoutScreen = lazy(() => import('../screens/DailyWorkoutScreen'));
-const WorkoutExecutionScreen = lazy(() => import('../screens/WorkoutExecutionScreen'));
-const WorkoutCompletionScreen = lazy(() => import('../screens/WorkoutCompletionScreen'));
-const CourseDetailScreen = lazy(() => import('../screens/CourseDetailScreen'));
-const CourseStructureScreen = lazy(() => import('../screens/CourseStructureScreen'));
-const ProgramLibraryScreen = lazy(() => import('../screens/ProgramLibraryScreen'));
+// Import ProgramLibraryScreen directly (not lazy) - using web wrapper for React Router navigation
+import ProgramLibraryScreen from '../screens/ProgramLibraryScreen.web';
+// Lazy load workout-related screens with web wrappers for React Router navigation
+const DailyWorkoutScreen = lazy(() => import('../screens/DailyWorkoutScreen.web'));
+const WorkoutExecutionScreen = lazy(() => import('../screens/WorkoutExecutionScreen.web'));
+const WorkoutCompletionScreen = lazy(() => import('../screens/WorkoutCompletionScreen.web'));
+const WarmupScreen = lazy(() => import('../screens/WarmupScreen.web'));
+const WorkoutExercisesScreen = lazy(() => import('../screens/WorkoutExercisesScreen.web'));
+const CourseStructureScreen = lazy(() => import('../screens/CourseStructureScreen.web'));
+// Import CourseDetailScreen directly using web wrapper for React Router navigation
+import CourseDetailScreen from '../screens/CourseDetailScreen.web';
+// Import CreatorProfileScreen directly using web wrapper for React Router navigation
+import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
 // Import screens with web wrappers directly to avoid Metro bundler issues
 import SessionsScreen from '../screens/SessionsScreen.web';
 import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web';
 import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
+// Test screen for debugging freeze issues
+import TestScreen from '../screens/TestScreen.web';
+// Simple button test screen for testing button responsiveness
+import SimpleButtonTestScreen from '../screens/SimpleButtonTestScreen.web';
 // AllPurchasedCoursesScreen is imported directly above (not lazy) to avoid hook order issues
-const WarmupScreen = lazy(() => import('../screens/WarmupScreen'));
-const WorkoutExercisesScreen = lazy(() => import('../screens/WorkoutExercisesScreen'));
 const OnboardingScreen = lazy(() => import('../screens/OnboardingScreen'));
 
 import firestoreService from '../services/firestoreService';
@@ -360,6 +369,16 @@ const WebAppNavigator = () => {
 
   return (
     <Routes>
+      {/* Test routes - must be first to catch before auth */}
+      <Route
+        path="/test"
+        element={<TestScreen />}
+      />
+      <Route
+        path="/simple-test"
+        element={<SimpleButtonTestScreen />}
+      />
+      
       {/* Public Routes */}
       <Route path="/login" element={<LoginScreen />} />
 
@@ -398,9 +417,7 @@ const WebAppNavigator = () => {
         path="/library"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <ProgramLibraryScreen />
-            </Suspense>
+            <ProgramLibraryScreen />
           </AuthenticatedLayout>
         }
       />
@@ -409,9 +426,16 @@ const WebAppNavigator = () => {
         path="/course/:courseId"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <CourseDetailScreen />
-            </Suspense>
+            <CourseDetailScreen />
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/creator/:creatorId"
+        element={
+          <AuthenticatedLayout>
+            <CreatorProfileScreen />
           </AuthenticatedLayout>
         }
       />
@@ -440,14 +464,14 @@ const WebAppNavigator = () => {
 
       <Route
         path="/course/:courseId/workout/execution"
-        element={
-          <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              <WorkoutExecutionScreen />
-            </Suspense>
-          </AuthenticatedLayout>
-        }
-      />
+          element={
+            <AuthenticatedLayout>
+              <Suspense fallback={<LoadingScreen />}>
+                <WorkoutExecutionScreen />
+              </Suspense>
+            </AuthenticatedLayout>
+          }
+        />
 
       <Route
         path="/course/:courseId/workout/completion"

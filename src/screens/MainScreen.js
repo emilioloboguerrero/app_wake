@@ -47,11 +47,11 @@ logger.log('📚 Library image imported:', libraryImage);
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 // Responsive dimensions - keep original mobile proportions
-// Cards should be narrower - make them about 75% of screen width for better carousel feel
-const CARD_MARGIN = screenWidth * 0.125; // 12.5% of screen width for margins on each side (25% total)
-const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 75% of screen width
+// Cards should be larger - make them about 85% of screen width
+const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
+const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
 const CARD_SPACING = 0; // No spacing - cards overlap for 3D carousel effect
-const CARD_HEIGHT = Math.max(450, screenHeight * 0.6); // 65% of screen height, min 450
+const CARD_HEIGHT = Math.max(500, screenHeight * 0.65); // 68% of screen height, min 500
 
 const MainScreen = ({ navigation, route }) => {
   const { user: contextUser } = useAuth();
@@ -1042,45 +1042,6 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
-  // Navigation button handlers
-  const scrollToPrevious = () => {
-    const cards = getSwipeableCards();
-    if (currentIndex > 0 && flatListRef.current) {
-      const newIndex = currentIndex - 1;
-      const cardWidth = CARD_WIDTH; // No spacing
-      const targetOffset = newIndex * cardWidth;
-      
-      flatListRef.current.scrollToOffset({
-        offset: targetOffset,
-        animated: true,
-      });
-      
-      // The onScroll event will update scrollX automatically
-      // But we update currentIndex immediately for button visibility
-      setCurrentIndex(newIndex);
-      saveSelectedCardIndex(newIndex);
-    }
-  };
-
-  const scrollToNext = () => {
-    const cards = getSwipeableCards();
-    if (currentIndex < cards.length - 1 && flatListRef.current) {
-      const newIndex = currentIndex + 1;
-      const cardWidth = CARD_WIDTH; // No spacing
-      const targetOffset = newIndex * cardWidth;
-      
-      flatListRef.current.scrollToOffset({
-        offset: targetOffset,
-        animated: true,
-      });
-      
-      // The onScroll event will update scrollX automatically
-      // But we update currentIndex immediately for button visibility
-      setCurrentIndex(newIndex);
-      saveSelectedCardIndex(newIndex);
-    }
-  };
-
   // Render pagination indicators - native driver compatible
   const renderPaginationIndicators = () => {
     const cards = getSwipeableCards();
@@ -1391,13 +1352,17 @@ const MainScreen = ({ navigation, route }) => {
       logger.log('📚 Rendering library card with image:', libraryImageUri || libraryImage);
       return (
         <Animated.View style={[styles.swipeableCard, cardStyle]}>
-          <ImageBackground
-            // Cloud/remote download disabled: always use bundled fallback
-            source={libraryImage}
-            style={styles.cardContentWithImage}
-            imageStyle={styles.cardBackgroundImage}
-            resizeMode="cover"
-          >
+          <View style={styles.cardContentWithImage}>
+            <ExpoImage
+              // Cloud/remote download disabled: always use bundled fallback
+              source={libraryImage}
+              style={styles.cardBackgroundImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={200}
+              priority="high"
+              recyclingKey="library"
+            />
             <TouchableOpacity
               style={styles.cardOverlay}
               onPress={handleLibraryPress}
@@ -1406,7 +1371,7 @@ const MainScreen = ({ navigation, route }) => {
                 Biblioteca
               </Text>
             </TouchableOpacity>
-          </ImageBackground>
+          </View>
         </Animated.View>
       );
     }
@@ -1473,32 +1438,6 @@ const MainScreen = ({ navigation, route }) => {
             ) : (
               <View style={styles.swipeableContainer}>
                 <View style={{ flex: 1, position: 'relative', overflow: 'visible' }}>
-                    {/* Left Navigation Button */}
-                    {currentIndex > 0 && (
-                      <TouchableOpacity
-                        style={styles.navButtonLeft}
-                        onPress={scrollToPrevious}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.navButtonContent}>
-                          <Text style={styles.navButtonText}>‹</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    
-                    {/* Right Navigation Button */}
-                    {currentIndex < getSwipeableCards().length - 1 && (
-                      <TouchableOpacity
-                        style={styles.navButtonRight}
-                        onPress={scrollToNext}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.navButtonContent}>
-                          <Text style={styles.navButtonText}>›</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    
                     <View style={styles.cardsAndPaginationWrapper}>
                       <Animated.FlatList
                         ref={flatListRef}
@@ -1823,44 +1762,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   // Navigation buttons
-  navButtonLeft: {
-    position: 'absolute',
-    left: Math.max(10, screenWidth * 0.02),
-    top: '50%',
-    marginTop: -25, // Half of button height to center vertically
-    zIndex: 1000,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  navButtonRight: {
-    position: 'absolute',
-    right: Math.max(10, screenWidth * 0.02),
-    top: '50%',
-    marginTop: -25, // Half of button height to center vertically
-    zIndex: 1000,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  navButtonContent: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  navButtonText: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: '300',
-    lineHeight: 32,
-  },
 });
 
 // Export both default and named for web wrapper compatibility

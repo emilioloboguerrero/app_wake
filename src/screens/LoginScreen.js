@@ -1,5 +1,5 @@
 // Mobile LoginScreen - React Native version
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -32,14 +32,24 @@ const LoginScreen = ({ navigation }) => {
   const [acceptTerms, setAcceptTerms] = useState(false);
 
   // Redirect if already logged in
+  // Note: On web, this is handled by LoginScreen.web.js to prevent infinite loops
+  // Only run this for native apps
+  const redirectAttemptedRef = useRef(false);
   useEffect(() => {
+    // Skip on web (web wrapper handles redirects)
+    if (Platform.OS === 'web') return;
+    
+    // Prevent multiple redirect attempts
+    if (redirectAttemptedRef.current) return;
+    
     // Check both AuthContext user and Firebase currentUser directly
     const currentUser = user || auth.currentUser;
     if (!loading && currentUser) {
       console.log('[LOGIN SCREEN] User detected, redirecting to MainApp');
+      redirectAttemptedRef.current = true;
       navigation.replace('MainApp');
     }
-  }, [user, loading, navigation]);
+  }, [user, loading]);
 
   // Validation functions
   const validateEmail = (email) => {

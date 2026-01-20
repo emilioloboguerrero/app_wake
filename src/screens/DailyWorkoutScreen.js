@@ -29,8 +29,8 @@ import sessionService from '../services/sessionService';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
-import { useFocusEffect } from '@react-navigation/native';
 import logger from '../utils/logger.js';
+import { isWeb } from '../utils/platform';
 
 // Custom hook for streak data management
 const useStreakData = (userId, courseId) => {
@@ -121,7 +121,24 @@ const StreakDisplay = React.memo(({ streak, sessionsThisWeek, minimumSessions })
 
 const DailyWorkoutScreen = ({ navigation, route }) => {
   const { course } = route.params;
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  
+  // FALLBACK: If AuthContext doesn't have user, check Firebase directly
+  const [fallbackUser, setFallbackUser] = React.useState(null);
+  React.useEffect(() => {
+    if (!contextUser) {
+      // Try to get user directly from Firebase as fallback
+      import('../config/firebase').then(({ auth }) => {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+          logger.log('⚠️ DailyWorkoutScreen: Using fallback Firebase user (AuthContext failed)');
+          setFallbackUser(firebaseUser);
+        }
+      });
+    }
+  }, [contextUser]);
+  
+  const user = contextUser || fallbackUser;
   
   // Unified session state - single source of truth
   const [sessionState, setSessionState] = useState({
@@ -178,12 +195,17 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
     loadCourseMetadata();
     
     // Only load normal session state if no session is pre-selected
+    // Skip if user is not yet available
     if (!route.params?.selectedSessionId) {
-      loadSessionState();
+      if (user?.uid) {
+        loadSessionState();
+      } else {
+        logger.log('⏭️ Waiting for user to be available before loading session state...');
+      }
     } else {
       logger.log('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
     }
-  }, []);
+  }, [user?.uid]); // Re-run when user becomes available
 
   // Handle pre-selected session from CourseStructureScreen
   useEffect(() => {
@@ -260,21 +282,36 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   }, [route.params?.selectedSessionId, user?.uid]);
 
   // Refresh data when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      // Only auto-fetch if no manual session was selected
-      if (!sessionState.isManual) {
+  // On web, this runs on mount since there's no focus event
+  const webLoadCalledRef = React.useRef(false);
+  
+  React.useEffect(() => {
+    if (isWeb && !webLoadCalledRef.current) {
+      // On web, load once on mount
+      if (!sessionState.isManual && user?.uid && course?.courseId) {
+        webLoadCalledRef.current = true;
         loadSessionState();
-      } else {
-        logger.log('🔄 Skipping auto-fetch - manual session selected');
       }
-    }, [sessionState.isManual])
-  );
+    }
+    // On native, this would be handled by useFocusEffect which doesn't work on web
+    // The web wrapper ensures fresh data on navigation
+  }, [isWeb, user?.uid, course?.courseId, sessionState.isManual]);
 
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
       logger.log('🎯 Loading session state...');
+      
+      // Safety check: ensure user and course are available
+      if (!user?.uid) {
+        logger.error('❌ Cannot load session state: user not available');
+        return;
+      }
+      
+      if (!course?.courseId) {
+        logger.error('❌ Cannot load session state: course not available');
+        return;
+      }
       
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
       
@@ -936,7 +973,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(650, screenHeight * 0.75), // TALLER: 80% of screen height
+    height: Math.max(700, screenHeight * 0.80), // TALLER: 80% of screen height, min 700px
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1008,7 +1045,7 @@ const styles = StyleSheet.create({
   // Combined Programa + Sessions Card (Card 2)
   programAndSessionsContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(650, screenHeight * 0.75),
+    height: Math.max(700, screenHeight * 0.80),
     overflow: 'visible',
   },
   // Programa Card at Bottom - Half height, full width

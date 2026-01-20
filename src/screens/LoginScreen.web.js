@@ -1,5 +1,5 @@
 // Web wrapper for LoginScreen - provides React Router navigation
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
@@ -11,48 +11,34 @@ const LoginScreenBase = LoginScreenModule.LoginScreenBase || LoginScreenModule.d
 const LoginScreen = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
+  const hasRedirectedRef = useRef(false); // Prevent multiple redirects
   
-  // Redirect to home if already logged in
+  // Redirect to home if already logged in (single check)
   useEffect(() => {
+    if (hasRedirectedRef.current) return; // Already redirected, skip
+    
     // Check both AuthContext user and Firebase currentUser
     const currentUser = user || auth.currentUser;
     if (!loading && currentUser) {
       console.log('[LOGIN SCREEN WEB] User already logged in, redirecting to home');
+      hasRedirectedRef.current = true; // Mark as redirected
       navigate('/', { replace: true });
     }
   }, [user, loading, navigate]);
 
-  // Also check periodically for user after login (in case AuthContext is slow to update)
-  useEffect(() => {
-    if (!loading && !user) {
-      // Check Firebase directly every 100ms for up to 2 seconds after login
-      let attempts = 0;
-      const maxAttempts = 20; // 2 seconds total
-      const checkInterval = setInterval(() => {
-        attempts++;
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          console.log('[LOGIN SCREEN WEB] Found user via periodic check, redirecting');
-          navigate('/', { replace: true });
-          clearInterval(checkInterval);
-        } else if (attempts >= maxAttempts) {
-          clearInterval(checkInterval);
-        }
-      }, 100);
-
-      return () => clearInterval(checkInterval);
-    }
-  }, [loading, user, navigate]);
-
-  // Create navigation adapter that matches React Navigation API
-  const navigation = {
+  // Create MEMOIZED navigation adapter that matches React Navigation API
+  // This prevents recreation on every render which was causing the infinite loop
+  const navigation = useMemo(() => ({
     replace: (routeName) => {
+      if (hasRedirectedRef.current) return; // Prevent multiple redirects
+      
       // Map React Navigation routes to React Router paths
       const routeMap = {
         'MainApp': '/',
         'Home': '/',
       };
 
+      hasRedirectedRef.current = true;
       if (routeMap[routeName]) {
         navigate(routeMap[routeName], { replace: true });
       } else {
@@ -74,7 +60,7 @@ const LoginScreen = () => {
         navigate(path, { state: params });
       }
     }
-  };
+  }), [navigate]);
 
   // LoginScreen.js uses React Native components which work on web via react-native-web
   // We just need to provide the navigation prop
