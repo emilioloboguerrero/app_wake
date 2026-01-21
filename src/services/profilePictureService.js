@@ -2,6 +2,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import { getFirestore, doc, updateDoc, deleteField, serverTimestamp, getDoc } from 'firebase/firestore';
 import { isWeb } from '../utils/platform';
 import webStorageService from './webStorageService';
+import logger from '../utils/logger';
 
 class ProfilePictureService {
   constructor() {
@@ -124,7 +125,7 @@ class ProfilePictureService {
 
         return result.assets[0].uri;
       } catch (error) {
-        console.error('Error picking image:', error);
+        logger.error('Error picking image:', error);
         throw error;
       }
     }
@@ -170,7 +171,7 @@ class ProfilePictureService {
 
       return downloadUrl;
     } catch (error) {
-      console.error('Error uploading profile picture:', error);
+      logger.error('Error uploading profile picture:', error);
       throw error;
     }
   }
@@ -215,7 +216,7 @@ class ProfilePictureService {
 
       return profilePictureUrl || null;
     } catch (error) {
-      console.error('Error getting profile picture URL:', error);
+      logger.error('Error getting profile picture URL:', error);
       return null;
     }
   }
@@ -232,7 +233,7 @@ class ProfilePictureService {
       } catch (storageError) {
         // If file doesn't exist, that's okay - just continue
         if (storageError.code === 'storage/object-not-found') {
-          console.log('Profile picture does not exist in Storage, skipping deletion');
+          logger.debug('Profile picture does not exist in Storage, skipping deletion');
         } else {
           // Re-throw other storage errors
           throw storageError;
@@ -256,7 +257,7 @@ class ProfilePictureService {
       } catch (firestoreError) {
         // If document doesn't exist or can't update, that's okay
         // This can happen during account deletion
-        console.log('Could not update Firestore document (may already be deleted)');
+        logger.debug('Could not update Firestore document (may already be deleted)');
       }
 
       // Clear cache (this should always work)
@@ -270,12 +271,12 @@ class ProfilePictureService {
         }
       } catch (cacheError) {
         // Ignore cache errors
-        console.log('Could not clear cache');
+        logger.debug('Could not clear cache');
       }
 
       return true;
     } catch (error) {
-      console.error('Error deleting profile picture:', error);
+      logger.error('Error deleting profile picture:', error);
       throw error;
     }
   }
@@ -291,7 +292,7 @@ class ProfilePictureService {
       const downloadUrl = await this.uploadProfilePicture(userId, imageUri);
       return downloadUrl;
     } catch (error) {
-      console.error('Error in pick and upload flow:', error);
+      logger.error('Error in pick and upload flow:', error);
       throw error;
     }
   }
@@ -310,9 +311,9 @@ class ProfilePictureService {
         await AsyncStorage.removeItem(`profile_${userId}`);
       }
       
-      console.log(`✅ Cleared profile picture cache for user: ${userId}`);
+      logger.debug(`✅ Cleared profile picture cache for user: ${userId}`);
     } catch (error) {
-      console.error('Error clearing profile picture cache:', error);
+      logger.error('Error clearing profile picture cache:', error);
     }
   }
 }

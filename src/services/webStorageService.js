@@ -1,5 +1,6 @@
 // Web Storage Service - IndexedDB wrapper for PWA
 // Provides AsyncStorage-like API using IndexedDB
+import logger from '../utils/logger';
 
 class WebStorageService {
   constructor() {
@@ -86,7 +87,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error getting item:', error);
+      logger.error('Error getting item:', error);
       return null;
     }
   }
@@ -108,7 +109,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error setting item:', error);
+      logger.error('Error setting item:', error);
       throw error;
     }
   }
@@ -130,7 +131,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error removing item:', error);
+      logger.error('Error removing item:', error);
       throw error;
     }
   }
@@ -152,7 +153,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error clearing storage:', error);
+      logger.error('Error clearing storage:', error);
       throw error;
     }
   }
@@ -174,7 +175,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error getting all keys:', error);
+      logger.error('Error getting all keys:', error);
       return [];
     }
   }
@@ -202,7 +203,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error storing course:', error);
+      logger.error('Error storing course:', error);
       throw error;
     }
   }
@@ -228,7 +229,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error getting course:', error);
+      logger.error('Error getting course:', error);
       return null;
     }
   }
@@ -250,7 +251,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error deleting course:', error);
+      logger.error('Error deleting course:', error);
       throw error;
     }
   }
@@ -273,7 +274,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error storing session:', error);
+      logger.error('Error storing session:', error);
       throw error;
     }
   }
@@ -295,7 +296,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error getting session:', error);
+      logger.error('Error getting session:', error);
       return null;
     }
   }
@@ -324,7 +325,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error storing progress:', error);
+      logger.error('Error storing progress:', error);
       throw error;
     }
   }
@@ -351,7 +352,7 @@ class WebStorageService {
         };
       });
     } catch (error) {
-      console.error('Error getting progress:', error);
+      logger.error('Error getting progress:', error);
       return null;
     }
   }
@@ -369,7 +370,7 @@ class WebStorageService {
         usagePercent: estimate.quota ? ((estimate.usage / estimate.quota) * 100).toFixed(2) : 0
       };
     } catch (error) {
-      console.error('Error getting cache size:', error);
+      logger.error('Error getting cache size:', error);
       return null;
     }
   }
@@ -413,7 +414,7 @@ class WebStorageService {
         }
       };
     } catch (error) {
-      console.error('Error clearing old cache:', error);
+      logger.error('Error clearing old cache:', error);
     }
   }
 }
@@ -424,7 +425,7 @@ const webStorageService = new WebStorageService();
 // Initialize on load
 if (typeof window !== 'undefined') {
   webStorageService.init().catch((error) => {
-    console.error('Failed to initialize WebStorageService:', error);
+    logger.error('Failed to initialize WebStorageService:', error);
   });
 }
 

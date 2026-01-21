@@ -24,7 +24,7 @@ const TutorialOverlay = ({
   onComplete 
 }) => {
   const componentStartTime = performance.now();
-  console.log(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
   
   // Hooks must be called before any early returns (React rules)
   const hooksStartTime = performance.now();
@@ -38,7 +38,7 @@ const TutorialOverlay = ({
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const hooksDuration = performance.now() - hooksStartTime;
   if (hooksDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay hooks took ${hooksDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay hooks took ${hooksDuration.toFixed(2)}ms`);
   }
 
   // CRITICAL: Early return BEFORE expensive operations to avoid blocking paint
@@ -49,7 +49,7 @@ const TutorialOverlay = ({
   }
   const visibilityCheckDuration = performance.now() - visibilityCheckStart;
   if (visibilityCheckDuration > 1) {
-    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
   }
   
   // Get dimensions inside component to avoid blocking module initialization
@@ -57,9 +57,9 @@ const TutorialOverlay = ({
   const dimensionsStartTime = performance.now();
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const dimensionsDuration = performance.now() - dimensionsStartTime;
-  console.log(`[CHILD] [TIMING] TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
   if (dimensionsDuration > 5) {
-    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
   }
   
   const currentTutorial = tutorialData?.[currentTutorialIndex];
@@ -163,13 +163,13 @@ const TutorialOverlay = ({
   const stylesStartTime = performance.now();
   const styles = createStyles(screenWidth, screenHeight);
   const stylesDuration = performance.now() - stylesStartTime;
-  console.log(`[CHILD] [TIMING] TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
   if (stylesDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
 
   const jsxStartTime = performance.now();
-  console.log(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
   
   return (
     <Modal
@@ -334,9 +334,9 @@ const TutorialOverlay = ({
       {(() => {
         const jsxEndTime = performance.now();
         const jsxDuration = jsxEndTime - jsxStartTime;
-        console.log(`[CHILD] [TIMING] TutorialOverlay JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
+        logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
         if (jsxDuration > 50) {
-          console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay JSX creation took ${jsxDuration.toFixed(2)}ms`);
+          logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay JSX creation took ${jsxDuration.toFixed(2)}ms`);
         }
         return null;
       })()}
@@ -347,9 +347,9 @@ const TutorialOverlay = ({
   useEffect(() => {
     const componentEndTime = performance.now();
     const componentDuration = componentEndTime - componentStartTime;
-    console.log(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+    logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
     if (componentDuration > 50) {
-      console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
     }
   });
 };

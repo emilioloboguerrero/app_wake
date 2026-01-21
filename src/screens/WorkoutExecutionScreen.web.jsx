@@ -12,7 +12,7 @@ const WorkoutExecutionScreenBase = WorkoutExecutionScreenModule.default || Worko
 // MINIMAL TEST VERSION - Simplified wrapper
 
 const WorkoutExecutionScreen = () => {
-  console.log('[WORKOUT_TEST_WEB] Web wrapper mounted');
+  logger.debug('[WORKOUT_TEST_WEB] Web wrapper mounted');
   
   const navigate = useNavigate();
   const location = useLocation();

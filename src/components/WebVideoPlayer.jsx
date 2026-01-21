@@ -3,6 +3,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import './WebVideoPlayer.css';
+import logger from '../utils/logger';
 
 const WebVideoPlayer = ({
   src,
@@ -59,7 +60,7 @@ const WebVideoPlayer = ({
     // Auto-play if requested
     if (autoplay) {
       video.play().catch((error) => {
-        console.warn('Autoplay prevented:', error);
+        logger.warn('Autoplay prevented:', error);
       });
     }
 
@@ -79,7 +80,7 @@ const WebVideoPlayer = ({
       video.pause();
     } else {
       video.play().catch((error) => {
-        console.error('Error playing video:', error);
+        logger.error('Error playing video:', error);
       });
     }
   };

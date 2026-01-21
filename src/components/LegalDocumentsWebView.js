@@ -12,6 +12,7 @@ import {
   Text,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import logger from '../utils/logger';
 
 const LegalDocumentsWebView = ({
   visible,
@@ -22,12 +23,12 @@ const LegalDocumentsWebView = ({
 
   // Handle WebView navigation
   const handleNavigationStateChange = (navState) => {
-    console.log('📍 Legal WebView Navigation:', navState.url);
+    logger.debug('📍 Legal WebView Navigation:', navState.url);
   };
 
   // Handle WebView load
   const handleWebViewLoad = () => {
-    console.log('✅ Legal documents loaded');
+    logger.debug('✅ Legal documents loaded');
     setLoading(false);
     setError(null);
   };
@@ -35,7 +36,7 @@ const LegalDocumentsWebView = ({
   // Handle WebView error
   const handleWebViewError = (syntheticEvent) => {
     const { nativeEvent } = syntheticEvent;
-    console.error('❌ Legal WebView error:', nativeEvent);
+    logger.error('❌ Legal WebView error:', nativeEvent);
     setError('Error al cargar los documentos legales');
     setLoading(false);
   };

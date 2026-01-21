@@ -28,6 +28,7 @@ import { signOut, updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import firestoreService from '../services/firestoreService';
+import logger from '../utils/logger';
 import hybridDataService from '../services/hybridDataService';
 import profilePictureService from '../services/profilePictureService';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -138,7 +139,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         const disciplines = await hybridDataService.loadAvailableDisciplines(user?.uid);
         setAvailableDisciplines(disciplines || []);
       } catch (error) {
-        console.error('Error loading disciplines:', error);
+        logger.error('Error loading disciplines:', error);
         setAvailableDisciplines([]);
       } finally {
         setDisciplinesLoading(false);
@@ -170,7 +171,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         setUsernameAvailable(false); // Username is taken
       }
     } catch (error) {
-      console.error('Error validating username:', error);
+      logger.error('Error validating username:', error);
       setUsernameAvailable(null);
     } finally {
       setUsernameValidating(false);
@@ -188,7 +189,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         }));
       }
     } catch (error) {
-      console.error('Error selecting profile picture:', error);
+      logger.error('Error selecting profile picture:', error);
       Alert.alert('Error', 'No se pudo seleccionar la imagen. Inténtalo de nuevo.');
     }
   };
@@ -557,7 +558,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           userData.profilePictureUrl = profilePictureUrl;
           userData.profilePicturePath = `profiles/${user.uid}/profile.jpg`;
         } catch (error) {
-          console.error('Error uploading profile picture:', error);
+          logger.error('Error uploading profile picture:', error);
           // Continue without profile picture rather than failing the entire onboarding
         }
       }
@@ -577,7 +578,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         community: false
       };
 
-      console.log('📝 Saving user data:', userData);
+      logger.debug('📝 Saving user data:', userData);
 
       // Update Firebase Auth displayName with full name
       if (formData.displayName?.trim()) {
@@ -587,9 +588,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           });
           // Reload user to propagate changes to AuthContext
           await auth.currentUser.reload();
-          console.log('✅ Firebase Auth displayName updated to:', formData.displayName.trim());
+          logger.debug('✅ Firebase Auth displayName updated to:', formData.displayName.trim());
         } catch (profileError) {
-          console.warn('⚠️ Failed to update Firebase Auth displayName:', profileError);
+          logger.warn('⚠️ Failed to update Firebase Auth displayName:', profileError);
           // Continue anyway, not critical
         }
       }
@@ -602,15 +603,15 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           profileCompleted: true,
           cachedAt: Date.now()
         }));
-        console.log('💾 Profile completion status cached locally');
+        logger.debug('💾 Profile completion status cached locally');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to cache profile completion status:', cacheError);
+        logger.warn('⚠️ Failed to cache profile completion status:', cacheError);
         // Continue anyway - Firestore update is more important
       }
 
       await hybridDataService.updateUserProfile(user.uid, userData);
 
-      console.log('✅ Onboarding completed successfully');
+      logger.debug('✅ Onboarding completed successfully');
       
       // Trigger AppNavigator to re-check user profile
       if (onComplete) {
@@ -618,7 +619,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       }
 
     } catch (error) {
-      console.error('Error completing onboarding:', error);
+      logger.error('Error completing onboarding:', error);
       Alert.alert('Error', 'No se pudo guardar tu información. Por favor intenta de nuevo.');
     } finally {
       setLoading(false);
@@ -641,9 +642,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
             try {
               setLoading(true);
               await signOut(auth);
-              console.log('✅ User signed out successfully');
+              logger.debug('✅ User signed out successfully');
             } catch (error) {
-              console.error('Error signing out:', error);
+              logger.error('Error signing out:', error);
               Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
             } finally {
               setLoading(false);

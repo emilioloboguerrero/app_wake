@@ -1,4 +1,6 @@
 // Event system for program update completion notifications
+import logger from '../utils/logger';
+
 class UpdateEventManager {
   constructor() {
     this.listeners = [];           // Array of callback functions
@@ -17,14 +19,14 @@ class UpdateEventManager {
 
   // Notify that an update completed
   notifyUpdateComplete(courseId) {
-    console.log('📢 Update event: Course update completed:', courseId);
+    logger.debug('📢 Update event: Course update completed:', courseId);
     this.pendingUpdates.add(courseId);
     
     this.listeners.forEach(callback => {
       try {
         callback(courseId);
       } catch (error) {
-        console.error('Error in update listener:', error);
+        logger.error('Error in update listener:', error);
       }
     });
   }
@@ -36,7 +38,7 @@ class UpdateEventManager {
 
   // Clear pending updates after refresh
   clearPendingUpdates() {
-    console.log('🧹 Clearing pending updates:', Array.from(this.pendingUpdates));
+    logger.debug('🧹 Clearing pending updates:', Array.from(this.pendingUpdates));
     this.pendingUpdates.clear();
   }
 

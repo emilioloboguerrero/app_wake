@@ -14,9 +14,9 @@ export const useMontserratFonts = () => {
   // CRITICAL: On web, this should NEVER execute
   // If it does, Metro resolution failed and fonts.web.js should be used instead
   if (isWeb) {
-    console.error('[FONTS] ❌ CRITICAL ERROR: fonts.js useMontserratFonts called on web!');
-    console.error('[FONTS] Metro should have resolved to fonts.web.js instead.');
-    console.error('[FONTS] This indicates a Metro configuration issue.');
+    logger.error('[FONTS] ❌ CRITICAL ERROR: fonts.js useMontserratFonts called on web!');
+    logger.error('[FONTS] Metro should have resolved to fonts.web.js instead.');
+    logger.error('[FONTS] This indicates a Metro configuration issue.');
     // Return early to avoid calling useFonts
     return true; // Return true as fallback
   }

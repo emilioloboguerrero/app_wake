@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { isWeb } from '../utils/platform';
+import logger from '../utils/logger';
 
 // Platform-specific video component
 let NativeVideoView = null;
@@ -16,7 +17,7 @@ if (!isWeb) {
     const expoVideo = require('expo-video');
     NativeVideoView = expoVideo.VideoView;
   } catch (e) {
-    console.warn('[PlatformVideoView] Failed to load expo-video:', e.message);
+    logger.warn('[PlatformVideoView] Failed to load expo-video:', e.message);
   }
 }
 
@@ -25,7 +26,7 @@ if (isWeb) {
   try {
     WebVideoPlayerComponent = require('./WebVideoPlayer').default;
   } catch (e) {
-    console.warn('[PlatformVideoView] Failed to load WebVideoPlayer:', e.message);
+    logger.warn('[PlatformVideoView] Failed to load WebVideoPlayer:', e.message);
   }
 }
 

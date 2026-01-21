@@ -4,6 +4,7 @@ import storageAdapter from '../utils/storageAdapter';
 const AsyncStorage = storageAdapter; // Use adapter instead of direct import
 import firestoreService from './firestoreService';
 import userProgressService from './userProgressService';
+import logger from '../utils/logger.js';
 
 class HybridDataService {
   // Storage keys for our hybrid system
@@ -29,7 +30,7 @@ class HybridDataService {
    */
   debugLog(message, data = null) {
     if (this.DEBUG_MODE) {
-      console.log(`🔍 [HYBRID DEBUG] ${message}`, data || '');
+      logger.debug(`🔍 [HYBRID DEBUG] ${message}`, data || '');
     }
   }
 
@@ -80,7 +81,7 @@ class HybridDataService {
       return userProfile;
       
     } catch (error) {
-      console.error('❌ Error loading user profile:', error);
+      logger.error('❌ Error loading user profile:', error);
       return null;
     }
   }
@@ -117,7 +118,7 @@ class HybridDataService {
       this.debugLog('✅ User profile synced and cached');
       
     } catch (error) {
-      console.error('❌ Error syncing user profile:', error);
+      logger.error('❌ Error syncing user profile:', error);
     }
   }
 
@@ -126,14 +127,14 @@ class HybridDataService {
    */
   async updateUserProfile(userId, changes) {
     try {
-      console.log('🔄 Updating user profile:', changes);
+      logger.debug('🔄 Updating user profile:', changes);
       
       // 1. Get current profile
       let currentProfile = await this.loadUserProfile(userId);
       
       // 2. If no profile exists, create a new one (for new users)
       if (!currentProfile) {
-        console.log('📝 No existing profile found, creating new profile for user:', userId);
+        logger.debug('📝 No existing profile found, creating new profile for user:', userId);
         currentProfile = {
           id: userId,
           createdAt: new Date().toISOString(),
@@ -153,11 +154,11 @@ class HybridDataService {
       // 4. Update Firestore
       await firestoreService.updateUser(userId, changes);
       
-      console.log('✅ User profile updated successfully');
+      logger.debug('✅ User profile updated successfully');
       return currentProfile;
       
     } catch (error) {
-      console.error('❌ Error updating user profile:', error);
+      logger.error('❌ Error updating user profile:', error);
       throw error;
     }
   }
@@ -204,7 +205,7 @@ class HybridDataService {
       return courses;
       
     } catch (error) {
-      console.error('❌ Error loading courses:', error);
+      logger.error('❌ Error loading courses:', error);
       return [];
     }
   }
@@ -227,7 +228,7 @@ class HybridDataService {
       this.debugLog('✅ Courses synced and cached', { count: coursesData.length });
       
     } catch (error) {
-      console.error('❌ Error syncing courses:', error);
+      logger.error('❌ Error syncing courses:', error);
     }
   }
 
@@ -262,7 +263,7 @@ class HybridDataService {
       return progress;
       
     } catch (error) {
-      console.error('❌ Error loading user progress:', error);
+      logger.error('❌ Error loading user progress:', error);
       return null;
     }
   }
@@ -287,7 +288,7 @@ class HybridDataService {
       this.debugLog('✅ Course progress synced and cached');
       
     } catch (error) {
-      console.error('❌ Error syncing course progress:', error);
+      logger.error('❌ Error syncing course progress:', error);
     }
   }
 
@@ -296,7 +297,7 @@ class HybridDataService {
    */
   async syncUserProgress(userId, currentProgress = null) {
     try {
-      console.log('☁️ Syncing user progress from Firestore...');
+      logger.debug('☁️ Syncing user progress from Firestore...');
       
       // Get user's active courses and progress summaries
       const activeCourses = await firestoreService.getUserActiveCourses(userId);
@@ -312,10 +313,10 @@ class HybridDataService {
         JSON.stringify({ data: progressData, lastSync: Date.now() })
       );
       
-      console.log('✅ User progress synced and cached');
+      logger.debug('✅ User progress synced and cached');
       
     } catch (error) {
-      console.error('❌ Error syncing user progress:', error);
+      logger.error('❌ Error syncing user progress:', error);
     }
   }
 
@@ -354,7 +355,7 @@ class HybridDataService {
       return updatedProgress;
       
     } catch (error) {
-      console.error('❌ Error updating user progress:', error);
+      logger.error('❌ Error updating user progress:', error);
       throw error;
     }
   }
@@ -364,14 +365,14 @@ class HybridDataService {
    */
   async loadAvailableDisciplines(userId = null) {
     try {
-      console.log('🔄 Loading available disciplines...');
+      logger.debug('🔄 Loading available disciplines...');
       
       // Get courses from cache first
       let courses = await this.loadCourses(userId);
       
       // If no courses, wait for sync to complete
       if (courses.length === 0) {
-        console.log('⏳ No cached courses, waiting for sync...');
+        logger.debug('⏳ No cached courses, waiting for sync...');
         await this.syncCourses(userId);
         
         // Reload from cache after sync
@@ -384,11 +385,11 @@ class HybridDataService {
       // Extract unique disciplines
       const uniqueDisciplines = [...new Set(courses.map(course => course.discipline).filter(Boolean))];
       
-      console.log('✅ Available disciplines loaded:', uniqueDisciplines.length);
+      logger.debug('✅ Available disciplines loaded:', uniqueDisciplines.length);
       return uniqueDisciplines;
       
     } catch (error) {
-      console.error('❌ Error loading disciplines:', error);
+      logger.error('❌ Error loading disciplines:', error);
       return [];
     }
   }
@@ -398,7 +399,7 @@ class HybridDataService {
    */
   async clearAllCache() {
     try {
-      console.log('🗑️ Clearing all hybrid cache...');
+      logger.debug('🗑️ Clearing all hybrid cache...');
       
       await Promise.all([
         AsyncStorage.removeItem(this.STORAGE_KEYS.USER_PROFILE),
@@ -407,10 +408,10 @@ class HybridDataService {
         AsyncStorage.removeItem(this.STORAGE_KEYS.LAST_SYNC)
       ]);
       
-      console.log('✅ All hybrid cache cleared');
+      logger.debug('✅ All hybrid cache cleared');
       
     } catch (error) {
-      console.error('❌ Error clearing cache:', error);
+      logger.error('❌ Error clearing cache:', error);
     }
   }
 
@@ -419,15 +420,15 @@ class HybridDataService {
    */
   async clearUserCache(userId) {
     try {
-      console.log(`🗑️ Clearing cache for user: ${userId}`);
+      logger.debug(`🗑️ Clearing cache for user: ${userId}`);
       
       // Clear user profile cache (global key, so clear it completely)
       await AsyncStorage.removeItem(this.STORAGE_KEYS.USER_PROFILE);
       
-      console.log('✅ User cache cleared');
+      logger.debug('✅ User cache cleared');
       
     } catch (error) {
-      console.error('❌ Error clearing user cache:', error);
+      logger.error('❌ Error clearing user cache:', error);
     }
   }
 
@@ -447,7 +448,7 @@ class HybridDataService {
       this.debugLog('✅ Force sync completed');
       
     } catch (error) {
-      console.error('❌ Error in force sync:', error);
+      logger.error('❌ Error in force sync:', error);
     }
   }
 
@@ -484,7 +485,7 @@ class HybridDataService {
       this.debugLog('📊 Cache Status:', status);
       return status;
     } catch (error) {
-      console.error('❌ Error getting cache status:', error);
+      logger.error('❌ Error getting cache status:', error);
       return null;
     }
   }
@@ -502,7 +503,7 @@ class HybridDataService {
       this.debugLog('✅ Hybrid system initialized');
       
     } catch (error) {
-      console.error('❌ Error initializing hybrid system:', error);
+      logger.error('❌ Error initializing hybrid system:', error);
     }
   }
 
@@ -530,7 +531,7 @@ class HybridDataService {
       this.debugLog('✅ Old cache keys cleared');
       
     } catch (error) {
-      console.error('❌ Error clearing old cache keys:', error);
+      logger.error('❌ Error clearing old cache keys:', error);
     }
   }
 }

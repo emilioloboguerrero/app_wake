@@ -2,6 +2,7 @@
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen.web';
+import logger from './utils/logger';
 
 // Helper function to check if we're on login path (called dynamically)
 const getIsLoginPath = () => {
@@ -30,7 +31,7 @@ const useMontserratFontsWeb = () => {
   
   // Unique identifier to verify this version is being used
   if (typeof window !== 'undefined') {
-    console.log('[APP] ✅ Using INLINED useMontserratFontsWeb (web version)');
+    logger.debug('[APP] ✅ Using INLINED useMontserratFontsWeb (web version)');
   }
   
   // CRITICAL: Always call useState in the same order
@@ -41,38 +42,37 @@ const useMontserratFontsWeb = () => {
 
 // Verify this is the web version (safety check)
 if (typeof window === 'undefined' || typeof document === 'undefined') {
-  console.warn('[APP] WARNING: useMontserratFonts is being used in non-web environment!');
+  logger.warn('[APP] WARNING: useMontserratFonts is being used in non-web environment!');
 }
 
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
 let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
-let auth, logger, webStorageService;
+let auth, webStorageService;
 
 // Function to load heavy components (called when not on login route)
 // Made async to prevent blocking the main thread
 const loadHeavyComponents = async () => {
   if (!StatusBar) {
-    console.log('[APP] Loading heavy components...');
+    logger.debug('[APP] Loading heavy components...');
     // Load components asynchronously to prevent blocking
     await new Promise(resolve => {
       requestAnimationFrame(() => {
         try {
-          console.log('[APP] Loading StatusBar...');
+          logger.debug('[APP] Loading StatusBar...');
           StatusBar = require('expo-status-bar').StatusBar;
-          console.log('[APP] Loading VideoProvider...');
+          logger.debug('[APP] Loading VideoProvider...');
           VideoProvider = require('./contexts/VideoContext').VideoProvider;
-          console.log('[APP] Loading WebAppNavigator...');
+          logger.debug('[APP] Loading WebAppNavigator...');
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
-          console.log('[APP] Loading ErrorBoundary...');
+          logger.debug('[APP] Loading ErrorBoundary...');
           ErrorBoundary = require('./components/ErrorBoundary').default;
-          console.log('[APP] Loading auth, logger, webStorageService...');
+          logger.debug('[APP] Loading auth, webStorageService...');
           auth = require('./config/firebase').auth;
-          logger = require('./utils/logger').default;
           webStorageService = require('./services/webStorageService').default;
-          console.log('[APP] Loading global.css...');
+          logger.debug('[APP] Loading global.css...');
           require('./styles/global.css');
-          console.log('[APP] ✅ All heavy components loaded successfully');
+          logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
           console.error('[APP] ❌ Error loading heavy components:', error);
           // Don't throw - let the app continue with partial loading
@@ -81,7 +81,7 @@ const loadHeavyComponents = async () => {
       });
     });
   } else {
-    console.log('[APP] Heavy components already loaded');
+    logger.debug('[APP] Heavy components already loaded');
   }
 };
 
@@ -112,7 +112,7 @@ export default function App() {
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
-  console.log('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
+  logger.debug('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
   
   // Check login path AFTER all hooks are called
   const isLoginPath = getIsLoginPath();
@@ -130,15 +130,15 @@ export default function App() {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           registrations.forEach((registration) => {
             registration.unregister();
-            console.log('[APP] Service worker unregistered for login route');
+            logger.debug('[APP] Service worker unregistered for login route');
           });
         });
       }
     } else {
       // Load heavy components for non-login routes
-      console.log('[APP] Starting to load heavy components for non-login route...');
+      logger.debug('[APP] Starting to load heavy components for non-login route...');
       loadHeavyComponents().then(() => {
-        console.log('[APP] Heavy components loaded, setting componentsLoaded to true');
+        logger.debug('[APP] Heavy components loaded, setting componentsLoaded to true');
         setComponentsLoaded(true);
         
         // Initialize Service Worker AFTER components are loaded
@@ -153,14 +153,14 @@ export default function App() {
         }
       }).catch((error) => {
         console.error('[APP] ❌ Error loading components:', error);
-        console.log('[APP] Setting componentsLoaded to true anyway to continue...');
+        logger.debug('[APP] Setting componentsLoaded to true anyway to continue...');
         setComponentsLoaded(true); // Continue anyway
       });
       
       // Fallback: if components don't load within 3 seconds, set to true anyway
       // Use a ref to track if we've already set it
       const timeoutId = setTimeout(() => {
-        console.log('[APP] ⚠️ Components loading timeout (3s) - forcing componentsLoaded to true');
+        logger.debug('[APP] ⚠️ Components loading timeout (3s) - forcing componentsLoaded to true');
         setComponentsLoaded(true);
       }, 3000);
       
@@ -174,11 +174,11 @@ export default function App() {
   // Suppress React Native chart-kit warnings on web (development only)
   React.useEffect(() => {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      const originalWarn = console.warn;
+      const originalWarn = logger.warn;
       const originalError = console.error;
       
       // Filter out specific chart-related warnings
-      console.warn = (...args) => {
+      logger.warn = (...args) => {
         const message = args.join(' ');
         // Suppress react-native-chart-kit warnings
         if (
@@ -212,7 +212,7 @@ export default function App() {
       };
       
       return () => {
-        console.warn = originalWarn;
+        logger.warn = originalWarn;
         console.error = originalError;
       };
     }
@@ -288,7 +288,7 @@ export default function App() {
       try {
         safeLog('log', '🚀 Starting web app initialization...');
         if (debugMode) {
-          console.log('[DEBUG] Environment:', {
+          logger.debug('[DEBUG] Environment:', {
             userAgent: navigator.userAgent,
             platform: navigator.platform,
             language: navigator.language,
@@ -322,7 +322,7 @@ export default function App() {
               userId: currentUser?.uid || 'none'
             });
             if (debugMode && currentUser) {
-              console.log('[DEBUG] User details:', {
+              logger.debug('[DEBUG] User details:', {
                 uid: currentUser.uid,
                 email: currentUser.email,
                 emailVerified: currentUser.emailVerified
@@ -405,13 +405,13 @@ export default function App() {
       safeLog('log', '🎨 App rendered, fonts loaded:', fontsLoaded);
       if (debugMode) {
         const root = document.getElementById('root');
-        console.log('[DEBUG] Root element:', root);
-        console.log('[DEBUG] Root children:', root?.children.length || 0);
-        console.log('[DEBUG] Window size:', {
+        logger.debug('[DEBUG] Root element:', root);
+        logger.debug('[DEBUG] Root children:', root?.children.length || 0);
+        logger.debug('[DEBUG] Window size:', {
           width: window.innerWidth,
           height: window.innerHeight
         });
-        console.log('[DEBUG] React render count:', performance.now());
+        logger.debug('[DEBUG] React render count:', performance.now());
       }
     }
   }, [fontsLoaded, debugMode, isLoginPath]);
@@ -425,7 +425,7 @@ export default function App() {
   // Conditional returns MUST come after all hooks
   // CRITICAL: For login route, render with BrowserRouter and AuthProvider only
   if (isLoginPath) {
-    console.log('[APP] Login route - rendering LoginScreen with BrowserRouter and AuthProvider');
+    logger.debug('[APP] Login route - rendering LoginScreen with BrowserRouter and AuthProvider');
     return (
       <SafeAreaProvider initialMetrics={initialMetrics}>
         <BrowserRouter>
@@ -441,7 +441,7 @@ export default function App() {
   // Add logging to debug loading state
   // Note: fontsLoaded is now independent of componentsLoaded
   if (!componentsLoaded || !fontsLoaded) {
-    console.log('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded, 'isLoginPath:', isLoginPath);
+    logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded, 'isLoginPath:', isLoginPath);
     return (
       <div style={{
         minHeight: '100vh',
@@ -488,7 +488,7 @@ export default function App() {
   // Ensure critical components are loaded before rendering
   // If they're not loaded yet, try to load them synchronously
   if (!ErrorBoundary || !VideoProvider || !WebAppNavigator || !StatusBar) {
-    console.log('[APP] ⚠️ Some components not loaded, attempting synchronous load...');
+    logger.debug('[APP] ⚠️ Some components not loaded, attempting synchronous load...');
     try {
       if (!ErrorBoundary) ErrorBoundary = require('./components/ErrorBoundary').default;
       if (!VideoProvider) VideoProvider = require('./contexts/VideoContext').VideoProvider;
@@ -497,7 +497,7 @@ export default function App() {
       if (!auth) auth = require('./config/firebase').auth;
       if (!logger) logger = require('./utils/logger').default;
       if (!webStorageService) webStorageService = require('./services/webStorageService').default;
-      console.log('[APP] ✅ Synchronous load successful');
+      logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
       console.error('[APP] ❌ Synchronous load failed:', syncError);
       // Continue anyway - some components might still work

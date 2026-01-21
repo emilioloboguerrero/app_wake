@@ -1,5 +1,6 @@
 // Freeze Detector - Helps identify where the app is freezing
 // This will log when components render and help identify infinite loops
+import logger from './logger';
 
 let renderCounts = {};
 let lastRenderTime = {};
@@ -14,7 +15,7 @@ export const trackRender = (componentName) => {
   
   // Warn if component is rendering too frequently (potential infinite loop)
   if (timeSinceLastRender < 100 && renderCounts[componentName] > 10) {
-    console.warn(`⚠️ [FREEZE DETECTOR] ${componentName} is rendering too frequently!`, {
+    logger.warn(`⚠️ [FREEZE DETECTOR] ${componentName} is rendering too frequently!`, {
       count: renderCounts[componentName],
       timeSinceLastRender,
       potentialLoop: true
@@ -23,7 +24,7 @@ export const trackRender = (componentName) => {
   
   // Log every 10th render to avoid spam
   if (renderCounts[componentName] % 10 === 0) {
-    console.log(`[FREEZE DETECTOR] ${componentName} rendered ${renderCounts[componentName]} times`);
+    logger.debug(`[FREEZE DETECTOR] ${componentName} rendered ${renderCounts[componentName]} times`);
   }
 };
 

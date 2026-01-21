@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import logger from '../utils/logger';
 
 const TestScreen = () => {
   const [timer, setTimer] = useState(0);
@@ -8,16 +9,16 @@ const TestScreen = () => {
   const renderCountRef = useRef(0);
   
   renderCountRef.current += 1;
-  console.log(`[TEST_SCREEN] Render #${renderCountRef.current}`);
+  logger.debug(`[TEST_SCREEN] Render #${renderCountRef.current}`);
 
   useEffect(() => {
-    console.log('[TEST_SCREEN] Component mounted');
+    logger.debug('[TEST_SCREEN] Component mounted');
     
     // Start timer
     intervalRef.current = setInterval(() => {
       setTimer(prev => {
         const newTimer = prev + 1;
-        console.log(`[TEST_SCREEN] Timer: ${newTimer}`);
+        logger.debug(`[TEST_SCREEN] Timer: ${newTimer}`);
         return newTimer;
       });
     }, 1000);
@@ -25,16 +26,16 @@ const TestScreen = () => {
     // Log after commit phase
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(() => {
-        console.log('[TEST_SCREEN] ✅ React commit phase complete');
+        logger.debug('[TEST_SCREEN] ✅ React commit phase complete');
       }, { timeout: 1000 });
     } else {
       setTimeout(() => {
-        console.log('[TEST_SCREEN] ✅ React commit phase complete (fallback)');
+        logger.debug('[TEST_SCREEN] ✅ React commit phase complete (fallback)');
       }, 100);
     }
 
     return () => {
-      console.log('[TEST_SCREEN] Component unmounting');
+      logger.debug('[TEST_SCREEN] Component unmounting');
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }

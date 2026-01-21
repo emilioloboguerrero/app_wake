@@ -142,21 +142,21 @@ const CourseDetailScreen = ({ navigation, route }) => {
     if (!user?.uid) return;
     
     try {
-      console.log('🔍 DEBUG fetchUserRole:');
-      console.log('  - user.uid:', user.uid);
+      logger.debug('🔍 DEBUG fetchUserRole:');
+      logger.debug('  - user.uid:', user.uid);
       
       const userDoc = await firestoreService.getUser(user.uid);
-      console.log('  - userDoc:', userDoc);
-      console.log('  - userDoc.role:', userDoc?.role);
+      logger.debug('  - userDoc:', userDoc);
+      logger.debug('  - userDoc.role:', userDoc?.role);
       
       if (userDoc && userDoc.role) {
         setUserRole(userDoc.role);
-        console.log('  - Set userRole to:', userDoc.role);
+        logger.debug('  - Set userRole to:', userDoc.role);
       } else {
-        console.log('  - No role found, keeping default:', userRole);
+        logger.debug('  - No role found, keeping default:', userRole);
       }
     } catch (error) {
-      console.error('Error fetching user role:', error);
+      logger.error('Error fetching user role:', error);
     }
   }, [user?.uid]);
 
@@ -165,13 +165,13 @@ const CourseDetailScreen = ({ navigation, route }) => {
       setLoading(true);
       setError(null);
       
-      console.log('🔍 Fetching modules for course:', course.id);
+      logger.debug('🔍 Fetching modules for course:', course.id);
       const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
       
-      console.log('✅ Modules fetched:', coursesModules.length);
+      logger.debug('✅ Modules fetched:', coursesModules.length);
       setModules(coursesModules);
     } catch (error) {
-      console.error('❌ Error fetching course modules:', error);
+      logger.error('❌ Error fetching course modules:', error);
       setError('Error al cargar los módulos del curso.');
     } finally {
       setLoading(false);
@@ -327,7 +327,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       setUserOwnsCourse(courseState.ownsCourse);
       setOwnershipReady(courseState.ownsCourse && !processingPurchaseRef.current && !pendingPostPurchaseRef.current);
     } catch (error) {
-      console.error('Error checking course ownership:', error);
+      logger.error('Error checking course ownership:', error);
     } finally {
       setCheckingOwnership(false);
     }
@@ -591,17 +591,17 @@ useEffect(() => {
   // Determine which purchase flow to use
   const shouldUseFreeFlow = () => {
     // Debug logging
-    console.log('🔍 DEBUG shouldUseFreeFlow:');
-    console.log('  - course.status:', course.status);
-    console.log('  - userRole:', userRole);
-    console.log('  - isAdmin(userRole):', isAdmin(userRole));
-    console.log('  - course.status !== "published":', course.status !== 'published');
+    logger.debug('🔍 DEBUG shouldUseFreeFlow:');
+    logger.debug('  - course.status:', course.status);
+    logger.debug('  - userRole:', userRole);
+    logger.debug('  - isAdmin(userRole):', isAdmin(userRole));
+    logger.debug('  - course.status !== "published":', course.status !== 'published');
     
     // Use free flow if:
     // 1. Program is in draft state (not published)
     // 2. User is admin
     const shouldUseFree = course.status !== 'published' || isAdmin(userRole);
-    console.log('  - shouldUseFreeFlow result:', shouldUseFree);
+    logger.debug('  - shouldUseFreeFlow result:', shouldUseFree);
     
     return shouldUseFree;
   };
@@ -638,13 +638,13 @@ useEffect(() => {
         setPurchasing(true);
 
         // Use the free flow (for draft programs or admin/creator users)
-        console.log('🆓 Using free flow - Program is draft or user is admin/creator');
+        logger.debug('🆓 Using free flow - Program is draft or user is admin/creator');
         
         const result = await purchaseService.grantFreeAccess(user.uid, course.id);
         
         if (result.success) {
           // Do the same operations as the old purchase system
-          console.log('✅ Processing free access, syncing data...');
+          logger.debug('✅ Processing free access, syncing data...');
           
           // Sync courses to update cache with new purchase
           await hybridDataService.syncCourses(user.uid);
@@ -653,12 +653,12 @@ useEffect(() => {
           purchaseEventManager.notifyPurchaseComplete(course.id);
           
           // Download the purchased course data
-          console.log('📥 Downloading purchased course...');
+          logger.debug('📥 Downloading purchased course...');
           try {
             await courseDownloadService.downloadCourse(course.id);
-            console.log('✅ Course downloaded successfully');
+            logger.debug('✅ Course downloaded successfully');
           } catch (downloadError) {
-            console.error('❌ Error downloading course:', downloadError);
+            logger.error('❌ Error downloading course:', downloadError);
             // Continue even if download fails - user can retry later
           }
           
@@ -684,7 +684,7 @@ useEffect(() => {
           Alert.alert('Error', result.error);
         }
       } catch (error) {
-        console.error('Error granting free access:', error);
+        logger.error('Error granting free access:', error);
         Alert.alert('Error', 'Error al otorgar acceso gratuito');
       } finally {
         setPurchasing(false);

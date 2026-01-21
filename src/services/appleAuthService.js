@@ -127,7 +127,7 @@ class AppleAuthService {
         }
       } else {
         // Unknown format - log and try to use as lowercase
-        console.error('[Apple Auth] Unexpected hash format:', {
+        logger.error('[Apple Auth] Unexpected hash format:', {
           length: hashResult.length,
           preview: hashResult.substring(0, 20),
           rawNonce: rawNonce
@@ -137,7 +137,7 @@ class AppleAuthService {
       
       // Verify final hash format
       if (hashedNonce.length !== 64 || !/^[0-9a-f]{64}$/.test(hashedNonce)) {
-        console.error('[Apple Auth] Invalid hash after conversion:', {
+        logger.error('[Apple Auth] Invalid hash after conversion:', {
           length: hashedNonce.length,
           preview: hashedNonce.substring(0, 20),
           rawNonce: rawNonce
@@ -145,8 +145,8 @@ class AppleAuthService {
         throw new Error(`Nonce hash is invalid: expected 64 hex chars, got ${hashedNonce.length}`);
       }
       
-      // Debug log (using console to ensure it shows)
-      console.log('[Apple Auth] Nonce hash computed:', {
+      // Debug log
+      logger.debug('[Apple Auth] Nonce hash computed:', {
         rawNonce: rawNonce,
         rawNonceLength: rawNonce.length,
         hashLength: hashedNonce.length,
@@ -170,10 +170,10 @@ class AppleAuthService {
         nonce: rawNonce, // Send RAW nonce - library hashes it internally
       });
       
-      console.log('[Apple Auth] Sent raw nonce to Apple:', rawNonce);
-      console.log('[Apple Auth] Expected hash (for verification):', hashedNonce.substring(0, 16) + '...');
+      logger.debug('[Apple Auth] Sent raw nonce to Apple:', rawNonce);
+      logger.debug('[Apple Auth] Expected hash (for verification):', hashedNonce.substring(0, 16) + '...');
       
-      console.log('[Apple Auth] Apple request completed, received identity token');
+      logger.debug('[Apple Auth] Apple request completed, received identity token');
 
       // Ensure Apple returned a user identityToken
       if (!appleAuthRequestResponse.identityToken) {

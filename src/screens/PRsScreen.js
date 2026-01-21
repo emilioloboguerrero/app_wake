@@ -63,7 +63,7 @@ const PRsScreen = ({ navigation, route }) => {
 
   // Create safe navigation object - ensure it's always defined using useMemo
   const safeNavigation = React.useMemo(() => {
-    console.log('[PRsScreen] Creating safeNavigation, navigation prop:', {
+    logger.debug('[PRsScreen] Creating safeNavigation, navigation prop:', {
       hasNavigation: !!navigation,
       hasNavigate: !!(navigation && navigation.navigate),
       hasGoBack: !!(navigation && navigation.goBack),

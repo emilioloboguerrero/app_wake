@@ -8,6 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { isWeb } from '../utils/platform';
+import logger from '../utils/logger';
 
 const Input = ({
   placeholder,
@@ -82,7 +83,7 @@ const Input = ({
             }
           }
         } catch (e) {
-          console.warn('Failed to set password field attributes:', e);
+          logger.warn('Failed to set password field attributes:', e);
         }
       }, 100);
       

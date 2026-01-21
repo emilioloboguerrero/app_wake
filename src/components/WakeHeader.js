@@ -17,13 +17,13 @@ export const FixedWakeHeader = ({
   backgroundColor = '#1a1a1a'
 }) => {
   const componentStartTime = performance.now();
-  console.log(`[CHILD] [CHECKPOINT] FixedWakeHeader render started - ${componentStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render started - ${componentStartTime.toFixed(2)}ms`);
   
   const insetsStartTime = performance.now();
   const insets = useSafeAreaInsets();
   const insetsDuration = performance.now() - insetsStartTime;
   if (insetsDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
   }
   
   // Get dimensions inside component to avoid blocking module initialization
@@ -31,7 +31,7 @@ export const FixedWakeHeader = ({
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const dimensionsDuration = performance.now() - dimensionsStartTime;
   if (dimensionsDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
   }
   
   // Responsive dimensions
@@ -148,16 +148,16 @@ export const FixedWakeHeader = ({
   
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  console.log(`[CHILD] [CHECKPOINT] FixedWakeHeader render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
   if (componentDuration > 50) {
-    console.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+    logger.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
 };
 
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
   const componentStartTime = performance.now();
-  console.log(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
   
   const insets = useSafeAreaInsets();
   // Get dimensions inside component to avoid blocking module initialization
@@ -170,9 +170,9 @@ export const WakeHeaderSpacer = () => {
   
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  console.log(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
   if (componentDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
+    logger.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
   }
   
   return <View style={{ height: totalHeight }} />;

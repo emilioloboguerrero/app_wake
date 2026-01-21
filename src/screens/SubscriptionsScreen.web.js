@@ -14,7 +14,7 @@ let SubscriptionsScreenBase;
       throw new Error('SubscriptionsScreenBase not found');
     }
   } catch (e) {
-    console.error('[SubscriptionsScreen.web] Error loading base component:', e);
+    logger.error('[SubscriptionsScreen.web] Error loading base component:', e);
     // Fallback: create a simple error component
     SubscriptionsScreenBase = () => React.createElement('div', { style: { padding: 20, color: 'white' } }, 'Error loading subscriptions');
   }

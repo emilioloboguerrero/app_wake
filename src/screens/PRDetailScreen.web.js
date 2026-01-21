@@ -1,6 +1,7 @@
 // Web wrapper for PRDetailScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import logger from '../utils/logger';
 
 // CRITICAL: Import web header FIRST to ensure Metro resolves it correctly
 // Metro should automatically resolve WakeHeader to WakeHeader.web.jsx on web,

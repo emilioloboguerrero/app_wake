@@ -1,12 +1,13 @@
 import NotificationService from '../services/notificationService';
+import logger from './logger';
 
 // Initialize notifications when user logs in
 export const initializeNotifications = async () => {
   try {
     await NotificationService.initialize();
-    console.log('Notifications initialized for user');
+    logger.debug('Notifications initialized for user');
   } catch (error) {
-    console.error('Error initializing notifications:', error);
+    logger.error('Error initializing notifications:', error);
   }
 };
 
@@ -20,14 +21,14 @@ export const getFCMToken = async () => {
   try {
     const token = await NotificationService.getStoredToken();
     if (token) {
-      console.log('FCM Token for Firebase Console:', token);
+      logger.debug('FCM Token for Firebase Console:', token);
       return token;
     } else {
-      console.log('No FCM token available');
+      logger.debug('No FCM token available');
       return null;
     }
   } catch (error) {
-    console.error('Error getting FCM token:', error);
+    logger.error('Error getting FCM token:', error);
     return null;
   }
 };

@@ -45,57 +45,57 @@ import { doc, getDoc } from 'firebase/firestore';
 // ============================================================================
 const getSessionManager = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading sessionManager...');
-  console.log(`[TIMING] [CHECKPOINT] Before sessionManager require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading sessionManager...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before sessionManager require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/sessionManager').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After sessionManager require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After sessionManager require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: sessionManager took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: sessionManager took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] sessionManager failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] sessionManager failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getSessionService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading sessionService...');
-  console.log(`[TIMING] [CHECKPOINT] Before sessionService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading sessionService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before sessionService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/sessionService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After sessionService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After sessionService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: sessionService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: sessionService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] sessionService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] sessionService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getTutorialManager = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading tutorialManager...');
-  console.log(`[TIMING] [CHECKPOINT] Before tutorialManager require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading tutorialManager...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before tutorialManager require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/tutorialManager').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After tutorialManager require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After tutorialManager require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: tutorialManager took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: tutorialManager took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] tutorialManager failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] tutorialManager failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
@@ -105,7 +105,7 @@ const getProgramMediaService = () => {
   // programMediaService uses expo-file-system/legacy which doesn't work on web
   // This prevents the synchronous require() from blocking the main thread
   if (isWeb) {
-    console.log('[LAZY] Skipping programMediaService on web (FileSystem not supported)');
+    logger.debug('[LAZY] Skipping programMediaService on web (FileSystem not supported)');
     return {
       getExerciseVideoPath: () => null, // Return null to use fallback URL
       getSessionImagePath: () => null,
@@ -114,171 +114,171 @@ const getProgramMediaService = () => {
   }
   
   const startTime = performance.now();
-  console.log('[LAZY] Loading programMediaService...');
-  console.log(`[TIMING] [CHECKPOINT] Before programMediaService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading programMediaService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before programMediaService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/programMediaService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After programMediaService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After programMediaService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: programMediaService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: programMediaService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] programMediaService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] programMediaService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getVideoCacheService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading videoCacheService...');
-  console.log(`[TIMING] [CHECKPOINT] Before videoCacheService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading videoCacheService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before videoCacheService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/videoCacheService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After videoCacheService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After videoCacheService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: videoCacheService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: videoCacheService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] videoCacheService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] videoCacheService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getObjectivesInfoService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading objectivesInfoService...');
-  console.log(`[TIMING] [CHECKPOINT] Before objectivesInfoService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading objectivesInfoService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before objectivesInfoService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/objectivesInfoService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After objectivesInfoService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After objectivesInfoService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: objectivesInfoService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: objectivesInfoService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] objectivesInfoService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] objectivesInfoService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getExerciseLibraryService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading exerciseLibraryService...');
-  console.log(`[TIMING] [CHECKPOINT] Before exerciseLibraryService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading exerciseLibraryService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before exerciseLibraryService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/exerciseLibraryService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After exerciseLibraryService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After exerciseLibraryService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: exerciseLibraryService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: exerciseLibraryService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] exerciseLibraryService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] exerciseLibraryService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getExerciseHistoryService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading exerciseHistoryService...');
-  console.log(`[TIMING] [CHECKPOINT] Before exerciseHistoryService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading exerciseHistoryService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before exerciseHistoryService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/exerciseHistoryService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After exerciseHistoryService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After exerciseHistoryService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: exerciseHistoryService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: exerciseHistoryService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] exerciseHistoryService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] exerciseHistoryService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getOneRepMaxService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading oneRepMaxService...');
-  console.log(`[TIMING] [CHECKPOINT] Before oneRepMaxService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading oneRepMaxService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before oneRepMaxService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/oneRepMaxService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After oneRepMaxService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After oneRepMaxService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: oneRepMaxService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: oneRepMaxService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] oneRepMaxService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] oneRepMaxService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getAppResourcesService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading appResourcesService...');
-  console.log(`[TIMING] [CHECKPOINT] Before appResourcesService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading appResourcesService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before appResourcesService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/appResourcesService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After appResourcesService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After appResourcesService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: appResourcesService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: appResourcesService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] appResourcesService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] appResourcesService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getAssetBundleService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading assetBundleService...');
-  console.log(`[TIMING] [CHECKPOINT] Before assetBundleService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading assetBundleService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before assetBundleService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/assetBundleService').default;
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After assetBundleService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After assetBundleService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: assetBundleService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: assetBundleService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] assetBundleService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] assetBundleService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
 
 const getMonitoringService = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading monitoringService...');
-  console.log(`[TIMING] [CHECKPOINT] Before monitoringService require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading monitoringService...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before monitoringService require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/monitoringService');
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After monitoringService require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After monitoringService require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: monitoringService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: monitoringService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] monitoringService failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] monitoringService failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
@@ -316,19 +316,19 @@ import SvgFileUpload from '../components/icons/vectors_fig/File/FileUpload';
 // ============================================================================
 const getMuscleConstants = () => {
   const startTime = performance.now();
-  console.log('[LAZY] Loading muscle constants...');
-  console.log(`[TIMING] [CHECKPOINT] Before muscle constants require() - ${startTime.toFixed(2)}ms`);
+  logger.debug('[LAZY] Loading muscle constants...');
+  logger.debug(`[TIMING] [CHECKPOINT] Before muscle constants require() - ${startTime.toFixed(2)}ms`);
   try {
     const constants = require('../constants/muscles');
     const duration = performance.now() - startTime;
-    console.log(`[TIMING] [CHECKPOINT] After muscle constants require() - took ${duration.toFixed(2)}ms`);
+    logger.debug(`[TIMING] [CHECKPOINT] After muscle constants require() - took ${duration.toFixed(2)}ms`);
     if (duration > 50) {
-      console.warn(`[TIMING] ⚠️ SLOW: muscle constants took ${duration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[TIMING] ⚠️ SLOW: muscle constants took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return constants;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[TIMING] [ERROR] muscle constants failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[TIMING] [ERROR] muscle constants failed after ${duration.toFixed(2)}ms:`, error);
     throw error;
   }
 };
@@ -388,7 +388,7 @@ const useSetData = (workout) => {
   // CRITICAL: Defer this expensive operation to avoid blocking React commit phase
   useEffect(() => {
     const effectStartTime = performance.now();
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) started - ${effectStartTime.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) started - ${effectStartTime.toFixed(2)}ms`);
     if (workout?.exercises && Object.keys(setData).length === 0) {
       // Defer expensive data initialization to avoid blocking paint
       setTimeout(() => {
@@ -429,16 +429,16 @@ const useSetData = (workout) => {
         });
         
         const deferredDuration = performance.now() - deferredStartTime;
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) deferred work completed - took ${deferredDuration.toFixed(2)}ms`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) deferred work completed - took ${deferredDuration.toFixed(2)}ms`);
         if (deferredDuration > 50) {
-          console.warn(`[EFFECT] ⚠️ SLOW: Deferred useSetData initialization took ${deferredDuration.toFixed(2)}ms`);
+          logger.warn(`[EFFECT] ⚠️ SLOW: Deferred useSetData initialization took ${deferredDuration.toFixed(2)}ms`);
         }
       }, 0);
     }
     const effectDuration = performance.now() - effectStartTime;
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) completed - took ${effectDuration.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) completed - took ${effectDuration.toFixed(2)}ms`);
     if (effectDuration > 50) {
-      console.warn(`[EFFECT] ⚠️ SLOW: useEffect(useSetData initialization) took ${effectDuration.toFixed(2)}ms`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(useSetData initialization) took ${effectDuration.toFixed(2)}ms`);
     }
   }, [workout]);
   
@@ -510,49 +510,49 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const renderCountRef = useRef(0);
   const componentMountTimeRef = useRef(null);
   
-  console.log(`[FREEZE DEBUG] 🟢 Component function started at ${componentStartTime.toFixed(2)}ms`);
-  console.log(`[RENDER] [CHECKPOINT] Component function entry`);
+  logger.debug(`[FREEZE DEBUG] 🟢 Component function started at ${componentStartTime.toFixed(2)}ms`);
+  logger.debug(`[RENDER] [CHECKPOINT] Component function entry`);
   
   // Track render count
   renderCountRef.current += 1;
   const currentRenderCount = renderCountRef.current;
-  console.log(`[RENDER] Render #${currentRenderCount}`);
+  logger.debug(`[RENDER] Render #${currentRenderCount}`);
   if (currentRenderCount > 20) {
-    console.error(`[RENDER LOOP] ⚠️ WARNING: Too many renders detected! Render count: ${currentRenderCount}`);
+    logger.error(`[RENDER LOOP] ⚠️ WARNING: Too many renders detected! Render count: ${currentRenderCount}`);
   }
   
   // Get dimensions inside component to avoid blocking module initialization
   const dimensionsStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before Dimensions.get('window') - ${dimensionsStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before Dimensions.get('window') - ${dimensionsStartTime.toFixed(2)}ms`);
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const dimensionsDuration = performance.now() - dimensionsStartTime;
-  console.log(`[TIMING] [CHECKPOINT] After Dimensions.get('window') - took ${dimensionsDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] After Dimensions.get('window') - took ${dimensionsDuration.toFixed(2)}ms`);
   if (dimensionsDuration > 50) {
-    console.warn(`[TIMING] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms (threshold: 50ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
   
   // Create styles with dimensions
   const stylesStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before createStyles() - ${stylesStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before createStyles() - ${stylesStartTime.toFixed(2)}ms`);
   const styles = createStyles(screenWidth, screenHeight);
   const stylesDuration = performance.now() - stylesStartTime;
-  console.log(`[TIMING] [CHECKPOINT] After createStyles() - took ${stylesDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] After createStyles() - took ${stylesDuration.toFixed(2)}ms`);
   if (stylesDuration > 200) {
-    console.warn(`[TIMING] ⚠️ SLOW: createStyles took ${stylesDuration.toFixed(2)}ms (threshold: 200ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: createStyles took ${stylesDuration.toFixed(2)}ms (threshold: 200ms)`);
   }
   
   const loadingStylesStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before createLoadingOverlayStyles() - ${loadingStylesStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before createLoadingOverlayStyles() - ${loadingStylesStartTime.toFixed(2)}ms`);
   const loadingOverlayStyles = createLoadingOverlayStyles(screenWidth, screenHeight);
   const loadingStylesDuration = performance.now() - loadingStylesStartTime;
-  console.log(`[TIMING] [CHECKPOINT] After createLoadingOverlayStyles() - took ${loadingStylesDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] After createLoadingOverlayStyles() - took ${loadingStylesDuration.toFixed(2)}ms`);
   if (loadingStylesDuration > 200) {
-    console.warn(`[TIMING] ⚠️ SLOW: createLoadingOverlayStyles took ${loadingStylesDuration.toFixed(2)}ms (threshold: 200ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: createLoadingOverlayStyles took ${loadingStylesDuration.toFixed(2)}ms (threshold: 200ms)`);
   }
   
   // TEST VERSION 6: Testing remaining services ONE AT A TIME
   // Lazy load services - only load when actually needed
-  console.log(`[TIMING] [CHECKPOINT] Starting lazy service loading...`);
+  logger.debug(`[TIMING] [CHECKPOINT] Starting lazy service loading...`);
   const servicesStartTime = performance.now();
   
   // TEST VERSION 6: Load services that worked in v5
@@ -571,7 +571,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const programMediaServiceRef = useRef(null);
   const getProgramMediaServiceLazy = () => {
     if (!programMediaServiceRef.current) {
-      console.log('[LAZY] Loading programMediaService on-demand...');
+      logger.debug('[LAZY] Loading programMediaService on-demand...');
       programMediaServiceRef.current = getProgramMediaService();
     }
     return programMediaServiceRef.current;
@@ -586,9 +586,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // ✅ ALL SERVICES ENABLED - Testing complete for service layer
   
   const servicesDuration = performance.now() - servicesStartTime;
-  console.log(`[TIMING] [CHECKPOINT] Services loaded - total time: ${servicesDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Services loaded - total time: ${servicesDuration.toFixed(2)}ms`);
   if (servicesDuration > 500) {
-    console.warn(`[TIMING] ⚠️ SLOW: Service loading took ${servicesDuration.toFixed(2)}ms (threshold: 500ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: Service loading took ${servicesDuration.toFixed(2)}ms (threshold: 500ms)`);
   }
   
   // Components and icons are now imported directly (no longer lazy loaded)
@@ -596,27 +596,27 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Components have been fixed to not block (Dimensions.get moved inside)
   
   const routeParamsStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before route.params extraction - ${routeParamsStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before route.params extraction - ${routeParamsStartTime.toFixed(2)}ms`);
   const { course, workout: initialWorkout, sessionId } = route.params;
   const routeParamsDuration = performance.now() - routeParamsStartTime;
-  console.log(`[FREEZE DEBUG] 🟡 Route params extracted - took ${routeParamsDuration.toFixed(2)}ms`);
+  logger.debug(`[FREEZE DEBUG] 🟡 Route params extracted - took ${routeParamsDuration.toFixed(2)}ms`);
   
   const useAuthStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before useAuth() - ${useAuthStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before useAuth() - ${useAuthStartTime.toFixed(2)}ms`);
   const { user } = useAuth();
   const useAuthDuration = performance.now() - useAuthStartTime;
-  console.log(`[FREEZE DEBUG] 🟡 useAuth completed - took ${useAuthDuration.toFixed(2)}ms`);
+  logger.debug(`[FREEZE DEBUG] 🟡 useAuth completed - took ${useAuthDuration.toFixed(2)}ms`);
   if (useAuthDuration > 50) {
-    console.warn(`[TIMING] ⚠️ SLOW: useAuth took ${useAuthDuration.toFixed(2)}ms (threshold: 50ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: useAuth took ${useAuthDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
   
   const useVideoStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before useVideo() - ${useVideoStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before useVideo() - ${useVideoStartTime.toFixed(2)}ms`);
   const { isMuted, toggleMute } = useVideo();
   const useVideoDuration = performance.now() - useVideoStartTime;
-  console.log(`[FREEZE DEBUG] 🟡 useVideo completed - took ${useVideoDuration.toFixed(2)}ms`);
+  logger.debug(`[FREEZE DEBUG] 🟡 useVideo completed - took ${useVideoDuration.toFixed(2)}ms`);
   if (useVideoDuration > 50) {
-    console.warn(`[TIMING] ⚠️ SLOW: useVideo took ${useVideoDuration.toFixed(2)}ms (threshold: 50ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: useVideo took ${useVideoDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
   
   // TEST VERSION 13: Restore ExerciseItem component from git history
@@ -729,7 +729,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   });
   
   // Local workout state that can be modified
-  console.log(`[TIMING] [CHECKPOINT] Starting useState declarations...`);
+  logger.debug(`[TIMING] [CHECKPOINT] Starting useState declarations...`);
   const useStateBatchStartTime = performance.now();
   
   const [workout, setWorkout] = useState(initialWorkout);
@@ -750,9 +750,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [oneRepMaxEstimates, setOneRepMaxEstimates] = useState({}); // 1RM estimates for weight suggestions
   
   const useStateBatchDuration = performance.now() - useStateBatchStartTime;
-  console.log(`[TIMING] [CHECKPOINT] First batch of useState completed - took ${useStateBatchDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] First batch of useState completed - took ${useStateBatchDuration.toFixed(2)}ms`);
   if (useStateBatchDuration > 50) {
-    console.warn(`[TIMING] ⚠️ SLOW: First useState batch took ${useStateBatchDuration.toFixed(2)}ms (threshold: 50ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: First useState batch took ${useStateBatchDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
   
   // Edit modal system state
@@ -844,10 +844,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   
   // Memoized exercise card component for better performance
   const addExerciseCardStartTime = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before AddExerciseCard memo() - ${addExerciseCardStartTime.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before AddExerciseCard memo() - ${addExerciseCardStartTime.toFixed(2)}ms`);
   const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoTap, onAddExercise, isVideoPaused, isMuted, toggleMute }) => {
     const renderStartTime = performance.now();
-    console.log(`[RENDER] [CHECKPOINT] AddExerciseCard render started - ${renderStartTime.toFixed(2)}ms`);
+    logger.debug(`[RENDER] [CHECKPOINT] AddExerciseCard render started - ${renderStartTime.toFixed(2)}ms`);
     return (
     <TouchableOpacity
       key={`${exercise.libraryId}_${exercise.name}`}
@@ -921,14 +921,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     );
   });
   const addExerciseCardDuration = performance.now() - addExerciseCardStartTime;
-  console.log(`[TIMING] [CHECKPOINT] AddExerciseCard memo completed - took ${addExerciseCardDuration.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] AddExerciseCard memo completed - took ${addExerciseCardDuration.toFixed(2)}ms`);
   if (addExerciseCardDuration > 100) {
-    console.warn(`[TIMING] ⚠️ SLOW: AddExerciseCard memo took ${addExerciseCardDuration.toFixed(2)}ms (threshold: 100ms)`);
+    logger.warn(`[TIMING] ⚠️ SLOW: AddExerciseCard memo took ${addExerciseCardDuration.toFixed(2)}ms (threshold: 100ms)`);
   }
   
   // Objective info modal state
   const useStateStartTime1 = performance.now();
-  console.log(`[TIMING] [CHECKPOINT] Before useState(isObjectiveInfoModalVisible) - ${useStateStartTime1.toFixed(2)}ms`);
+  logger.debug(`[TIMING] [CHECKPOINT] Before useState(isObjectiveInfoModalVisible) - ${useStateStartTime1.toFixed(2)}ms`);
   const [isObjectiveInfoModalVisible, setIsObjectiveInfoModalVisible] = useState(false);
   
   // Confirmation modal state for web (Alert.alert doesn't work well on web)
@@ -936,7 +936,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [confirmModalConfig, setConfirmModalConfig] = useState(null);
   const useStateDuration1 = performance.now() - useStateStartTime1;
   if (useStateDuration1 > 10) {
-    console.warn(`[TIMING] ⚠️ SLOW: useState(isObjectiveInfoModalVisible) took ${useStateDuration1.toFixed(2)}ms`);
+    logger.warn(`[TIMING] ⚠️ SLOW: useState(isObjectiveInfoModalVisible) took ${useStateDuration1.toFixed(2)}ms`);
   }
   const [selectedObjectiveInfo, setSelectedObjectiveInfo] = useState(null);
   
@@ -1005,7 +1005,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Disable remote intensity loading; rely solely on bundled presets
   useEffect(() => {
     const effectStartTime = performance.now();
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) started - ${effectStartTime.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) started - ${effectStartTime.toFixed(2)}ms`);
     // Defer state update to avoid blocking commit phase
     setTimeout(() => {
       startTransition(() => {
@@ -1013,9 +1013,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       });
     }, 0);
     const effectDuration = performance.now() - effectStartTime;
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) completed - took ${effectDuration.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) completed - took ${effectDuration.toFixed(2)}ms`);
     if (effectDuration > 50) {
-      console.warn(`[EFFECT] ⚠️ SLOW: useEffect(setRemoteIntensityVideos) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(setRemoteIntensityVideos) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
     }
   }, []);
   
@@ -1096,9 +1096,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     const effectStartTime = performance.now();
     const totalTime = effectStartTime - componentStartTime;
-    console.log(`[RENDER] [CHECKPOINT] Component fully mounted - total time: ${totalTime.toFixed(2)}ms`);
+    logger.debug(`[RENDER] [CHECKPOINT] Component fully mounted - total time: ${totalTime.toFixed(2)}ms`);
     if (totalTime > 2000) {
-      console.error(`[RENDER] ⚠️ CRITICAL: Component mount took ${totalTime.toFixed(2)}ms (threshold: 2000ms)`);
+      logger.error(`[RENDER] ⚠️ CRITICAL: Component mount took ${totalTime.toFixed(2)}ms (threshold: 2000ms)`);
     }
     componentMountTimeRef.current = totalTime;
     
@@ -1108,9 +1108,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       requestAnimationFrame(() => {
         const commitTime = performance.now();
         const rafDelay = commitTime - beforeRAF;
-        console.log(`[RENDER] [CHECKPOINT] React commit phase completed - ${commitTime.toFixed(2)}ms (${(commitTime - effectStartTime).toFixed(2)}ms after mount, RAF delay: ${rafDelay.toFixed(2)}ms)`);
+        logger.debug(`[RENDER] [CHECKPOINT] React commit phase completed - ${commitTime.toFixed(2)}ms (${(commitTime - effectStartTime).toFixed(2)}ms after mount, RAF delay: ${rafDelay.toFixed(2)}ms)`);
         if (rafDelay > 50) {
-          console.warn(`[RENDER] ⚠️ SLOW: requestAnimationFrame delay was ${rafDelay.toFixed(2)}ms (expected ~16ms)`);
+          logger.warn(`[RENDER] ⚠️ SLOW: requestAnimationFrame delay was ${rafDelay.toFixed(2)}ms (expected ~16ms)`);
         }
         
         // Track paint with timing
@@ -1118,9 +1118,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         requestAnimationFrame(() => {
           const paintTime = performance.now();
           const paintRAFDelay = paintTime - beforePaintRAF;
-          console.log(`[PAINT] [CHECKPOINT] Browser paint completed - ${paintTime.toFixed(2)}ms (${(paintTime - commitTime).toFixed(2)}ms after commit, RAF delay: ${paintRAFDelay.toFixed(2)}ms)`);
+          logger.debug(`[PAINT] [CHECKPOINT] Browser paint completed - ${paintTime.toFixed(2)}ms (${(paintTime - commitTime).toFixed(2)}ms after commit, RAF delay: ${paintRAFDelay.toFixed(2)}ms)`);
           if (paintRAFDelay > 50) {
-            console.warn(`[PAINT] ⚠️ SLOW: Paint requestAnimationFrame delay was ${paintRAFDelay.toFixed(2)}ms (expected ~16ms)`);
+            logger.warn(`[PAINT] ⚠️ SLOW: Paint requestAnimationFrame delay was ${paintRAFDelay.toFixed(2)}ms (expected ~16ms)`);
           }
         });
       });
@@ -1135,7 +1135,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         const observer = new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
             if (entry.duration > 50) {
-              console.error(`[RENDER] 🔴 LONG TASK detected: ${entry.duration.toFixed(2)}ms`, {
+              logger.error(`[RENDER] 🔴 LONG TASK detected: ${entry.duration.toFixed(2)}ms`, {
                 name: entry.name,
                 startTime: entry.startTime.toFixed(2),
                 duration: entry.duration.toFixed(2),
@@ -1154,44 +1154,44 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST VERSION 9: Re-enable useEffect(initializeWorkout)
   useEffect(() => {
     const effectStartTime = performance.now();
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(initializeWorkout) started - ${effectStartTime.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(initializeWorkout) started - ${effectStartTime.toFixed(2)}ms`);
     
     // Track screen view and workout start with timing
     const trackStartTime = performance.now();
     trackScreenView('WorkoutExecutionScreen');
     const trackScreenViewDuration = performance.now() - trackStartTime;
     if (trackScreenViewDuration > 10) {
-      console.warn(`[EFFECT] ⚠️ SLOW: trackScreenView took ${trackScreenViewDuration.toFixed(2)}ms`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: trackScreenView took ${trackScreenViewDuration.toFixed(2)}ms`);
     }
     
     const trackWorkoutStartTime = performance.now();
     trackWorkoutStarted(course?.id, course?.difficulty);
     const trackWorkoutDuration = performance.now() - trackWorkoutStartTime;
     if (trackWorkoutDuration > 10) {
-      console.warn(`[EFFECT] ⚠️ SLOW: trackWorkoutStarted took ${trackWorkoutDuration.toFixed(2)}ms`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: trackWorkoutStarted took ${trackWorkoutDuration.toFixed(2)}ms`);
     }
     
     // Call async function and track when it actually completes
     const asyncStartTime = performance.now();
-    console.log(`[ASYNC] [CHECKPOINT] initializeWorkout() called - ${asyncStartTime.toFixed(2)}ms`);
+    logger.debug(`[ASYNC] [CHECKPOINT] initializeWorkout() called - ${asyncStartTime.toFixed(2)}ms`);
     initializeWorkout()
       .then(() => {
         const asyncDuration = performance.now() - asyncStartTime;
-        console.log(`[ASYNC] [CHECKPOINT] initializeWorkout() completed - took ${asyncDuration.toFixed(2)}ms`);
+        logger.debug(`[ASYNC] [CHECKPOINT] initializeWorkout() completed - took ${asyncDuration.toFixed(2)}ms`);
         if (asyncDuration > 5000) {
-          console.warn(`[ASYNC] ⚠️ SLOW: initializeWorkout() took ${asyncDuration.toFixed(2)}ms (threshold: 5000ms)`);
+          logger.warn(`[ASYNC] ⚠️ SLOW: initializeWorkout() took ${asyncDuration.toFixed(2)}ms (threshold: 5000ms)`);
         }
       })
       .catch((error) => {
         const asyncDuration = performance.now() - asyncStartTime;
-        console.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${asyncDuration.toFixed(2)}ms:`, error);
+        logger.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${asyncDuration.toFixed(2)}ms:`, error);
       });
     
     logger.log('🚀 WorkoutExecutionScreen initialized, screenWidth:', screenWidth);
     const effectDuration = performance.now() - effectStartTime;
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(initializeWorkout) setup completed - took ${effectDuration.toFixed(2)}ms (async work continues)`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(initializeWorkout) setup completed - took ${effectDuration.toFixed(2)}ms (async work continues)`);
     if (effectDuration > 200) {
-      console.warn(`[EFFECT] ⚠️ SLOW: useEffect(initializeWorkout) setup took ${effectDuration.toFixed(2)}ms (threshold: 200ms)`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(initializeWorkout) setup took ${effectDuration.toFixed(2)}ms (threshold: 200ms)`);
     }
   }, []);
 
@@ -1202,13 +1202,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   if (isWeb) {
     useEffect(() => {
       const effectStartTime = performance.now();
-      console.log(`[EFFECT] [CHECKPOINT] useEffect(focus/web) started - ${effectStartTime.toFixed(2)}ms`);
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) started - ${effectStartTime.toFixed(2)}ms`);
       // Screen is focused
       logger.log('🎬 WorkoutExecution screen focused (web)');
       
       return () => {
         const cleanupStartTime = performance.now();
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup started - ${cleanupStartTime.toFixed(2)}ms`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup started - ${cleanupStartTime.toFixed(2)}ms`);
         // Screen loses focus - pause all videos
         // CRITICAL: Defer video operations to avoid blocking React commit phase
         // Use setTimeout(0) to schedule after React's commit phase completes
@@ -1255,14 +1255,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           }
           const deferredDuration = performance.now() - deferredStartTime;
           if (deferredDuration > 50) {
-            console.warn(`[EFFECT] ⚠️ SLOW: Deferred video cleanup took ${deferredDuration.toFixed(2)}ms`);
+            logger.warn(`[EFFECT] ⚠️ SLOW: Deferred video cleanup took ${deferredDuration.toFixed(2)}ms`);
           }
         }, 0);
         const cleanupDuration = performance.now() - cleanupStartTime;
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup completed - took ${cleanupDuration.toFixed(2)}ms (video ops deferred)`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup completed - took ${cleanupDuration.toFixed(2)}ms (video ops deferred)`);
       };
       const effectDuration = performance.now() - effectStartTime;
-      console.log(`[EFFECT] [CHECKPOINT] useEffect(focus/web) setup completed - took ${effectDuration.toFixed(2)}ms`);
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) setup completed - took ${effectDuration.toFixed(2)}ms`);
     }, [videoPlayer, swapModalVideoPlayer, addExerciseModalVideoPlayer]);
   } else {
     // TEST MODE: useFocusEffect commented out (native only, not relevant for web test)
@@ -1417,7 +1417,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // CRITICAL: Defer state update to prevent blocking re-renders
   useEffect(() => {
     const effectStartTime = performance.now();
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(videoUri) started - ${effectStartTime.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) started - ${effectStartTime.toFixed(2)}ms`);
     const currentExercise = workout?.exercises?.[currentExerciseIndex];
     if (!currentExercise) {
       // Defer state update to avoid blocking commit phase
@@ -1427,7 +1427,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         });
       }, 0);
       const effectDuration = performance.now() - effectStartTime;
-      console.log(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed early (no exercise) - took ${effectDuration.toFixed(2)}ms`);
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed early (no exercise) - took ${effectDuration.toFixed(2)}ms`);
       return;
     }
 
@@ -1454,16 +1454,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }, 0);
     
     const effectDuration = performance.now() - effectStartTime;
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed - took ${effectDuration.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed - took ${effectDuration.toFixed(2)}ms`);
     if (effectDuration > 100) {
-      console.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoUri) took ${effectDuration.toFixed(2)}ms (threshold: 100ms)`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoUri) took ${effectDuration.toFixed(2)}ms (threshold: 100ms)`);
     }
   }, [currentExerciseIndex, workout, preloadNextVideo, course]);
 
   // Sync video mute state
   useEffect(() => {
     const effectStartTime = performance.now();
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(videoMute) started - ${effectStartTime.toFixed(2)}ms`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoMute) started - ${effectStartTime.toFixed(2)}ms`);
     // CRITICAL: Defer video operations to avoid blocking React commit phase
     if (videoPlayer) {
       setTimeout(() => {
@@ -1475,14 +1475,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
         const deferredDuration = performance.now() - deferredStartTime;
         if (deferredDuration > 50) {
-          console.warn(`[EFFECT] ⚠️ SLOW: Deferred video mute took ${deferredDuration.toFixed(2)}ms`);
+          logger.warn(`[EFFECT] ⚠️ SLOW: Deferred video mute took ${deferredDuration.toFixed(2)}ms`);
         }
       }, 0);
     }
     const effectDuration = performance.now() - effectStartTime;
-    console.log(`[EFFECT] [CHECKPOINT] useEffect(videoMute) completed - took ${effectDuration.toFixed(2)}ms (mute op deferred)`);
+    logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoMute) completed - took ${effectDuration.toFixed(2)}ms (mute op deferred)`);
     if (effectDuration > 50) {
-      console.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoMute) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
+      logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoMute) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
     }
   }, [isMuted, videoPlayer]);
 
@@ -1530,12 +1530,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // Defer all video sync logic to avoid blocking React commit phase
     syncTimeoutId = setTimeout(() => {
       const effectStartTime = performance.now();
-      console.log(`[EFFECT] [CHECKPOINT] useEffect(videoSync) started - ${effectStartTime.toFixed(2)}ms`);
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) started - ${effectStartTime.toFixed(2)}ms`);
       // Skip if video URI is not set yet (video is still loading)
       if (!videoUri) {
         logger.log('🎬 Video sync effect skipped: no video URI');
         const effectDuration = performance.now() - effectStartTime;
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped early - took ${effectDuration.toFixed(2)}ms`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped early - took ${effectDuration.toFixed(2)}ms`);
         return;
       }
 
@@ -1543,7 +1543,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (!videoPlayer) {
         logger.log('🎬 Video sync effect skipped: no video player');
         const effectDuration = performance.now() - effectStartTime;
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped (no player) - took ${effectDuration.toFixed(2)}ms`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped (no player) - took ${effectDuration.toFixed(2)}ms`);
         return;
       }
 
@@ -1557,13 +1557,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (canStartVideo) {
         // Use a small delay to avoid race conditions with video loading
         const timeoutStartTime = performance.now();
-        console.log(`[VIDEO] [CHECKPOINT] Setting video sync timeout - ${timeoutStartTime.toFixed(2)}ms`);
+        logger.debug(`[VIDEO] [CHECKPOINT] Setting video sync timeout - ${timeoutStartTime.toFixed(2)}ms`);
         videoTimeoutId = setTimeout(() => {
         const timeoutExecutionTime = performance.now();
         const timeoutDelay = timeoutExecutionTime - timeoutStartTime;
-        console.log(`[VIDEO] [CHECKPOINT] Video sync timeout executed - ${timeoutExecutionTime.toFixed(2)}ms (delay: ${timeoutDelay.toFixed(2)}ms, expected ~150ms)`);
+        logger.debug(`[VIDEO] [CHECKPOINT] Video sync timeout executed - ${timeoutExecutionTime.toFixed(2)}ms (delay: ${timeoutDelay.toFixed(2)}ms, expected ~150ms)`);
         if (timeoutDelay > 200) {
-          console.warn(`[VIDEO] ⚠️ SLOW: Video sync timeout delay was ${timeoutDelay.toFixed(2)}ms (expected ~150ms)`);
+          logger.warn(`[VIDEO] ⚠️ SLOW: Video sync timeout delay was ${timeoutDelay.toFixed(2)}ms (expected ~150ms)`);
         }
         try {
           // Check current playing state to avoid unnecessary operations
@@ -1578,22 +1578,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           }
           const stateCheckDuration = performance.now() - stateCheckStartTime;
           if (stateCheckDuration > 10) {
-            console.warn(`[VIDEO] ⚠️ SLOW: Video state check took ${stateCheckDuration.toFixed(2)}ms`);
+            logger.warn(`[VIDEO] ⚠️ SLOW: Video state check took ${stateCheckDuration.toFixed(2)}ms`);
           }
           
           if (isVideoPaused && isCurrentlyPlaying) {
             const pauseStartTime = performance.now();
-            console.log(`[VIDEO] [CHECKPOINT] Pausing video - ${pauseStartTime.toFixed(2)}ms`);
+            logger.debug(`[VIDEO] [CHECKPOINT] Pausing video - ${pauseStartTime.toFixed(2)}ms`);
             logger.log('🎬 Pausing video (was playing)');
         videoPlayer.pause();
             const pauseDuration = performance.now() - pauseStartTime;
-            console.log(`[VIDEO] [CHECKPOINT] Video paused - took ${pauseDuration.toFixed(2)}ms`);
+            logger.debug(`[VIDEO] [CHECKPOINT] Video paused - took ${pauseDuration.toFixed(2)}ms`);
             if (pauseDuration > 50) {
-              console.warn(`[VIDEO] ⚠️ SLOW: Video pause took ${pauseDuration.toFixed(2)}ms`);
+              logger.warn(`[VIDEO] ⚠️ SLOW: Video pause took ${pauseDuration.toFixed(2)}ms`);
             }
           } else if (!isVideoPaused && !isCurrentlyPlaying) {
             const playStartTime = performance.now();
-            console.log(`[VIDEO] [CHECKPOINT] Playing video - ${playStartTime.toFixed(2)}ms`);
+            logger.debug(`[VIDEO] [CHECKPOINT] Playing video - ${playStartTime.toFixed(2)}ms`);
             logger.log('🎬 Playing video (was paused)');
             // Use async play() with error handling to prevent AbortError from breaking the app
             const playPromise = videoPlayer.play();
@@ -1601,11 +1601,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               playPromise
                 .then(() => {
                   const playDuration = performance.now() - playStartTime;
-                  console.log(`[VIDEO] [CHECKPOINT] Video play() resolved - took ${playDuration.toFixed(2)}ms`);
+                  logger.debug(`[VIDEO] [CHECKPOINT] Video play() resolved - took ${playDuration.toFixed(2)}ms`);
                 })
                 .catch(error => {
                   const playDuration = performance.now() - playStartTime;
-                  console.error(`[VIDEO] [ERROR] Video play() rejected after ${playDuration.toFixed(2)}ms:`, error);
+                  logger.error(`[VIDEO] [ERROR] Video play() rejected after ${playDuration.toFixed(2)}ms:`, error);
                   // AbortError is expected when play() is interrupted by pause()
                   // This is normal behavior and shouldn't break the app
                   if (error.name === 'AbortError') {
@@ -1616,7 +1616,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 });
             }
             const playInitDuration = performance.now() - playStartTime;
-            console.log(`[VIDEO] [CHECKPOINT] Video play() initiated - took ${playInitDuration.toFixed(2)}ms`);
+            logger.debug(`[VIDEO] [CHECKPOINT] Video play() initiated - took ${playInitDuration.toFixed(2)}ms`);
           } else {
             logger.log('🎬 Video already in desired state:', { 
               isVideoPaused, 
@@ -1625,7 +1625,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           }
         } catch (error) {
           const errorTime = performance.now();
-          console.error(`[VIDEO] [ERROR] Video sync error at ${errorTime.toFixed(2)}ms:`, error);
+          logger.error(`[VIDEO] [ERROR] Video sync error at ${errorTime.toFixed(2)}ms:`, error);
           logger.log('⚠️ Error syncing video state (safe to ignore):', error.message);
         }
       }, 150); // Small delay to let video player initialize and avoid race conditions
@@ -1635,12 +1635,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           reason: !canStartVideo ? 'tutorial blocking' : 'unknown'
         });
         const effectDuration = performance.now() - effectStartTime;
-        console.log(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped (not ready) - took ${effectDuration.toFixed(2)}ms`);
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped (not ready) - took ${effectDuration.toFixed(2)}ms`);
       }
       
       // Final checkpoint for effect setup
       const effectSetupDuration = performance.now() - effectStartTime;
-      console.log(`[EFFECT] [CHECKPOINT] useEffect(videoSync) setup completed - took ${effectSetupDuration.toFixed(2)}ms`);
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) setup completed - took ${effectSetupDuration.toFixed(2)}ms`);
     }, 0); // Defer entire effect to avoid blocking commit phase
     
     // Return cleanup function to clear timeouts
@@ -1940,37 +1940,84 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const handleDiscardWorkout = async () => {
-    Alert.alert(
-      'Descartar Entrenamiento',
-      '¿Estás seguro de que quieres salir y descartar este entrenamiento? Todo el progreso no guardado se perderá.',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
+    // Use custom modal on web, Alert.alert on native
+    if (isWeb) {
+      setConfirmModalConfig({
+        title: 'Descartar Entrenamiento',
+        message: '¿Estás seguro de que quieres salir y descartar este entrenamiento? Todo el progreso no guardado se perderá.',
+        cancelText: 'Cancelar',
+        confirmText: 'Descartar',
+        isDestructive: true,
+        onCancel: () => {
+          setConfirmModalVisible(false);
+          setConfirmModalConfig(null);
         },
-        {
-          text: 'Descartar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              logger.log('🗑️ Discarding workout...');
-              
-              // Cancel the current session and clear local data
-              await sessionManager.cancelSession();
-              
-              logger.log('✅ Workout discarded successfully');
-              
-              // Navigate back to daily workout screen
-                  navigation.goBack();
-              
-            } catch (error) {
-              logger.error('❌ Error discarding workout:', error);
-              Alert.alert('Error', 'No se pudo descartar el entrenamiento.');
-            }
+        onConfirm: async () => {
+          setConfirmModalVisible(false);
+          setConfirmModalConfig(null);
+          try {
+            logger.log('🗑️ Discarding workout...');
+            
+            // Cancel the current session and clear local data
+            await sessionManager.cancelSession();
+            
+            logger.log('✅ Workout discarded successfully');
+            
+            // Navigate back to daily workout screen
+            navigation.goBack();
+            
+          } catch (error) {
+            logger.error('❌ Error discarding workout:', error);
+            // Show error using modal on web
+            setConfirmModalConfig({
+              title: 'Error',
+              message: 'No se pudo descartar el entrenamiento.',
+              hideCancel: true,
+              confirmText: 'OK',
+              onConfirm: () => {
+                setConfirmModalVisible(false);
+                setConfirmModalConfig(null);
+              }
+            });
+            setConfirmModalVisible(true);
+          }
+        }
+      });
+      setConfirmModalVisible(true);
+    } else {
+      // Native: Use Alert.alert
+      Alert.alert(
+        'Descartar Entrenamiento',
+        '¿Estás seguro de que quieres salir y descartar este entrenamiento? Todo el progreso no guardado se perderá.',
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
           },
-        },
-      ]
-    );
+          {
+            text: 'Descartar',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                logger.log('🗑️ Discarding workout...');
+                
+                // Cancel the current session and clear local data
+                await sessionManager.cancelSession();
+                
+                logger.log('✅ Workout discarded successfully');
+                
+                // Navigate back to daily workout screen
+                navigation.goBack();
+                
+              } catch (error) {
+                logger.error('❌ Error discarding workout:', error);
+                Alert.alert('Error', 'No se pudo descartar el entrenamiento.');
+              }
+            },
+          },
+        ]
+      );
+    }
   };
 
 
@@ -3993,7 +4040,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   const initializeWorkout = async () => {
     const initStartTime = performance.now();
-    console.log(`[ASYNC] [CHECKPOINT] initializeWorkout() function started - ${initStartTime.toFixed(2)}ms`);
+    logger.debug(`[ASYNC] [CHECKPOINT] initializeWorkout() function started - ${initStartTime.toFixed(2)}ms`);
     try {
       setLoading(true);
       
@@ -4002,21 +4049,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Load previous session data
       const loadDataStartTime = performance.now();
-      console.log(`[ASYNC] [CHECKPOINT] About to call loadPreviousSessionData() - ${loadDataStartTime.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] About to call loadPreviousSessionData() - ${loadDataStartTime.toFixed(2)}ms`);
       await loadPreviousSessionData();
       const loadDataDuration = performance.now() - loadDataStartTime;
-      console.log(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() returned - took ${loadDataDuration.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() returned - took ${loadDataDuration.toFixed(2)}ms`);
       
       // Load 1RM estimates for weight suggestions
       if (user?.uid) {
         const oneRmStartTime = performance.now();
-        console.log(`[ASYNC] [CHECKPOINT] About to load 1RM estimates - ${oneRmStartTime.toFixed(2)}ms`);
+        logger.debug(`[ASYNC] [CHECKPOINT] About to load 1RM estimates - ${oneRmStartTime.toFixed(2)}ms`);
         logger.log('💪 Loading 1RM estimates for user:', user.uid);
         const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
         const oneRmDuration = performance.now() - oneRmStartTime;
-        console.log(`[ASYNC] [CHECKPOINT] 1RM estimates loaded - took ${oneRmDuration.toFixed(2)}ms`);
+        logger.debug(`[ASYNC] [CHECKPOINT] 1RM estimates loaded - took ${oneRmDuration.toFixed(2)}ms`);
         if (oneRmDuration > 2000) {
-          console.warn(`[ASYNC] ⚠️ SLOW: 1RM estimates took ${oneRmDuration.toFixed(2)}ms (threshold: 2000ms)`);
+          logger.warn(`[ASYNC] ⚠️ SLOW: 1RM estimates took ${oneRmDuration.toFixed(2)}ms (threshold: 2000ms)`);
         }
         setOneRepMaxEstimates(estimates);
         logger.log('✅ 1RM estimates loaded:', Object.keys(estimates).length, 'exercises');
@@ -4024,12 +4071,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Start workout session
       const sessionStartTime = performance.now();
-      console.log(`[ASYNC] [CHECKPOINT] About to start workout session - ${sessionStartTime.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] About to start workout session - ${sessionStartTime.toFixed(2)}ms`);
       await startWorkoutSession();
       const sessionDuration = performance.now() - sessionStartTime;
-      console.log(`[ASYNC] [CHECKPOINT] Workout session started - took ${sessionDuration.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] Workout session started - took ${sessionDuration.toFixed(2)}ms`);
       if (sessionDuration > 2000) {
-        console.warn(`[ASYNC] ⚠️ SLOW: startWorkoutSession() took ${sessionDuration.toFixed(2)}ms (threshold: 2000ms)`);
+        logger.warn(`[ASYNC] ⚠️ SLOW: startWorkoutSession() took ${sessionDuration.toFixed(2)}ms (threshold: 2000ms)`);
       }
       
       async function startWorkoutSession() {
@@ -4060,21 +4107,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
     } catch (error) {
       const totalInitDuration = performance.now() - initStartTime;
-      console.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${totalInitDuration.toFixed(2)}ms:`, error);
+      logger.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${totalInitDuration.toFixed(2)}ms:`, error);
       logger.error('❌ Error initializing workout:', error);
     } finally {
       setLoading(false);
       const totalInitDuration = performance.now() - initStartTime;
-      console.log(`[ASYNC] [CHECKPOINT] initializeWorkout() finished (finally block) - total time: ${totalInitDuration.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] initializeWorkout() finished (finally block) - total time: ${totalInitDuration.toFixed(2)}ms`);
       if (totalInitDuration > 10000) {
-        console.warn(`[ASYNC] ⚠️ SLOW: initializeWorkout() took ${totalInitDuration.toFixed(2)}ms (threshold: 10000ms)`);
+        logger.warn(`[ASYNC] ⚠️ SLOW: initializeWorkout() took ${totalInitDuration.toFixed(2)}ms (threshold: 10000ms)`);
       }
     }
   };
 
   const loadPreviousSessionData = async () => {
     const asyncStartTime = performance.now();
-    console.log(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() started - ${asyncStartTime.toFixed(2)}ms`);
+    logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() started - ${asyncStartTime.toFixed(2)}ms`);
     try {
       logger.log('📖 Loading previous session data from exercise history...');
       
@@ -4082,19 +4129,19 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (!user?.uid) {
         logger.log('⚠️ No user found, skipping exercise history loading');
         const duration = performance.now() - asyncStartTime;
-        console.log(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed early (no user) - took ${duration.toFixed(2)}ms`);
+        logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed early (no user) - took ${duration.toFixed(2)}ms`);
         return;
       }
       
       if (!workout?.exercises || workout.exercises.length === 0) {
         logger.log('⚠️ No exercises found in workout');
         const duration = performance.now() - asyncStartTime;
-        console.log(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed early (no exercises) - took ${duration.toFixed(2)}ms`);
+        logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed early (no exercises) - took ${duration.toFixed(2)}ms`);
         return;
       }
       
       const exercisesCount = workout.exercises.length;
-      console.log(`[ASYNC] [CHECKPOINT] Starting exercise history loading for ${exercisesCount} exercises (user: ${user.uid})`);
+      logger.debug(`[ASYNC] [CHECKPOINT] Starting exercise history loading for ${exercisesCount} exercises (user: ${user.uid})`);
       
       // Load previous data for each exercise from exercise history
       const exerciseHistoryPromises = workout.exercises.map(async (exercise, index) => {
@@ -4105,12 +4152,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           const exerciseName = exercise.primary[libraryId];
           const exerciseKey = `${libraryId}_${exerciseName}`;
           
-          console.log(`[ASYNC] [CHECKPOINT] Loading exercise history ${index + 1}/${exercisesCount}: ${exerciseKey} - ${exerciseStartTime.toFixed(2)}ms`);
+          logger.debug(`[ASYNC] [CHECKPOINT] Loading exercise history ${index + 1}/${exercisesCount}: ${exerciseKey} - ${exerciseStartTime.toFixed(2)}ms`);
           logger.log(`📊 Loading exercise history for: ${exerciseKey}`);
           
           // Double-check user exists before making the call
           if (!user?.uid) {
-            console.warn(`[ASYNC] ⚠️ User became null during exercise history loading for ${exerciseKey}`);
+            logger.warn(`[ASYNC] ⚠️ User became null during exercise history loading for ${exerciseKey}`);
             return; // Skip this exercise
           }
           
@@ -4123,7 +4170,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             )
           ]);
           const historyDuration = performance.now() - historyStartTime;
-          console.log(`[ASYNC] [CHECKPOINT] Exercise history loaded for ${exerciseKey} - took ${historyDuration.toFixed(2)}ms`);
+          logger.debug(`[ASYNC] [CHECKPOINT] Exercise history loaded for ${exerciseKey} - took ${historyDuration.toFixed(2)}ms`);
           
           const sessions = exerciseHistoryData.sessions || [];
           
@@ -4148,37 +4195,37 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           }
           
           const exerciseDuration = performance.now() - exerciseStartTime;
-          console.log(`[ASYNC] [CHECKPOINT] Exercise history ${index + 1}/${exercisesCount} completed - took ${exerciseDuration.toFixed(2)}ms`);
+          logger.debug(`[ASYNC] [CHECKPOINT] Exercise history ${index + 1}/${exercisesCount} completed - took ${exerciseDuration.toFixed(2)}ms`);
           if (exerciseDuration > 2000) {
-            console.warn(`[ASYNC] ⚠️ SLOW: Exercise history ${index + 1} took ${exerciseDuration.toFixed(2)}ms (threshold: 2000ms)`);
+            logger.warn(`[ASYNC] ⚠️ SLOW: Exercise history ${index + 1} took ${exerciseDuration.toFixed(2)}ms (threshold: 2000ms)`);
           }
         } catch (error) {
           const exerciseDuration = performance.now() - exerciseStartTime;
-          console.error(`[ASYNC] [ERROR] Exercise history ${index + 1}/${exercisesCount} failed after ${exerciseDuration.toFixed(2)}ms:`, error);
+          logger.error(`[ASYNC] [ERROR] Exercise history ${index + 1}/${exercisesCount} failed after ${exerciseDuration.toFixed(2)}ms:`, error);
           logger.error(`❌ Error loading exercise history for exercise:`, error);
         }
       });
       
       // Wait for all exercise history queries to complete
       const promiseAllStartTime = performance.now();
-      console.log(`[ASYNC] [CHECKPOINT] Waiting for Promise.all() - ${promiseAllStartTime.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] Waiting for Promise.all() - ${promiseAllStartTime.toFixed(2)}ms`);
       await Promise.all(exerciseHistoryPromises);
       const promiseAllDuration = performance.now() - promiseAllStartTime;
-      console.log(`[ASYNC] [CHECKPOINT] Promise.all() completed - took ${promiseAllDuration.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] Promise.all() completed - took ${promiseAllDuration.toFixed(2)}ms`);
       if (promiseAllDuration > 5000) {
-        console.warn(`[ASYNC] ⚠️ SLOW: Promise.all() took ${promiseAllDuration.toFixed(2)}ms (threshold: 5000ms)`);
+        logger.warn(`[ASYNC] ⚠️ SLOW: Promise.all() took ${promiseAllDuration.toFixed(2)}ms (threshold: 5000ms)`);
       }
       
       logger.log('✅ Exercise history loading completed');
       const totalDuration = performance.now() - asyncStartTime;
-      console.log(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed - total time: ${totalDuration.toFixed(2)}ms`);
+      logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed - total time: ${totalDuration.toFixed(2)}ms`);
       if (totalDuration > 10000) {
-        console.warn(`[ASYNC] ⚠️ SLOW: loadPreviousSessionData() took ${totalDuration.toFixed(2)}ms (threshold: 10000ms)`);
+        logger.warn(`[ASYNC] ⚠️ SLOW: loadPreviousSessionData() took ${totalDuration.toFixed(2)}ms (threshold: 10000ms)`);
       }
       
     } catch (error) {
       const totalDuration = performance.now() - asyncStartTime;
-      console.error(`[ASYNC] [ERROR] loadPreviousSessionData() failed after ${totalDuration.toFixed(2)}ms:`, error);
+      logger.error(`[ASYNC] [ERROR] loadPreviousSessionData() failed after ${totalDuration.toFixed(2)}ms:`, error);
       logger.error('❌ Error loading previous session data:', error);
       // Continue without previous data - not critical
     }
@@ -4618,25 +4665,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Final checkpoint before render
   const renderStartTime = performance.now();
   const totalComponentTime = renderStartTime - componentStartTime;
-  console.log(`[RENDER] [CHECKPOINT] About to return JSX - total component time so far: ${totalComponentTime.toFixed(2)}ms`);
+  logger.debug(`[RENDER] [CHECKPOINT] About to return JSX - total component time so far: ${totalComponentTime.toFixed(2)}ms`);
   if (totalComponentTime > 1000) {
-    console.warn(`[RENDER] ⚠️ SLOW: Component took ${totalComponentTime.toFixed(2)}ms before render (threshold: 1000ms)`);
+    logger.warn(`[RENDER] ⚠️ SLOW: Component took ${totalComponentTime.toFixed(2)}ms before render (threshold: 1000ms)`);
   }
   
   // Track mount time on first render
   if (!componentMountTimeRef.current && renderCountRef.current === 1) {
     componentMountTimeRef.current = totalComponentTime;
-    console.log(`[RENDER] [CHECKPOINT] First render mount time: ${componentMountTimeRef.current.toFixed(2)}ms`);
+    logger.debug(`[RENDER] [CHECKPOINT] First render mount time: ${componentMountTimeRef.current.toFixed(2)}ms`);
   }
   
-  console.log(`[JSX] [CHECKPOINT] Starting JSX return statement - ${performance.now().toFixed(2)}ms`);
+  logger.debug(`[JSX] [CHECKPOINT] Starting JSX return statement - ${performance.now().toFixed(2)}ms`);
   const jsxStartTime = performance.now();
   
   // Track paint events
   if (typeof requestAnimationFrame !== 'undefined') {
     requestAnimationFrame(() => {
       const paintTime = performance.now();
-      console.log(`[PAINT] [CHECKPOINT] First paint frame - ${paintTime.toFixed(2)}ms (${(paintTime - jsxStartTime).toFixed(2)}ms after JSX start)`);
+      logger.debug(`[PAINT] [CHECKPOINT] First paint frame - ${paintTime.toFixed(2)}ms (${(paintTime - jsxStartTime).toFixed(2)}ms after JSX start)`);
     });
   }
   
@@ -4664,10 +4711,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             justifyContent: 'center',
           }}
         onPress={() => {
-            console.log(`[TEST BUTTON] ✅ Button cadl: ${TEST_VERSION}`);
-            console.log(`[TEST BUTTON] Current time: ${performance.now().toFixed(2)}ms`);
+            logger.debug(`[TEST BUTTON] ✅ Button cadl: ${TEST_VERSION}`);
+            logger.debug(`[TEST BUTTON] Current time: ${performance.now().toFixed(2)}ms`);
             Alert.alert('Test Version', `Version ${TEST_VERSION}`);
-            console.log(`[TEST BUTTON] ✅ Alert.alert called`);
+            logger.debug(`[TEST BUTTON] ✅ Alert.alert called`);
           }}
         >
           <Text style={{ color: '#1a1a1a', fontSize: 18, fontWeight: 'bold' }}>
@@ -4686,7 +4733,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.container}>
       {(() => {
         const headerStartTime = performance.now();
-        console.log(`[JSX] [CHECKPOINT] Rendering FixedWakeHeader - ${headerStartTime.toFixed(2)}ms`);
+        logger.debug(`[JSX] [CHECKPOINT] Rendering FixedWakeHeader - ${headerStartTime.toFixed(2)}ms`);
         return null;
       })()}
       {/* Fixed Header without Back Button */}
@@ -4831,13 +4878,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       {/* Swipeable Content */}
       {(() => {
         const swipeableStartTime = performance.now();
-        console.log(`[JSX] [CHECKPOINT] Rendering Swipeable Content section - ${swipeableStartTime.toFixed(2)}ms`);
+        logger.debug(`[JSX] [CHECKPOINT] Rendering Swipeable Content section - ${swipeableStartTime.toFixed(2)}ms`);
         return null;
       })()}
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
         {(() => {
           const scrollViewStartTime = performance.now();
-          console.log(`[JSX] [CHECKPOINT] Rendering main ScrollView - ${scrollViewStartTime.toFixed(2)}ms`);
+          logger.debug(`[JSX] [CHECKPOINT] Rendering main ScrollView - ${scrollViewStartTime.toFixed(2)}ms`);
           return null;
         })()}
         <ScrollView
@@ -4854,7 +4901,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         <View style={styles.viewContainer}>
               {(() => {
                 const innerScrollStartTime = performance.now();
-                console.log(`[JSX] [CHECKPOINT] Rendering inner ScrollView - ${innerScrollStartTime.toFixed(2)}ms`);
+                logger.debug(`[JSX] [CHECKPOINT] Rendering inner ScrollView - ${innerScrollStartTime.toFixed(2)}ms`);
                 return null;
               })()}
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -4862,7 +4909,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   {/* Spacer for fixed header */}
                   {(() => {
                     const spacerStartTime = performance.now();
-                    console.log(`[JSX] [CHECKPOINT] Rendering WakeHeaderSpacer - ${spacerStartTime.toFixed(2)}ms`);
+                    logger.debug(`[JSX] [CHECKPOINT] Rendering WakeHeaderSpacer - ${spacerStartTime.toFixed(2)}ms`);
                     return null;
                   })()}
                   <WakeHeaderSpacer />
@@ -4904,7 +4951,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 {/* First Card - Video */}
                 {(() => {
                   const videoCardStartTime = performance.now();
-                  console.log(`[JSX] [CHECKPOINT] Rendering Video Card - ${videoCardStartTime.toFixed(2)}ms`);
+                  logger.debug(`[JSX] [CHECKPOINT] Rendering Video Card - ${videoCardStartTime.toFixed(2)}ms`);
                   return null;
                 })()}
                 <View style={[styles.videoCard, videoUri && styles.videoCardNoBorder]}>
@@ -4916,8 +4963,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     >
                       {(() => {
                         const videoViewStartTime = performance.now();
-                        console.log(`[JSX] [CHECKPOINT] Rendering VideoView component - ${videoViewStartTime.toFixed(2)}ms`);
-                        console.log(`[VIDEO] [CHECKPOINT] VideoView props:`, {
+                        logger.debug(`[JSX] [CHECKPOINT] Rendering VideoView component - ${videoViewStartTime.toFixed(2)}ms`);
+                        logger.debug(`[VIDEO] [CHECKPOINT] VideoView props:`, {
                           hasPlayer: !!videoPlayer,
                           videoUri: videoUri?.substring(0, 50) || 'null',
                           isVideoPaused,
@@ -4935,15 +4982,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         showsTimecodes={false}
                         onLoadStart={() => {
                           const loadStartTime = performance.now();
-                          console.log(`[VIDEO] [CHECKPOINT] VideoView onLoadStart - ${loadStartTime.toFixed(2)}ms`);
+                          logger.debug(`[VIDEO] [CHECKPOINT] VideoView onLoadStart - ${loadStartTime.toFixed(2)}ms`);
                         }}
                         onLoad={() => {
                           const loadTime = performance.now();
-                          console.log(`[VIDEO] [CHECKPOINT] VideoView onLoad - ${loadTime.toFixed(2)}ms`);
+                          logger.debug(`[VIDEO] [CHECKPOINT] VideoView onLoad - ${loadTime.toFixed(2)}ms`);
                         }}
                         onError={(error) => {
                           const errorTime = performance.now();
-                          console.error(`[VIDEO] [ERROR] VideoView onError at ${errorTime.toFixed(2)}ms:`, error);
+                          logger.error(`[VIDEO] [ERROR] VideoView onError at ${errorTime.toFixed(2)}ms:`, error);
                         }}
                       />
                       
@@ -5001,7 +5048,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   {/* Muscle silhouette with spacing wrapper */}
                   {(() => {
                     const muscleStartTime = performance.now();
-                    console.log(`[JSX] [CHECKPOINT] Rendering MuscleSilhouetteSVG section - ${muscleStartTime.toFixed(2)}ms`);
+                    logger.debug(`[JSX] [CHECKPOINT] Rendering MuscleSilhouetteSVG section - ${muscleStartTime.toFixed(2)}ms`);
                     return null;
                   })()}
                   <View style={styles.muscleSilhouetteWrapper}>
@@ -5597,7 +5644,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       {/* Tutorial Overlay - Use startTransition for non-urgent rendering */}
       {(() => {
         const tutorialStartTime = performance.now();
-        console.log(`[JSX] [CHECKPOINT] Rendering TutorialOverlay - ${tutorialStartTime.toFixed(2)}ms`);
+        logger.debug(`[JSX] [CHECKPOINT] Rendering TutorialOverlay - ${tutorialStartTime.toFixed(2)}ms`);
         return null;
       })()}
       {tutorialVisible && tutorialData && tutorialData.length > 0 && (
@@ -5689,8 +5736,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       {/* Exercise Detail Modal - Use startTransition for non-urgent rendering */}
       {(() => {
         const exerciseModalStartTime = performance.now();
-        console.log(`[JSX] [CHECKPOINT] Rendering ExerciseDetailModal - ${exerciseModalStartTime.toFixed(2)}ms`);
-        console.log(`[JSX] [CHECKPOINT] Modal visibility state:`, {
+        logger.debug(`[JSX] [CHECKPOINT] Rendering ExerciseDetailModal - ${exerciseModalStartTime.toFixed(2)}ms`);
+        logger.debug(`[JSX] [CHECKPOINT] Modal visibility state:`, {
           isExerciseDetailModalVisible,
           hasModalExerciseData: !!modalExerciseData,
           modalExerciseData
@@ -5964,9 +6011,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       {(() => {
         const jsxEndTime = performance.now();
         const jsxDuration = jsxEndTime - jsxStartTime;
-        console.log(`[JSX] [CHECKPOINT] JSX return statement completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
+        logger.debug(`[JSX] [CHECKPOINT] JSX return statement completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
         if (jsxDuration > 100) {
-          console.warn(`[JSX] ⚠️ SLOW: JSX rendering took ${jsxDuration.toFixed(2)}ms (threshold: 100ms)`);
+          logger.warn(`[JSX] ⚠️ SLOW: JSX rendering took ${jsxDuration.toFixed(2)}ms (threshold: 100ms)`);
         }
         return null;
       })()}

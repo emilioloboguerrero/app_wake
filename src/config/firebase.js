@@ -6,6 +6,7 @@ import { getAuth, initializeAuth, setPersistence, browserLocalPersistence } from
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { isWeb } from '../utils/platform';
+import logger from '../utils/logger';
 
 // Firebase configuration object
 // Configuration from your Firebase project: wolf-20b8b
@@ -29,16 +30,16 @@ try {
   if (isWeb) {
     // Web: Use initializeAuth with browserLocalPersistence
     // This ensures persistence is set BEFORE auth is initialized
-    console.log('[FIREBASE] 🔐 Initializing auth with browserLocalPersistence...');
+    logger.debug('[FIREBASE] 🔐 Initializing auth with browserLocalPersistence...');
     auth = initializeAuth(app, {
       persistence: browserLocalPersistence
     });
-    console.log('[FIREBASE] ✅ Auth initialized with browserLocalPersistence (IndexedDB)');
+    logger.debug('[FIREBASE] ✅ Auth initialized with browserLocalPersistence (IndexedDB)');
     
     // Check if there's a current user immediately after initialization
     setTimeout(() => {
       const currentUser = auth.currentUser;
-      console.log('[FIREBASE] 🔐 [POST-INIT CHECK] auth.currentUser after init:', currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'null');
+      logger.debug('[FIREBASE] 🔐 [POST-INIT CHECK] auth.currentUser after init:', currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'null');
     }, 100);
   } else {
     // React Native: Use AsyncStorage persistence
@@ -51,14 +52,14 @@ try {
 } catch (error) {
   // If already initialized, get the existing instance
   if (error.code === 'auth/already-initialized') {
-    console.log('[FIREBASE] Auth already initialized, using existing instance');
+    logger.debug('[FIREBASE] Auth already initialized, using existing instance');
     auth = getAuth(app);
     // Try to set persistence even if already initialized (for web)
     if (isWeb) {
       setPersistence(auth, browserLocalPersistence).then(() => {
-        console.log('[FIREBASE] ✅ Persistence set on existing auth instance');
+        logger.debug('[FIREBASE] ✅ Persistence set on existing auth instance');
       }).catch((persistError) => {
-        console.warn('[FIREBASE] Could not set persistence on existing instance:', persistError.code);
+        logger.warn('[FIREBASE] Could not set persistence on existing instance:', persistError.code);
       });
     }
   } else {

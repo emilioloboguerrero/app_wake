@@ -450,19 +450,6 @@ const WarmupScreen = ({ navigation, route }) => {
         onBackPress={() => navigation.goBack()}
       />
       
-      {/* Mute Button - Top Right */}
-      <View style={styles.muteButtonContainer}>
-        <TouchableOpacity 
-          style={styles.muteButton}
-          onPress={toggleMute}
-        >
-          <Text style={styles.muteButtonText}>
-            {isMuted ? '🔇' : '🔊'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      
       <View style={styles.content}>
         {/* Spacer for fixed header */}
         <WakeHeaderSpacer />
@@ -743,26 +730,6 @@ const styles = StyleSheet.create({
     color: 'rgba(191, 168, 77, 1)',
     textAlign: 'center',
     numberOfLines: 1,
-  },
-  // Mute button styles
-  muteButtonContainer: {
-    position: 'absolute',
-    top: Math.max(60, screenHeight * 0.075), // Responsive top position
-    right: Math.max(20, screenWidth * 0.05), // Responsive right position
-    zIndex: 10,
-  },
-  muteButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: Math.max(20, screenWidth * 0.05), // Responsive border radius
-    padding: Math.max(8, screenWidth * 0.02), // Responsive padding
-    minWidth: Math.max(40, screenWidth * 0.1), // Responsive width
-    minHeight: Math.max(40, screenWidth * 0.1), // Responsive height
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  muteButtonText: {
-    fontSize: Math.min(screenWidth * 0.045, 18), // Responsive font size
-    color: '#ffffff',
   },
   // Volume icon styles
   volumeIconContainer: {

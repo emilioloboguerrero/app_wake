@@ -15,7 +15,7 @@ if (isWeb) {
         await webStorageService.init();
         return await webStorageService.getItem(key);
       } catch (error) {
-        console.error('[STORAGE] Error getting item:', error);
+        logger.error('[STORAGE] Error getting item:', error);
         return null;
       }
     },
@@ -24,7 +24,7 @@ if (isWeb) {
         await webStorageService.init();
         return await webStorageService.setItem(key, value);
       } catch (error) {
-        console.error('[STORAGE] Error setting item:', error);
+        logger.error('[STORAGE] Error setting item:', error);
         throw error;
       }
     },
@@ -33,7 +33,7 @@ if (isWeb) {
         await webStorageService.init();
         return await webStorageService.removeItem(key);
       } catch (error) {
-        console.error('[STORAGE] Error removing item:', error);
+        logger.error('[STORAGE] Error removing item:', error);
         throw error;
       }
     },
@@ -45,7 +45,7 @@ if (isWeb) {
         );
         return results;
       } catch (error) {
-        console.error('[STORAGE] Error in multiGet:', error);
+        logger.error('[STORAGE] Error in multiGet:', error);
         return keys.map(key => [key, null]);
       }
     },
@@ -56,7 +56,7 @@ if (isWeb) {
           keyValuePairs.map(([key, value]) => webStorageService.setItem(key, value))
         );
       } catch (error) {
-        console.error('[STORAGE] Error in multiSet:', error);
+        logger.error('[STORAGE] Error in multiSet:', error);
         throw error;
       }
     },
@@ -67,7 +67,7 @@ if (isWeb) {
           keys.map(key => webStorageService.removeItem(key))
         );
       } catch (error) {
-        console.error('[STORAGE] Error in multiRemove:', error);
+        logger.error('[STORAGE] Error in multiRemove:', error);
         throw error;
       }
     },
@@ -76,7 +76,7 @@ if (isWeb) {
         await webStorageService.init();
         return await webStorageService.clear();
       } catch (error) {
-        console.error('[STORAGE] Error clearing:', error);
+        logger.error('[STORAGE] Error clearing:', error);
         throw error;
       }
     },
@@ -85,7 +85,7 @@ if (isWeb) {
         await webStorageService.init();
         return await webStorageService.getAllKeys();
       } catch (error) {
-        console.error('[STORAGE] Error getting all keys:', error);
+        logger.error('[STORAGE] Error getting all keys:', error);
         return [];
       }
     }

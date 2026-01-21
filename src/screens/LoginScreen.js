@@ -19,6 +19,7 @@ import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
+import logger from '../utils/logger';
 
 const LoginScreen = ({ navigation }) => {
   const { user, loading } = useAuth();
@@ -45,7 +46,7 @@ const LoginScreen = ({ navigation }) => {
     // Check both AuthContext user and Firebase currentUser directly
     const currentUser = user || auth.currentUser;
     if (!loading && currentUser) {
-      console.log('[LOGIN SCREEN] User detected, redirecting to MainApp');
+      logger.debug('[LOGIN SCREEN] User detected, redirecting to MainApp');
       redirectAttemptedRef.current = true;
       navigation.replace('MainApp');
     }
@@ -105,13 +106,28 @@ const LoginScreen = ({ navigation }) => {
     try {
       const user = await authService.signInUser(email, password);
       setIsLoading(false);
-      // Immediately navigate after successful login
-      // Check both the returned user and auth.currentUser as fallback
-      if (user || auth.currentUser) {
-        console.log('[LOGIN SCREEN] Login successful, navigating to MainApp');
-        navigation.replace('MainApp');
+      
+      // Log success with details
+      logger.debug('[LOGIN SCREEN] ✅ Login successful', {
+        userId: user?.uid,
+        email: user?.email,
+        firebaseUser: !!auth.currentUser,
+        firebaseUserId: auth.currentUser?.uid
+      });
+      
+      // Try immediate navigation as primary method, useEffect as backup
+      // Check both returned user and Firebase currentUser
+      const currentUser = user || auth.currentUser;
+      if (currentUser) {
+        logger.debug('[LOGIN SCREEN] User available immediately, calling navigation.replace');
+        // Small delay to ensure Firebase auth state is fully propagated
+        setTimeout(() => {
+          navigation.replace('MainApp');
+        }, 200);
+      } else {
+        logger.debug('[LOGIN SCREEN] User not immediately available, waiting for AuthContext update');
       }
-      // Navigation will also happen via useEffect when user state updates (backup)
+      // Navigation will also happen via useEffect in LoginScreen.web.js when user state updates (backup)
     } catch (error) {
       setIsLoading(false);
       
@@ -186,7 +202,7 @@ const LoginScreen = ({ navigation }) => {
       // Immediately navigate after successful registration
       // Check both the returned user and auth.currentUser as fallback
       if (user || auth.currentUser) {
-        console.log('[LOGIN SCREEN] Registration successful, navigating to MainApp');
+        logger.debug('[LOGIN SCREEN] Registration successful, navigating to MainApp');
         navigation.replace('MainApp');
       }
       // Navigation will also happen via useEffect when user state updates (backup)
@@ -225,7 +241,7 @@ const LoginScreen = ({ navigation }) => {
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Google Sign-In Error:', error);
+      logger.error('Google Sign-In Error:', error);
       Alert.alert('Error', 'Error al iniciar sesión con Google');
       setIsLoading(false);
     }
@@ -247,7 +263,7 @@ const LoginScreen = ({ navigation }) => {
       await authService.resetPassword(email);
       Alert.alert('Éxito', 'Revisa tu correo (spam). Puede estar en la carpeta de spam.');
     } catch (error) {
-      console.error('Password Reset Error:', error);
+      logger.error('Password Reset Error:', error);
       Alert.alert('Error', 'Error al enviar el email de recuperación');
     }
   };

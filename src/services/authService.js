@@ -20,6 +20,7 @@ import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
 import { handleError, handleNetworkOperation } from '../utils/errorHandler';
 import Constants from 'expo-constants';
+import logger from '../utils/logger';
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -56,9 +57,9 @@ class AuthService {
 
   // Sign in user
   async signInUser(email, password) {
-    console.log('[AUTH] signInUser called');
+    logger.debug('[AUTH] signInUser called');
     try {
-      console.log('[AUTH] Calling Firebase signInWithEmailAndPassword...');
+      logger.debug('[AUTH] Calling Firebase signInWithEmailAndPassword...');
       // Add timeout to prevent hanging (30 seconds)
       const signInPromise = signInWithEmailAndPassword(auth, email, password);
       const timeoutPromise = new Promise((_, reject) => 
@@ -66,11 +67,26 @@ class AuthService {
       );
       
       const userCredential = await Promise.race([signInPromise, timeoutPromise]);
-      console.log('[AUTH] Sign in successful:', userCredential.user?.uid);
+      logger.debug('[AUTH] ✅ Sign in successful:', {
+        userId: userCredential.user?.uid,
+        email: userCredential.user?.email,
+        firebaseCurrentUser: !!auth.currentUser
+      });
       
-      return userCredential.user;
+      // Wait a bit longer to ensure Firebase auth state propagates and onAuthStateChanged fires
+      // This helps AuthContext's onAuthStateChanged listener fire before we return
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Verify user is still available after delay
+      const finalUser = auth.currentUser || userCredential.user;
+      logger.debug('[AUTH] Final user check after delay:', {
+        hasUser: !!finalUser,
+        userId: finalUser?.uid
+      });
+      
+      return finalUser || userCredential.user;
     } catch (error) {
-      console.error('[AUTH] Sign in error:', error.code, error.message);
+      logger.error('[AUTH] Sign in error:', error.code, error.message);
       // Don't use handleNetworkOperation for web - it can cause freezes
       // Firebase will handle network errors gracefully
       handleError(error, {
@@ -163,9 +179,9 @@ class AuthService {
         if (error.code === 'storage/object-not-found' || 
             error.code === 'storage/unauthorized' ||
             error.message?.includes('does not exist')) {
-          console.log('Profile picture does not exist or already deleted, continuing...');
+          logger.debug('Profile picture does not exist or already deleted, continuing...');
         } else {
-          console.warn('Failed to delete profile picture (non-critical):', error.message || error);
+          logger.warn('Failed to delete profile picture (non-critical):', error.message || error);
         }
       }
 
@@ -180,7 +196,7 @@ class AuthService {
             await googleAuthService.signOut();
           }
         } catch (error) {
-          console.warn('Failed to revoke Google token:', error);
+          logger.warn('Failed to revoke Google token:', error);
         }
       }
 
@@ -197,7 +213,7 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error deleting account:', error);
+      logger.error('Error deleting account:', error);
       throw error;
     }
   }

@@ -8,6 +8,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
+import logger from '../../utils/logger';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -26,7 +27,7 @@ const OnboardingComplete = ({ navigation, onComplete }) => {
               source={require('../../../assets/Isotipo WAKE (negativo).png')}
               style={styles.wakeIcon}
               resizeMode="contain"
-              onError={(error) => console.log('Image load error:', error)}
+              onError={(error) => logger.debug('Image load error:', error)}
             />
           </View>
 

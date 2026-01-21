@@ -17,6 +17,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { getMondayWeek } from '../utils/weekCalculation';
+import logger from '../utils/logger';
 
 // Helper function to remove undefined values from an object recursively
 function removeUndefinedValues(obj) {
@@ -62,7 +63,7 @@ class FirestoreService {
     } catch (error) {
       // Handle offline/network errors gracefully
       if (error.code === 'unavailable' || error.message.includes('offline')) {
-        console.log('📱 Device is offline, throwing offline error for caller cache handling');
+        logger.debug('📱 Device is offline, throwing offline error for caller cache handling');
         const offlineError = new Error('Firestore unavailable offline');
         offlineError.code = 'offline';
         throw offlineError;
@@ -89,7 +90,7 @@ class FirestoreService {
       });
       return docRef.id;
     } catch (error) {
-      console.error('Error creating progress entry:', error);
+      logger.error('Error creating progress entry:', error);
       throw error;
     }
   }
@@ -102,7 +103,7 @@ class FirestoreService {
         updated_at: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error updating progress entry:', error);
+      logger.error('Error updating progress entry:', error);
       throw error;
     }
   }
@@ -121,7 +122,7 @@ class FirestoreService {
         ...doc.data()
       }));
     } catch (error) {
-      console.error('Error getting user progress:', error);
+      logger.error('Error getting user progress:', error);
       throw error;
     }
   }
@@ -152,7 +153,7 @@ class FirestoreService {
       
       return sessions;
     } catch (error) {
-      console.error('❌ Error getting user course progress:', error);
+      logger.error('❌ Error getting user course progress:', error);
       return [];
     }
   }
@@ -179,7 +180,7 @@ class FirestoreService {
       
       return docId;
     } catch (error) {
-      console.error('❌ Error creating progress session:', error);
+      logger.error('❌ Error creating progress session:', error);
       throw error;
     }
   }
@@ -190,7 +191,7 @@ class FirestoreService {
    */
   async getProgressSession(sessionId) {
     try {
-      console.log('📊 Getting progress session:', sessionId);
+      logger.debug('📊 Getting progress session:', sessionId);
       
       const progressRef = doc(firestore, 'progress', sessionId);
       const docSnap = await getDoc(progressRef);
@@ -200,14 +201,14 @@ class FirestoreService {
           id: docSnap.id,
           ...docSnap.data()
         };
-        console.log('✅ Progress session found');
+        logger.debug('✅ Progress session found');
         return sessionData;
       } else {
-        console.log('❌ Progress session not found');
+        logger.debug('❌ Progress session not found');
         return null;
       }
     } catch (error) {
-      console.error('❌ Error getting progress session:', error);
+      logger.error('❌ Error getting progress session:', error);
       return null;
     }
   }
@@ -238,13 +239,13 @@ class FirestoreService {
             if (isOneOnOneProgram && clientProgram?.weekAssignments) {
               const currentWeek = getMondayWeek();
               weekAssignment = clientProgram.weekAssignments[currentWeek];
-              console.log('📅 One-on-one program - week assignment for', currentWeek, ':', weekAssignment);
+              logger.debug('📅 One-on-one program - week assignment for', currentWeek, ':', weekAssignment);
             }
           } catch (error) {
-            console.warn('⚠️ Could not check if one-on-one program:', error);
+            logger.warn('⚠️ Could not check if one-on-one program:', error);
           }
         } catch (error) {
-          console.warn('⚠️ Could not load client program, continuing without overrides:', error);
+          logger.warn('⚠️ Could not load client program, continuing without overrides:', error);
         }
       }
       
@@ -254,7 +255,7 @@ class FirestoreService {
         // ✅ Weekly program: Filter by current calendar week
         const currentWeek = getMondayWeek(); // "2025-W03"
         
-        console.log('📅 Filtering weekly program by week:', currentWeek);
+        logger.debug('📅 Filtering weekly program by week:', currentWeek);
         
         modulesQuery = query(
           collection(firestore, 'courses', courseId, 'modules'),
@@ -273,7 +274,7 @@ class FirestoreService {
       
       if (isWeeklyProgram && modulesSnapshot.empty) {
         const currentWeek = getMondayWeek();
-        console.warn('⚠️ No modules found for current week:', currentWeek);
+        logger.warn('⚠️ No modules found for current week:', currentWeek);
         // Could return empty array or show message to user
       }
       
@@ -289,7 +290,7 @@ class FirestoreService {
           // ✅ NEW: Check if module is library reference
           if (moduleData.libraryModuleRef && creatorId) {
             try {
-              console.log('📚 Resolving library module:', moduleData.libraryModuleRef);
+              logger.debug('📚 Resolving library module:', moduleData.libraryModuleRef);
               const libraryModule = await libraryResolutionService.resolveLibraryModule(
                 creatorId,
                 moduleData.libraryModuleRef,
@@ -311,7 +312,7 @@ class FirestoreService {
               
               return resolvedModule;
             } catch (error) {
-              console.error('❌ Error resolving library module:', error);
+              logger.error('❌ Error resolving library module:', error);
               // Fallback to empty module if resolution fails
               return { ...moduleData, sessions: [] };
             }
@@ -333,7 +334,7 @@ class FirestoreService {
                 // ✅ NEW: Check if session is library reference
                 if (sessionData.librarySessionRef && creatorId) {
                   try {
-                    console.log('📚 Resolving library session:', sessionData.librarySessionRef);
+                    logger.debug('📚 Resolving library session:', sessionData.librarySessionRef);
                     const programSessionOverrides = sessionData; // Program-level overrides
                     const clientSessionOverrides = clientModuleOverrides?.sessions?.[sessionDoc.id];
                     
@@ -347,7 +348,7 @@ class FirestoreService {
                       clientSessionOverrides
                     );
                   } catch (error) {
-                    console.error('❌ Error resolving library session:', error);
+                    logger.error('❌ Error resolving library session:', error);
                     // Fallback to empty session if resolution fails
                     return { ...sessionData, exercises: [] };
                   }
@@ -387,7 +388,7 @@ class FirestoreService {
                         
                         exerciseData.sets = sets;
                       } catch (error) {
-                        console.warn(`No sets found for exercise ${exerciseDoc.id}:`, error.message);
+                        logger.warn(`No sets found for exercise ${exerciseDoc.id}:`, error.message);
                         exerciseData.sets = [];
                       }
                       
@@ -397,7 +398,7 @@ class FirestoreService {
                   
                   sessionData.exercises = exercises;
                 } catch (error) {
-                  console.warn(`No exercises found for session ${sessionDoc.id}:`, error.message);
+                  logger.warn(`No exercises found for session ${sessionDoc.id}:`, error.message);
                   sessionData.exercises = [];
                 }
                 
@@ -407,7 +408,7 @@ class FirestoreService {
             
             moduleData.sessions = sessions;
           } catch (error) {
-            console.warn(`No sessions found for module ${moduleDoc.id}:`, error.message);
+            logger.warn(`No sessions found for module ${moduleDoc.id}:`, error.message);
             moduleData.sessions = [];
           }
           
@@ -426,23 +427,23 @@ class FirestoreService {
       // If one-on-one program has week assignment, filter to only that module
       if (isOneOnOneProgram && weekAssignment && weekAssignment.moduleIndex !== undefined) {
         const targetModuleIndex = weekAssignment.moduleIndex;
-        console.log('📅 Filtering one-on-one program modules to index:', targetModuleIndex);
+        logger.debug('📅 Filtering one-on-one program modules to index:', targetModuleIndex);
         
         // Filter to only the assigned module (by index in sorted array)
         const filteredModules = allModules.filter((module, index) => index === targetModuleIndex);
         
         if (filteredModules.length === 0) {
-          console.warn('⚠️ No module found at index', targetModuleIndex, 'for week assignment. Total modules:', allModules.length);
+          logger.warn('⚠️ No module found at index', targetModuleIndex, 'for week assignment. Total modules:', allModules.length);
           return allModules; // Return all modules as fallback
         } else {
-          console.log('✅ Filtered to module:', filteredModules[0].id, filteredModules[0].title || `Module ${targetModuleIndex}`);
+          logger.debug('✅ Filtered to module:', filteredModules[0].id, filteredModules[0].title || `Module ${targetModuleIndex}`);
           return filteredModules;
         }
       }
       
       return allModules;
     } catch (error) {
-      console.error('Error in getCourseModules:', error);
+      logger.error('Error in getCourseModules:', error);
       throw error;
     }
   }
@@ -461,7 +462,7 @@ class FirestoreService {
       const docSnap = await getDoc(overridesRef);
       return docSnap.exists() ? docSnap.data() : null;
     } catch (error) {
-      console.error('Error fetching session overrides:', error);
+      logger.error('Error fetching session overrides:', error);
       return null;
     }
   }
@@ -481,7 +482,7 @@ class FirestoreService {
       const docSnap = await getDoc(overridesRef);
       return docSnap.exists() ? docSnap.data() : null;
     } catch (error) {
-      console.error('Error fetching exercise overrides:', error);
+      logger.error('Error fetching exercise overrides:', error);
       return null;
     }
   }
@@ -502,7 +503,7 @@ class FirestoreService {
       const docSnap = await getDoc(overridesRef);
       return docSnap.exists() ? docSnap.data() : null;
     } catch (error) {
-      console.error('Error fetching set overrides:', error);
+      logger.error('Error fetching set overrides:', error);
       return null;
     }
   }
@@ -527,7 +528,7 @@ class FirestoreService {
       }
       return null;
     } catch (error) {
-      console.error('Error getting client program:', error);
+      logger.error('Error getting client program:', error);
       return null;
     }
   }
@@ -550,7 +551,7 @@ class FirestoreService {
       }, { merge: true });
       return clientProgramId;
     } catch (error) {
-      console.error('Error setting client program:', error);
+      logger.error('Error setting client program:', error);
       throw error;
     }
   }
@@ -584,7 +585,7 @@ class FirestoreService {
         updated_at: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error updating client program override:', error);
+      logger.error('Error updating client program override:', error);
       throw error;
     }
   }
@@ -599,7 +600,7 @@ class FirestoreService {
       const clientProgramId = `${userId}_${programId}`;
       await deleteDoc(doc(firestore, 'client_programs', clientProgramId));
     } catch (error) {
-      console.error('Error deleting client program:', error);
+      logger.error('Error deleting client program:', error);
       throw error;
     }
   }
@@ -637,7 +638,7 @@ class FirestoreService {
           }
         };
         
-        console.log('💾 Storing course in user document:', courses[courseId]);
+        logger.debug('💾 Storing course in user document:', courses[courseId]);
         
         await updateDoc(userRef, {
           courses: courses,
@@ -645,10 +646,10 @@ class FirestoreService {
           purchased_courses: [...new Set([...(userData.purchased_courses || []), courseId])]
         });
         
-        console.log('✅ Course added to user document successfully');
+        logger.debug('✅ Course added to user document successfully');
       }
     } catch (error) {
-      console.error('❌ Error in addCourseToUser:', error);
+      logger.error('❌ Error in addCourseToUser:', error);
       throw error;
     }
   }
@@ -755,7 +756,7 @@ class FirestoreService {
         expirationDate: expirationDate.toISOString(),
       };
     } catch (error) {
-      console.error('❌ Error starting trial for course:', error);
+      logger.error('❌ Error starting trial for course:', error);
       return {
         success: false,
         error: error.message || 'Error al iniciar la prueba gratuita',
@@ -766,7 +767,7 @@ class FirestoreService {
 
   async removeCourseFromUser(userId, courseId) {
     try {
-      console.log('🗑️ Removing course from user:', userId, courseId);
+      logger.debug('🗑️ Removing course from user:', userId, courseId);
       
       const userRef = doc(firestore, 'users', userId);
       const userDoc = await getDoc(userRef);
@@ -786,16 +787,16 @@ class FirestoreService {
         courses: courses
       });
       
-      console.log('✅ Course removed from user:', courseId);
+      logger.debug('✅ Course removed from user:', courseId);
     } catch (error) {
-      console.error('❌ Error removing course from user:', error);
+      logger.error('❌ Error removing course from user:', error);
       throw error;
     }
   }
 
   async getUserActiveCourses(userId) {
     try {
-      console.log('🔍 Getting user courses:', userId);
+      logger.debug('🔍 Getting user courses:', userId);
       
       // Add timeout to prevent hanging (10 seconds)
       let timeoutId;
@@ -812,12 +813,12 @@ class FirestoreService {
         if (timeoutId) clearTimeout(timeoutId);
       } catch (error) {
         if (timeoutId) clearTimeout(timeoutId);
-        console.error('❌ Firestore query error:', error);
+        logger.error('❌ Firestore query error:', error);
         throw error;
       }
       
       if (!userDoc.exists()) {
-        console.log('⚠️ User document does not exist');
+        logger.debug('⚠️ User document does not exist');
         return [];
       }
 
@@ -827,8 +828,8 @@ class FirestoreService {
       const trialHistory = userData.free_trial_history || {};
       
       // Filter active courses and return with embedded course data (no additional queries!)
-      console.log('🔍 Filtering courses from user document...');
-      console.log('📊 Total courses in user document:', Object.keys(userCourses).length);
+      logger.debug('🔍 Filtering courses from user document...');
+      logger.debug('📊 Total courses in user document:', Object.keys(userCourses).length);
       
       const activeCourses = Object.entries(userCourses)
         .filter(([courseId, courseData]) => {
@@ -837,7 +838,7 @@ class FirestoreService {
           const isNotExpired = !expiresAt || expiresAt > now;
           const isTrial = courseData.is_trial === true;
           
-          console.log(`📋 Course ${courseId}:`, {
+          logger.debug(`📋 Course ${courseId}:`, {
             status: courseData.status,
             expires_at: courseData.expires_at,
             isActive,
@@ -862,7 +863,7 @@ class FirestoreService {
             ? (trialExpiresAt && new Date(trialExpiresAt) > now ? 'active' : 'expired')
             : null;
 
-          console.log(`✅ Including course ${courseId} in active list`);
+          logger.debug(`✅ Including course ${courseId} in active list`);
           return {
             courseId,
             courseData,
@@ -887,10 +888,10 @@ class FirestoreService {
           };
         });
       
-      console.log('✅ Active courses (single query):', activeCourses.length);
+      logger.debug('✅ Active courses (single query):', activeCourses.length);
       return activeCourses;
     } catch (error) {
-      console.error('Error getting user active courses:', error);
+      logger.error('Error getting user active courses:', error);
       return [];
     }
   }
@@ -930,13 +931,13 @@ class FirestoreService {
           
           await updateDoc(userRef, { courses: cleanedCourses });
           
-          console.log(`✅ Updated course ${courseId} status to ${status}`);
+          logger.debug(`✅ Updated course ${courseId} status to ${status}`);
           return true;
         }
       }
       return false;
     } catch (error) {
-      console.error('Error updating course status:', error);
+      logger.error('Error updating course status:', error);
       return false;
     }
   }
@@ -946,7 +947,7 @@ class FirestoreService {
     try {
       return await this.updateCourseStatus(userId, courseId, 'active', newExpirationDate);
     } catch (error) {
-      console.error('Error extending course subscription:', error);
+      logger.error('Error extending course subscription:', error);
       return false;
     }
   }
@@ -956,7 +957,7 @@ class FirestoreService {
     try {
       return await this.updateCourseStatus(userId, courseId, 'cancelled');
     } catch (error) {
-      console.error('Error cancelling course subscription:', error);
+      logger.error('Error cancelling course subscription:', error);
       return false;
     }
   }
@@ -964,14 +965,14 @@ class FirestoreService {
   // Courses collection operations (with role-based filtering)
   async getCourses(userId = null) {
     try {
-      console.log('🔍 Getting courses for user:', userId);
+      logger.debug('🔍 Getting courses for user:', userId);
       
       // Get user role if userId provided
       let userRole = 'user'; // Default
       if (userId) {
         const userDoc = await getDoc(doc(firestore, 'users', userId));
         userRole = userDoc.data()?.role || 'user';
-        console.log('👤 User role:', userRole);
+        logger.debug('👤 User role:', userRole);
       }
       
       // Get all courses (no server-side filtering)
@@ -981,16 +982,16 @@ class FirestoreService {
         ...doc.data()
       }));
       
-      console.log('📊 Total courses in database:', allCourses.length);
+      logger.debug('📊 Total courses in database:', allCourses.length);
       
       // Filter based on user role (client-side)
       const filteredCourses = allCourses.filter(course => {
         const courseStatus = course.status || course.estado; // Support both field names
-        console.log(`🔍 Filtering course: ${course.title}, status: ${courseStatus}, creator_id: ${course.creator_id}`);
+        logger.debug(`🔍 Filtering course: ${course.title}, status: ${courseStatus}, creator_id: ${course.creator_id}`);
         
         // Admins see everything
         if (userRole === 'admin') {
-          console.log('  → Admin: SHOW');
+          logger.debug('  → Admin: SHOW');
           return true;
         }
         
@@ -998,14 +999,14 @@ class FirestoreService {
         if (userRole === 'creator') {
           const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
           const isOwnCourse = course.creator_id === userId;
-          console.log(`  → Creator: isPublished=${isPublished}, isOwnCourse=${isOwnCourse}`);
+          logger.debug(`  → Creator: isPublished=${isPublished}, isOwnCourse=${isOwnCourse}`);
           return isPublished || isOwnCourse;
         }
         
         // Regular users see only published
         const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
         const shouldShow = isPublished || !courseStatus; // Backward compatibility
-        console.log(`  → User: shouldShow=${shouldShow}, status=${courseStatus}`);
+        logger.debug(`  → User: shouldShow=${shouldShow}, status=${courseStatus}`);
         return shouldShow;
       });
       
@@ -1016,31 +1017,31 @@ class FirestoreService {
         return bDate - aDate;
       });
       
-      console.log('✅ Filtered courses for role', userRole, ':', sortedCourses.length);
+      logger.debug('✅ Filtered courses for role', userRole, ':', sortedCourses.length);
       return sortedCourses;
       
     } catch (error) {
-      console.error('❌ Error in getCourses:', error);
+      logger.error('❌ Error in getCourses:', error);
       throw error;
     }
   }
 
   async getCourse(courseId) {
     try {
-      console.log('🔍 FirestoreService: Getting course with ID:', courseId);
+      logger.debug('🔍 FirestoreService: Getting course with ID:', courseId);
       const courseDoc = await getDoc(doc(firestore, 'courses', courseId));
-      console.log('🔍 FirestoreService: Course document exists:', courseDoc.exists());
+      logger.debug('🔍 FirestoreService: Course document exists:', courseDoc.exists());
       
       if (courseDoc.exists()) {
         const courseData = { id: courseDoc.id, ...courseDoc.data() };
-        console.log('✅ FirestoreService: Course data:', courseData);
+        logger.debug('✅ FirestoreService: Course data:', courseData);
         return courseData;
       } else {
-        console.log('❌ FirestoreService: Course not found in database');
+        logger.debug('❌ FirestoreService: Course not found in database');
         return null;
       }
     } catch (error) {
-      console.error('❌ FirestoreService: Error getting course:', error);
+      logger.error('❌ FirestoreService: Error getting course:', error);
       throw error;
     }
   }
@@ -1048,12 +1049,12 @@ class FirestoreService {
   // Purchase logging operations
   async createPurchaseLog(purchaseData) {
     try {
-      console.log('📝 Creating purchase log...', purchaseData);
+      logger.debug('📝 Creating purchase log...', purchaseData);
       const docRef = await addDoc(collection(firestore, 'purchases'), purchaseData);
-      console.log('✅ Purchase log created with ID:', docRef.id);
+      logger.debug('✅ Purchase log created with ID:', docRef.id);
       return docRef.id;
     } catch (error) {
-      console.error('❌ Error creating purchase log:', error);
+      logger.error('❌ Error creating purchase log:', error);
       throw error;
     }
   }
@@ -1127,7 +1128,7 @@ class FirestoreService {
    */
   async updateUserCourseVersionStatus(userId, courseId, statusData) {
     try {
-      console.log('🔄 Updating user course version status:', userId, courseId, statusData);
+      logger.debug('🔄 Updating user course version status:', userId, courseId, statusData);
       
       // Build update object conditionally to avoid undefined values
       const updateData = {
@@ -1146,9 +1147,9 @@ class FirestoreService {
       }
       
       await updateDoc(doc(firestore, 'users', userId), updateData);
-      console.log('✅ User course version status updated');
+      logger.debug('✅ User course version status updated');
     } catch (error) {
-      console.error('❌ Error updating user course version status:', error);
+      logger.error('❌ Error updating user course version status:', error);
       throw error;
     }
   }
@@ -1158,18 +1159,18 @@ class FirestoreService {
    */
   async getUserCourseVersion(userId, courseId) {
     try {
-      console.log('🔍 Getting user course version:', userId, courseId);
+      logger.debug('🔍 Getting user course version:', userId, courseId);
       const userDoc = await getDoc(doc(firestore, 'users', userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
         const courseData = userData.courses?.[courseId] || null;
-        console.log('✅ User course version data:', courseData);
+        logger.debug('✅ User course version data:', courseData);
         return courseData;
       }
-      console.log('❌ User document not found');
+      logger.debug('❌ User document not found');
       return null;
     } catch (error) {
-      console.error('❌ Error getting user course version:', error);
+      logger.error('❌ Error getting user course version:', error);
       throw error;
     }
   }
@@ -1179,7 +1180,7 @@ class FirestoreService {
    */
   async saveAccountDeletionFeedback(userId, feedback) {
     try {
-      console.log('💬 Saving account deletion feedback for user:', userId);
+      logger.debug('💬 Saving account deletion feedback for user:', userId);
       
       const feedbackData = {
         userId: userId,
@@ -1191,10 +1192,10 @@ class FirestoreService {
       // Save to a separate collection that won't be deleted
       await addDoc(collection(firestore, 'account_deletion_feedback'), feedbackData);
       
-      console.log('✅ Account deletion feedback saved');
+      logger.debug('✅ Account deletion feedback saved');
       return true;
     } catch (error) {
-      console.error('❌ Error saving account deletion feedback:', error);
+      logger.error('❌ Error saving account deletion feedback:', error);
       throw error;
     }
   }
@@ -1204,7 +1205,7 @@ class FirestoreService {
    */
   async deleteAllUserData(userId) {
     try {
-      console.log('🗑️ Starting deletion of all user data for:', userId);
+      logger.debug('🗑️ Starting deletion of all user data for:', userId);
 
       // Delete subcollections
       await this.deleteSubcollection(userId, 'exerciseHistory');
@@ -1219,11 +1220,11 @@ class FirestoreService {
       // Delete main user document
       const userRef = doc(firestore, 'users', userId);
       await deleteDoc(userRef);
-      console.log('✅ User document deleted');
+      logger.debug('✅ User document deleted');
 
-      console.log('✅ All user data deleted successfully');
+      logger.debug('✅ All user data deleted successfully');
     } catch (error) {
-      console.error('❌ Error deleting user data:', error);
+      logger.error('❌ Error deleting user data:', error);
       throw error;
     }
   }
@@ -1237,7 +1238,7 @@ class FirestoreService {
       const snapshot = await getDocs(subcollectionRef);
       
       if (snapshot.empty) {
-        console.log(`✅ ${subcollectionName} subcollection is empty`);
+        logger.debug(`✅ ${subcollectionName} subcollection is empty`);
         return;
       }
 
@@ -1254,12 +1255,12 @@ class FirestoreService {
         });
         
         await batch.commit();
-        console.log(`✅ Deleted ${batchDocs.length} documents from ${subcollectionName} (batch ${Math.floor(i / batchSize) + 1})`);
+        logger.debug(`✅ Deleted ${batchDocs.length} documents from ${subcollectionName} (batch ${Math.floor(i / batchSize) + 1})`);
       }
 
-      console.log(`✅ ${subcollectionName} subcollection deleted (${docs.length} documents)`);
+      logger.debug(`✅ ${subcollectionName} subcollection deleted (${docs.length} documents)`);
     } catch (error) {
-      console.error(`❌ Error deleting ${subcollectionName} subcollection:`, error);
+      logger.error(`❌ Error deleting ${subcollectionName} subcollection:`, error);
       throw error;
     }
   }
@@ -1279,7 +1280,7 @@ class FirestoreService {
       );
 
       if (userDocs.length === 0) {
-        console.log('✅ No user_progress documents to delete');
+        logger.debug('✅ No user_progress documents to delete');
         return;
       }
 
@@ -1294,12 +1295,12 @@ class FirestoreService {
         });
         
         await batch.commit();
-        console.log(`✅ Deleted ${batchDocs.length} user_progress documents (batch ${Math.floor(i / batchSize) + 1})`);
+        logger.debug(`✅ Deleted ${batchDocs.length} user_progress documents (batch ${Math.floor(i / batchSize) + 1})`);
       }
 
-      console.log(`✅ user_progress documents deleted (${userDocs.length} documents)`);
+      logger.debug(`✅ user_progress documents deleted (${userDocs.length} documents)`);
     } catch (error) {
-      console.error('❌ Error deleting user_progress documents:', error);
+      logger.error('❌ Error deleting user_progress documents:', error);
       throw error;
     }
   }
@@ -1320,7 +1321,7 @@ class FirestoreService {
       });
 
       if (userDocs.length === 0) {
-        console.log('✅ No completed_sessions documents to delete');
+        logger.debug('✅ No completed_sessions documents to delete');
         return;
       }
 
@@ -1335,12 +1336,12 @@ class FirestoreService {
         });
         
         await batch.commit();
-        console.log(`✅ Deleted ${batchDocs.length} completed_sessions documents (batch ${Math.floor(i / batchSize) + 1})`);
+        logger.debug(`✅ Deleted ${batchDocs.length} completed_sessions documents (batch ${Math.floor(i / batchSize) + 1})`);
       }
 
-      console.log(`✅ completed_sessions documents deleted (${userDocs.length} documents)`);
+      logger.debug(`✅ completed_sessions documents deleted (${userDocs.length} documents)`);
     } catch (error) {
-      console.error('❌ Error deleting completed_sessions documents:', error);
+      logger.error('❌ Error deleting completed_sessions documents:', error);
       throw error;
     }
   }

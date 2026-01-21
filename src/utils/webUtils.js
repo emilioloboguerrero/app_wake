@@ -1,4 +1,5 @@
 // Web-specific utility functions
+import logger from './logger';
 
 // Get responsive dimensions (web-compatible)
 export const getResponsiveDimensions = () => {
@@ -215,7 +216,7 @@ export const checkStorageQuota = async () => {
         : null
     };
   } catch (error) {
-    console.error('Error checking storage quota:', error);
+    logger.error('Error checking storage quota:', error);
     return null;
   }
 };
@@ -230,7 +231,7 @@ export const requestPersistentStorage = async () => {
     const isPersistent = await navigator.storage.persist();
     return isPersistent;
   } catch (error) {
-    console.error('Error requesting persistent storage:', error);
+    logger.error('Error requesting persistent storage:', error);
     return false;
   }
 };

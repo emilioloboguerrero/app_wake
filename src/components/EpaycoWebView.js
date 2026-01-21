@@ -12,6 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import logger from '../utils/logger';
 
 const MERCADO_PAGO_LOGO = require('../../assets/images.png');
 const MERCADO_PAGO_LOADING_LOGO = require('../../assets/mercado-pago-logo-png_seeklogo-342347.png');
@@ -28,7 +29,7 @@ const EpaycoWebView = ({
 
   // Handle WebView navigation
   const handleNavigationStateChange = (navState) => {
-    console.log('📍 WebView Navigation:', navState.url);
+    logger.debug('📍 WebView Navigation:', navState.url);
     
     // Check for actual payment success URLs (only after leaving checkout)
     const successPatterns = [
@@ -54,7 +55,7 @@ const EpaycoWebView = ({
     
     // If user is redirected to subscription management page or success page, payment is complete
     if (isPaymentSuccess || isSubscriptionManagementPage) {
-      console.log('✅ Payment/Subscription success detected:', navState.url);
+      logger.debug('✅ Payment/Subscription success detected:', navState.url);
       onPaymentSuccess?.({ url: navState.url });
       onClose?.();
       return;
@@ -85,7 +86,7 @@ const EpaycoWebView = ({
     );
     
     if (isPaymentError) {
-      console.log('❌ Payment error detected:', navState.url);
+      logger.debug('❌ Payment error detected:', navState.url);
       onPaymentError?.({ url: navState.url });
       onClose?.();
       return;
@@ -94,7 +95,7 @@ const EpaycoWebView = ({
 
   // Handle WebView load
   const handleWebViewLoad = () => {
-    console.log('✅ Epayco checkout loaded');
+    logger.debug('✅ Epayco checkout loaded');
     setLoading(false);
     setError(null);
   };
@@ -102,7 +103,7 @@ const EpaycoWebView = ({
   // Handle WebView error
   const handleWebViewError = (syntheticEvent) => {
     const { nativeEvent } = syntheticEvent;
-    console.error('❌ WebView error:', nativeEvent);
+    logger.error('❌ WebView error:', nativeEvent);
     setError('Error al cargar la página de pago');
     setLoading(false);
   };

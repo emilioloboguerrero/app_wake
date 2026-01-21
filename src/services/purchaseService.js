@@ -4,6 +4,7 @@
 import firestoreService from './firestoreService';
 import { createError } from '../utils/errorHandler';
 import { calculateExpirationDate } from '../utils/durationHelper';
+import logger from '../utils/logger';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
@@ -79,7 +80,7 @@ class PurchaseService {
 
       return result;
     } catch (error) {
-      console.error('❌ Error starting local trial:', error);
+      logger.error('❌ Error starting local trial:', error);
       return {
         success: false,
         error: error.message || 'Error al iniciar la prueba gratuita',
@@ -110,7 +111,7 @@ class PurchaseService {
         trialHistory,
       };
     } catch (error) {
-      console.error('Error getting user course state:', error);
+      logger.error('Error getting user course state:', error);
       return { ownsCourse: false, courseData: null, trialHistory: null };
     }
   }
@@ -126,7 +127,7 @@ class PurchaseService {
       const { ownsCourse } = await this.getUserCourseState(userId, courseId);
       return ownsCourse;
     } catch (error) {
-      console.error('Error checking course ownership:', error);
+      logger.error('Error checking course ownership:', error);
       return false;
     }
   }
@@ -139,7 +140,7 @@ class PurchaseService {
    */
   async grantFreeAccess(userId, courseId) {
     try {
-      console.log(`🆓 Granting free access: User ${userId} → Course ${courseId}`);
+      logger.debug(`🆓 Granting free access: User ${userId} → Course ${courseId}`);
       
       // Check if user already owns this course
       const existingPurchase = await this.checkUserOwnsCourse(userId, courseId);
@@ -176,7 +177,7 @@ class PurchaseService {
         courseDetails
       );
 
-      console.log('✅ Free access granted successfully');
+      logger.debug('✅ Free access granted successfully');
 
       return {
         success: true,
@@ -185,7 +186,7 @@ class PurchaseService {
       };
 
     } catch (error) {
-      console.error('❌ Error granting free access:', error);
+      logger.error('❌ Error granting free access:', error);
       return {
         success: false,
         error: error.message || 'Error al otorgar acceso gratuito',
@@ -313,7 +314,7 @@ class PurchaseService {
     try {
       return await firestoreService.getUserActiveCourses(userId);
     } catch (error) {
-      console.error('Error getting active courses:', error);
+      logger.error('Error getting active courses:', error);
       return [];
     }
   }
@@ -334,19 +335,19 @@ class PurchaseService {
       // For AllPurchasedCoursesScreen, get all courses from user document
       const userDoc = await firestoreService.getUser(userId);
       if (!userDoc) {
-        console.log('❌ getUserPurchasedCourses: User document not found for:', userId);
+        logger.debug('❌ getUserPurchasedCourses: User document not found for:', userId);
         return [];
       }
       
       const userCourses = userDoc.courses || {};
-      console.log('🔍 getUserPurchasedCourses: User courses object:', {
+      logger.debug('🔍 getUserPurchasedCourses: User courses object:', {
         userId,
         coursesCount: Object.keys(userCourses).length,
         courseIds: Object.keys(userCourses)
       });
       
       if (Object.keys(userCourses).length === 0) {
-        console.log('⚠️ getUserPurchasedCourses: No courses found in user document');
+        logger.debug('⚠️ getUserPurchasedCourses: No courses found in user document');
         return [];
       }
       
@@ -355,7 +356,7 @@ class PurchaseService {
       // Get all courses with status information
       const coursesWithDetails = await Promise.all(
         Object.entries(userCourses).map(async ([courseId, courseData]) => {
-          console.log('🔍 Processing course:', courseId, courseData);
+          logger.debug('🔍 Processing course:', courseId, courseData);
           const courseDetails = await firestoreService.getCourse(courseId);
           
           // Determine status
@@ -378,10 +379,10 @@ class PurchaseService {
         })
       );
       
-      console.log('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
+      logger.debug('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
       return coursesWithDetails;
     } catch (error) {
-      console.error('❌ Error getting user courses:', error);
+      logger.error('❌ Error getting user courses:', error);
       return [];
     }
   }

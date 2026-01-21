@@ -9,6 +9,7 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { isWeb } from '../utils/platform';
+import logger from '../utils/logger';
 
 // Create a stable mock player object
 const createMockPlayer = (initialMuted = false) => {
@@ -42,7 +43,7 @@ if (!isWeb) {
   try {
     nativeUseVideoPlayer = require('expo-video').useVideoPlayer;
   } catch (e) {
-    console.warn('[usePlatformVideoPlayer] expo-video not available');
+    logger.warn('[usePlatformVideoPlayer] expo-video not available');
   }
 }
 

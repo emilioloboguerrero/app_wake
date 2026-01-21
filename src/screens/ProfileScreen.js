@@ -115,40 +115,111 @@ const ProfileScreen = ({ navigation }) => {
   const usernameDebounceTimer = useRef(null);
 
 
+  // Track previous user ID to detect changes
+  const previousUserIdRef = useRef(null);
+
   // Load user profile data when screen mounts (for display)
   useEffect(() => {
     const loadProfileForDisplay = async () => {
-      if (user?.uid) {
-        try {
-          const userData = await hybridDataService.loadUserProfile(user.uid);
-          if (userData) {
-            setUserProfile({
-              displayName: userData?.displayName || '',
-              username: userData?.username || '',
-              email: user?.email || '',
-              phoneNumber: userData?.phoneNumber || '',
-              gender: userData?.gender || '',
-              bodyweight: userData?.bodyweight || null,
-              height: userData?.height || null,
-            });
-            
-            // Load profile picture if available
-            if (userData?.profilePictureUrl) {
-              setProfilePictureUrl(userData.profilePictureUrl);
-            } else {
-              // Try to load from cache/storage
-              const cachedUrl = await profilePictureService.getProfilePictureUrl(user.uid);
-              if (cachedUrl) {
-                setProfilePictureUrl(cachedUrl);
-              }
+      // Always use auth.currentUser as source of truth
+      const currentUser = auth.currentUser;
+      const currentUserId = currentUser?.uid || user?.uid;
+      
+      if (!currentUserId) {
+        logger.log('⚠️ No user ID available - skipping profile load');
+        // Clear profile if no user
+        setUserProfile({
+          displayName: '',
+          username: '',
+          email: '',
+          phoneNumber: '',
+          gender: '',
+          bodyweight: null,
+          height: null,
+        });
+        setProfilePictureUrl(null);
+        previousUserIdRef.current = null;
+        return;
+      }
+      
+      // If user ID has changed, clear profile data immediately
+      if (previousUserIdRef.current !== null && previousUserIdRef.current !== currentUserId) {
+        logger.log('🔄 User ID changed - clearing stale profile data:', {
+          previousUserId: previousUserIdRef.current,
+          currentUserId: currentUserId
+        });
+        setUserProfile({
+          displayName: '',
+          username: '',
+          email: '',
+          phoneNumber: '',
+          gender: '',
+          bodyweight: null,
+          height: null,
+        });
+        setProfilePictureUrl(null);
+      }
+      
+      previousUserIdRef.current = currentUserId;
+      
+      try {
+        // Double-check user ID before loading
+        if (previousUserIdRef.current !== currentUserId) {
+          logger.log('⚠️ User ID changed before profile load - aborting');
+          return;
+        }
+        
+        logger.log('📊 Loading profile for user:', currentUserId);
+        const userData = await hybridDataService.loadUserProfile(currentUserId);
+        
+        // Final verification: check user hasn't changed during async load
+        const finalCurrentUser = auth.currentUser;
+        const finalUserId = finalCurrentUser?.uid || user?.uid;
+        if (finalUserId !== currentUserId) {
+          logger.log('⚠️ User ID changed during profile load - discarding results');
+          return;
+        }
+        
+        if (userData) {
+          logger.log('✅ Profile loaded successfully');
+          setUserProfile({
+            displayName: userData?.displayName || '',
+            username: userData?.username || '',
+            email: finalCurrentUser?.email || user?.email || '',
+            phoneNumber: userData?.phoneNumber || '',
+            gender: userData?.gender || '',
+            bodyweight: userData?.bodyweight || null,
+            height: userData?.height || null,
+          });
+          
+          // Load profile picture if available
+          if (userData?.profilePictureUrl) {
+            setProfilePictureUrl(userData.profilePictureUrl);
+          } else {
+            // Try to load from cache/storage
+            const cachedUrl = await profilePictureService.getProfilePictureUrl(currentUserId);
+            if (cachedUrl) {
+              setProfilePictureUrl(cachedUrl);
             }
           }
-          
-          // Check for tutorials after loading profile
-          await checkForTutorials();
-        } catch (error) {
-          logger.error('Error loading profile for display:', error);
         }
+        
+        // Check for tutorials after loading profile
+        await checkForTutorials();
+      } catch (error) {
+        logger.error('❌ Error loading profile for display:', error);
+        // Clear on error to prevent stale data
+        const fallbackUser = auth.currentUser || user;
+        setUserProfile({
+          displayName: fallbackUser?.displayName || '',
+          username: '',
+          email: fallbackUser?.email || '',
+          phoneNumber: '',
+          gender: '',
+          bodyweight: null,
+          height: null,
+        });
+        setProfilePictureUrl(null);
       }
     };
 
@@ -288,7 +359,7 @@ const ProfileScreen = ({ navigation }) => {
         Alert.alert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
       }
     } catch (error) {
-      console.error('Error changing profile picture:', error);
+      logger.error('Error changing profile picture:', error);
       if (error.message.includes('Permission')) {
         Alert.alert(
           'Permiso necesario', 
@@ -384,7 +455,7 @@ const ProfileScreen = ({ navigation }) => {
 
   // Handle delete account request
   const handleDeleteAccountRequest = () => {
-    console.log('🗑️ Delete account button pressed');
+    logger.debug('🗑️ Delete account button pressed');
     // Remember that settings modal was open
     setWasSettingsModalOpen(isSettingsModalVisible);
     // Close settings modal and open delete account modal
@@ -459,7 +530,7 @@ const ProfileScreen = ({ navigation }) => {
       // Show final delete button
       setShowFinalDeleteButton(true);
     } catch (error) {
-      console.error('Error saving feedback:', error);
+      logger.error('Error saving feedback:', error);
       Alert.alert('Error', 'No se pudo guardar el feedback. Por favor intenta de nuevo.');
     } finally {
       setDeleteAccountLoading(false);
@@ -509,7 +580,7 @@ const ProfileScreen = ({ navigation }) => {
             throw new Error('No se obtuvo el token de Google');
           }
         } catch (error) {
-          console.error('Google reauthentication error:', error);
+          logger.error('Google reauthentication error:', error);
           throw new Error('No se pudo reautenticar con Google. Por favor intenta de nuevo.');
         }
       } else if (providerId === 'apple.com') {
@@ -542,7 +613,7 @@ const ProfileScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
-      console.error('Error deleting account:', error);
+      logger.error('Error deleting account:', error);
       
       let errorMessage = 'No se pudo eliminar la cuenta.';
       if (error.code === 'auth/wrong-password') {

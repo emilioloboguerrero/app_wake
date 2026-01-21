@@ -38,24 +38,24 @@ const ExerciseDetailContent = ({
   headerSpacerHeight = 0
 }) => {
   const componentStartTime = performance.now();
-  console.log(`[CHILD] [CHECKPOINT] ExerciseDetailContent render started - ${componentStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailContent render started - ${componentStartTime.toFixed(2)}ms`);
   
   // Get dimensions inside component to avoid blocking module initialization
   const dimensionsStartTime = performance.now();
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const dimensionsDuration = performance.now() - dimensionsStartTime;
-  console.log(`[CHILD] [TIMING] ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
   if (dimensionsDuration > 5) {
-    console.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
   }
   
   // Create styles with dimensions
   const stylesStartTime = performance.now();
   const styles = createStyles(screenWidth, screenHeight);
   const stylesDuration = performance.now() - stylesStartTime;
-  console.log(`[CHILD] [TIMING] ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
   if (stylesDuration > 10) {
-    console.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
+    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
   
   const { user } = useAuth();
@@ -249,13 +249,13 @@ const ExerciseDetailContent = ({
   };
 
   const jsxStartTime = performance.now();
-  console.log(`[CHILD] [TIMING] ExerciseDetailContent JSX return starting - ${jsxStartTime.toFixed(2)}ms`);
+  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX return starting - ${jsxStartTime.toFixed(2)}ms`);
   
   return (
     <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
       {(() => {
         const contentStartTime = performance.now();
-        console.log(`[CHILD] [TIMING] ExerciseDetailContent JSX content starting - ${contentStartTime.toFixed(2)}ms`);
+        logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX content starting - ${contentStartTime.toFixed(2)}ms`);
         return null;
       })()}
       <View style={styles.content}>
@@ -443,9 +443,9 @@ const ExerciseDetailContent = ({
       {(() => {
         const jsxEndTime = performance.now();
         const jsxDuration = jsxEndTime - jsxStartTime;
-        console.log(`[CHILD] [TIMING] ExerciseDetailContent JSX return completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
+        logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX return completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
         if (jsxDuration > 50) {
-          console.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent JSX creation took ${jsxDuration.toFixed(2)}ms`);
+          logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent JSX creation took ${jsxDuration.toFixed(2)}ms`);
         }
         return null;
       })()}
@@ -456,9 +456,9 @@ const ExerciseDetailContent = ({
   useEffect(() => {
     const componentEndTime = performance.now();
     const componentDuration = componentEndTime - componentStartTime;
-    console.log(`[CHILD] [CHECKPOINT] ExerciseDetailContent render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+    logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailContent render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
     if (componentDuration > 50) {
-      console.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent total render took ${componentDuration.toFixed(2)}ms`);
+      logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent total render took ${componentDuration.toFixed(2)}ms`);
     }
   });
 };

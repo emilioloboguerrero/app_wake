@@ -4,6 +4,7 @@ import firestoreService from '../services/firestoreService';
 import hybridDataService from '../services/hybridDataService';
 import updateEventManager from '../services/updateEventManager';
 import { getMondayWeek } from '../utils/weekCalculation';
+import logger from '../utils/logger';
 
 class CourseDownloadService {
   constructor() {
@@ -28,7 +29,7 @@ class CourseDownloadService {
       const storedCourse = await this.getCourseData(courseId, true); // Skip version check
       return storedCourse?.currentWeek || null;
     } catch (error) {
-      console.error('Error getting stored week:', error);
+      logger.error('Error getting stored week:', error);
       return null;
     }
   }
@@ -42,10 +43,10 @@ class CourseDownloadService {
       if (storedCourse) {
         storedCourse.currentWeek = week;
         await this.storeCourseLocally(courseId, storedCourse);
-        console.log('✅ Stored week updated:', week);
+        logger.debug('✅ Stored week updated:', week);
       }
     } catch (error) {
-      console.error('Error updating stored week:', error);
+      logger.error('Error updating stored week:', error);
     }
   }
 
@@ -57,7 +58,7 @@ class CourseDownloadService {
       // Prevent recursion - if already checking, skip
       const checkKey = `${courseId}_${userId}`;
       if (this._weekChecksInProgress.has(checkKey)) {
-        console.log('⚠️ Week check already in progress for:', courseId);
+        logger.debug('⚠️ Week check already in progress for:', courseId);
         return false;
       }
 
@@ -76,7 +77,7 @@ class CourseDownloadService {
         
         // If week changed, re-download (unless skipDownload is true)
         if (storedWeek && storedWeek !== currentWeek && !skipDownload) {
-          console.log('🔄 Week changed detected!', {
+          logger.debug('🔄 Week changed detected!', {
             storedWeek,
             currentWeek,
             courseId
@@ -105,7 +106,7 @@ class CourseDownloadService {
         this._weekChecksInProgress.delete(checkKey);
       }
     } catch (error) {
-      console.error('Error checking week change:', error);
+      logger.error('Error checking week change:', error);
       const checkKey = `${courseId}_${userId}`;
       this._weekChecksInProgress.delete(checkKey);
       return false;
@@ -117,11 +118,11 @@ class CourseDownloadService {
    */
   async downloadCourseInternal(courseId, userId) {
     try {
-      console.log('📥 Starting course download (internal):', courseId);
+      logger.debug('📥 Starting course download (internal):', courseId);
       
       // Skip week check to prevent recursion
       // Try to get course data from hybrid system first (cached)
-      console.log('🔍 Checking hybrid cache for course data...');
+      logger.debug('🔍 Checking hybrid cache for course data...');
       let courseData = null;
       let modules = [];
       
@@ -131,21 +132,21 @@ class CourseDownloadService {
         courseData = courses.find(c => c.id === courseId);
         
         if (courseData) {
-          console.log('✅ Course metadata found in hybrid cache');
+          logger.debug('✅ Course metadata found in hybrid cache');
           modules = await firestoreService.getCourseModules(courseId, userId);
-          console.log('📚 Course modules loaded from DB:', modules.length);
+          logger.debug('📚 Course modules loaded from DB:', modules.length);
         } else {
-          console.log('⚠️ Course not found in hybrid cache, fetching from DB...');
+          logger.debug('⚠️ Course not found in hybrid cache, fetching from DB...');
           courseData = await firestoreService.getCourse(courseId);
           if (!courseData) {
             throw new Error(`Course ${courseId} not found in Firestore`);
           }
-          console.log('📖 Course data retrieved from DB:', Object.keys(courseData));
+          logger.debug('📖 Course data retrieved from DB:', Object.keys(courseData));
           modules = await firestoreService.getCourseModules(courseId, userId);
-          console.log('📚 Course modules loaded from DB:', modules.length);
+          logger.debug('📚 Course modules loaded from DB:', modules.length);
         }
       } catch (error) {
-        console.warn('⚠️ Error getting course data:', error.message);
+        logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
       
@@ -153,14 +154,14 @@ class CourseDownloadService {
       let imageUrl = null;
       if (courseData.image_url) {
         imageUrl = courseData.image_url;
-        console.log(`📥 Course ${courseId} has image URL:`, imageUrl);
+        logger.debug(`📥 Course ${courseId} has image URL:`, imageUrl);
       }
       
       // Store current week for weekly programs
       let currentWeek = null;
       if (courseData?.weekly === true) {
         currentWeek = getMondayWeek();
-        console.log('📅 Weekly program - current week:', currentWeek);
+        logger.debug('📅 Weekly program - current week:', currentWeek);
       }
 
       // ✅ NEW: Extract library versions from resolved modules
@@ -186,22 +187,22 @@ class CourseDownloadService {
           size_mb: this.estimateDataSize({ ...courseData, modules }),
           compressed: false
         });
-        console.log('✅ Basic course data stored locally');
+        logger.debug('✅ Basic course data stored locally');
       } catch (storeError) {
-        console.error('❌ Failed to store basic course data:', storeError);
+        logger.error('❌ Failed to store basic course data:', storeError);
       }
       
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
-        console.warn('⚠️ Course data validation warning:', validationError);
+        logger.warn('⚠️ Course data validation warning:', validationError);
       }
       
-      console.log('✅ Course downloaded successfully (internal):', courseId);
+      logger.debug('✅ Course downloaded successfully (internal):', courseId);
       return true;
       
     } catch (error) {
-      console.error('❌ Course download failed (internal):', error);
+      logger.error('❌ Course download failed (internal):', error);
       throw error;
     }
   }
@@ -212,7 +213,7 @@ class CourseDownloadService {
    */
   async downloadCourse(courseId, userId) {
     try {
-      console.log('📥 Starting course download:', courseId);
+      logger.debug('📥 Starting course download:', courseId);
       
       // ✅ NEW: Check if week changed (only for weekly programs)
       // Check without downloading first to see if week changed
@@ -222,7 +223,7 @@ class CourseDownloadService {
         const storedWeek = await this.getStoredWeek(courseId);
         
         if (storedWeek && storedWeek !== currentWeek) {
-          console.log('🔄 Week changed detected during download!', {
+          logger.debug('🔄 Week changed detected during download!', {
             storedWeek,
             currentWeek
           });
@@ -236,13 +237,13 @@ class CourseDownloadService {
           // Update stored week
           await this.updateStoredWeek(courseId, currentWeek);
           
-          console.log('✅ Week changed, course re-downloaded with new week content');
+          logger.debug('✅ Week changed, course re-downloaded with new week content');
           return true;
         }
       }
       
       // Try to get course data from hybrid system first (cached)
-      console.log('🔍 Checking hybrid cache for course data...');
+      logger.debug('🔍 Checking hybrid cache for course data...');
       let courseData = null;
       let modules = [];
       
@@ -252,42 +253,42 @@ class CourseDownloadService {
         courseData = courses.find(c => c.id === courseId);
         
         if (courseData) {
-          console.log('✅ Course metadata found in hybrid cache');
+          logger.debug('✅ Course metadata found in hybrid cache');
           
           // Try to get modules from hybrid cache if available
           // Note: Modules might not be in hybrid cache yet, so we'll fallback to DB
-          console.log('🔍 Checking if modules are available in cache...');
+          logger.debug('🔍 Checking if modules are available in cache...');
           
           // For now, we still need to get modules from DB as they're not cached in hybrid system
           // This is a temporary solution - we could extend hybrid system to cache modules too
-          console.log('⚠️ Modules not in hybrid cache, fetching from DB...');
+          logger.debug('⚠️ Modules not in hybrid cache, fetching from DB...');
           modules = await firestoreService.getCourseModules(courseId, userId);
-          console.log('📚 Course modules loaded from DB:', modules.length);
+          logger.debug('📚 Course modules loaded from DB:', modules.length);
         } else {
-          console.log('⚠️ Course not found in hybrid cache, fetching from DB...');
+          logger.debug('⚠️ Course not found in hybrid cache, fetching from DB...');
           // Fallback to direct Firestore calls
           courseData = await firestoreService.getCourse(courseId);
           if (!courseData) {
             throw new Error(`Course ${courseId} not found in Firestore`);
           }
-          console.log('📖 Course data retrieved from DB:', Object.keys(courseData));
+          logger.debug('📖 Course data retrieved from DB:', Object.keys(courseData));
           
           modules = await firestoreService.getCourseModules(courseId, userId);
-          console.log('📚 Course modules loaded from DB:', modules.length);
+          logger.debug('📚 Course modules loaded from DB:', modules.length);
         }
         
         // Log structure for debugging
         if (modules.length > 0) {
-          console.log('📋 First module structure:', Object.keys(modules[0]));
+          logger.debug('📋 First module structure:', Object.keys(modules[0]));
           if (modules[0].sessions && modules[0].sessions.length > 0) {
-            console.log('📋 First session structure:', Object.keys(modules[0].sessions[0]));
+            logger.debug('📋 First session structure:', Object.keys(modules[0].sessions[0]));
             if (modules[0].sessions[0].exercises && modules[0].sessions[0].exercises.length > 0) {
-              console.log('📋 First exercise structure:', Object.keys(modules[0].sessions[0].exercises[0]));
+              logger.debug('📋 First exercise structure:', Object.keys(modules[0].sessions[0].exercises[0]));
             }
           }
         }
       } catch (error) {
-        console.warn('⚠️ Error getting course data:', error.message);
+        logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
       
@@ -295,16 +296,16 @@ class CourseDownloadService {
       let imageUrl = null;
       if (courseData.image_url) {
         imageUrl = courseData.image_url;
-        console.log(`📥 Course ${courseId} has image URL:`, imageUrl);
+        logger.debug(`📥 Course ${courseId} has image URL:`, imageUrl);
       } else {
-        console.log(`⚠️ No image_url found for course ${courseId}`);
+        logger.debug(`⚠️ No image_url found for course ${courseId}`);
       }
       
       // ✅ NEW: Store current week for weekly programs
       let currentWeek = null;
       if (courseData?.weekly === true) {
         currentWeek = getMondayWeek();
-        console.log('📅 Weekly program - current week:', currentWeek);
+        logger.debug('📅 Weekly program - current week:', currentWeek);
       }
 
       // FIX: Store basic course data immediately, even if full download fails
@@ -319,10 +320,10 @@ class CourseDownloadService {
           clientProgram = await firestoreService.getClientProgram(userId, courseId);
           if (clientProgram) {
             clientProgramVersion = clientProgram.version_snapshot || null;
-            console.log('✅ Client program loaded:', clientProgram.id);
+            logger.debug('✅ Client program loaded:', clientProgram.id);
           }
         } catch (error) {
-          console.warn('⚠️ Could not load client program:', error);
+          logger.warn('⚠️ Could not load client program:', error);
         }
       }
       
@@ -349,9 +350,9 @@ class CourseDownloadService {
           size_mb: this.estimateDataSize({ ...courseData, modules }),
           compressed: false
         });
-        console.log('✅ Basic course data stored locally');
+        logger.debug('✅ Basic course data stored locally');
       } catch (storeError) {
-        console.error('❌ Failed to store basic course data:', storeError);
+        logger.error('❌ Failed to store basic course data:', storeError);
         // Continue anyway - we'll retry
       }
       
@@ -359,18 +360,18 @@ class CourseDownloadService {
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
-        console.warn('⚠️ Course data validation warning:', validationError);
+        logger.warn('⚠️ Course data validation warning:', validationError);
         // Continue even if validation fails - basic data is already stored
       }
       
       // Program media downloads disabled
       
-      console.log('✅ Course downloaded successfully:', courseId);
+      logger.debug('✅ Course downloaded successfully:', courseId);
       return true;
       
     } catch (error) {
-      console.error('❌ Course download failed:', error);
-      console.error('❌ Error details:', error.message);
+      logger.error('❌ Course download failed:', error);
+      logger.error('❌ Error details:', error.message);
       
       // FIX: Even on error, try to store basic data so course shows up
       try {
@@ -386,9 +387,9 @@ class CourseDownloadService {
           compressed: false
         };
         await this.storeCourseLocally(courseId, fallbackData);
-        console.log('✅ Stored fallback course data after error');
+        logger.debug('✅ Stored fallback course data after error');
       } catch (fallbackError) {
-        console.error('❌ Failed to store fallback data:', fallbackError);
+        logger.error('❌ Failed to store fallback data:', fallbackError);
       }
       
       throw error;
@@ -412,10 +413,10 @@ class CourseDownloadService {
         expiresAt: courseData.expiresAt
       });
       
-      console.log('💾 Course stored locally:', courseId);
+      logger.debug('💾 Course stored locally:', courseId);
       
     } catch (error) {
-      console.error('❌ Failed to store course locally:', error);
+      logger.error('❌ Failed to store course locally:', error);
       throw error;
     }
   }
@@ -423,21 +424,21 @@ class CourseDownloadService {
   
   async getCourseData(courseId, skipVersionCheck = false) {
     try {
-      console.log('🔍 Looking for course in local storage:', courseId);
+      logger.debug('🔍 Looking for course in local storage:', courseId);
       const storageKey = `course_${courseId}`;
       const storedData = await AsyncStorage.getItem(storageKey);
       
       if (!storedData) {
-        console.log('❌ Course not found locally:', courseId);
+        logger.debug('❌ Course not found locally:', courseId);
         return null;
       }
       
-      console.log('📦 Found course data in storage, parsing...');
+      logger.debug('📦 Found course data in storage, parsing...');
       const courseData = JSON.parse(storedData);
       
       // Check if course has expired
       if (this.isCourseExpired(courseData)) {
-        console.log('⏰ Course expired, removing:', courseId);
+        logger.debug('⏰ Course expired, removing:', courseId);
         await this.deleteCourse(courseId);
         return null;
       }
@@ -448,14 +449,14 @@ class CourseDownloadService {
         const storedWeek = courseData.currentWeek;
         
         if (storedWeek && storedWeek !== currentWeek) {
-          console.log('🔄 Week changed detected during getCourseData!', {
+          logger.debug('🔄 Week changed detected during getCourseData!', {
             storedWeek,
             currentWeek
           });
           
           // Trigger background re-download
           this.checkWeekChange(courseId, this.currentUserId).catch(error => {
-            console.error('Error in background week check:', error);
+            logger.error('Error in background week check:', error);
           });
           
           // Still return old data for now (download happens in background)
@@ -474,15 +475,15 @@ class CourseDownloadService {
       
       // NEW: Version check (only if not already updating)
       if (this.currentUserId) {
-        console.log('🔍 VERSION CHECK: Starting for course:', courseId, 'userId:', this.currentUserId);
+        logger.debug('🔍 VERSION CHECK: Starting for course:', courseId, 'userId:', this.currentUserId);
         
         // Check if course is already being updated
-        console.log('🔍 VERSION CHECK: Calling getUserCourseVersion...');
+        logger.debug('🔍 VERSION CHECK: Calling getUserCourseVersion...');
         const userCourse = await firestoreService.getUserCourseVersion(this.currentUserId, courseId);
-        console.log('🔍 VERSION CHECK: getUserCourseVersion result:', userCourse);
+        logger.debug('🔍 VERSION CHECK: getUserCourseVersion result:', userCourse);
         const updateStatus = userCourse?.update_status || 'ready';
         
-        console.log('📊 VERSION CHECK: User course data:', {
+        logger.debug('📊 VERSION CHECK: User course data:', {
           courseId,
           userId: this.currentUserId,
           updateStatus,
@@ -491,7 +492,7 @@ class CourseDownloadService {
         });
         
         if (updateStatus === 'updating') {
-          console.log('🔄 VERSION CHECK: Course is already being updated, checking if stuck...');
+          logger.debug('🔄 VERSION CHECK: Course is already being updated, checking if stuck...');
           
           // Check if update is stuck (older than 5 minutes)
           const lastUpdated = userCourse.lastUpdated || userCourse.updated_at || 0;
@@ -499,15 +500,15 @@ class CourseDownloadService {
           const isStuck = updateAge > 5 * 60 * 1000; // 5 minutes
           
           if (isStuck) {
-            console.log('⚠️ VERSION CHECK: Update appears stuck, clearing status');
+            logger.debug('⚠️ VERSION CHECK: Update appears stuck, clearing status');
             // Clear stuck status
             await firestoreService.updateUserCourseVersionStatus(this.currentUserId, courseId, {
               update_status: 'ready',
               lastUpdated: Date.now()
             });
-            console.log('✅ VERSION CHECK: Stuck status cleared');
+            logger.debug('✅ VERSION CHECK: Stuck status cleared');
           } else {
-            console.log('🔄 VERSION CHECK: Update in progress, returning updating status');
+            logger.debug('🔄 VERSION CHECK: Update in progress, returning updating status');
             return {
               ...courseData,
               status: 'updating',
@@ -517,7 +518,7 @@ class CourseDownloadService {
         }
         
         if (updateStatus === 'failed') {
-          console.log('❌ VERSION CHECK: Course update failed, returning failed status');
+          logger.debug('❌ VERSION CHECK: Course update failed, returning failed status');
           return {
             ...courseData,
             status: 'failed',
@@ -530,7 +531,7 @@ class CourseDownloadService {
           // Check if we're already handling an update for this course (prevent infinite loop)
           const updateKey = `${courseId}_${this.currentUserId}`;
           if (this._versionChecksInProgress?.has(updateKey)) {
-            console.log('⚠️ VERSION CHECK: Update already in progress for this course, skipping');
+            logger.debug('⚠️ VERSION CHECK: Update already in progress for this course, skipping');
             const decompressedData = await this.decompressCourseData(courseData);
             return {
               ...decompressedData,
@@ -546,7 +547,7 @@ class CourseDownloadService {
           this._versionChecksInProgress.add(updateKey);
           
           try {
-            console.log('🔍 VERSION CHECK: Status is ready, checking for version mismatch');
+            logger.debug('🔍 VERSION CHECK: Status is ready, checking for version mismatch');
             
             // ✅ NEW: Check library versions first
             const decompressedData = await this.decompressCourseData(courseData);
@@ -562,9 +563,9 @@ class CourseDownloadService {
                 );
                 
                 if (libraryVersionCheck.needsUpdate) {
-                  console.log('🔄 LIBRARY VERSION CHECK: Library items changed, triggering update');
+                  logger.debug('🔄 LIBRARY VERSION CHECK: Library items changed, triggering update');
                   this.handleLibraryVersionUpdate(courseId, libraryVersionCheck, this.currentUserId).catch(error => {
-                    console.error('❌ Error in handleLibraryVersionUpdate:', error);
+                    logger.error('❌ Error in handleLibraryVersionUpdate:', error);
                   });
                   
                   return {
@@ -574,7 +575,7 @@ class CourseDownloadService {
                   };
                 }
               } catch (libraryError) {
-                console.error('❌ Error checking library versions:', libraryError);
+                logger.error('❌ Error checking library versions:', libraryError);
                 // Continue with course version check even if library check fails
               }
             }
@@ -589,10 +590,10 @@ class CourseDownloadService {
                   
                   // Compare versions (simple deep equality check)
                   if (JSON.stringify(currentVersion) !== JSON.stringify(storedVersion)) {
-                    console.log('🔄 CLIENT PROGRAM VERSION CHECK: Client overrides changed, triggering update');
+                    logger.debug('🔄 CLIENT PROGRAM VERSION CHECK: Client overrides changed, triggering update');
                     // Trigger re-download to get updated client overrides
                     this.handleVersionUpdate(courseId, decompressedData.version, this.currentUserId).catch(error => {
-                      console.error('❌ Error in handleVersionUpdate:', error);
+                      logger.error('❌ Error in handleVersionUpdate:', error);
                     });
                     
                     return {
@@ -603,20 +604,20 @@ class CourseDownloadService {
                   }
                 }
               } catch (clientError) {
-                console.error('❌ Error checking client program version:', clientError);
+                logger.error('❌ Error checking client program version:', clientError);
               }
             }
             
             // ✅ EXISTING: Check course version
             const versionCheck = await this.checkVersionMismatch(courseId, courseData, this.currentUserId);
-            console.log('📊 VERSION CHECK: Version check result:', versionCheck);
+            logger.debug('📊 VERSION CHECK: Version check result:', versionCheck);
             
             if (versionCheck.needsUpdate) {
-              console.log('🔄 VERSION CHECK: Version mismatch detected, starting update process');
+              logger.debug('🔄 VERSION CHECK: Version mismatch detected, starting update process');
               
               // Mark as updating and start background download (non-blocking)
               this.handleVersionUpdate(courseId, versionCheck.newVersion, this.currentUserId).catch(error => {
-                console.error('❌ Error in handleVersionUpdate:', error);
+                logger.error('❌ Error in handleVersionUpdate:', error);
                 // Remove from in-progress on error
                 if (this._versionChecksInProgress) {
                   this._versionChecksInProgress.delete(updateKey);
@@ -629,14 +630,14 @@ class CourseDownloadService {
                 updateProgress: 0
               };
             } else {
-              console.log('✅ VERSION CHECK: No update needed, versions match');
+              logger.debug('✅ VERSION CHECK: No update needed, versions match');
               // Remove from in-progress if no update needed
               if (this._versionChecksInProgress) {
                 this._versionChecksInProgress.delete(updateKey);
               }
             }
           } catch (error) {
-            console.error('❌ Error in version check:', error);
+            logger.error('❌ Error in version check:', error);
             // Remove from in-progress on error
             if (this._versionChecksInProgress) {
               this._versionChecksInProgress.delete(updateKey);
@@ -645,14 +646,14 @@ class CourseDownloadService {
           }
         }
       } else {
-        console.log('⚠️ VERSION CHECK: No currentUserId set, skipping version check');
+        logger.debug('⚠️ VERSION CHECK: No currentUserId set, skipping version check');
       }
       
       // Decompress if needed
       const decompressedData = await this.decompressCourseData(courseData);
       
-      console.log('✅ Course loaded from local storage:', courseId);
-      console.log('📚 Course has', decompressedData.courseData?.modules?.length || 0, 'modules');
+      logger.debug('✅ Course loaded from local storage:', courseId);
+      logger.debug('📚 Course has', decompressedData.courseData?.modules?.length || 0, 'modules');
       
       return {
         ...decompressedData,
@@ -660,8 +661,8 @@ class CourseDownloadService {
       };
       
     } catch (error) {
-      console.error('❌ Failed to get course data:', error);
-      console.error('❌ Error details:', error.message);
+      logger.error('❌ Failed to get course data:', error);
+      logger.error('❌ Error details:', error.message);
       return null;
     }
   }
@@ -689,11 +690,11 @@ class CourseDownloadService {
       // Update course index
       await this.removeCourseFromIndex(courseId);
       
-      console.log('🗑️ Course deleted from local storage:', courseId);
+      logger.debug('🗑️ Course deleted from local storage:', courseId);
       return true;
       
     } catch (error) {
-      console.error('❌ Failed to delete course:', error);
+      logger.error('❌ Failed to delete course:', error);
       return false;
     }
   }
@@ -703,7 +704,7 @@ class CourseDownloadService {
    */
   async clearAllCourseData() {
     try {
-      console.log('🧹 Clearing all course data from local storage...');
+      logger.debug('🧹 Clearing all course data from local storage...');
       
       // Get all AsyncStorage keys
       const keys = await AsyncStorage.getAllKeys();
@@ -714,15 +715,15 @@ class CourseDownloadService {
       // Remove all course data
       if (courseKeys.length > 0) {
         await AsyncStorage.multiRemove(courseKeys);
-        console.log('✅ Cleared', courseKeys.length, 'course data entries');
+        logger.debug('✅ Cleared', courseKeys.length, 'course data entries');
       }
       
       // Also clear course index
       await AsyncStorage.removeItem('course_index');
       
-      console.log('✅ All course data cleared from local storage');
+      logger.debug('✅ All course data cleared from local storage');
     } catch (error) {
-      console.error('❌ Failed to clear all course data:', error);
+      logger.error('❌ Failed to clear all course data:', error);
       throw error;
     }
   }
@@ -732,7 +733,7 @@ class CourseDownloadService {
    */
   async cleanupExpiredCourses(userId) {
     try {
-      console.log('🧹 Cleaning up expired courses for user:', userId);
+      logger.debug('🧹 Cleaning up expired courses for user:', userId);
       
       // Get user's active courses from Firestore
       const userDoc = await firestoreService.getUser(userId);
@@ -757,10 +758,10 @@ class CourseDownloadService {
         await this.removeCourseFromCache(userId, courseId);
       }
       
-      console.log('✅ Cleanup completed. Removed courses:', expiredCourses.length);
+      logger.debug('✅ Cleanup completed. Removed courses:', expiredCourses.length);
       
     } catch (error) {
-      console.error('❌ Cleanup failed:', error);
+      logger.error('❌ Cleanup failed:', error);
     }
   }
   
@@ -781,12 +782,12 @@ class CourseDownloadService {
     if (courseData.modules && courseData.modules.length > 0) {
       for (const module of courseData.modules) {
         if (!module.id) {
-          console.warn('⚠️ Module missing ID, but continuing:', module);
+          logger.warn('⚠️ Module missing ID, but continuing:', module);
         }
       }
     }
     
-    console.log('✅ Course data validation passed');
+    logger.debug('✅ Course data validation passed');
     return true;
   }
   
@@ -853,7 +854,7 @@ class CourseDownloadService {
       const indexData = await AsyncStorage.getItem('course_index');
       return indexData ? JSON.parse(indexData) : {};
     } catch (error) {
-      console.error('Failed to get course index:', error);
+      logger.error('Failed to get course index:', error);
       return {};
     }
   }
@@ -868,7 +869,7 @@ class CourseDownloadService {
       
       await AsyncStorage.setItem('course_index', JSON.stringify(index));
     } catch (error) {
-      console.error('Failed to update course index:', error);
+      logger.error('Failed to update course index:', error);
     }
   }
   
@@ -878,7 +879,7 @@ class CourseDownloadService {
       delete index[courseId];
       await AsyncStorage.setItem('course_index', JSON.stringify(index));
     } catch (error) {
-      console.error('Failed to remove course from index:', error);
+      logger.error('Failed to remove course from index:', error);
     }
   }
   
@@ -897,7 +898,7 @@ class CourseDownloadService {
         courses: index
       };
     } catch (error) {
-      console.error('Failed to get storage usage:', error);
+      logger.error('Failed to get storage usage:', error);
       return { totalCourses: 0, totalSize_mb: 0, courses: {} };
     }
   }
@@ -909,14 +910,14 @@ class CourseDownloadService {
    */
   async removeCourseFromCache(userId, courseId) {
     try {
-      console.log('➖ Removing course from cache:', courseId);
+      logger.debug('➖ Removing course from cache:', courseId);
       
       // Get current active course IDs
       const cacheKey = `active_courses_${userId}`;
       const cachedData = await AsyncStorage.getItem(cacheKey);
       
       if (!cachedData) {
-        console.log('ℹ️ No cache found to remove course from');
+        logger.debug('ℹ️ No cache found to remove course from');
         return false;
       }
       
@@ -934,14 +935,14 @@ class CourseDownloadService {
         };
         
         await AsyncStorage.setItem(cacheKey, JSON.stringify(updatedCache));
-        console.log('✅ Course removed from cache');
+        logger.debug('✅ Course removed from cache');
         return true;
       } else {
-        console.log('ℹ️ Course not found in cache');
+        logger.debug('ℹ️ Course not found in cache');
         return false;
       }
     } catch (error) {
-      console.error('❌ Error removing course from cache:', error);
+      logger.error('❌ Error removing course from cache:', error);
       return false;
     }
   }
@@ -960,7 +961,7 @@ class CourseDownloadService {
       const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
       return await libraryResolutionService.extractLibraryVersions(creatorId, modules);
     } catch (error) {
-      console.error('❌ Error extracting library versions:', error);
+      logger.error('❌ Error extracting library versions:', error);
       return { sessions: {}, modules: {} };
     }
   }
@@ -973,14 +974,14 @@ class CourseDownloadService {
     
     // Prevent duplicate updates
     if (this._versionChecksInProgress?.has(updateKey)) {
-      console.log('⚠️ Library version update already in progress for:', courseId);
+      logger.debug('⚠️ Library version update already in progress for:', courseId);
       return;
     }
     
     this._versionChecksInProgress.add(updateKey);
     
     try {
-      console.log('🔄 Handling library version update for course:', courseId);
+      logger.debug('🔄 Handling library version update for course:', courseId);
       
       // Mark as updating
       await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
@@ -992,7 +993,7 @@ class CourseDownloadService {
       this.startLibraryBackgroundUpdate(courseId, versionCheck, userId);
       
     } catch (error) {
-      console.error('❌ Error handling library version update:', error);
+      logger.error('❌ Error handling library version update:', error);
       this._versionChecksInProgress.delete(updateKey);
     }
   }
@@ -1004,7 +1005,7 @@ class CourseDownloadService {
     const updateKey = `${courseId}_${userId}`;
     
     if (this._backgroundUpdatesInProgress.has(updateKey)) {
-      console.log('⚠️ Library background update already in progress for:', courseId);
+      logger.debug('⚠️ Library background update already in progress for:', courseId);
       return;
     }
     
@@ -1012,12 +1013,12 @@ class CourseDownloadService {
     
     setTimeout(async () => {
       try {
-        console.log('🔄 LIBRARY BACKGROUND UPDATE: Starting for:', courseId);
+        logger.debug('🔄 LIBRARY BACKGROUND UPDATE: Starting for:', courseId);
         
         // Re-download course (will get updated library items)
         await this.downloadCourse(courseId, userId);
         
-        console.log('✅ LIBRARY BACKGROUND UPDATE: Download completed');
+        logger.debug('✅ LIBRARY BACKGROUND UPDATE: Download completed');
         
         // Update status
         await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
@@ -1035,7 +1036,7 @@ class CourseDownloadService {
         }
         
       } catch (error) {
-        console.error('❌ LIBRARY BACKGROUND UPDATE FAILED:', error);
+        logger.error('❌ LIBRARY BACKGROUND UPDATE FAILED:', error);
         
         await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'failed'
@@ -1058,12 +1059,12 @@ class CourseDownloadService {
    */
   async checkVersionMismatch(courseId, localCourseData, userId) {
     try {
-      console.log('🔍 Checking version mismatch for course:', courseId);
+      logger.debug('🔍 Checking version mismatch for course:', courseId);
       
       // Get latest course data from DB
       const latestCourseData = await firestoreService.getCourse(courseId);
       if (!latestCourseData) {
-        console.log('❌ Course not found in database:', courseId);
+        logger.debug('❌ Course not found in database:', courseId);
         return { needsUpdate: false };
       }
       
@@ -1071,7 +1072,7 @@ class CourseDownloadService {
       const userCourse = await firestoreService.getUserCourseVersion(userId, courseId);
       const downloadedVersion = userCourse?.downloaded_version || localCourseData.version || 'unknown';
       
-      console.log('📊 Version comparison:', {
+      logger.debug('📊 Version comparison:', {
         courseId,
         latestVersion: latestCourseData.version,
         downloadedVersion: downloadedVersion
@@ -1079,7 +1080,7 @@ class CourseDownloadService {
       
       // Compare versions
       if (latestCourseData.version !== downloadedVersion) {
-        console.log('🔄 Version mismatch detected:', {
+        logger.debug('🔄 Version mismatch detected:', {
           latest: latestCourseData.version,
           downloaded: downloadedVersion
         });
@@ -1090,11 +1091,11 @@ class CourseDownloadService {
         };
       }
       
-      console.log('✅ Versions match, no update needed');
+      logger.debug('✅ Versions match, no update needed');
       return { needsUpdate: false };
       
     } catch (error) {
-      console.error('❌ Error checking version mismatch:', error);
+      logger.error('❌ Error checking version mismatch:', error);
       return { needsUpdate: false };
     }
   }
@@ -1111,16 +1112,16 @@ class CourseDownloadService {
       try {
         const userCourse = await firestoreService.getUserCourseVersion(userId, courseId);
         if (userCourse?.update_status === 'updating') {
-          console.log('⚠️ handleVersionUpdate: Update already in progress, skipping duplicate call');
+          logger.debug('⚠️ handleVersionUpdate: Update already in progress, skipping duplicate call');
           return;
         }
       } catch (error) {
-        console.error('❌ Error checking update status:', error);
+        logger.error('❌ Error checking update status:', error);
       }
     }
     
     try {
-      console.log('🔄 Handling version update for course:', courseId, 'to version:', newVersion);
+      logger.debug('🔄 Handling version update for course:', courseId, 'to version:', newVersion);
       
       // CRITICAL: Mark course as updating FIRST to prevent infinite loop
       // This must happen before any getCourseData() calls
@@ -1139,10 +1140,10 @@ class CourseDownloadService {
       
       // Program media downloads disabled
       
-      console.log('✅ Version update process started');
+      logger.debug('✅ Version update process started');
       
     } catch (error) {
-      console.error('❌ Error handling version update:', error);
+      logger.error('❌ Error handling version update:', error);
       // Remove from in-progress on error
       if (this._versionChecksInProgress) {
         this._versionChecksInProgress.delete(updateKey);
@@ -1158,14 +1159,14 @@ class CourseDownloadService {
     
     // Prevent duplicate background updates
     if (this._backgroundUpdatesInProgress.has(updateKey)) {
-      console.log('⚠️ Background update already in progress for:', courseId, 'skipping duplicate');
+      logger.debug('⚠️ Background update already in progress for:', courseId, 'skipping duplicate');
       return;
     }
     
     // Mark as in progress
     this._backgroundUpdatesInProgress.add(updateKey);
     
-    console.log('🚀 STARTING BACKGROUND UPDATE:', {
+    logger.debug('🚀 STARTING BACKGROUND UPDATE:', {
       courseId,
       newVersion,
       userId,
@@ -1175,11 +1176,11 @@ class CourseDownloadService {
     // Run in background to not block UI
     setTimeout(async () => {
       try {
-        console.log('🔄 BACKGROUND UPDATE STEP 1: Starting download for:', courseId);
+        logger.debug('🔄 BACKGROUND UPDATE STEP 1: Starting download for:', courseId);
         
         // Download new content
         await this.downloadCourse(courseId, userId);
-        console.log('✅ BACKGROUND UPDATE STEP 2: Download completed for:', courseId);
+        logger.debug('✅ BACKGROUND UPDATE STEP 2: Download completed for:', courseId);
         
         // Program media downloads disabled
         
@@ -1188,13 +1189,13 @@ class CourseDownloadService {
           downloaded_version: newVersion,
           update_status: 'ready'
         });
-        console.log('✅ BACKGROUND UPDATE STEP 3: Status updated to ready for:', courseId);
+        logger.debug('✅ BACKGROUND UPDATE STEP 3: Status updated to ready for:', courseId);
         
         // Notify UI that update is complete
         this.notifyUpdateComplete(courseId, newVersion);
-        console.log('✅ BACKGROUND UPDATE STEP 4: UI notification sent for:', courseId);
+        logger.debug('✅ BACKGROUND UPDATE STEP 4: UI notification sent for:', courseId);
         
-        console.log('🎉 BACKGROUND UPDATE COMPLETED SUCCESSFULLY:', courseId);
+        logger.debug('🎉 BACKGROUND UPDATE COMPLETED SUCCESSFULLY:', courseId);
         
         // Clean up: remove from in-progress tracking
         this._backgroundUpdatesInProgress.delete(updateKey);
@@ -1203,7 +1204,7 @@ class CourseDownloadService {
         }
         
       } catch (error) {
-        console.error('❌ BACKGROUND UPDATE FAILED:', {
+        logger.error('❌ BACKGROUND UPDATE FAILED:', {
           courseId,
           error: error.message,
           stack: error.stack,
@@ -1214,11 +1215,11 @@ class CourseDownloadService {
         await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'failed'
         });
-        console.log('❌ BACKGROUND UPDATE: Status marked as failed for:', courseId);
+        logger.debug('❌ BACKGROUND UPDATE: Status marked as failed for:', courseId);
         
         // Notify UI of failure
         this.notifyUpdateFailed(courseId, error);
-        console.log('❌ BACKGROUND UPDATE: UI failure notification sent for:', courseId);
+        logger.debug('❌ BACKGROUND UPDATE: UI failure notification sent for:', courseId);
         
         // Clean up: remove from in-progress tracking
         this._backgroundUpdatesInProgress.delete(updateKey);
@@ -1233,19 +1234,19 @@ class CourseDownloadService {
    * Notify UI of update completion
    */
   notifyUpdateComplete(courseId, newVersion) {
-    console.log('📢 Update complete notification for:', courseId, 'version:', newVersion);
-    console.log('🔍 CALLBACK DEBUG: onUpdateComplete exists?', !!this.onUpdateComplete);
+    logger.debug('📢 Update complete notification for:', courseId, 'version:', newVersion);
+    logger.debug('🔍 CALLBACK DEBUG: onUpdateComplete exists?', !!this.onUpdateComplete);
     
     // Notify the update event manager
     updateEventManager.notifyUpdateComplete(courseId);
     
     // Direct UI update - Firestore status is already updated in startBackgroundUpdate
     if (this.onUpdateComplete) {
-      console.log('🔄 CALLBACK DEBUG: Calling onUpdateComplete callback...');
+      logger.debug('🔄 CALLBACK DEBUG: Calling onUpdateComplete callback...');
       this.onUpdateComplete(courseId, newVersion, 'ready'); // Pass status
-      console.log('✅ CALLBACK DEBUG: onUpdateComplete callback called');
+      logger.debug('✅ CALLBACK DEBUG: onUpdateComplete callback called');
     } else {
-      console.log('❌ CALLBACK DEBUG: onUpdateComplete callback not set!');
+      logger.debug('❌ CALLBACK DEBUG: onUpdateComplete callback not set!');
     }
   }
   
@@ -1253,7 +1254,7 @@ class CourseDownloadService {
    * Notify UI of update failure
    */
   notifyUpdateFailed(courseId, error) {
-    console.log('📢 Update failed notification for:', courseId, 'error:', error.message);
+    logger.debug('📢 Update failed notification for:', courseId, 'error:', error.message);
     
     // Direct UI update - simplest approach
     if (this.onUpdateFailed) {
@@ -1265,14 +1266,14 @@ class CourseDownloadService {
    * Set UI refresh callbacks
    */
   setUIUpdateCallbacks(onUpdateComplete, onUpdateFailed) {
-    console.log('🔧 CALLBACK SETUP: Setting UI update callbacks...');
-    console.log('🔍 CALLBACK SETUP DEBUG: onUpdateComplete provided?', !!onUpdateComplete);
-    console.log('🔍 CALLBACK SETUP DEBUG: onUpdateFailed provided?', !!onUpdateFailed);
+    logger.debug('🔧 CALLBACK SETUP: Setting UI update callbacks...');
+    logger.debug('🔍 CALLBACK SETUP DEBUG: onUpdateComplete provided?', !!onUpdateComplete);
+    logger.debug('🔍 CALLBACK SETUP DEBUG: onUpdateFailed provided?', !!onUpdateFailed);
     
     this.onUpdateComplete = onUpdateComplete;
     this.onUpdateFailed = onUpdateFailed;
     
-    console.log('✅ CALLBACK SETUP: UI update callbacks set successfully');
+    logger.debug('✅ CALLBACK SETUP: UI update callbacks set successfully');
   }
 }
 

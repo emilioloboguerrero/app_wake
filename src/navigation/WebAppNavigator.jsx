@@ -63,7 +63,7 @@ const AuthenticatedLayout = ({ children }) => {
       const { auth } = require('../config/firebase');
       return auth.currentUser;
     } catch (error) {
-      console.error('[AUTH LAYOUT] Error getting Firebase user:', error);
+      logger.error('[AUTH LAYOUT] Error getting Firebase user:', error);
       return null;
     }
   });
@@ -99,7 +99,7 @@ const AuthenticatedLayout = ({ children }) => {
           const { auth } = require('../config/firebase');
           const currentUser = auth.currentUser;
           if (currentUser && currentUser !== firebaseUser) {
-            console.log('[AUTH LAYOUT] Firebase user found but AuthContext still loading, updating firebaseUser');
+            logger.debug('[AUTH LAYOUT] Firebase user found but AuthContext still loading, updating firebaseUser');
             setFirebaseUser(currentUser);
             // Stop interval once we have a user
             clearInterval(interval);
@@ -240,8 +240,8 @@ const AuthenticatedLayout = ({ children }) => {
   
   const finalHasUser = hasUser || directFirebaseCheck;
   
-  console.log('[AUTH LAYOUT] ========================================');
-  console.log('[AUTH LAYOUT] Auth state check:', {
+  logger.debug('[AUTH LAYOUT] ========================================');
+  logger.debug('[AUTH LAYOUT] Auth state check:', {
     userFromContext: user?.uid || 'none',
     userFromContextEmail: user?.email || 'none',
     firebaseUser: firebaseUser?.uid || 'none',
@@ -252,7 +252,7 @@ const AuthenticatedLayout = ({ children }) => {
     hasUser: hasUser?.uid || 'none',
     finalHasUser: finalHasUser?.uid || 'none'
   });
-  console.log('[AUTH LAYOUT] ========================================');
+  logger.debug('[AUTH LAYOUT] ========================================');
 
   // Show loading ONLY if:
   // 1. AuthContext is loading AND Firebase doesn't have a user (genuine loading state)
@@ -264,7 +264,7 @@ const AuthenticatedLayout = ({ children }) => {
   React.useEffect(() => {
     if (shouldShowLoading) {
       const timeout = setTimeout(() => {
-        console.log('[AUTH LAYOUT] Timeout: AuthContext loading too long (5s), proceeding anyway');
+        logger.debug('[AUTH LAYOUT] Timeout: AuthContext loading too long (5s), proceeding anyway');
         setLoadingTimeout(true);
       }, 5000); // Increased to 5 seconds to allow IndexedDB restore
       return () => clearTimeout(timeout);
@@ -274,7 +274,7 @@ const AuthenticatedLayout = ({ children }) => {
   }, [shouldShowLoading]);
 
   if (shouldShowLoading && !loadingTimeout) {
-    console.log('[AUTH LAYOUT] Showing loading screen - loading:', loading, 'hasFirebaseUser:', hasFirebaseUser);
+    logger.debug('[AUTH LAYOUT] Showing loading screen - loading:', loading, 'hasFirebaseUser:', hasFirebaseUser);
     return <LoadingScreen />;
   }
 
@@ -282,22 +282,22 @@ const AuthenticatedLayout = ({ children }) => {
   // Redirect to login if not authenticated (after checking both AuthContext and Firebase)
   // But only if we're not already on the login page and loading is complete
   if (!finalHasUser && !loading) {
-    console.log('[AUTH LAYOUT] ❌ No user found after all checks, redirecting to login');
-    console.log('[AUTH LAYOUT] Checked: AuthContext user, firebaseUser state, direct Firebase check');
+    logger.debug('[AUTH LAYOUT] ❌ No user found after all checks, redirecting to login');
+    logger.debug('[AUTH LAYOUT] Checked: AuthContext user, firebaseUser state, direct Firebase check');
     return <Navigate to="/login" replace />;
   }
   
   // If still loading and no user, show loading screen
   if (!finalHasUser && loading) {
-    console.log('[AUTH LAYOUT] ⏳ Still loading auth state, showing loading screen');
+    logger.debug('[AUTH LAYOUT] ⏳ Still loading auth state, showing loading screen');
     return <LoadingScreen />;
   }
   
   if (finalHasUser) {
-    console.log('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', finalHasUser.uid);
+    logger.debug('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', finalHasUser.uid);
   }
   
-  console.log('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', hasUser?.uid || 'from Firebase');
+  logger.debug('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', hasUser?.uid || 'from Firebase');
 
   // For now, skip onboarding check to get MainScreen working
   // TODO: Re-enable onboarding check later
@@ -353,7 +353,7 @@ const WebAppNavigator = () => {
   if (isLoginRoute) {
     const hasUser = user || firebaseUserForLogin;
     if (!loading && hasUser) {
-      console.log('[WEB NAV] User already logged in, redirecting from /login to /');
+      logger.debug('[WEB NAV] User already logged in, redirecting from /login to /');
       return <Navigate to="/" replace />;
     }
     

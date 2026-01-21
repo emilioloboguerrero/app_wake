@@ -1,27 +1,28 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import logger from '../utils/logger';
 
 const SimpleButtonTestScreen = () => {
   const [buttonPressCount, setButtonPressCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  console.log('[SIMPLE_TEST] Component rendering, buttonPressCount:', buttonPressCount);
+  logger.debug('[SIMPLE_TEST] Component rendering, buttonPressCount:', buttonPressCount);
 
   const handleButtonPress = () => {
-    console.log('[SIMPLE_TEST] 🟢 BUTTON PRESSED! Button is responsive!');
+    logger.debug('[SIMPLE_TEST] 🟢 BUTTON PRESSED! Button is responsive!');
     setIsLoading(true);
     
     // Simulate some async work
     setTimeout(() => {
       setButtonPressCount(prev => prev + 1);
       setIsLoading(false);
-      console.log('[SIMPLE_TEST] ✅ Button press handled, count updated');
+      logger.debug('[SIMPLE_TEST] ✅ Button press handled, count updated');
       alert(`Button pressed! Count: ${buttonPressCount + 1}`);
     }, 100);
   };
 
   const handleButtonPressIn = () => {
-    console.log('[SIMPLE_TEST] 🟡 BUTTON PRESS IN - Button receiving events');
+    logger.debug('[SIMPLE_TEST] 🟡 BUTTON PRESS IN - Button receiving events');
   };
 
   return (

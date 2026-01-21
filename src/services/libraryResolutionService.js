@@ -9,6 +9,7 @@ import {
   getDocs,
   orderBy
 } from 'firebase/firestore';
+import logger from '../utils/logger';
 
 class LibraryResolutionService {
   /**
@@ -22,7 +23,7 @@ class LibraryResolutionService {
    */
   async resolveClientProgram(userId, programId, programTemplate) {
     try {
-      console.log('🔄 Resolving client program:', { userId, programId });
+      logger.debug('🔄 Resolving client program:', { userId, programId });
       
       // Load client program overrides if exists
       const clientProgramId = `${userId}_${programId}`;
@@ -33,15 +34,15 @@ class LibraryResolutionService {
         );
         if (clientProgramDoc.exists()) {
           clientOverrides = clientProgramDoc.data();
-          console.log('✅ Client overrides found');
+          logger.debug('✅ Client overrides found');
         }
       } catch (error) {
-        console.warn('⚠️ Client program not found or error loading:', error);
+        logger.warn('⚠️ Client program not found or error loading:', error);
       }
 
       const creatorId = programTemplate.creator_id;
       if (!creatorId) {
-        console.warn('⚠️ No creator_id in program template, skipping library resolution');
+        logger.warn('⚠️ No creator_id in program template, skipping library resolution');
         return this.mergeProgramOverrides(programTemplate, null, clientOverrides);
       }
 
@@ -77,7 +78,7 @@ class LibraryResolutionService {
         modules: resolvedModules
       };
     } catch (error) {
-      console.error('❌ Error resolving client program:', error);
+      logger.error('❌ Error resolving client program:', error);
       throw error;
     }
   }
@@ -190,7 +191,7 @@ class LibraryResolutionService {
               versions.modules[module.libraryModuleRef] = version;
             }
           } catch (error) {
-            console.warn('Could not fetch library module version:', error);
+            logger.warn('Could not fetch library module version:', error);
           }
 
           // Also check sessions within this library module
@@ -206,7 +207,7 @@ class LibraryResolutionService {
                     versions.sessions[session.librarySessionRef] = version;
                   }
                 } catch (error) {
-                  console.warn('Could not fetch library session version:', error);
+                  logger.warn('Could not fetch library session version:', error);
                 }
               }
             }
@@ -226,14 +227,14 @@ class LibraryResolutionService {
                   versions.sessions[session.librarySessionRef] = version;
                 }
               } catch (error) {
-                console.warn('Could not fetch library session version:', error);
+                logger.warn('Could not fetch library session version:', error);
               }
             }
           }
         }
       }
     } catch (error) {
-      console.error('Error extracting library versions:', error);
+      logger.error('Error extracting library versions:', error);
     }
 
     return versions;
@@ -273,7 +274,7 @@ class LibraryResolutionService {
               }
             }
           } catch (error) {
-            console.warn('Could not check library module version:', error);
+            logger.warn('Could not check library module version:', error);
           }
         }
       }
@@ -296,12 +297,12 @@ class LibraryResolutionService {
               }
             }
           } catch (error) {
-            console.warn('Could not check library session version:', error);
+            logger.warn('Could not check library session version:', error);
           }
         }
       }
     } catch (error) {
-      console.error('Error checking library versions:', error);
+      logger.error('Error checking library versions:', error);
     }
 
     return {
@@ -344,7 +345,7 @@ class LibraryResolutionService {
             );
 
             if (!sessionDoc.exists()) {
-              console.warn(`Library session ${sessionId} not found`);
+              logger.warn(`Library session ${sessionId} not found`);
               return null;
             }
 
@@ -379,7 +380,7 @@ class LibraryResolutionService {
               librarySessionRef: sessionId
             };
           } catch (error) {
-            console.error(`Error resolving library session ${sessionId}:`, error);
+            logger.error(`Error resolving library session ${sessionId}:`, error);
             return null;
           }
         })
@@ -395,7 +396,7 @@ class LibraryResolutionService {
         sessions: sessions.filter(s => s !== null)
       };
     } catch (error) {
-      console.error('Error resolving library module:', error);
+      logger.error('Error resolving library module:', error);
       throw error;
     }
   }
@@ -480,7 +481,7 @@ class LibraryResolutionService {
               ...setDoc.data()
             }));
           } catch (error) {
-            console.warn(`No sets found for library exercise ${exerciseDoc.id}:`, error.message);
+            logger.warn(`No sets found for library exercise ${exerciseDoc.id}:`, error.message);
             exerciseData.sets = [];
           }
 
@@ -535,7 +536,7 @@ class LibraryResolutionService {
 
       return resolvedSession;
     } catch (error) {
-      console.error('Error resolving library session:', error);
+      logger.error('Error resolving library session:', error);
       throw error;
     }
   }

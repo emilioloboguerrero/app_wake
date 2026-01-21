@@ -1,6 +1,7 @@
 // Web wrapper for PRsScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import logger from '../utils/logger';
 
 // Load base component at module scope
 let PRsScreenBase;
@@ -89,7 +90,7 @@ const PRsScreen = () => {
   }
 
   // Debug: Log navigation object before passing
-  console.log('[PRsScreen.web] Passing navigation to base component:', {
+  logger.debug('[PRsScreen.web] Passing navigation to base component:', {
     hasNavigation: !!navigation,
     hasNavigate: !!(navigation && navigation.navigate),
     hasGoBack: !!(navigation && navigation.goBack),

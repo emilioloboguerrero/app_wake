@@ -279,13 +279,13 @@ const MainScreen = ({ navigation, route }) => {
       logger.log('🔧 CALLBACK SETUP: Setting up UI update callbacks...');
       courseDownloadService.setUIUpdateCallbacks(
         (courseId, newVersion, status) => {
-          console.log('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
-          console.log('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
+          logger.debug('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
+          logger.debug('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
           
           // Force a complete refresh of courses to ensure UI updates
           setDownloadedCourses(prev => {
-            console.log('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
-            console.log('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
+            logger.debug('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
+            logger.debug('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
             
             if (prev[courseId]) {
               const newState = {
@@ -297,24 +297,24 @@ const MainScreen = ({ navigation, route }) => {
                   lastUpdated: Date.now() // Force re-render
                 }
               };
-              console.log('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
+              logger.debug('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
               return newState;
             } else {
-              console.log('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
+              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
               return prev;
             }
           });
           
           // Also trigger a refresh of courses from database to ensure consistency
           setTimeout(() => {
-            console.log('🔄 UI REFRESH: Triggering database refresh for consistency...');
+            logger.debug('🔄 UI REFRESH: Triggering database refresh for consistency...');
             refreshCoursesFromDatabase();
           }, 100);
           
-          console.log('✅ UI REFRESH: Course status updated directly in state');
+          logger.debug('✅ UI REFRESH: Course status updated directly in state');
         },
         (courseId, error, status) => {
-          console.log('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
+          logger.debug('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
           
           // Direct state update - instant UI refresh
           setDownloadedCourses(prev => {
@@ -324,12 +324,12 @@ const MainScreen = ({ navigation, route }) => {
                 [courseId]: { ...prev[courseId], status: status }
               };
             } else {
-              console.log('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
+              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
               return prev;
             }
           });
           
-          console.log('✅ UI REFRESH: Course status updated directly in state');
+          logger.debug('✅ UI REFRESH: Course status updated directly in state');
         }
       );
       
@@ -346,54 +346,118 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
+  // Track previous user ID to detect changes
+  const previousUserIdRef = useRef(null);
+
   // Update userProfile immediately when component mounts or user changes
   // Check auth.currentUser directly to get the latest displayName
   useEffect(() => {
-    if (user?.uid) {
-      const currentUser = auth.currentUser;
+    // Get current user from auth.currentUser as source of truth
+    const currentUser = auth.currentUser;
+    const currentUserId = currentUser?.uid || user?.uid;
+    
+    // If user ID has changed, clear profile data immediately to prevent stale data
+    if (previousUserIdRef.current !== null && previousUserIdRef.current !== currentUserId) {
+      logger.log('🔄 User ID changed - clearing stale user profile data:', {
+        previousUserId: previousUserIdRef.current,
+        currentUserId: currentUserId
+      });
+      setUserProfile({
+        displayName: '',
+        username: '',
+        email: '',
+        phoneNumber: '',
+        gender: '',
+      });
+    }
+    
+    if (currentUserId) {
+      // Always use auth.currentUser as source of truth, fallback to user from context
       setUserProfile(prev => ({
         ...prev,
         displayName: currentUser?.displayName || user?.displayName || prev.displayName || '',
         email: currentUser?.email || user?.email || prev.email || '',
       }));
+      previousUserIdRef.current = currentUserId;
+    } else {
+      // No user, clear profile
+      setUserProfile({
+        displayName: '',
+        username: '',
+        email: '',
+        phoneNumber: '',
+        gender: '',
+      });
+      previousUserIdRef.current = null;
     }
-  }, [user?.uid]);
+  }, [user?.uid, user]);
 
   // Load user profile data using hybrid system
   useEffect(() => {
     const loadUserProfile = async () => {
-      if (user?.uid) {
-        try {
-          const userData = await hybridDataService.loadUserProfile(user.uid);
-          if (userData) {
-            setUserProfile({
-              displayName: userData?.displayName || user?.displayName || '',
-              username: userData?.username || '',
-              email: userData?.email || user?.email || '',
-              phoneNumber: userData?.phoneNumber || '',
-              gender: userData?.gender || '',
-            });
-          } else {
-            // If no Firestore data yet, use Firebase Auth data as fallback
-            setUserProfile({
-              displayName: user?.displayName || '',
-              username: '',
-              email: user?.email || '',
-              phoneNumber: '',
-              gender: '',
-            });
-          }
-        } catch (error) {
-          logger.error('Error loading user profile:', error);
-          // On error, still set Firebase Auth data as fallback
+      // Always use auth.currentUser as source of truth
+      const currentUser = auth.currentUser;
+      const currentUserId = currentUser?.uid || user?.uid;
+      
+      // Verify we're loading for the correct user - prevent loading stale data
+      if (!currentUserId) {
+        logger.log('⚠️ No user ID available - skipping profile load');
+        return;
+      }
+      
+      // Double-check that user ID hasn't changed during async operation
+      if (previousUserIdRef.current && previousUserIdRef.current !== currentUserId) {
+        logger.log('⚠️ User ID changed during profile load - aborting to prevent stale data');
+        return;
+      }
+      
+      logger.log('📊 Loading user profile for:', currentUserId);
+      try {
+        const userData = await hybridDataService.loadUserProfile(currentUserId);
+        
+        // Final check: verify user hasn't changed during async load
+        const finalCurrentUser = auth.currentUser;
+        const finalUserId = finalCurrentUser?.uid || user?.uid;
+        if (finalUserId !== currentUserId) {
+          logger.log('⚠️ User ID changed during profile load - discarding results');
+          return;
+        }
+        
+        if (userData) {
+          logger.log('✅ User profile loaded successfully:', {
+            displayName: userData?.displayName,
+            username: userData?.username,
+            email: userData?.email
+          });
           setUserProfile({
-            displayName: user?.displayName || '',
+            displayName: userData?.displayName || finalCurrentUser?.displayName || user?.displayName || '',
+            username: userData?.username || '',
+            email: userData?.email || finalCurrentUser?.email || user?.email || '',
+            phoneNumber: userData?.phoneNumber || '',
+            gender: userData?.gender || '',
+          });
+        } else {
+          // If no Firestore data yet, use Firebase Auth data as fallback
+          logger.log('ℹ️ No Firestore data - using Firebase Auth data');
+          setUserProfile({
+            displayName: finalCurrentUser?.displayName || user?.displayName || '',
             username: '',
-            email: user?.email || '',
+            email: finalCurrentUser?.email || user?.email || '',
             phoneNumber: '',
             gender: '',
           });
         }
+      } catch (error) {
+        logger.error('❌ Error loading user profile:', error);
+        // On error, still set Firebase Auth data as fallback
+        const fallbackUser = auth.currentUser || user;
+        setUserProfile({
+          displayName: fallbackUser?.displayName || '',
+          username: '',
+          email: fallbackUser?.email || '',
+          phoneNumber: '',
+          gender: '',
+        });
       }
     };
 
@@ -433,14 +497,14 @@ const MainScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (!loading && purchasedCourses.length > 0) {
       const updateTimeout = setTimeout(() => {
-        console.log('⏰ 7s TIMEOUT: Clearing any stuck updating status...');
+        logger.debug('⏰ 7s TIMEOUT: Clearing any stuck updating status...');
         setDownloadedCourses(prev => {
           const updated = { ...prev };
           let hasChanges = false;
           
           Object.keys(updated).forEach(courseId => {
             if (updated[courseId]?.status === 'updating') {
-              console.log('🔄 TIMEOUT: Clearing stuck updating status for course:', courseId);
+              logger.debug('🔄 TIMEOUT: Clearing stuck updating status for course:', courseId);
               updated[courseId] = {
                 ...updated[courseId],
                 status: 'ready',
@@ -768,16 +832,16 @@ const MainScreen = ({ navigation, route }) => {
       logger.log('🔄 Force refreshing courses from database...');
       
       // Ensure callbacks are set up
-      console.log('🔧 CALLBACK SETUP: Setting up callbacks in refreshCoursesFromDatabase...');
+      logger.debug('🔧 CALLBACK SETUP: Setting up callbacks in refreshCoursesFromDatabase...');
       courseDownloadService.setUIUpdateCallbacks(
         (courseId, newVersion, status) => {
-          console.log('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
-          console.log('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
+          logger.debug('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
+          logger.debug('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
           
           // Force a complete refresh of courses to ensure UI updates
           setDownloadedCourses(prev => {
-            console.log('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
-            console.log('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
+            logger.debug('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
+            logger.debug('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
             
             if (prev[courseId]) {
               const newState = {
@@ -789,24 +853,24 @@ const MainScreen = ({ navigation, route }) => {
                   lastUpdated: Date.now() // Force re-render
                 }
               };
-              console.log('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
+              logger.debug('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
               return newState;
             } else {
-              console.log('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
+              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
               return prev;
             }
           });
           
           // Also trigger a refresh of courses from database to ensure consistency
           setTimeout(() => {
-            console.log('🔄 UI REFRESH: Triggering database refresh for consistency...');
+            logger.debug('🔄 UI REFRESH: Triggering database refresh for consistency...');
             refreshCoursesFromDatabase();
           }, 100);
           
-          console.log('✅ UI REFRESH: Course status updated directly in state');
+          logger.debug('✅ UI REFRESH: Course status updated directly in state');
         },
         (courseId, error, status) => {
-          console.log('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
+          logger.debug('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
           
           // Direct state update - instant UI refresh
           setDownloadedCourses(prev => {
@@ -816,12 +880,12 @@ const MainScreen = ({ navigation, route }) => {
                 [courseId]: { ...prev[courseId], status: status }
               };
             } else {
-              console.log('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
+              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
               return prev;
             }
           });
           
-          console.log('✅ UI REFRESH: Course status updated directly in state');
+          logger.debug('✅ UI REFRESH: Course status updated directly in state');
         }
       );
       
@@ -957,11 +1021,11 @@ const MainScreen = ({ navigation, route }) => {
 
   // TEST: Manual callback trigger for debugging
   const testCallback = () => {
-    console.log('🧪 TEST: Manually triggering callback...');
+    logger.debug('🧪 TEST: Manually triggering callback...');
     if (courseDownloadService.onUpdateComplete) {
       courseDownloadService.onUpdateComplete('NJ1EEO8wryjFBpMmahcE', '2025-02', 'ready');
     } else {
-      console.log('❌ TEST: Callback not set');
+      logger.debug('❌ TEST: Callback not set');
     }
   };
 
@@ -1170,10 +1234,10 @@ const MainScreen = ({ navigation, route }) => {
       }
       
       // Render based on status
-      console.log('🎨 RENDERING CARD:', course.id, 'status:', courseStatus, 'downloadedData:', !!downloadedCourse);
+      logger.debug('🎨 RENDERING CARD:', course.id, 'status:', courseStatus, 'downloadedData:', !!downloadedCourse);
       
       if (courseStatus === 'updating') {
-        console.log('🔄 RENDERING UPDATING CARD:', course.id, 'status:', courseStatus);
+        logger.debug('🔄 RENDERING UPDATING CARD:', course.id, 'status:', courseStatus);
         return (
           <Animated.View style={[
             styles.swipeableCard, 

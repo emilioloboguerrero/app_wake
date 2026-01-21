@@ -1,6 +1,7 @@
 // Web version of FixedWakeHeader component
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import logger from '../utils/logger';
 
 // Simple SVG icons for web
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (

@@ -10,6 +10,7 @@ import OnboardingQuestion3 from '../screens/onboarding/OnboardingQuestion3';
 import OnboardingQuestion4 from '../screens/onboarding/OnboardingQuestion4';
 import OnboardingQuestion5 from '../screens/onboarding/OnboardingQuestion5';
 import OnboardingComplete from '../screens/onboarding/OnboardingComplete';
+import logger from '../utils/logger';
 
 const Stack = createStackNavigator();
 
@@ -40,7 +41,7 @@ const OnboardingNavigator = ({ onComplete }) => {
         profileCompleted: true,
       };
 
-      console.log('📝 Saving onboarding data:', userData.onboardingData);
+      logger.debug('📝 Saving onboarding data:', userData.onboardingData);
 
       // Cache onboarding status locally for offline access
       try {
@@ -49,23 +50,23 @@ const OnboardingNavigator = ({ onComplete }) => {
           profileCompleted: true,
           cachedAt: Date.now()
         }));
-        console.log('💾 Onboarding status cached locally');
+        logger.debug('💾 Onboarding status cached locally');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to cache onboarding status:', cacheError);
+        logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
         // Continue anyway - Firestore update is more important
       }
 
       // Update user profile with onboarding data
       await hybridDataService.updateUserProfile(user.uid, userData);
 
-      console.log('✅ Onboarding completed successfully');
+      logger.debug('✅ Onboarding completed successfully');
       
       // Trigger completion callback
       if (onComplete) {
         onComplete();
       }
     } catch (error) {
-      console.error('Error completing onboarding:', error);
+      logger.error('Error completing onboarding:', error);
       // Still call onComplete to avoid getting stuck
       if (onComplete) {
         onComplete();
