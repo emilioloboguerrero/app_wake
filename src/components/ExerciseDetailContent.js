@@ -89,15 +89,42 @@ const ExerciseDetailContent = ({
   };
 
   useEffect(() => {
+    logger.log('🔍 ExerciseDetailContent useEffect triggered:', {
+      exerciseKey,
+      libraryId,
+      exerciseName,
+      hasUser: !!user,
+      userUid: user?.uid,
+      shouldLoad: !!(exerciseKey && libraryId && exerciseName && user?.uid)
+    });
+    
+    // Reset loading states when exercise changes
+    setLoading(true);
+    setLoadingHistory(true);
+    setHistory([]);
+    setExerciseHistory([]);
+    
     if (exerciseKey && libraryId && exerciseName && user?.uid) {
+      logger.log('🔍 Calling loadHistory() and loadExerciseHistory()');
       loadHistory();
       loadExerciseHistory();
+    } else {
+      logger.warn('⚠️ ExerciseDetailContent: Cannot load history - missing required data:', {
+        hasExerciseKey: !!exerciseKey,
+        hasLibraryId: !!libraryId,
+        hasExerciseName: !!exerciseName,
+        hasUserUid: !!user?.uid
+      });
+      // Set loading to false if we can't load (to avoid infinite loading)
+      setLoading(false);
+      setLoadingHistory(false);
     }
   }, [exerciseKey, libraryId, exerciseName, user?.uid]);
 
   const loadHistory = async () => {
     if (!user?.uid) {
       logger.warn('⚠️ ExerciseDetailContent: Cannot load history - user not available');
+      setLoading(false);
       return;
     }
     
@@ -109,10 +136,11 @@ const ExerciseDetailContent = ({
         libraryId,
         exerciseName
       );
-      setHistory(data);
-      logger.log('✅ PR history loaded:', data.length, 'entries for', exerciseName);
+      setHistory(data || []);
+      logger.log('✅ PR history loaded:', (data || []).length, 'entries for', exerciseName);
     } catch (error) {
       logger.error('❌ Error loading PR history:', error);
+      setHistory([]);
     } finally {
       setLoading(false);
     }
@@ -121,6 +149,7 @@ const ExerciseDetailContent = ({
   const loadExerciseHistory = async () => {
     if (!user?.uid) {
       logger.warn('⚠️ ExerciseDetailContent: Cannot load exercise history - user not available');
+      setLoadingHistory(false);
       return;
     }
     
@@ -128,7 +157,7 @@ const ExerciseDetailContent = ({
       setLoadingHistory(true);
       logger.log('📊 Loading exercise history for:', exerciseKey);
       const data = await exerciseHistoryService.getExerciseHistory(user.uid, exerciseKey);
-      const sessions = data.sessions || [];
+      const sessions = data?.sessions || [];
       logger.log('✅ Exercise history loaded:', sessions.length, 'sessions for', exerciseKey);
       logger.log('📊 Exercise history data structure:', {
         hasSessions: !!sessions,
@@ -143,6 +172,7 @@ const ExerciseDetailContent = ({
       setExerciseHistory(sessions);
     } catch (error) {
       logger.error('❌ Error loading exercise history:', error);
+      setExerciseHistory([]);
     } finally {
       setLoadingHistory(false);
     }
@@ -514,14 +544,19 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     overflow: 'hidden',
   },
   loadingContainer: {
-    paddingVertical: Math.max(60, screenHeight * 0.075),
+    paddingTop: Math.max(60, screenHeight * 0.075),
+    paddingBottom: Math.max(60, screenHeight * 0.075),
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
     alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingText: {
     color: '#ffffff',
     fontSize: Math.min(screenWidth * 0.04, 16),
     marginTop: Math.max(12, screenHeight * 0.015),
+    marginBottom: Math.max(10, screenHeight * 0.012),
     opacity: 0.7,
+    textAlign: 'center',
   },
   horizontalScrollContainer: {
     marginHorizontal: Math.max(-24, -screenWidth * 0.06),

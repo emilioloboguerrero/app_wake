@@ -235,15 +235,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   emptyContainer: {
-    paddingVertical: Math.max(40, screenHeight * 0.05),
+    flex: 1,
+    paddingVertical: Math.max(20, screenHeight * 0.025),
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: Math.max(300, screenHeight * 0.25),
   },
   emptyText: {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     opacity: 0.6,
     textAlign: 'center',
-    lineHeight: Math.max(22, screenHeight * 0.027),
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    paddingHorizontal: Math.max(10, screenWidth * 0.025),
   },
   // Tooltip Styles
   tooltip: {

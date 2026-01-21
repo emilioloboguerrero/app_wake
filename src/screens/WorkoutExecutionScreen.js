@@ -37,7 +37,7 @@ import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { VideoView, useVideoPlayer } from 'expo-video';
 
 // Firebase - keep as direct imports (lightweight)
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 // ============================================================================
@@ -930,6 +930,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const useStateStartTime1 = performance.now();
   console.log(`[TIMING] [CHECKPOINT] Before useState(isObjectiveInfoModalVisible) - ${useStateStartTime1.toFixed(2)}ms`);
   const [isObjectiveInfoModalVisible, setIsObjectiveInfoModalVisible] = useState(false);
+  
+  // Confirmation modal state for web (Alert.alert doesn't work well on web)
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState(null);
   const useStateDuration1 = performance.now() - useStateStartTime1;
   if (useStateDuration1 > 10) {
     console.warn(`[TIMING] ⚠️ SLOW: useState(isObjectiveInfoModalVisible) took ${useStateDuration1.toFixed(2)}ms`);
@@ -2510,50 +2514,66 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const handleViewExerciseProgress = async () => {
-    const currentExercise = workout.exercises[currentExerciseIndex];
-    if (!currentExercise) return;
-
-    // Extract libraryId and exerciseName
-    const libraryId = currentExercise.primary ? Object.keys(currentExercise.primary)[0] : '';
-    const exerciseName = currentExercise.name;
-    
-    if (!libraryId || !exerciseName) {
-      logger.error('❌ Missing exercise data for navigation:', { libraryId, exerciseName });
-      return;
-    }
-
-    // Create exercise key
-    const exerciseKey = `${libraryId}_${exerciseName}`;
-    
-    // Fetch current estimate for this exercise
     try {
-      const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
-      const estimate = estimates[exerciseKey];
+      logger.log('🔍 handleViewExerciseProgress called');
+      const currentExercise = workout?.exercises?.[currentExerciseIndex];
+      if (!currentExercise) {
+        logger.error('❌ Cannot show exercise progress - no current exercise');
+        return;
+      }
+
+      // Extract libraryId and exerciseName
+      const libraryId = currentExercise.primary ? Object.keys(currentExercise.primary)[0] : '';
+      const exerciseName = currentExercise.name;
       
-      // Store the exercise data for the modal
-      setModalExerciseData({
-        exerciseKey,
-        exerciseName,
-        libraryId,
-        currentEstimate: estimate?.current || null,
-        lastUpdated: estimate?.lastUpdated || null
-      });
+      logger.log('🔍 Exercise data:', { libraryId, exerciseName, currentExercise });
       
-      // Show the modal with exercise data
-      setIsExerciseDetailModalVisible(true);
+      if (!libraryId || !exerciseName) {
+        logger.error('❌ Missing exercise data for exercise progress:', { libraryId, exerciseName });
+        return;
+      }
+
+      // Create exercise key
+      const exerciseKey = `${libraryId}_${exerciseName}`;
+      logger.log('🔍 Exercise key:', exerciseKey);
       
-    } catch (error) {
-      logger.error('❌ Error fetching estimates for modal:', error);
-      // Store basic exercise data without estimates
-      setModalExerciseData({
+      // Store basic exercise data first (needed for modal)
+      const basicExerciseData = {
         exerciseKey,
         exerciseName,
         libraryId,
         currentEstimate: null,
         lastUpdated: null
-      });
-      // Show modal anyway, but without estimate data
+      };
+      
+      // Fetch current estimate for this exercise if user is available
+      if (user?.uid) {
+        try {
+          logger.log('🔍 Fetching estimates for user:', user.uid);
+          const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
+          const estimate = estimates[exerciseKey];
+          logger.log('🔍 Estimate data:', estimate);
+          
+          // Update with estimate data if available
+          basicExerciseData.currentEstimate = estimate?.current || null;
+          basicExerciseData.lastUpdated = estimate?.lastUpdated || null;
+        } catch (error) {
+          logger.error('❌ Error fetching estimates for exercise progress modal:', error);
+          // Continue with basic data (no estimates)
+        }
+      } else {
+        logger.warn('⚠️ Cannot fetch estimates - user not available');
+      }
+      
+      logger.log('🔍 Setting modal exercise data:', basicExerciseData);
+      // Store the exercise data for the modal
+      setModalExerciseData(basicExerciseData);
+      
+      logger.log('🔍 Opening ExerciseDetailModal');
+      // Show the modal with exercise data
       setIsExerciseDetailModalVisible(true);
+    } catch (error) {
+      logger.error('❌ Error in handleViewExerciseProgress:', error);
     }
   };
 
@@ -3325,8 +3345,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const handleEndWorkout = async () => {
+    logger.log('🔍 handleEndWorkout called');
+    
     // Check for validation errors first
     if (hasValidationErrors()) {
+      logger.log('❌ Validation errors detected');
       Alert.alert(
         'Datos Inválidos',
         'Hay campos con datos inválidos. Por favor corrige los errores antes de finalizar el entrenamiento.',
@@ -3336,9 +3359,35 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
 
     const isCompleted = checkAllExercisesCompleted();
+    logger.log('🔍 Workout completion status:', { isCompleted, hasValidationErrors: hasValidationErrors() });
     
     if (!isCompleted) {
       // Show warning for incomplete workout
+      logger.log('⚠️ Workout incomplete - showing confirmation dialog');
+      
+      // Use web-compatible confirmation on web, Alert.alert on native
+      if (isWeb) {
+        setConfirmModalConfig({
+          title: 'Entrenamiento Incompleto',
+          message: '¿Finalizar aunque no esté completo?',
+          onConfirm: () => {
+            logger.log('✅ User confirmed incomplete workout - proceeding');
+            setConfirmModalVisible(false);
+            confirmEndWorkout();
+          },
+          onCancel: () => {
+            logger.log('❌ User cancelled incomplete workout');
+            setConfirmModalVisible(false);
+          },
+          confirmText: 'Finalizar',
+          cancelText: 'Cancelar',
+          isDestructive: true,
+        });
+        setConfirmModalVisible(true);
+        return;
+      }
+      
+      // Native: Use Alert.alert
       Alert.alert(
         'Entrenamiento Incompleto',
         'No has completado todos los ejercicios de esta sesión. ¿Estás seguro de que quieres finalizar y guardar el entrenamiento de todas formas?',
@@ -3346,21 +3395,50 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           {
             text: 'Cancelar',
             style: 'cancel',
+            onPress: () => logger.log('❌ User cancelled incomplete workout'),
           },
           {
             text: 'Finalizar de Todas Formas',
             style: 'destructive',
-            onPress: () => confirmEndWorkout(),
+            onPress: () => {
+              logger.log('✅ User confirmed incomplete workout - proceeding');
+              confirmEndWorkout();
+            },
           },
         ]
       );
     } else {
       // Workout is complete, proceed normally
+      logger.log('✅ Workout complete - proceeding to confirmation');
       confirmEndWorkout();
     }
   };
 
   const confirmEndWorkout = () => {
+    logger.log('🔍 confirmEndWorkout called - showing confirmation dialog');
+    
+      // Use web-compatible confirmation on web, Alert.alert on native
+      if (isWeb) {
+        setConfirmModalConfig({
+          title: 'Finalizar Entrenamiento',
+          message: '¿Guardar y finalizar?',
+          onConfirm: async () => {
+            logger.log('✅ User confirmed workout completion - starting save process');
+            setConfirmModalVisible(false);
+            await executeEndWorkout();
+          },
+          onCancel: () => {
+            logger.log('❌ User cancelled workout completion');
+            setConfirmModalVisible(false);
+          },
+          confirmText: 'Finalizar',
+          cancelText: 'Cancelar',
+        });
+        setConfirmModalVisible(true);
+        return;
+      }
+    
+    // Native: Use Alert.alert
     Alert.alert(
       'Finalizar Entrenamiento',
       '¿Estás seguro de que quieres finalizar y guardar este entrenamiento?',
@@ -3368,15 +3446,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         {
           text: 'Cancelar',
           style: 'cancel',
+          onPress: () => logger.log('❌ User cancelled workout completion'),
         },
         {
           text: 'Finalizar',
           onPress: async () => {
+            logger.log('✅ User confirmed workout completion - starting save process');
+            await executeEndWorkout();
+          },
+        },
+      ]
+    );
+  };
+
+  const executeEndWorkout = async () => {
                  try {
                    setIsSavingWorkout(true);
                    logger.log('🏁 Ending workout...');
                    
-                   if (user?.uid && course?.courseId) {
+                   // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
+                   const currentUser = user || auth.currentUser;
+                   logger.log('🔍 User check:', {
+                     userFromHook: !!user,
+                     userUidFromHook: user?.uid,
+                     firebaseCurrentUser: !!auth.currentUser,
+                     firebaseCurrentUserUid: auth.currentUser?.uid,
+                     currentUserToUse: !!currentUser,
+                     currentUserUid: currentUser?.uid
+                   });
+                   
+                   if (currentUser?.uid && course?.courseId) {
                      // Save all current exercise data before completing
                      logger.log('💾 Saving all current exercise data...');
                      for (let exerciseIndex = 0; exerciseIndex < workout.exercises.length; exerciseIndex++) {
@@ -3398,7 +3497,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      let personalRecords = [];
                      try {
                        personalRecords = await oneRepMaxService.updateEstimatesAfterSession(
-                         user.uid,
+                         currentUser.uid,
                          workout.exercises,
                          setData
                        );
@@ -3488,42 +3587,125 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     
                     logger.log('💪 Passing workout with actual set data to session service');
                     const result = await sessionService.completeSession(
-                      user.uid, 
+                      currentUser.uid, 
                       course.courseId, 
                       workoutWithSetData
                     );
+                     
+                     logger.log('🔍 Session completion result:', { 
+                       hasResult: !!result,
+                       resultKeys: result ? Object.keys(result) : null,
+                       resultType: typeof result
+                     });
                      
                      if (result) {
                        const { sessionData, stats, sessionMuscleVolumes } = result;
                        
                        logger.log('✅ Workout completed successfully!');
                        logger.log('💪 Session muscle volumes:', sessionMuscleVolumes);
+                       logger.log('🔍 Navigation object:', {
+                         hasNavigation: !!navigation,
+                         hasNavigate: !!(navigation && typeof navigation.navigate === 'function'),
+                         navigationType: typeof navigation
+                       });
                        
                        // Navigate to completion screen with session data
-                       navigation.navigate('WorkoutCompletion', {
-                         course: course,
-                         workout: workout,
-                         sessionData: sessionData,
-                         localStats: stats,
-                         personalRecords: personalRecords,
-                         sessionMuscleVolumes: sessionMuscleVolumes
+                       logger.log('🧭 Navigating to WorkoutCompletion with data:', {
+                         hasCourse: !!course,
+                         hasWorkout: !!workout,
+                         hasSessionData: !!sessionData,
+                         hasStats: !!stats,
+                         personalRecordsCount: personalRecords?.length || 0,
+                         hasSessionMuscleVolumes: !!sessionMuscleVolumes,
+                         courseId: course?.courseId,
+                         workoutId: workout?.id
                        });
+                       
+                       try {
+                         navigation.navigate('WorkoutCompletion', {
+                           course: course,
+                           workout: workout,
+                           sessionData: sessionData,
+                           localStats: stats,
+                           personalRecords: personalRecords,
+                           sessionMuscleVolumes: sessionMuscleVolumes
+                         });
+                         logger.log('✅ Navigation.navigate() called successfully');
+                       } catch (navError) {
+                         logger.error('❌ Navigation error:', navError);
+                         Alert.alert('Error', 'No se pudo navegar a la pantalla de finalización.');
+                       }
                      } else {
-                       Alert.alert('Error', 'No se encontró una sesión activa para finalizar.');
+                       logger.error('❌ No session found to complete - result is falsy');
+                       if (isWeb) {
+                         // Use modal for errors on web
+                         setConfirmModalConfig({
+                           title: 'Error',
+                           message: 'No se encontró una sesión activa para finalizar.',
+                           onConfirm: () => setConfirmModalVisible(false),
+                           onCancel: () => setConfirmModalVisible(false),
+                           confirmText: 'OK',
+                           cancelText: '',
+                           hideCancel: true,
+                         });
+                         setConfirmModalVisible(true);
+                       } else {
+                         Alert.alert('Error', 'No se encontró una sesión activa para finalizar.');
+                       }
                      }
-                   } else {
-                     Alert.alert('Error', 'No se pudo finalizar el entrenamiento: datos de usuario o curso faltantes.');
-                   }
+                  } else {
+                    const currentUser = user || auth.currentUser;
+                    logger.error('❌ Missing user or course data:', {
+                      userFromHook: !!user,
+                      userUidFromHook: user?.uid,
+                      firebaseCurrentUser: !!auth.currentUser,
+                      firebaseCurrentUserUid: auth.currentUser?.uid,
+                      currentUserToUse: !!currentUser,
+                      currentUserUid: currentUser?.uid,
+                      hasCourse: !!course,
+                      hasCourseId: !!course?.courseId
+                    });
+                    if (isWeb) {
+                      // Use modal for errors on web
+                      setConfirmModalConfig({
+                        title: 'Error',
+                        message: 'No se pudo finalizar: faltan datos de usuario o curso.',
+                        onConfirm: () => setConfirmModalVisible(false),
+                        onCancel: () => setConfirmModalVisible(false),
+                        confirmText: 'OK',
+                        cancelText: '',
+                        hideCancel: true,
+                      });
+                      setConfirmModalVisible(true);
+                    } else {
+                      Alert.alert('Error', 'No se pudo finalizar el entrenamiento: datos de usuario o curso faltantes.');
+                    }
+                  }
                  } catch (error) {
                    logger.error('❌ Error ending workout:', error);
-                   Alert.alert('Error', 'No se pudo finalizar el entrenamiento. Inténtalo de nuevo.');
+                   logger.error('❌ Error details:', {
+                     message: error?.message,
+                     stack: error?.stack,
+                     name: error?.name
+                   });
+                   if (isWeb) {
+                     // Use modal for errors on web
+                     setConfirmModalConfig({
+                       title: 'Error',
+                       message: 'No se pudo finalizar el entrenamiento. Inténtalo de nuevo.',
+                       onConfirm: () => setConfirmModalVisible(false),
+                       onCancel: () => setConfirmModalVisible(false),
+                       confirmText: 'OK',
+                       cancelText: '',
+                       hideCancel: true,
+                     });
+                     setConfirmModalVisible(true);
+                   } else {
+                     Alert.alert('Error', 'No se pudo finalizar el entrenamiento. Inténtalo de nuevo.');
+                   }
                  } finally {
                    setIsSavingWorkout(false);
                  }
-          },
-        },
-      ]
-    );
   };
 
 
@@ -5429,6 +5611,64 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </React.Suspense>
       )}
       
+      {/* Confirmation Modal for Web (Alert.alert doesn't work well on web) */}
+      {confirmModalVisible && confirmModalConfig && (() => {
+        const confirmModalStylesObj = confirmModalStyles(screenWidth, screenHeight);
+        return (
+          <Modal
+            visible={confirmModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => {
+              confirmModalConfig?.onCancel?.();
+            }}
+          >
+            <View style={confirmModalStylesObj.confirmModalOverlay}>
+              <TouchableOpacity 
+                style={confirmModalStylesObj.confirmModalBackdrop}
+                activeOpacity={1}
+                onPress={() => confirmModalConfig?.onCancel?.()}
+              />
+              <View style={confirmModalStylesObj.confirmModalContent}>
+                <Text style={confirmModalStylesObj.confirmModalTitle}>{confirmModalConfig.title}</Text>
+                <Text style={confirmModalStylesObj.confirmModalMessage}>{confirmModalConfig.message}</Text>
+                <View style={confirmModalStylesObj.confirmModalButtons}>
+                  {!confirmModalConfig.hideCancel && (
+                    <TouchableOpacity
+                      style={[confirmModalStylesObj.confirmModalButton, confirmModalStylesObj.confirmModalButtonCancel]}
+                      onPress={() => confirmModalConfig?.onCancel?.()}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={confirmModalStylesObj.confirmModalButtonTextCancel}>
+                        {confirmModalConfig.cancelText || 'Cancelar'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[
+                      confirmModalStylesObj.confirmModalButton,
+                      confirmModalConfig.hideCancel && { flex: 1 },
+                      confirmModalConfig.isDestructive 
+                        ? confirmModalStylesObj.confirmModalButtonDestructive 
+                        : confirmModalStylesObj.confirmModalButtonConfirm
+                    ]}
+                    onPress={() => confirmModalConfig?.onConfirm?.()}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      confirmModalStylesObj.confirmModalButtonText,
+                      confirmModalConfig.isDestructive && confirmModalStylesObj.confirmModalButtonTextDestructive
+                    ]}>
+                      {confirmModalConfig.confirmText || 'Confirmar'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
+
       {/* Loading Overlay for Workout Completion */}
       <Modal
         visible={isSavingWorkout}
@@ -7701,6 +7941,98 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
 });
 
 // Add loading overlay styles
+// Confirmation Modal Styles - Simplified and improved UI
+const confirmModalStyles = (screenWidth, screenHeight) => StyleSheet.create({
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  confirmModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  confirmModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(20, screenWidth * 0.05),
+    padding: Math.max(32, screenWidth * 0.08),
+    width: '100%',
+    maxWidth: Math.min(screenWidth * 0.85, 360),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: 'rgba(255, 255, 255, 0.3)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 8,
+    alignItems: 'center',
+  },
+  confirmModalTitle: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.065, 26),
+    fontWeight: '700',
+    marginBottom: Math.max(20, screenHeight * 0.025),
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  confirmModalMessage: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '500',
+    marginBottom: Math.max(32, screenHeight * 0.04),
+    textAlign: 'center',
+    lineHeight: Math.max(24, screenHeight * 0.03),
+  },
+  confirmModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Math.max(16, screenWidth * 0.04),
+    width: '100%',
+  },
+  confirmModalButton: {
+    flex: 1,
+    paddingVertical: Math.max(12, screenHeight * 0.015),
+    paddingHorizontal: Math.max(16, screenWidth * 0.04),
+    borderRadius: Math.max(12, screenWidth * 0.03),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    minHeight: Math.max(44, screenHeight * 0.055),
+  },
+  confirmModalButtonCancel: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  confirmModalButtonConfirm: {
+    backgroundColor: 'rgba(191, 168, 77, 0.25)',
+    borderColor: 'rgba(191, 168, 77, 0.7)',
+  },
+  confirmModalButtonDestructive: {
+    backgroundColor: 'rgba(255, 59, 48, 0.15)',
+    borderColor: 'rgba(255, 59, 48, 0.6)',
+  },
+  confirmModalButtonText: {
+    color: 'rgba(191, 168, 77, 1)',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+  },
+  confirmModalButtonTextCancel: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+  },
+  confirmModalButtonTextDestructive: {
+    color: 'rgba(255, 59, 48, 1)',
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+  },
+});
+
 const createLoadingOverlayStyles = (screenWidth, screenHeight) => StyleSheet.create({
   overlay: {
     flex: 1,

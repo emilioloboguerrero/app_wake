@@ -3,6 +3,7 @@
 
 import React, { useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import logger from '../utils/logger';
 
 // Import base component directly (like LoginScreen and MainScreen)
 const WorkoutExecutionScreenModule = require('./WorkoutExecutionScreen.js');
@@ -20,10 +21,19 @@ const WorkoutExecutionScreen = () => {
   // Memoize navigation adapter
   const navigation = useMemo(() => ({
     navigate: (routeName, params) => {
+      logger.log('🧭 [WorkoutExecution Web] Navigation called:', { routeName, params, courseId });
+      
       const routeMap = {
         'WorkoutCompletion': () => {
           const cId = params?.course?.courseId || params?.course?.id || courseId;
-          navigate(`/course/${cId}/workout/completion`, { state: params });
+          const targetPath = `/course/${cId}/workout/completion`;
+          logger.log('🧭 [WorkoutExecution Web] Navigating to WorkoutCompletion:', {
+            courseId: cId,
+            targetPath,
+            hasParams: !!params,
+            paramsKeys: params ? Object.keys(params) : []
+          });
+          navigate(targetPath, { state: params });
         },
         'DailyWorkout': () => {
           const cId = params?.course?.courseId || params?.course?.id || courseId;
@@ -34,8 +44,10 @@ const WorkoutExecutionScreen = () => {
       };
       
       if (routeMap[routeName]) {
+        logger.log('🧭 [WorkoutExecution Web] Using route map for:', routeName);
         routeMap[routeName]();
       } else {
+        logger.log('🧭 [WorkoutExecution Web] No route map, using fallback:', routeName);
         navigate(`/${routeName.toLowerCase()}`, { state: params });
       }
     },

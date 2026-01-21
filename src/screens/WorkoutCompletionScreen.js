@@ -30,7 +30,7 @@ import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek } from '../utils/weekCalculation';
 import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/ShareIOsExport';
 import ViewShot from 'react-native-view-shot';
@@ -185,13 +185,35 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     setRandomPhrase(getRandomPhrase());
     initializeCompletionScreen();
     
+    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
+    const currentUser = user || auth.currentUser;
+    
+    logger.log('🔍 WorkoutCompletionScreen useEffect - User check:', {
+      userFromHook: !!user,
+      userUidFromHook: user?.uid,
+      firebaseCurrentUser: !!auth.currentUser,
+      firebaseCurrentUserUid: auth.currentUser?.uid,
+      currentUserToUse: !!currentUser,
+      currentUserUid: currentUser?.uid,
+      courseDiscipline: course?.discipline,
+      shouldTrackVolume: shouldTrackMuscleVolume(course?.discipline),
+      hasSessionMuscleVolumes: !!sessionMuscleVolumes,
+      sessionMuscleVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : []
+    });
+    
     // Fetch weekly muscle volumes if discipline supports it
-    if (shouldTrackMuscleVolume(course?.discipline) && user?.uid) {
+    if (shouldTrackMuscleVolume(course?.discipline) && currentUser?.uid) {
+      logger.log('📊 Fetching weekly muscle volumes...');
       fetchWeeklyMuscleVolumes();
+    } else {
+      logger.log('⚠️ Skipping weekly muscle volumes fetch:', {
+        shouldTrack: shouldTrackMuscleVolume(course?.discipline),
+        hasUser: !!currentUser?.uid
+      });
     }
     
     // Fetch user display name
-    if (user?.uid) {
+    if (currentUser?.uid) {
       fetchUserDisplayName();
     }
   }, []);
@@ -212,8 +234,18 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   
   const fetchWeeklyMuscleVolumes = async () => {
     try {
+      // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
+      const currentUser = user || auth.currentUser;
+      if (!currentUser?.uid) {
+        logger.error('❌ Cannot fetch weekly muscle volumes - no user available');
+        setWeeklyMuscleVolumes({});
+        setLastWeekMuscleVolumes({});
+        return;
+      }
+      
       const currentWeek = getMondayWeek();
-      const userDocRef = doc(firestore, 'users', user.uid);
+      logger.log('📊 Fetching weekly muscle volumes for user:', currentUser.uid, 'week:', currentWeek);
+      const userDocRef = doc(firestore, 'users', currentUser.uid);
       const userDoc = await getDoc(userDocRef);
       
       if (userDoc.exists()) {
@@ -692,7 +724,29 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           )}
 
             {/* Muscle Volume Section (show if discipline supports it) */}
-            {shouldTrackMuscleVolume(course?.discipline) && weeklyMuscleVolumes && (
+            {/* Muscle Volume Section (show if discipline supports it) */}
+            {(() => {
+              const shouldShow = shouldTrackMuscleVolume(course?.discipline);
+              const hasWeeklyVolumes = !!weeklyMuscleVolumes && Object.keys(weeklyMuscleVolumes).length > 0;
+              const hasSessionVolumes = !!sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0;
+              
+              logger.log('🔍 Volume card render check:', {
+                shouldTrack: shouldShow,
+                hasWeeklyVolumes,
+                hasSessionVolumes,
+                weeklyVolumesKeys: weeklyMuscleVolumes ? Object.keys(weeklyMuscleVolumes) : [],
+                sessionVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : [],
+                courseDiscipline: course?.discipline,
+                willShow: shouldShow && (hasWeeklyVolumes || hasSessionVolumes)
+              });
+              
+              // Show if discipline supports it AND we have either weekly volumes OR session volumes
+              // The WeeklyMuscleVolumeCard can work with just sessionMuscleVolumes
+              // MuscleSilhouette needs weeklyMuscleVolumes, but we can still show WeeklyMuscleVolumeCard
+              if (!shouldShow) return null;
+              if (!hasWeeklyVolumes && !hasSessionVolumes) return null;
+              
+              return (
               <View style={styles.muscleVolumeSectionWrapper}>
                 <ScrollView
                   horizontal
@@ -705,32 +759,37 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   onScroll={onMuscleScroll}
                   scrollEventThrottle={16}
                 >
-                  {/* CARD 1: Muscle Silhouette */}
-                  <View style={styles.muscleCardFirst}>
-                    <MuscleSilhouette 
-                      muscleVolumes={weeklyMuscleVolumes} 
-                      showCurrentWeekLabel={true}
-                      availableWeeks={[getMondayWeek()]}
-                      selectedWeek={getMondayWeek()}
-                      currentWeek={getMondayWeek()}
-                      onWeekChange={() => {}}
-                      isReadOnly={true}
-                      onInfoPress={handleMuscleVolumeInfoPress}
-                    />
-                  </View>
+                  {/* CARD 1: Muscle Silhouette - Only show if we have weekly volumes */}
+                  {hasWeeklyVolumes && (
+                    <View style={styles.muscleCardFirst}>
+                      <MuscleSilhouette 
+                        muscleVolumes={weeklyMuscleVolumes} 
+                        showCurrentWeekLabel={true}
+                        availableWeeks={[getMondayWeek()]}
+                        selectedWeek={getMondayWeek()}
+                        currentWeek={getMondayWeek()}
+                        onWeekChange={() => {}}
+                        isReadOnly={true}
+                        onInfoPress={handleMuscleVolumeInfoPress}
+                      />
+                    </View>
+                  )}
                   
-                  {/* CARD 2: Weekly Sets List */}
-                  <View style={styles.muscleCardSecond}>
-                    <WeeklyMuscleVolumeCard 
-                      userId={user?.uid} 
-                      sessionMuscleVolumes={sessionMuscleVolumes} 
-                      showCurrentWeekLabel={true}
-                      onInfoPress={handleMuscleVolumeInfoPress}
-                    />
-                  </View>
+                  {/* CARD 2: Weekly Sets List - Show if we have session volumes */}
+                  {hasSessionVolumes && (
+                    <View style={styles.muscleCardSecond}>
+                      <WeeklyMuscleVolumeCard 
+                        userId={(user || auth.currentUser)?.uid} 
+                        sessionMuscleVolumes={sessionMuscleVolumes} 
+                        showCurrentWeekLabel={true}
+                        onInfoPress={handleMuscleVolumeInfoPress}
+                      />
+                    </View>
+                  )}
                 </ScrollView>
                 
-                {/* Pagination Indicators */}
+                {/* Pagination Indicators - Only show if we have multiple cards */}
+                {(hasWeeklyVolumes && hasSessionVolumes) && (
                 <View style={styles.paginationContainer}>
                   {[0, 1].map((index) => {
                     const cardWidth = screenWidth - Math.max(40, screenWidth * 0.1) + 15;
@@ -768,8 +827,10 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                     );
                   })}
                 </View>
+                )}
               </View>
-            )}
+              );
+            })()}
 
           {/* Indicators Row */}
           <View style={styles.indicatorsRow}>

@@ -102,7 +102,9 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   if (validSessions.length === 0) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Progreso del Ejercicio</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Progreso del Ejercicio</Text>
+        </View>
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>
             No hay datos suficientes para mostrar progreso.{'\n'}
@@ -606,15 +608,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   emptyContainer: {
-    paddingVertical: Math.max(40, screenHeight * 0.05),
+    flex: 1,
+    paddingTop: Math.max(20, screenHeight * 0.025),
+    paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: Math.max(150, screenHeight * 0.18),
   },
   emptyText: {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     opacity: 0.6,
     textAlign: 'center',
-    lineHeight: Math.max(22, screenHeight * 0.027),
+    lineHeight: Math.max(24, screenHeight * 0.03),
+    paddingHorizontal: Math.max(10, screenWidth * 0.025),
   },
   noDataContainer: {
     paddingVertical: Math.max(40, screenHeight * 0.05),
