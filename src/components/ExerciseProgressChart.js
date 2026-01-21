@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableWithoutFeedback, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, Animated, TouchableWithoutFeedback, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 import logger from '../utils/logger.js';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', onPeriodChange }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
+  
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [tooltipOpacity] = useState(new Animated.Value(0));
   const [isPeriodDropdownVisible, setIsPeriodDropdownVisible] = useState(false);
@@ -415,7 +421,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

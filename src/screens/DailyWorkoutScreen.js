@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,10 @@ import {
   Alert,
   ImageBackground,
   Image,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   FlatList,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { Image as ExpoImage } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -74,54 +72,57 @@ const useStreakData = (userId, courseId) => {
   return { streak, sessionsThisWeek, minimumSessions, isLoading };
 };
 
-// Memoized streak display component - SMALLER for overlay
-const StreakDisplay = React.memo(({ streak, sessionsThisWeek, minimumSessions }) => {
-  const isStreakActive = streak > 0;
-  const flameOpacity = isStreakActive ? 0.9 : 0.4;
-  
-  return (
-    <>
-      <View style={styles.fireIconContainer}>
-        {/* Base flame - largest, darkest */}
-        <SvgFire 
-          width={60}
-          height={60}
-          stroke="#000000"
-          strokeWidth={0.3}
-          fill="#E64A11"
-          style={[styles.fireBase, { opacity: flameOpacity }]}
-        />
-        
-        {/* Middle flame - medium size, orange */}
-        <SvgFire 
-          width={20}
-          height={20}
-          stroke="#D5C672"
-          strokeWidth={0.5}
-          fill="#D5C672"
-          style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: flameOpacity }]}
-        />
-        
-        {/* Inner flame - smallest, brightest */}
-        <SvgFire 
-          width={8}
-          height={8}
-          stroke="#FFFFFF"
-          strokeWidth={0.5}
-          fill="#FFFFFF"
-          style={[styles.fireInner, { opacity: flameOpacity }]}
-        />
-      </View>
-      <Text style={styles.streakNumber}>
-        {streak}
-      </Text>
-    </>
-  );
-});
-
 const DailyWorkoutScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user: contextUser } = useAuth();
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
+  
+  // Memoized streak display component - SMALLER for overlay
+  // Moved inside component to access styles
+  const StreakDisplay = React.memo(({ streak, sessionsThisWeek, minimumSessions }) => {
+    const isStreakActive = streak > 0;
+    const flameOpacity = isStreakActive ? 0.9 : 0.4;
+    
+    return (
+      <>
+        <View style={styles.fireIconContainer}>
+          {/* Base flame - largest, darkest */}
+          <SvgFire 
+            width={60}
+            height={60}
+            stroke="#000000"
+            strokeWidth={0.3}
+            fill="#E64A11"
+            style={[styles.fireBase, { opacity: flameOpacity }]}
+          />
+          
+          {/* Middle flame - medium size, orange */}
+          <SvgFire 
+            width={20}
+            height={20}
+            stroke="#D5C672"
+            strokeWidth={0.5}
+            fill="#D5C672"
+            style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: flameOpacity }]}
+          />
+          
+          {/* Inner flame - smallest, brightest */}
+          <SvgFire 
+            width={8}
+            height={8}
+            stroke="#FFFFFF"
+            strokeWidth={0.5}
+            fill="#FFFFFF"
+            style={[styles.fireInner, { opacity: flameOpacity }]}
+          />
+        </View>
+        <Text style={styles.streakNumber}>
+          {streak}
+        </Text>
+      </>
+    );
+  });
   
   // FALLBACK: If AuthContext doesn't have user, check Firebase directly
   const [fallbackUser, setFallbackUser] = React.useState(null);
@@ -174,7 +175,6 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   
   // Scroll tracking for pagination indicator
   const scrollX = new Animated.Value(0);
-  const screenWidth = Dimensions.get('window').width;
   const mainSwipeRef = useRef(null);
 
   // Reset scroll position to show correct pagination indicator
@@ -874,7 +874,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

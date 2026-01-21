@@ -1,8 +1,6 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
-
-const { height: screenHeight } = Dimensions.get('window');
 
 // Memoized MuscleSilhouetteSVG to prevent unnecessary re-renders
 const MemoizedMuscleSVG = memo(MuscleSilhouetteSVG, (prevProps, nextProps) => {
@@ -22,6 +20,7 @@ const WorkoutMuscleSVG = ({
   showMuscleSVG,
   styles 
 }) => {
+  const { height: screenHeight } = useWindowDimensions();
   // On web, defer SVG rendering even when showMuscleSVG is true to prevent blocking
   // Use a longer delay to ensure the UI is fully interactive first
   const [shouldRenderSVG, setShouldRenderSVG] = useState(!isWeb && showMuscleSVG);

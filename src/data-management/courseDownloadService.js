@@ -5,6 +5,7 @@ import hybridDataService from '../services/hybridDataService';
 import updateEventManager from '../services/updateEventManager';
 import { getMondayWeek } from '../utils/weekCalculation';
 import logger from '../utils/logger';
+import libraryResolutionService from '../services/libraryResolutionService';
 
 class CourseDownloadService {
   constructor() {
@@ -555,8 +556,6 @@ class CourseDownloadService {
             
             if (decompressedData.libraryVersions && decompressedData.courseData?.creator_id) {
               try {
-                // Import library resolution service dynamically to avoid circular dependencies
-                const { default: libraryResolutionService } = await import('../services/libraryResolutionService');
                 libraryVersionCheck = await libraryResolutionService.checkLibraryVersionsChanged(
                   decompressedData.courseData.creator_id,
                   decompressedData.libraryVersions

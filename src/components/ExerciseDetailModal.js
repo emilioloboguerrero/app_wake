@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ExerciseDetailContent from './ExerciseDetailContent';
@@ -37,15 +37,8 @@ const ExerciseDetailModal = ({
   // Get safe area insets for proper header positioning
   const insets = useSafeAreaInsets();
   
-  // Get dimensions inside component to avoid blocking module initialization
-  // Only do this AFTER we know we're actually rendering
-  const dimensionsStartTime = performance.now();
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const dimensionsDuration = performance.now() - dimensionsStartTime;
-    logger.debug(`[CHILD] [TIMING] ExerciseDetailModal Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  if (dimensionsDuration > 5) {
-    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  }
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   // Create styles with dimensions and safe area insets
   const stylesStartTime = performance.now();

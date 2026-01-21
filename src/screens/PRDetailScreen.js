@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   Pressable,
   TouchableWithoutFeedback,
@@ -19,9 +19,8 @@ import ExerciseDetailContent from '../components/ExerciseDetailContent';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const PRDetailScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60

@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Modal, Pressable, ScrollView } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, Pressable, ScrollView } from 'react-native';
 import SvgChevronDown from './icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const PeriodFilter = ({ selectedPeriod, onPeriodChange }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [isDropdownVisible, setIsDropdownVisible] = useState(false);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   
   const periods = [
     { key: 'week', label: '1 Semana' },
@@ -99,7 +104,7 @@ const PeriodFilter = ({ selectedPeriod, onPeriodChange }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     marginBottom: Math.max(12, screenHeight * 0.015),
   },

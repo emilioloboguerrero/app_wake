@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator, Dimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback } from 'react-native';
 import { collection, getDocs, query, where, orderBy, limit, collectionGroup } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { ImageBackground } from 'expo-image';
@@ -27,22 +27,17 @@ import { getMuscleDisplayName } from '../constants/muscles';
 import { getMuscleColorForText } from '../utils/muscleColorUtils';
 import { creatorProfileCache } from '../utils/cache';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const TAB_CONFIG = [
   { key: 'profile', title: 'Perfil' },
   { key: 'lab', title: 'Lab' },
   { key: 'programs', title: 'Programas' },
 ];
-const STORY_CARD_WIDTH = screenWidth * 0.8;
-const STORY_CARD_HEIGHT = screenHeight * 0.6;
-const STORY_CARD_SPACING = 4;
-const STORY_CARD_SNAP = STORY_CARD_WIDTH + STORY_CARD_SPACING;
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const AnimatedVerticalFlatList = Animated.createAnimatedComponent(FlatList);
 
-const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, isActive, isPerfilTabActive }) => {
-  const cardWidth = STORY_CARD_SNAP;
+const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, isActive, isPerfilTabActive, storyCardSnap }) => {
+  const cardWidth = storyCardSnap;
   const inputRange = [
     (index - 1) * cardWidth,
     index * cardWidth,
@@ -246,11 +241,24 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
 });
 
 const CreatorProfileScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { creatorId, imageUrl: initialImageUrl } = route.params || {};
   const [imageUrl, setImageUrl] = useState(initialImageUrl || null);
   const [loading, setLoading] = useState(!initialImageUrl && !!creatorId);
   const [displayName, setDisplayName] = useState('');
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  
+  // Calculate story card dimensions based on screen size
+  const STORY_CARD_WIDTH = screenWidth * 0.8;
+  const STORY_CARD_HEIGHT = screenHeight * 0.6;
+  const STORY_CARD_SPACING = 4;
+  const STORY_CARD_SNAP = STORY_CARD_WIDTH + STORY_CARD_SPACING;
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT),
+    [screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT],
+  );
   const tabsScrollRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const [tabWidth, setTabWidth] = useState(0);
@@ -1920,6 +1928,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                             isLast={index === storyCardsWithFallback.length - 1}
                             scrollValue={storyScrollX}
                             onLinkPress={handleStoryCardPress}
+                            storyCardSnap={STORY_CARD_SNAP}
                             isActive={index === storyActiveIndex}
                             isPerfilTabActive={currentTabIndex === 0}
                           />
@@ -2531,7 +2540,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

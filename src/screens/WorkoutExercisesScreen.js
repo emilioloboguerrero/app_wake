@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Dimensions,
+  useWindowDimensions,
   FlatList,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { useAuth } from '../contexts/AuthContext';
 import sessionManager from '../services/sessionManager';
 import sessionService from '../services/sessionService';
@@ -87,24 +85,36 @@ const calculateEvenGaps = (set) => {
   return { evenGap };
 };
 
-// Memoized Exercise Item Component for better performance
-const ExerciseItem = React.memo(({ exercise, index, isExpanded, onToggleExpansion }) => {
-  // Get objectives from the first set to determine what fields to show
-  const firstSet = exercise.sets?.[0];
-  const objectivesFields = firstSet ? Object.keys(firstSet).filter(field => {
-    const skipFields = [
-      'id', 'order', 'notes', 'description', 'title', 'name',
-      'created_at', 'updated_at', 'createdAt', 'updatedAt',
-      'type', 'status', 'category', 'tags', 'metadata'
-    ];
-    return !skipFields.includes(field) && firstSet[field] !== undefined && firstSet[field] !== null && firstSet[field] !== '';
-  }).sort() : [];
+const WorkoutExercisesScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { course, sessionData, workoutData, sessionState } = route.params || {};
+  const { user: contextUser } = useAuth();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
+  
+  // Memoized Exercise Item Component for better performance
+  // Moved inside component to access styles
+  const ExerciseItem = React.memo(({ exercise, index, isExpanded, onToggleExpansion }) => {
+    // Get objectives from the first set to determine what fields to show
+    const firstSet = exercise.sets?.[0];
+    const objectivesFields = firstSet ? Object.keys(firstSet).filter(field => {
+      const skipFields = [
+        'id', 'order', 'notes', 'description', 'title', 'name',
+        'created_at', 'updated_at', 'createdAt', 'updatedAt',
+        'type', 'status', 'category', 'tags', 'metadata'
+      ];
+      return !skipFields.includes(field) && firstSet[field] !== undefined && firstSet[field] !== null && firstSet[field] !== '';
+    }).sort() : [];
 
-  // Calculate even gaps for proper spacing
-  const { evenGap } = firstSet ? calculateEvenGaps(firstSet) : { evenGap: 8 };
+    // Calculate even gaps for proper spacing
+    const { evenGap } = firstSet ? calculateEvenGaps(firstSet) : { evenGap: 8 };
 
-  return (
-    <View style={styles.exerciseCardWrapper}>
+    return (
+      <View style={styles.exerciseCardWrapper}>
       <View style={styles.exerciseCardContainer}>
         <TouchableOpacity 
           style={styles.exerciseCard}
@@ -191,10 +201,7 @@ const ExerciseItem = React.memo(({ exercise, index, isExpanded, onToggleExpansio
       </View>
     </View>
   );
-});
-const WorkoutExercisesScreen = ({ navigation, route }) => {
-  const { course, sessionData, workoutData, sessionState } = route.params || {};
-  const { user: contextUser } = useAuth();
+  });
   
   // FALLBACK: If AuthContext doesn't have user, check Firebase directly
   const [fallbackUser, setFallbackUser] = React.useState(null);
@@ -728,255 +735,196 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
-    overflow: 'visible',
+    backgroundColor: '#1a1a1a',
   },
   topBackground: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: Math.max(60, screenHeight * 0.08),
-    backgroundColor: '#1A1A1A',
-    zIndex: 999,
-    pointerEvents: 'none',
+    height: 200,
+    backgroundColor: '#1a1a1a',
+    zIndex: 0,
   },
   scrollView: {
     flex: 1,
-    overflow: 'visible',
   },
   content: {
-    paddingTop: 10,
-    paddingBottom: Math.max(120, screenHeight * 0.15), // Extra padding to clear bottom button
-    overflow: 'visible',
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingTop: 0,
+    paddingBottom: 100,
   },
   titleSection: {
-    paddingTop: 0,
-    marginTop: 0,
-    marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
+    marginBottom: Math.max(24, screenHeight * 0.03),
   },
   screenTitle: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
-    fontWeight: '600', // Match ProfileScreen weight
+    fontSize: Math.min(screenWidth * 0.08, 32),
+    fontWeight: '700',
     color: '#ffffff',
-    textAlign: 'left',
-    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
     marginBottom: 8,
   },
   moduleTitle: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'left',
-    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
-    marginBottom: 20,
+    fontSize: Math.min(screenWidth * 0.05, 18),
+    fontWeight: '400',
+    color: '#cccccc',
+    opacity: 0.8,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 60,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 60,
   },
   errorText: {
-    color: '#ff6b6b',
+    color: '#ff4444',
     fontSize: 16,
+    fontWeight: '400',
     textAlign: 'center',
-    fontWeight: '500',
+    marginBottom: 16,
   },
   exercisesContainer: {
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
-    gap: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
-    overflow: 'visible', // Allow visual effects to show
+    marginBottom: 24,
+  },
+  noExercisesContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  noExercisesText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  noExercisesSubtext: {
+    color: '#cccccc',
+    fontSize: 14,
+    textAlign: 'center',
+    opacity: 0.7,
   },
   exerciseCardWrapper: {
-    overflow: 'visible', // Allow visual effects to show
+    marginBottom: Math.max(12, screenHeight * 0.015),
   },
   exerciseCardContainer: {
     backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderRadius: Math.max(12, screenWidth * 0.04),
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   exerciseCard: {
     flexDirection: 'row',
-    paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
     alignItems: 'center',
-    minHeight: Math.max(80, screenHeight * 0.1), // Responsive height
+    padding: Math.max(16, screenWidth * 0.04),
   },
   exerciseNumber: {
-    fontSize: Math.min(screenWidth * 0.06, 26), // Responsive font size
+    fontSize: Math.min(screenWidth * 0.08, 32),
     fontWeight: '700',
     color: '#ffffff',
-    marginRight: Math.max(20, screenWidth * 0.05), // Responsive margin
+    marginRight: Math.max(16, screenWidth * 0.04),
     alignSelf: 'center',
   },
   exerciseContent: {
     flex: 1,
   },
   exerciseTitle: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+    fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: Math.max(8, screenHeight * 0.01), // Responsive margin
+    marginBottom: 4,
   },
   exerciseInfo: {
-    fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
-    fontWeight: '400',
-    color: '#ffffff',
-    opacity: 0.8,
+    fontSize: Math.min(screenWidth * 0.035, 14),
+    color: '#cccccc',
+    opacity: 0.7,
   },
-  exerciseDetails: {
-    marginBottom: 8,
+  setsContainer: {
+    paddingHorizontal: Math.max(16, screenWidth * 0.04),
+    paddingBottom: Math.max(16, screenWidth * 0.04),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  exerciseDetail: {
-    fontSize: 16,
-    color: '#BFA84D',
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  setDetail: {
-    fontSize: 12,
-    color: '#CCCCCC',
-    marginLeft: 8,
-    marginBottom: 2,
-  },
-  exerciseMuscles: {
-    fontSize: 12,
-    color: '#999999',
-    marginBottom: 4,
-  },
-  exerciseImplements: {
-    fontSize: 12,
-    color: '#999999',
-    marginBottom: 4,
-  },
-  exerciseNotes: {
-    fontSize: 12,
-    color: '#CCCCCC',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  noExercisesContainer: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    padding: Math.max(20, screenWidth * 0.05), // Responsive padding
+  setTrackingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Math.max(20, screenHeight * 0.025), // Responsive margin
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+    marginBottom: Math.max(8, screenHeight * 0.01),
   },
-  noExercisesText: {
-    fontSize: Math.min(screenWidth * 0.045, 18), // Responsive font size
+  setNumberSpace: {
+    width: Math.max(32, screenWidth * 0.08),
+    marginRight: 12,
+  },
+  setNumberContainer: {
+    width: Math.max(32, screenWidth * 0.08),
+    height: Math.max(32, screenWidth * 0.08),
+    borderRadius: Math.max(16, screenWidth * 0.04),
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  setNumber: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 14),
     fontWeight: '600',
-    color: '#ff6b6b',
-    marginBottom: Math.max(8, screenHeight * 0.01), // Responsive margin
   },
-  noExercisesSubtext: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
-    color: '#999999',
-    textAlign: 'center',
+  setInputsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputGroup: {
+    alignItems: 'center',
+  },
+  headerLabel: {
+    fontSize: Math.min(screenWidth * 0.03, 12),
+    fontWeight: '500',
+    color: '#cccccc',
+    marginBottom: 4,
+  },
+  objectiveValue: {
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+    color: '#ffffff',
   },
   bottomButtonContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#1A1A1A',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-    paddingTop: Math.max(20, screenHeight * 0.025), // Responsive padding
-    paddingBottom: Math.max(30, screenHeight * 0.04), // Responsive padding
-    alignItems: 'center',
-    minHeight: Math.max(60, screenHeight * 0.075), // Responsive height
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    paddingBottom: Math.max(20, screenHeight * 0.025),
+    paddingTop: Math.max(16, screenHeight * 0.02),
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   primaryButton: {
     backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    height: Math.max(50, screenHeight * 0.06), // Responsive height
-    width: Math.max(200, screenWidth * 0.5), // Responsive width
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    paddingVertical: Math.max(16, screenHeight * 0.02),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#666666',
+    opacity: 0.5,
   },
   primaryButtonText: {
     color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18), // Responsive font size
+    fontSize: Math.min(screenWidth * 0.05, 18),
     fontWeight: '700',
-    textAlign: 'center',
-  },
-  primaryButtonDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   primaryButtonTextDisabled: {
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  // Expansion styles - matching WorkoutExecutionScreen
-  setsContainer: {
-    paddingTop: 0,
-    paddingBottom: Math.max(16, screenHeight * 0.02),
-  },
-  setTrackingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(4, screenHeight * 0.005),
-    position: 'relative',
-  },
-  setNumberSpace: {
-    width: Math.max(20, screenWidth * 0.05),
-    marginRight: Math.max(20, screenWidth * 0.05),
-    marginLeft: Math.max(26, screenWidth * 0.065),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  setNumberContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    paddingHorizontal: Math.max(4, screenWidth * 0.01),
-    marginLeft: Math.max(26, screenWidth * 0.065),
-  },
-  setNumber: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    color: '#ffffff',
-    marginRight: Math.max(20, screenWidth * 0.05),
-    minWidth: Math.max(20, screenWidth * 0.05),
-    textAlign: 'left',
-  },
-  setInputsContainer: {
-    flexDirection: 'row',
-    flex: 1,
-    paddingRight: Math.max(20, screenWidth * 0.05),
-  },
-  inputGroup: {
-    // No padding - boxes should touch each other
-  },
-  headerLabel: {
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-    color: '#ffffff',
-    opacity: 0.8,
-    textAlign: 'center',
-  },
-  objectiveValue: {
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
+    color: '#999999',
   },
 });
 

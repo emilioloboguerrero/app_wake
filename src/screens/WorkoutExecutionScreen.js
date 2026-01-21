@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   Modal,
   Pressable,
@@ -521,15 +521,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     logger.error(`[RENDER LOOP] ⚠️ WARNING: Too many renders detected! Render count: ${currentRenderCount}`);
   }
   
-  // Get dimensions inside component to avoid blocking module initialization
-  const dimensionsStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before Dimensions.get('window') - ${dimensionsStartTime.toFixed(2)}ms`);
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const dimensionsDuration = performance.now() - dimensionsStartTime;
-  logger.debug(`[TIMING] [CHECKPOINT] After Dimensions.get('window') - took ${dimensionsDuration.toFixed(2)}ms`);
-  if (dimensionsDuration > 50) {
-    logger.warn(`[TIMING] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   // Create styles with dimensions
   const stylesStartTime = performance.now();

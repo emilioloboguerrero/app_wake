@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, Pressable } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, Animated, Pressable } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import logger from '../utils/logger.js';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const PRHistoryChart = ({ history }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
+  
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [tooltipOpacity] = useState(new Animated.Value(0));
 
@@ -200,7 +206,7 @@ const PRHistoryChart = ({ history }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

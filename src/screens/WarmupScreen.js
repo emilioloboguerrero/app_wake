@@ -5,10 +5,8 @@ import {
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import { useVideo } from '../contexts/VideoContext';
@@ -23,9 +21,192 @@ import assetBundleService from '../services/assetBundleService';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
 const WarmupScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionId } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+    },
+    content: {
+      flex: 1,
+      paddingTop: 0, // Reduced padding to move content higher
+      paddingBottom: 20, // Normal padding
+    },
+    titleSection: {
+      marginBottom: 0,
+    },
+    title: {
+      fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
+      fontWeight: '600', // Match ProfileScreen weight
+      color: '#ffffff',
+      textAlign: 'left',
+      paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
+      marginBottom: 20,
+    },
+    buttonContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 20,
+    },
+    skipWarmupButton: {
+      backgroundColor: 'transparent',
+      borderRadius: Math.max(8, screenWidth * 0.02), // Responsive border radius
+      paddingVertical: Math.max(8, screenHeight * 0.01), // Responsive padding
+      paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
+      marginTop: Math.max(8, screenHeight * 0.01), // Responsive margin
+    },
+    skipWarmupButtonText: {
+      fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
+      fontWeight: '500',
+      color: 'rgba(191, 168, 77, 0.72)',
+      textAlign: 'center',
+    },
+    warmupContent: {
+      flex: 1,
+      paddingBottom: 20,
+      paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+    },
+    videoCard: {
+      height: Math.max(500, screenHeight * 0.60), // Responsive height - TALLER
+      backgroundColor: '#1a1a1a',
+      borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+      overflow: 'hidden',
+      position: 'relative',
+      marginBottom: Math.max(20, screenHeight * 0.025), // Responsive margin
+    },
+    videoContainer: {
+      flex: 1,
+      width: '100%',
+      height: '100%',
+    },
+    video: {
+      flex: 1,
+      width: '100%',
+      height: '100%',
+    },
+    videoPlaceholder: {
+      flex: 1,
+      backgroundColor: '#2A2A2A',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    videoPlaceholderText: {
+      fontSize: 24,
+      color: '#666666',
+      fontWeight: '500',
+    },
+    restDisplay: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    restText: {
+      fontSize: Math.min(screenWidth * 0.08, 32), // Responsive font size
+      color: '#ffffff',
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    pauseOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
+    exerciseNameContainer: {
+      position: 'absolute',
+      bottom: 16,
+      left: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    exerciseNameText: {
+      fontSize: Math.min(screenWidth * 0.07, 28), // Responsive font size
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    timerSection: {
+      paddingVertical: 0,
+    },
+    timerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Math.max(20, screenWidth * 0.05), // Responsive gap
+    },
+    circularTimer: {
+      width: Math.max(160, screenWidth * 0.4), // Responsive width
+      height: Math.max(160, screenWidth * 0.4), // Responsive height
+      borderRadius: Math.max(80, screenWidth * 0.2), // Responsive border radius
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#2a2a2a',
+    },
+    timerText: {
+      fontSize: Math.min(screenWidth * 0.1, 40), // Responsive font size
+      color: '#ffffff',
+      fontWeight: '700',
+      marginBottom: Math.max(4, screenHeight * 0.005), // Responsive margin
+    },
+    timerLabel: {
+      fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+      color: '#ffffff',
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    skipButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
+      paddingHorizontal: 0,
+      borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+      width: Math.max(150, screenWidth * 0.375), // Responsive width
+    },
+    skipButtonText: {
+      fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+      fontWeight: '600',
+      color: 'rgba(191, 168, 77, 1)',
+      textAlign: 'center',
+      numberOfLines: 1,
+    },
+    // Volume icon styles
+    volumeIconContainer: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      zIndex: 5,
+    },
+    volumeIconButton: {
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: 16,
+      padding: 8,
+      minWidth: 32,
+      minHeight: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  }), [screenWidth, screenHeight]);
   
   // Debug: Log the workout object received
   logger.log('🔍 WarmupScreen: Received workout object:', {
@@ -567,186 +748,5 @@ const WarmupScreen = ({ navigation, route }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  content: {
-    flex: 1,
-    paddingTop: 0, // Reduced padding to move content higher
-    paddingBottom: 20, // Normal padding
-  },
-  titleSection: {
-    marginBottom: 0,
-  },
-  title: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
-    fontWeight: '600', // Match ProfileScreen weight
-    color: '#ffffff',
-    textAlign: 'left',
-    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
-    marginBottom: 20,
-  },
-  buttonContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  skipWarmupButton: {
-    backgroundColor: 'transparent',
-    borderRadius: Math.max(8, screenWidth * 0.02), // Responsive border radius
-    paddingVertical: Math.max(8, screenHeight * 0.01), // Responsive padding
-    paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
-    marginTop: Math.max(8, screenHeight * 0.01), // Responsive margin
-  },
-  skipWarmupButtonText: {
-    fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
-    fontWeight: '500',
-    color: 'rgba(191, 168, 77, 0.72)',
-    textAlign: 'center',
-  },
-  warmupContent: {
-    flex: 1,
-    paddingBottom: 20,
-    paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
-  },
-  videoCard: {
-    height: Math.max(500, screenHeight * 0.60), // Responsive height - TALLER
-    backgroundColor: '#1a1a1a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    overflow: 'hidden',
-    position: 'relative',
-    marginBottom: Math.max(20, screenHeight * 0.025), // Responsive margin
-  },
-  videoContainer: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  video: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  videoPlaceholder: {
-    flex: 1,
-    backgroundColor: '#2A2A2A',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoPlaceholderText: {
-    fontSize: 24,
-    color: '#666666',
-    fontWeight: '500',
-  },
-  restDisplay: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  restText: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // Responsive font size
-    color: '#ffffff',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  pauseOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  exerciseNameContainer: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  exerciseNameText: {
-    fontSize: Math.min(screenWidth * 0.07, 28), // Responsive font size
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  timerSection: {
-    paddingVertical: 0,
-  },
-  timerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Math.max(20, screenWidth * 0.05), // Responsive gap
-  },
-  circularTimer: {
-    width: Math.max(160, screenWidth * 0.4), // Responsive width
-    height: Math.max(160, screenWidth * 0.4), // Responsive height
-    borderRadius: Math.max(80, screenWidth * 0.2), // Responsive border radius
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-  },
-  timerText: {
-    fontSize: Math.min(screenWidth * 0.1, 40), // Responsive font size
-    color: '#ffffff',
-    fontWeight: '700',
-    marginBottom: Math.max(4, screenHeight * 0.005), // Responsive margin
-  },
-  timerLabel: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
-    color: '#ffffff',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  skipButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
-    paddingHorizontal: 0,
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    width: Math.max(150, screenWidth * 0.375), // Responsive width
-  },
-  skipButtonText: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
-    fontWeight: '600',
-    color: 'rgba(191, 168, 77, 1)',
-    textAlign: 'center',
-    numberOfLines: 1,
-  },
-  // Volume icon styles
-  volumeIconContainer: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 5,
-  },
-  volumeIconButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 16,
-    padding: 8,
-    minWidth: 32,
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
 
 export default WarmupScreen;

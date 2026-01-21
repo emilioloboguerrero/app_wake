@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const { height: screenHeight } = Dimensions.get('window');
 
 // Fixed bottom spacer to prevent tab bar from covering content
 const BottomSpacer = () => {
+  const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   
   // Responsive spacer height

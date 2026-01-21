@@ -1,10 +1,15 @@
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { getMuscleDisplayName } from '../constants/muscles';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const SessionMuscleVolumeCard = ({ muscleVolumes }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   if (!muscleVolumes || Object.keys(muscleVolumes).length === 0) {
     return null;
   }
@@ -30,7 +35,7 @@ const SessionMuscleVolumeCard = ({ muscleVolumes }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

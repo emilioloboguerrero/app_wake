@@ -1,6 +1,7 @@
 // Web wrapper for SubscriptionsScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import logger from '../utils/logger';
 // Import the base component - Metro should resolve SubscriptionsScreen.js (not .web.js) when we use explicit .js extension
 // The metro.config.js is configured to prioritize .js over .web.js for explicit imports
 // IMPORTANT: Keep require at module scope (top level) to ensure Metro bundles it correctly

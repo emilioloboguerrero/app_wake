@@ -1,5 +1,5 @@
 // Exercise History Service - Manages exercise and session history subcollections
-import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, limit, startAfter } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import logger from '../utils/logger.js';
 
@@ -251,7 +251,112 @@ class ExerciseHistoryService {
   }
 
   /**
-   * Get all session history for a user
+   * Get session history for a user with pagination support
+   * @param {string} userId - User ID
+   * @param {number} limit - Number of sessions to fetch (default: 20)
+   * @param {DocumentSnapshot} startAfter - Last document from previous page (for pagination)
+   * @returns {Promise<{sessions: Object, lastDoc: DocumentSnapshot|null, hasMore: boolean}>}
+   */
+  async getSessionHistoryPaginated(userId, limit = 20, startAfter = null) {
+    try {
+      logger.log('📊 Getting paginated session history for user:', userId, { limit, hasStartAfter: !!startAfter });
+      
+      const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
+      
+      // Build query with pagination
+      let q;
+      try {
+        // Try with orderBy first (preferred for pagination)
+        if (startAfter) {
+          q = query(
+            sessionHistoryRef,
+            orderBy('completedAt', 'desc'),
+            startAfter(startAfter),
+            limit(limit)
+          );
+        } else {
+          q = query(
+            sessionHistoryRef,
+            orderBy('completedAt', 'desc'),
+            limit(limit)
+          );
+        }
+        const querySnapshot = await getDocs(q);
+        logger.log('✅ Session history paginated query with orderBy succeeded:', querySnapshot.size, 'docs');
+        
+        const sessionHistory = {};
+        let lastDoc = null;
+        
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          sessionHistory[doc.id] = {
+            ...data,
+            id: doc.id,
+            completionDocId: doc.id, // For compatibility
+          };
+          lastDoc = doc; // Track last document for next page
+        });
+        
+        const hasMore = querySnapshot.size === limit; // If we got full limit, there might be more
+        
+        logger.log('✅ Retrieved paginated session history:', Object.keys(sessionHistory).length, 'sessions, hasMore:', hasMore);
+        return {
+          sessions: sessionHistory,
+          lastDoc,
+          hasMore
+        };
+      } catch (orderByError) {
+        // If orderBy fails (likely missing index), fallback to non-paginated query
+        logger.warn('⚠️ OrderBy query failed, using fallback (no pagination):', orderByError.message);
+        const querySnapshot = await getDocs(sessionHistoryRef);
+        
+        const sessionHistory = {};
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          sessionHistory[doc.id] = {
+            ...data,
+            id: doc.id,
+            completionDocId: doc.id,
+          };
+        });
+        
+        // Sort manually by completedAt
+        const sortedEntries = Object.entries(sessionHistory).sort((a, b) => {
+          const dateA = a[1].completedAt ? new Date(a[1].completedAt) : new Date(0);
+          const dateB = b[1].completedAt ? new Date(b[1].completedAt) : new Date(0);
+          return dateB - dateA; // Descending order (newest first)
+        });
+        
+        const sortedHistory = {};
+        sortedEntries.forEach(([id, data]) => {
+          sortedHistory[id] = data;
+        });
+        
+        logger.debug('✅ Retrieved session history (fallback, no pagination):', Object.keys(sortedHistory).length, 'sessions');
+        return {
+          sessions: sortedHistory,
+          lastDoc: null,
+          hasMore: false // Can't paginate without orderBy
+        };
+      }
+    } catch (error) {
+      logger.error('❌ Error getting paginated session history:', error);
+      logger.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      return {
+        sessions: {},
+        lastDoc: null,
+        hasMore: false
+      };
+    }
+  }
+
+  /**
+   * Get all session history for a user (backward compatibility - loads all at once)
+   * @deprecated Use getSessionHistoryPaginated() for better performance
    */
   async getAllSessionHistory(userId) {
     try {

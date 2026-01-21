@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import tutorialManager from '../services/tutorialManager';
@@ -15,9 +15,10 @@ import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 
 import logger from '../utils/logger.js';
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const CommunityScreen = () => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   const { user } = useAuth();
   
   // Tutorial state
@@ -108,7 +109,7 @@ const CommunityScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

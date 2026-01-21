@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { getMuscleDisplayName } from '../constants/muscles';
@@ -9,11 +9,16 @@ import SvgInfo from '../components/icons/SvgInfo';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import logger from '../utils/logger';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, weekDisplayName, showCurrentWeekLabel = false, onInfoPress }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [weeklyVolumes, setWeeklyVolumes] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
 
   useEffect(() => {
     loadWeeklyVolumes();
@@ -131,7 +136,7 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

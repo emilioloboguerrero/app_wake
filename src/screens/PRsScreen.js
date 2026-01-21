@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   Pressable,
   TouchableWithoutFeedback,
@@ -22,8 +22,6 @@ import { FixedWakeHeader } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
 import logger from '../utils/logger.js';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const PRsScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
@@ -78,6 +76,8 @@ const PRsScreen = ({ navigation, route }) => {
     return fallbackNavigation;
   }, [navigation, fallbackNavigation]);
   
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
@@ -355,7 +355,7 @@ const PRsScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

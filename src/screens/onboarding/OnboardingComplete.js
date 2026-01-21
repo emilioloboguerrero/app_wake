@@ -5,14 +5,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Dimensions,
+  useWindowDimensions,
   Image,
 } from 'react-native';
 import logger from '../../utils/logger';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const OnboardingComplete = ({ navigation, onComplete }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const handleComplete = () => {
     onComplete();
   };

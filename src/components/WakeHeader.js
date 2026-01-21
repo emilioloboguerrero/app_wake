@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Image, StyleSheet, Dimensions, TouchableOpacity, Text } from 'react-native';
+import { View, Image, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
+import logger from '../utils/logger';
 // Fixed header container that stays above ScrollView
 export const FixedWakeHeader = ({ 
   showBackButton = false,
@@ -26,13 +27,8 @@ export const FixedWakeHeader = ({
     logger.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
   }
   
-  // Get dimensions inside component to avoid blocking module initialization
-  const dimensionsStartTime = performance.now();
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const dimensionsDuration = performance.now() - dimensionsStartTime;
-  if (dimensionsDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  }
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   // Responsive dimensions
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
@@ -160,8 +156,8 @@ export const WakeHeaderSpacer = () => {
   logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
   
   const insets = useSafeAreaInsets();
-  // Get dimensions inside component to avoid blocking module initialization
-  const { height: screenHeight } = Dimensions.get('window');
+  // Use hook for reactive dimensions that update on orientation change
+  const { height: screenHeight } = useWindowDimensions();
   
   // Account for full header height plus safe area
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60

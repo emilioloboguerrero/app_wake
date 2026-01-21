@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   StyleSheet,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   ImageBackground,
   Image,
@@ -43,17 +43,289 @@ import { trackScreenView } from '../services/monitoringService';
 // Debug: Log library image import
 logger.log('📚 Library image imported:', libraryImage);
 
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 // Responsive dimensions - keep original mobile proportions
 // Cards should be larger - make them about 85% of screen width
-const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
-const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
 const CARD_SPACING = 0; // No spacing - cards overlap for 3D carousel effect
-const CARD_HEIGHT = Math.max(500, screenHeight * 0.65); // 68% of screen height, min 500
 
 const MainScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Calculate card dimensions based on current screen size
+  const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
+  const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
+  const CARD_HEIGHT = Math.max(500, screenHeight * 0.65); // 68% of screen height, min 500
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+    },
+    content: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingBottom: Math.max(100, screenHeight * 0.15), // Extra padding to ensure pagination is visible
+    },
+    contentWrapper: {
+      flex: 1,
+    },
+    userSection: {
+      marginBottom: Math.max(-60, screenHeight * -0.08), // Space between title and cards - less space
+      paddingTop: 0,
+      marginTop: 0,
+    },
+    cardsSection: {
+      flex: 1,
+    },
+    swipeableContainer: {
+      flex: 1,
+      overflow: 'visible', // Ensure pagination indicators are not clipped
+    },
+    flatListContent: {
+      paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
+      alignItems: 'center',
+    },
+    cardsAndPaginationWrapper: {
+      width: '100%',
+      alignItems: 'center',
+      overflow: 'visible', // Ensure pagination indicators are not clipped
+      marginTop: Math.max(80, screenHeight * 0.12), // Push cards and pagination down
+    },
+    flatListStyle: {
+      height: CARD_HEIGHT,
+      width: '100%',
+    },
+    paginationContainer: {
+      width: '100%',
+      minHeight: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 10, // Position exactly 10px below the card bottom
+      paddingTop: 10,
+      paddingBottom: Math.max(60, screenHeight * 0.1), // Account for bottom menu
+      zIndex: 1000, // Very high z-index to ensure visibility above cards
+      backgroundColor: 'transparent', // Ensure background doesn't hide anything
+    },
+    cardSeparator: {
+      width: 0, // No separator - cards overlap
+    },
+    swipeableCard: {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      // Cards will overlap naturally due to negative margins or transform
+    },
+    cardContent: {
+      flex: 1,
+      backgroundColor: '#2a2a2a',
+      borderRadius: Math.max(12, screenWidth * 0.04), // 4% of screen width, min 12
+      padding: Math.max(16, screenWidth * 0.05), // 5% of screen width, min 16
+      paddingBottom: Math.max(30, screenHeight * 0.04), // 4% of screen height, min 30
+      borderWidth: 1,
+      borderColor: '#3a3a3a',
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      position: 'relative',
+    },
+    cardContentWithImage: {
+      flex: 1,
+      backgroundColor: '#2a2a2a',
+      borderRadius: 16,
+      borderWidth: 0, // No border when image is present
+      overflow: 'hidden', // Ensure image respects border radius
+      width: '100%',
+      height: '100%',
+      // No padding here - let cardOverlay handle positioning
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    cardTitle: {
+      fontSize: 30,
+      fontWeight: '600',
+      color: '#ffffff',
+      textAlign: 'center',
+    },
+    cardCreator: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#ffffff',
+      textAlign: 'center',
+      marginTop: 25,
+    },
+    cardBackgroundImage: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: '100%',
+      height: '100%',
+      borderRadius: 16,
+      opacity: 1, // Ensure 100% opacity
+    },
+    cardOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingBottom: 40, // Match cardContent paddingBottom
+      position: 'relative',
+    },
+    cardDescription: {
+      color: '#cccccc',
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 16,
+      flex: 1,
+    },
+    cardFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    cardDuration: {
+      color: '#999999',
+      fontSize: 12,
+    },
+    greeting: {
+      fontSize: Math.min(screenWidth * 0.08, 32), // 8% of screen width, max 32
+      fontWeight: '400',
+      color: '#ffffff',
+      textAlign: 'left',
+      paddingLeft: screenWidth * 0.12, // 6% of screen width to match header
+    },
+    username: {
+      fontSize: Math.min(screenWidth * 0.08, 32), // 8% of screen width, max 32
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    sectionTitle: {
+      fontSize: 20,
+      color: '#ffffff',
+      marginBottom: 15,
+    },
+    loadingContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 40,
+      flex: 1,
+      minHeight: 300,
+    },
+    loadingText: {
+      color: '#cccccc',
+      fontSize: 16,
+      marginTop: 12,
+    },
+    errorContainer: {
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    errorText: {
+      color: '#ff4444',
+      fontSize: 16,
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    retryButton: {
+      backgroundColor: '#007AFF',
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+    },
+    retryButtonText: {
+      color: '#ffffff',
+      fontSize: 16,
+    },
+    disciplineBadge: {
+      backgroundColor: '#007AFF',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    disciplineBadgeText: {
+      color: '#ffffff',
+      fontSize: 10,
+      textTransform: 'uppercase',
+    },
+    continueText: {
+      color: '#007AFF',
+      fontSize: 12,
+    },
+    // NEW: Version system styles
+    updatingCard: {
+      // Remove border, just change opacity
+      opacity: 0.8,
+    },
+    failedCard: {
+      // Remove border, just change opacity
+      opacity: 0.7,
+    },
+    dimmedImage: {
+      opacity: 0.5,
+    },
+    updatingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+      borderRadius: 16, // Match cardContentWithImage border radius
+    },
+    failedOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(255, 68, 68, 0.8)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+      borderRadius: 16, // Match cardContentWithImage border radius
+    },
+    updatingText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '600',
+      marginTop: 10,
+      textAlign: 'center',
+    },
+    failedText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    trialBadge: {
+      position: 'absolute',
+      top: 20,
+      right: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(191, 168, 77, 0.3)',
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    },
+    trialBadgeText: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 13,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    // Navigation buttons
+  }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT]);
+  
   const { user: contextUser } = useAuth();
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
@@ -1557,276 +1829,6 @@ const MainScreen = ({ navigation, route }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  content: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: Math.max(100, screenHeight * 0.15), // Extra padding to ensure pagination is visible
-  },
-  contentWrapper: {
-    flex: 1,
-  },
-  userSection: {
-    marginBottom: Math.max(-60, screenHeight * -0.08), // Space between title and cards - less space
-    paddingTop: 0,
-    marginTop: 0,
-  },
-  cardsSection: {
-    flex: 1,
-  },
-  swipeableContainer: {
-    flex: 1,
-    overflow: 'visible', // Ensure pagination indicators are not clipped
-  },
-  flatListContent: {
-    paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
-    alignItems: 'center',
-  },
-  cardsAndPaginationWrapper: {
-    width: '100%',
-    alignItems: 'center',
-    overflow: 'visible', // Ensure pagination indicators are not clipped
-    marginTop: Math.max(80, screenHeight * 0.12), // Push cards and pagination down
-  },
-  flatListStyle: {
-    height: CARD_HEIGHT,
-    width: '100%',
-  },
-  paginationContainer: {
-    width: '100%',
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10, // Position exactly 10px below the card bottom
-    paddingTop: 10,
-    paddingBottom: Math.max(60, screenHeight * 0.1), // Account for bottom menu
-    zIndex: 1000, // Very high z-index to ensure visibility above cards
-    backgroundColor: 'transparent', // Ensure background doesn't hide anything
-  },
-  cardSeparator: {
-    width: 0, // No separator - cards overlap
-  },
-  swipeableCard: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    // Cards will overlap naturally due to negative margins or transform
-  },
-  cardContent: {
-    flex: 1,
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // 4% of screen width, min 12
-    padding: Math.max(16, screenWidth * 0.05), // 5% of screen width, min 16
-    paddingBottom: Math.max(30, screenHeight * 0.04), // 4% of screen height, min 30
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  cardContentWithImage: {
-    flex: 1,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 16,
-    borderWidth: 0, // No border when image is present
-    overflow: 'hidden', // Ensure image respects border radius
-    width: '100%',
-    height: '100%',
-    // No padding here - let cardOverlay handle positioning
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 30,
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  cardCreator: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginTop: 25,
-  },
-  cardBackgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    borderRadius: 16,
-    opacity: 1, // Ensure 100% opacity
-  },
-  cardOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 40, // Match cardContent paddingBottom
-    position: 'relative',
-  },
-  cardDescription: {
-    color: '#cccccc',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 16,
-    flex: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardDuration: {
-    color: '#999999',
-    fontSize: 12,
-  },
-  greeting: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // 8% of screen width, max 32
-    fontWeight: '400',
-    color: '#ffffff',
-    textAlign: 'left',
-    paddingLeft: screenWidth * 0.12, // 6% of screen width to match header
-  },
-  username: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // 8% of screen width, max 32
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  sectionTitle: {
-    fontSize: 20,
-    color: '#ffffff',
-    marginBottom: 15,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    flex: 1,
-    minHeight: 300,
-  },
-  loadingText: {
-    color: '#cccccc',
-    fontSize: 16,
-    marginTop: 12,
-  },
-  errorContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-  },
-  disciplineBadge: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  disciplineBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    textTransform: 'uppercase',
-  },
-  continueText: {
-    color: '#007AFF',
-    fontSize: 12,
-  },
-  // NEW: Version system styles
-  updatingCard: {
-    // Remove border, just change opacity
-    opacity: 0.8,
-  },
-  failedCard: {
-    // Remove border, just change opacity
-    opacity: 0.7,
-  },
-  dimmedImage: {
-    opacity: 0.5,
-  },
-  updatingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-    borderRadius: 16, // Match cardContentWithImage border radius
-  },
-  failedOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 68, 68, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-    borderRadius: 16, // Match cardContentWithImage border radius
-  },
-  updatingText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  failedText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  trialBadge: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.3)',
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-  },
-  trialBadgeText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  // Navigation buttons
-});
 
 // Export both default and named for web wrapper compatibility
 export default MainScreen;

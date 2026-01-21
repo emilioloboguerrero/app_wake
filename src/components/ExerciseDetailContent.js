@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   Modal,
   Pressable,
@@ -40,14 +40,8 @@ const ExerciseDetailContent = ({
   const componentStartTime = performance.now();
   logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailContent render started - ${componentStartTime.toFixed(2)}ms`);
   
-  // Get dimensions inside component to avoid blocking module initialization
-  const dimensionsStartTime = performance.now();
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const dimensionsDuration = performance.now() - dimensionsStartTime;
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  if (dimensionsDuration > 5) {
-    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  }
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   // Create styles with dimensions
   const stylesStartTime = performance.now();

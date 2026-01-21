@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,12 @@ import {
   Modal,
   Pressable,
   TextInput,
-  Dimensions,
+  useWindowDimensions,
   Image,
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,12 +44,14 @@ import { validateDisplayName, validateUsername as validateUsernameFormat, valida
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
 import InsightsModal from '../components/InsightsModal';
 import { calculateExpirationDate } from '../utils/durationHelper';
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const ProfileScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with true for initial profile load
+  const [profileLoading, setProfileLoading] = useState(true); // Separate state for profile data loading
   
   // Settings modal state
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
@@ -139,6 +142,8 @@ const ProfileScreen = ({ navigation }) => {
         });
         setProfilePictureUrl(null);
         previousUserIdRef.current = null;
+        setProfileLoading(false);
+        setLoading(false);
         return;
       }
       
@@ -170,6 +175,7 @@ const ProfileScreen = ({ navigation }) => {
         }
         
         logger.log('📊 Loading profile for user:', currentUserId);
+        setProfileLoading(true);
         const userData = await hybridDataService.loadUserProfile(currentUserId);
         
         // Final verification: check user hasn't changed during async load
@@ -206,6 +212,8 @@ const ProfileScreen = ({ navigation }) => {
         
         // Check for tutorials after loading profile
         await checkForTutorials();
+        setProfileLoading(false);
+        setLoading(false);
       } catch (error) {
         logger.error('❌ Error loading profile for display:', error);
         // Clear on error to prevent stale data
@@ -219,6 +227,8 @@ const ProfileScreen = ({ navigation }) => {
           bodyweight: null,
           height: null,
         });
+        setProfileLoading(false);
+        setLoading(false);
         setProfilePictureUrl(null);
       }
     };
@@ -1110,15 +1120,21 @@ const ProfileScreen = ({ navigation }) => {
         </TouchableWithoutFeedback>
       </Modal>
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          {/* Spacer for fixed header */}
-          <WakeHeaderSpacer />
+      {profileLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
+          <Text style={styles.loadingText}>Cargando perfil...</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            {/* Spacer for fixed header */}
+            <WakeHeaderSpacer />
 
-          {/* Title Section */}
-          <View style={styles.titleSection}>
-            <Text style={styles.screenTitle}>Perfil</Text>
-          </View>
+            {/* Title Section */}
+            <View style={styles.titleSection}>
+              <Text style={styles.screenTitle}>Perfil</Text>
+            </View>
 
           {/* User Profile Card */}
           <View style={styles.userProfileCard}>
@@ -1200,6 +1216,7 @@ const ProfileScreen = ({ navigation }) => {
 
         </View>
       </ScrollView>
+      )}
       
         {/* Tutorial Overlay */}
         <TutorialOverlay
@@ -1267,7 +1284,7 @@ const ProfileScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -2141,6 +2158,18 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: Math.max(24, screenHeight * 0.03),
     textAlign: 'left',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+  },
+  loadingText: {
+    marginTop: Math.max(12, screenHeight * 0.015),
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    opacity: 0.7,
   },
 });
 

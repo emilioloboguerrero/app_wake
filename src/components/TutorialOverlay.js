@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   Animated,
 } from 'react-native';
@@ -52,15 +52,8 @@ const TutorialOverlay = ({
     logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
   }
   
-  // Get dimensions inside component to avoid blocking module initialization
-  // Only do this AFTER we know we're actually rendering
-  const dimensionsStartTime = performance.now();
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const dimensionsDuration = performance.now() - dimensionsStartTime;
-  logger.debug(`[CHILD] [TIMING] TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  if (dimensionsDuration > 5) {
-    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
-  }
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   const currentTutorial = tutorialData?.[currentTutorialIndex];
 

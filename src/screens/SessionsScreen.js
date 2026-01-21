@@ -1,87 +1,206 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+// Pagination constants
+const PAGE_SIZE = 20; // Number of sessions to load per page
 
 const SessionsScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
-  const { user } = useAuth();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
+  const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [resolvedUserId, setResolvedUserId] = useState(null); // Handles web auth race
+  const lastDocRef = useRef(null); // Track last document for pagination
+  const userResolveTimerRef = useRef(null);
 
-  const loadSessions = useCallback(async () => {
-    if (!user?.uid) {
-      logger.warn('⚠️ SessionsScreen: Cannot load sessions - user not available');
-      setLoading(false);
+  const loadSessions = useCallback(async (isInitialLoad = false) => {
+    // Resolve user from context or Firebase auth (web can lag context)
+    const resolvedUser = user || auth.currentUser || (resolvedUserId ? { uid: resolvedUserId } : null);
+    const userId = resolvedUser?.uid;
+
+    // Don't try to load if auth is still loading or user is not available
+    if (authLoading || !userId) {
+      if (!authLoading) {
+        logger.log('⚠️ SessionsScreen: Cannot load sessions - user not available');
+      }
+      if (isInitialLoad) {
+        setLoading(false);
+        setHasMore(false);
+      }
       return;
     }
     
     try {
-      setLoading(true);
-      logger.log('📊 Loading sessions for user:', user.uid);
+      if (isInitialLoad) {
+        setLoading(true);
+        setSessions([]); // Clear existing sessions on initial load
+        lastDocRef.current = null; // Reset pagination
+        setHasMore(true);
+      } else {
+        setLoadingMore(true);
+      }
       
-      // Get all session history
-      const sessionHistory = await exerciseHistoryService.getAllSessionHistory(user.uid);
+      logger.log('📊 Loading sessions for user:', userId, { isInitialLoad, hasLastDoc: !!lastDocRef.current });
       
-      logger.log('📊 Session history received:', {
-        isObject: typeof sessionHistory === 'object',
-        isArray: Array.isArray(sessionHistory),
-        keysCount: Object.keys(sessionHistory || {}).length,
-        firstSession: sessionHistory && Object.keys(sessionHistory).length > 0 ? Object.values(sessionHistory)[0] : null
+      // Get paginated session history
+      const result = await exerciseHistoryService.getSessionHistoryPaginated(
+        userId,
+        PAGE_SIZE,
+        lastDocRef.current
+      );
+      
+      logger.log('📊 Paginated result received:', {
+        sessionsCount: Object.keys(result.sessions || {}).length,
+        hasMore: result.hasMore,
+        hasLastDoc: !!result.lastDoc
       });
       
-      // Convert to array and sort by date (newest first)
-      const sessionsArray = Object.values(sessionHistory || {}).sort((a, b) => {
+      const newSessions = Object.values(result.sessions || {});
+      
+      logger.log('📊 Session history received:', {
+        count: newSessions.length,
+        hasMore: result.hasMore
+      });
+      
+      // Convert to array and sort by date (newest first) - should already be sorted, but ensure
+      const sortedNewSessions = newSessions.sort((a, b) => {
         const dateA = a.completedAt ? new Date(a.completedAt) : new Date(0);
         const dateB = b.completedAt ? new Date(b.completedAt) : new Date(0);
         return dateB - dateA; // Descending order (newest first)
       });
       
-      logger.log('📊 Sessions array after sorting:', {
-        length: sessionsArray.length,
-        firstSessionDate: sessionsArray[0]?.completedAt,
-        lastSessionDate: sessionsArray[sessionsArray.length - 1]?.completedAt
-      });
+      // Append new sessions to existing ones (for pagination)
+      // Use functional update to avoid dependency on sessions.length
+      if (isInitialLoad) {
+        setSessions(sortedNewSessions);
+      } else {
+        setSessions(prev => {
+          const combined = [...prev, ...sortedNewSessions];
+          logger.log('✅ Sessions loaded (pagination):', {
+            newCount: sortedNewSessions.length,
+            previousCount: prev.length,
+            totalCount: combined.length,
+            hasMore: result.hasMore
+          });
+          return combined;
+        });
+      }
       
-      setSessions(sessionsArray);
-      logger.log('✅ Sessions loaded:', sessionsArray.length, 'sessions');
+      // Update pagination state
+      lastDocRef.current = result.lastDoc;
+      setHasMore(result.hasMore);
+      
+      if (isInitialLoad) {
+        logger.log('✅ Sessions loaded (initial):', {
+          newCount: sortedNewSessions.length,
+          totalCount: sortedNewSessions.length,
+          hasMore: result.hasMore
+        });
+      }
     } catch (error) {
       logger.error('❌ Error loading sessions:', error);
       logger.error('❌ Error details:', {
         message: error.message,
         stack: error.stack
       });
-      setSessions([]); // Set empty array on error
+      if (isInitialLoad) {
+        setSessions([]); // Set empty array on error for initial load
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [user?.uid]);
+  }, [user?.uid, authLoading]);
+
+  // Load more sessions when reaching end of list
+  const loadMoreSessions = useCallback(() => {
+    // Only load more if user is available, not already loading, and has more to load
+    if (!authLoading && user?.uid && !loadingMore && hasMore && !loading) {
+      logger.log('📊 Loading more sessions...');
+      loadSessions(false);
+    } else {
+      logger.log('📊 Load more skipped:', {
+        authLoading,
+        hasUser: !!user?.uid,
+        loadingMore,
+        hasMore,
+        loading
+      });
+    }
+  }, [authLoading, user?.uid, loadingMore, hasMore, loading, loadSessions]);
 
   useEffect(() => {
-    if (user?.uid) {
-      loadSessions();
+    logger.log('📊 SessionsScreen useEffect triggered:', {
+      authLoading,
+      hasUser: !!user,
+      userId: user?.uid
+    });
+    
+    // Wait for auth to finish loading before attempting to load sessions
+    if (!authLoading) {
+      if (user?.uid) {
+        logger.log('📊 SessionsScreen: Auth ready, loading sessions...');
+        loadSessions(true); // Initial load
+      } else {
+        logger.log('📊 SessionsScreen: Auth ready but no user, stopping loading');
+        setLoading(false);
+      }
     } else {
-      setLoading(false);
+      logger.log('📊 SessionsScreen: Auth still loading, waiting...');
     }
-  }, [user?.uid, loadSessions]);
+  }, [user?.uid, authLoading, loadSessions]);
+
+  // Fallback: poll auth.currentUser a few times if context user is missing (web race condition)
+  useEffect(() => {
+    if (!authLoading && !user?.uid && !resolvedUserId) {
+      let attempts = 0;
+      userResolveTimerRef.current = setInterval(() => {
+        attempts += 1;
+        const current = auth.currentUser;
+        if (current?.uid) {
+          logger.log('📊 SessionsScreen: Resolved user from auth.currentUser:', current.uid);
+          setResolvedUserId(current.uid);
+          clearInterval(userResolveTimerRef.current);
+          loadSessions(true);
+        } else if (attempts >= 5) {
+          clearInterval(userResolveTimerRef.current);
+          logger.log('⚠️ SessionsScreen: Unable to resolve user from auth.currentUser after retries');
+          setLoading(false);
+          setHasMore(false);
+        }
+      }, 300);
+      return () => clearInterval(userResolveTimerRef.current);
+    }
+    return undefined;
+  }, [authLoading, user?.uid, resolvedUserId, loadSessions]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -237,13 +356,12 @@ const SessionsScreen = ({ navigation }) => {
     navigation.goBack();
   };
 
-  const renderSessionCard = (session) => {
+  const renderSessionCard = ({ item: session }) => {
     const exerciseCount = getExerciseCount(session);
     const totalSets = getTotalSets(session);
     
     return (
       <TouchableOpacity
-        key={session.completionDocId || session.sessionId}
         style={styles.sessionCard}
         onPress={() => handleSessionPress(session)}
         activeOpacity={0.7}
@@ -269,41 +387,70 @@ const SessionsScreen = ({ navigation }) => {
         onBackPress={handleBackPress}
       />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          {/* Spacer for fixed header - matches header height */}
-          <View style={{ height: headerTotalHeight }} />
-          {/* Title */}
-          <Text style={styles.title}>Sesiones</Text>
-          
-          {/* Sets Comparison Card */}
-          {sessions.length > 0 && renderSetsComparison()}
-          
-          {/* Sessions List */}
-          {loading ? (
+      <FlatList
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        data={sessions}
+        keyExtractor={(item) => item.completionDocId || item.sessionId || item.id || `session-${item.completedAt}`}
+        renderItem={renderSessionCard}
+        ItemSeparatorComponent={() => <View style={styles.sessionSeparator} />}
+        ListHeaderComponent={() => (
+          <>
+            {/* Spacer for fixed header - matches header height */}
+            <View style={{ height: headerTotalHeight }} />
+            {/* Title */}
+            <Text style={styles.title}>Sesiones</Text>
+            
+            {/* Sets Comparison Card */}
+            {sessions.length > 0 && renderSetsComparison()}
+          </>
+        )}
+        ListEmptyComponent={() => (
+          loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
               <Text style={styles.loadingText}>Cargando sesiones...</Text>
             </View>
-          ) : sessions.length === 0 ? (
+          ) : (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>No hay sesiones</Text>
               <Text style={styles.emptyDescription}>
                 Completa tu primer entrenamiento para ver tus sesiones aquí.
               </Text>
             </View>
-          ) : (
-            <View style={styles.sessionsList}>
-              {sessions.map(renderSessionCard)}
-            </View>
-          )}
-        </View>
-      </ScrollView>
+          )
+        )}
+        ListFooterComponent={() => {
+          if (loadingMore) {
+            return (
+              <View style={styles.loadMoreContainer}>
+                <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                <Text style={styles.loadMoreText}>Cargando más sesiones...</Text>
+              </View>
+            );
+          }
+          if (!hasMore && sessions.length > 0) {
+            return (
+              <View style={styles.loadMoreContainer}>
+                <Text style={styles.loadMoreText}>No hay más sesiones</Text>
+              </View>
+            );
+          }
+          return null;
+        }}
+        onEndReached={loadMoreSessions}
+        onEndReachedThreshold={0.5} // Trigger when 50% from bottom
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true} // Optimize performance
+        maxToRenderPerBatch={10} // Render 10 items per batch
+        windowSize={10} // Keep 10 screens worth of items in memory
+        initialNumToRender={PAGE_SIZE} // Initial render count
+      />
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -480,6 +627,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: Math.min(screenWidth * 0.035, 14),
     opacity: 0.7,
+  },
+  loadMoreContainer: {
+    paddingVertical: Math.max(20, screenHeight * 0.025),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreText: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    opacity: 0.7,
+    marginTop: Math.max(8, screenHeight * 0.01),
+  },
+  sessionSeparator: {
+    height: Math.max(8, screenHeight * 0.015),
   },
 });
 

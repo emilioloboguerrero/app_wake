@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
@@ -77,6 +75,7 @@ const ExerciseList = ({ exercises }) => {
 };
 
 const CourseStructureScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user } = useAuth();
   const [courseData, setCourseData] = useState(null);
@@ -84,6 +83,164 @@ const CourseStructureScreen = ({ navigation, route }) => {
   const [error, setError] = useState(null);
   const [expandedModules, setExpandedModules] = useState({});
   const [expandedSessions, setExpandedSessions] = useState({});
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+      overflow: 'visible',
+    },
+    scrollView: {
+      flex: 1,
+      overflow: 'visible',
+    },
+    content: {
+      paddingTop: 10,
+      paddingBottom: 20, // Normal padding
+      overflow: 'visible',
+    },
+    titleSection: {
+      paddingTop: 0,
+      marginTop: 0,
+      marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      color: '#ffffff',
+      fontSize: 16,
+      marginTop: 16,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    errorText: {
+      color: '#ff6b6b',
+      fontSize: 16,
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    retryButton: {
+      backgroundColor: '#007AFF',
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+    },
+    retryButtonText: {
+      color: '#ffffff',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    courseTitle: {
+      fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
+      fontWeight: '600', // Match ProfileScreen weight
+      color: '#ffffff',
+      textAlign: 'left',
+      paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
+      marginBottom: 20,
+    },
+    moduleContainer: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+      marginBottom: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
+      marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+      overflow: 'visible',
+    },
+    moduleHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: Math.max(16, screenHeight * 0.02), // Responsive padding
+      paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
+    },
+    moduleTitle: {
+      fontSize: Math.min(screenWidth * 0.05, 20), // Responsive font size
+      fontWeight: '600',
+      color: '#ffffff',
+      flex: 1,
+    },
+    moduleContent: {
+      paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
+      paddingBottom: Math.max(20, screenHeight * 0.025), // Responsive padding
+    },
+    sessionContainer: {
+      backgroundColor: '#3a3a3a',
+      borderRadius: Math.max(8, screenWidth * 0.02), // Responsive border radius
+      marginBottom: Math.max(12, screenHeight * 0.015), // Match ProfileScreen spacing
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+      overflow: 'visible',
+    },
+    sessionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
+      paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
+    },
+    sessionTitle: {
+      fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
+      fontWeight: '500',
+      color: '#ffffff',
+      flex: 1,
+    },
+    sessionContent: {
+      paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
+      paddingBottom: Math.max(16, screenHeight * 0.02), // Responsive padding
+    },
+    exerciseItem: {
+      paddingVertical: Math.max(8, screenHeight * 0.01), // Responsive padding
+      paddingLeft: Math.max(8, screenWidth * 0.02), // Responsive padding
+    },
+    exerciseText: {
+      fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
+      color: '#cccccc',
+    },
+    noContentContainer: {
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    noContentText: {
+      fontSize: 16,
+      color: '#999999',
+      textAlign: 'center',
+    },
+    startSessionButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      paddingVertical: Math.max(12, screenHeight * 0.015),
+      paddingHorizontal: Math.max(16, screenWidth * 0.04),
+      marginTop: Math.max(16, screenHeight * 0.02),
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(191, 168, 77, 0.5)',
+    },
+    startSessionButtonText: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '600',
+    },
+  }), [screenWidth, screenHeight]);
 
   useEffect(() => {
     fetchCourseData();
@@ -298,162 +455,5 @@ const CourseStructureScreen = ({ navigation, route }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    overflow: 'visible',
-  },
-  scrollView: {
-    flex: 1,
-    overflow: 'visible',
-  },
-  content: {
-    paddingTop: 10,
-    paddingBottom: 20, // Normal padding
-    overflow: 'visible',
-  },
-  titleSection: {
-    paddingTop: 0,
-    marginTop: 0,
-    marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#ffffff',
-    fontSize: 16,
-    marginTop: 16,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  errorText: {
-    color: '#ff6b6b',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  courseTitle: {
-    fontSize: Math.min(screenWidth * 0.08, 32), // Match ProfileScreen responsive sizing
-    fontWeight: '600', // Match ProfileScreen weight
-    color: '#ffffff',
-    textAlign: 'left',
-    paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
-    marginBottom: 20,
-  },
-  moduleContainer: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    marginBottom: Math.max(15, screenHeight * 0.02), // Match ProfileScreen spacing
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  moduleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Math.max(16, screenHeight * 0.02), // Responsive padding
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-  },
-  moduleTitle: {
-    fontSize: Math.min(screenWidth * 0.05, 20), // Responsive font size
-    fontWeight: '600',
-    color: '#ffffff',
-    flex: 1,
-  },
-  moduleContent: {
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-    paddingBottom: Math.max(20, screenHeight * 0.025), // Responsive padding
-  },
-  sessionContainer: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(8, screenWidth * 0.02), // Responsive border radius
-    marginBottom: Math.max(12, screenHeight * 0.015), // Match ProfileScreen spacing
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
-    paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
-  },
-  sessionTitle: {
-    fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
-    fontWeight: '500',
-    color: '#ffffff',
-    flex: 1,
-  },
-  sessionContent: {
-    paddingHorizontal: Math.max(16, screenWidth * 0.04), // Responsive padding
-    paddingBottom: Math.max(16, screenHeight * 0.02), // Responsive padding
-  },
-  exerciseItem: {
-    paddingVertical: Math.max(8, screenHeight * 0.01), // Responsive padding
-    paddingLeft: Math.max(8, screenWidth * 0.02), // Responsive padding
-  },
-  exerciseText: {
-    fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
-    color: '#cccccc',
-  },
-  noContentContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  noContentText: {
-    fontSize: 16,
-    color: '#999999',
-    textAlign: 'center',
-  },
-  startSessionButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    marginTop: Math.max(16, screenHeight * 0.02),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.5)',
-  },
-  startSessionButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-});
 
 export default CourseStructureScreen;

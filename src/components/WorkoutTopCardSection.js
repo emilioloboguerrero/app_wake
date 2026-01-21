@@ -1,8 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, Dimensions } from 'react-native';
+import { View, Text, ScrollView, useWindowDimensions } from 'react-native';
 import WorkoutMuscleSVG from './WorkoutMuscleSVG';
-
-const { height: screenHeight } = Dimensions.get('window');
 
 const WorkoutTopCardSection = ({
   currentExercise,
@@ -10,6 +8,7 @@ const WorkoutTopCardSection = ({
   showMuscleSVG,
   styles,
 }) => {
+  const { height: screenHeight } = useWindowDimensions();
   return (
     <View style={styles.exerciseTitleCard}>
       {/* Title */}

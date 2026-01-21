@@ -5,15 +5,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Dimensions,
+  useWindowDimensions,
   ScrollView,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../../components/WakeHeader';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const OnboardingQuestion5 = ({ navigation, onAnswer }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedAnswer, setSelectedAnswer] = useState(null);
 
   // Icon SVGs for each obstacle

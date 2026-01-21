@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   ImageBackground,
   Modal,
@@ -37,12 +37,18 @@ import { firestore, auth } from '../config/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const CourseDetailScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   const [modules, setModules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -995,6 +1001,23 @@ useEffect(() => {
     );
   };
 
+  // Show loading spinner while loading modules or checking ownership
+  if (loading || checkingOwnership) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <FixedWakeHeader 
+          showBackButton={true}
+          onBackPress={() => navigation.goBack()}
+        />
+        <LoadingSpinner 
+          size="large" 
+          text={checkingOwnership ? "Verificando acceso..." : "Cargando programa..."} 
+          containerStyle={styles.loadingContainer}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Fixed Header with Back Button */}
@@ -1240,7 +1263,7 @@ useEffect(() => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -1874,6 +1897,12 @@ const styles = StyleSheet.create({
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '400',
     lineHeight: Math.max(24, screenHeight * 0.03),
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
   },
   // Catalog Info Modal Styles
   catalogInfoModalOverlay: {

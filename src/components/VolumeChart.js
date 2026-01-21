@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import logger from '../utils/logger.js';
 
-const { width: screenWidth } = Dimensions.get('window');
-
 const VolumeChart = ({ volumeHistory }) => {
+  const { width: screenWidth } = useWindowDimensions();
   logger.log('📊 VolumeChart: Rendering chart component');
   logger.log('📊 VolumeChart: volumeHistory received:', volumeHistory);
   logger.log('📊 VolumeChart: Data points count:', volumeHistory?.length || 0);

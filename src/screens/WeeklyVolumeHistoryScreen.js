@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   ActivityIndicator,
   Modal,
@@ -26,13 +26,18 @@ import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight'
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import logger from '../utils/logger';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const WeeklyVolumeHistoryScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   const { user } = useAuth();
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(null);
@@ -395,7 +400,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

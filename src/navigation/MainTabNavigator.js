@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
-import { Dimensions, Image } from 'react-native';
+import { useWindowDimensions, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import your main screens and navigators
@@ -13,9 +13,9 @@ import ProfileStackNavigator from './ProfileStackNavigator';
 import { User02 as SvgUser02, House02 as SvgHouse02 } from '../components/icons';
 
 const Tab = createBottomTabNavigator();
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const MainTabNavigator = () => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   
   // Responsive tab bar dimensions

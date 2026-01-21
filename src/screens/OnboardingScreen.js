@@ -1,4 +1,4 @@
- import React, { useState, useRef, useEffect } from 'react';
+ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   Image,
   Keyboard,
   TouchableWithoutFeedback,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -64,14 +64,525 @@ const OBJECTIVE_OPTIONS = [
   'Otro',
 ];
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const OnboardingScreen = ({ navigation, route, onComplete }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   // Match Wake header background max height (see FixedWakeHeader)
   const headerHeightBase = Math.max(60, screenHeight * 0.08);
   const wakeHeaderBgHeight = headerHeightBase + Math.max(0, insets.top - 20);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+    },
+    animatedLogoContainer: {
+      position: 'absolute',
+      // top: now set dynamically with insets.top + 10
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      zIndex: 1000,
+      backgroundColor: '#1a1a1a',
+      paddingVertical: 15,
+      paddingHorizontal: 24,
+    },
+    animatedLogo: {
+      width: 120,
+      height: 60,
+    },
+    logoSpacer: {
+      height: Math.max(80, Math.min(200, screenHeight * 0.16)),
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollViewNormal: {
+      paddingBottom: 40,
+    },
+    content: {
+      paddingHorizontal: 20,
+    },
+    titleSection: {
+      marginBottom: 30,
+    },
+    title: {
+      fontSize: 26,
+      fontWeight: '600',
+      color: '#ffffff',
+      marginLeft: 20,
+    },
+    subtitle: {
+      fontSize: 16,
+      fontWeight: '400',
+      color: '#cccccc',
+      textAlign: 'center',
+      marginBottom: 30,
+    },
+    section: {
+      marginBottom: 30,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: '#ffffff',
+      marginBottom: 8,
+      marginLeft: 20,
+    },
+    sectionSubtitle: {
+      fontSize: 14,
+      fontWeight: '400',
+      color: '#cccccc',
+      marginBottom: 15,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    inputContainer: {
+      marginBottom: 20,
+    },
+    label: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: '#ffffff',
+      marginBottom: 8,
+      marginLeft: 20,
+    },
+    input: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: 12,
+      padding: 15,
+      fontSize: 16,
+      fontWeight: '400',
+      color: '#ffffff',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    profileRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 16,
+    },
+    profilePictureWrapper: {
+      width: 140,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    nameFieldsWrapper: {
+      flex: 1,
+      gap: 0,
+    },
+    inputFieldsContainer: {
+      gap: 28,
+    },
+    usernameValidationContainer: {
+      marginTop: 4,
+    },
+    profilePictureContainer: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: 65,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 130,
+      height: 130,
+    },
+    profilePicturePreview: {
+      width: 130,
+      height: 130,
+      borderRadius: 65,
+    },
+    profilePicturePlaceholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profilePicturePlaceholderText: {
+      fontSize: 32,
+      marginBottom: 8,
+      color: '#ffffff',
+    },
+    profilePicturePlaceholderLabel: {
+      fontSize: 14,
+      color: '#cccccc',
+      fontWeight: '400',
+    },
+    bodyweightHeightRow: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    bodyweightHeightField: {
+      flex: 1,
+    },
+    inputDisabled: {
+      backgroundColor: '#1f1f1f',
+      color: '#888',
+      // Preserve shadow effects from base input style
+    },
+    inputError: {
+      borderColor: '#ff4444',
+      borderWidth: 1,
+      shadowColor: 'rgba(255, 68, 68, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    inputSuccess: {
+      borderColor: 'rgba(191, 168, 77, 0.7)',
+      borderWidth: 1,
+      shadowColor: 'rgba(191, 168, 77, 0.8)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    errorText: {
+      color: '#ff4444',
+      fontSize: 12,
+      fontWeight: '400',
+      marginTop: 5,
+    },
+    successText: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 12,
+      fontWeight: '400',
+      marginTop: 5,
+    },
+    helperText: {
+      color: '#888',
+      fontSize: 12,
+      fontWeight: '400',
+      marginTop: 5,
+      fontStyle: 'italic',
+    },
+    validationContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 5,
+    },
+    validationText: {
+      color: '#888',
+      fontSize: 12,
+      fontWeight: '400',
+      marginLeft: 8,
+    },
+    datePickerButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    datePickerExpandedContent: {
+      marginTop: 10,
+    },
+    datePickerSaveButtonTopRight: {
+      backgroundColor: 'rgba(191, 168, 77, 0)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+    },
+    datePickerSaveTextTopRight: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    datePickerText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '400',
+    },
+    datePickerSaveButtonContainer: {
+      position: 'absolute',
+      top: 15,
+      right: 15,
+      zIndex: 10,
+    },
+    datePickerSaveButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+    },
+    datePickerSaveText: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    placeholderText: {
+      color: '#777',
+    },
+    dropdownContainer: {
+      backgroundColor: 'transparent',
+      borderRadius: 12,
+      overflow: 'visible',
+    },
+    dropdownButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    dropdownButtonExpanded: {
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+    },
+    dropdownButtonSelected: {
+      borderColor: 'rgba(191, 168, 77, 0.7)',
+      borderWidth: 1,
+      shadowColor: 'rgba(191, 168, 77, 0.8)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    dropdownButtonText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '400',
+    },
+    dropdownButtonTextSelected: {
+      color: 'rgba(191, 168, 77, 1)',
+    },
+    dropdownChevron: {
+      // No rotation - SvgChevronRight already points right
+    },
+    dropdownChevronRotated: {
+      transform: [{ rotate: '90deg' }],
+    },
+    dropdownOptions: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: 12,
+      overflow: 'visible',
+    },
+    dropdownOptionsContainer: {
+      backgroundColor: '#2a2a2a',
+    },
+    citySearchContainer: {
+      padding: 15,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    citySearchInputInline: {
+      flex: 1,
+      fontSize: 16,
+      color: '#ffffff',
+      padding: 0,
+      margin: 0,
+      backgroundColor: 'transparent',
+    },
+    citySearchClose: {
+      padding: 5,
+      marginLeft: 10,
+    },
+    dropdownOptionsScrollable: {
+      backgroundColor: '#2a2a2a',
+      maxHeight: 180,
+      borderRadius: 12,
+      overflow: 'visible',
+    },
+    cityDropdownExpanded: {
+      backgroundColor: '#2a2a2a',
+      marginTop: 10,
+      maxHeight: 180,
+      overflow: 'hidden',
+    },
+    countryDropdownExpanded: {
+      backgroundColor: '#2a2a2a',
+      marginTop: 10,
+      maxHeight: 180,
+      overflow: 'hidden',
+    },
+    genderDropdownExpanded: {
+      backgroundColor: '#2a2a2a',
+      marginTop: 10,
+      maxHeight: 180,
+      overflow: 'hidden',
+    },
+    dropdownOption: {
+      padding: 15,
+      borderBottomWidth: 0.2,
+      borderBottomColor: '#ffffff',
+    },
+    dropdownOptionLast: {
+      borderBottomWidth: 0,
+    },
+    dropdownOptionSelected: {
+      // No background highlight for selected options
+    },
+    dropdownOptionText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '400',
+    },
+    dropdownOptionTextSelected: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontWeight: '600',
+    },
+    loadingContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 40,
+    },
+    loadingText: {
+      color: '#888',
+      fontSize: 14,
+      fontWeight: '400',
+      marginTop: 12,
+    },
+    disciplinesContainer: {
+      gap: 12,
+    },
+    disciplineCard: {
+      backgroundColor: '#2a2a2a',
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 0.2,
+      borderColor: '#ffffff',
+    },
+    disciplineCardSelected: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      borderColor: 'rgba(191, 168, 77, 1)',
+      borderWidth: 1.5,
+    },
+    disciplineName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#ffffff',
+      marginBottom: 4,
+    },
+    disciplineNameSelected: {
+      color: 'rgba(191, 168, 77, 1)',
+    },
+    disciplineDescription: {
+      fontSize: 14,
+      fontWeight: '400',
+      color: '#cccccc',
+    },
+    disciplineDescriptionSelected: {
+      color: '#ffffff',
+    },
+    submitButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
+      width: Math.max(200, screenWidth * 0.5), // Match WorkoutExercisesScreen.js
+      borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 20,
+      alignSelf: 'center',
+    },
+    submitButtonDisabled: {
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    submitButtonText: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    submitButtonTextDisabled: {
+      color: 'rgba(255, 255, 255, 0.5)',
+    },
+    cancelButton: {
+      backgroundColor: 'transparent',
+      height: Math.max(50, screenHeight * 0.06), // Match submitButton height
+      width: Math.max(200, screenWidth * 0.5), // Match submitButton width
+      borderRadius: Math.max(12, screenWidth * 0.04), // Match submitButton border radius
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.3)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 16,
+      marginBottom: 40,
+      alignSelf: 'center',
+    },
+    cancelButtonText: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: 16,
+      fontWeight: '500',
+    },
+    objectiveHeader: {
+      padding: 15,
+      borderBottomWidth: 0.2,
+      borderBottomColor: '#ffffff',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    objectiveHeaderText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '500',
+    },
+    objectiveCloseButton: {
+      padding: 5,
+    },
+    objectiveOptions: {
+      backgroundColor: '#2a2a2a',
+    },
+    objectiveOption: {
+      padding: 15,
+      borderBottomWidth: 0.2,
+      borderBottomColor: '#ffffff',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    objectiveOptionLast: {
+      borderBottomWidth: 0,
+    },
+    objectiveOptionSelected: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    },
+    objectiveOptionText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '400',
+    },
+    objectiveOptionTextSelected: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontWeight: '600',
+    },
+    objectiveCheckmark: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    otherObjectiveContainer: {
+      padding: 15,
+      borderTopWidth: 0.2,
+      borderTopColor: '#ffffff',
+    },
+    otherObjectiveInput: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      color: '#ffffff',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+  }), [screenWidth, screenHeight]);
   const [loading, setLoading] = useState(false);
   // Measure animated header to offset content precisely under it
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(0);
@@ -1224,516 +1735,5 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  animatedLogoContainer: {
-    position: 'absolute',
-    // top: now set dynamically with insets.top + 10
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 1000,
-    backgroundColor: '#1a1a1a',
-    paddingVertical: 15,
-    paddingHorizontal: 24,
-  },
-  animatedLogo: {
-    width: 120,
-    height: 60,
-  },
-  logoSpacer: {
-    height: Math.max(80, Math.min(200, screenHeight * 0.16)),
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewNormal: {
-    paddingBottom: 40,
-  },
-  content: {
-    paddingHorizontal: 20,
-  },
-  titleSection: {
-    marginBottom: 30,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 20,
-  },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#cccccc',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  section: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#ffffff',
-    marginBottom: 8,
-    marginLeft: 20,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#cccccc',
-    marginBottom: 15,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#ffffff',
-    marginBottom: 8,
-    marginLeft: 20,
-  },
-  input: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 15,
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 16,
-  },
-  profilePictureWrapper: {
-    width: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nameFieldsWrapper: {
-    flex: 1,
-    gap: 0,
-  },
-  inputFieldsContainer: {
-    gap: 28,
-  },
-  usernameValidationContainer: {
-    marginTop: 4,
-  },
-  profilePictureContainer: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 65,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 130,
-    height: 130,
-  },
-  profilePicturePreview: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-  },
-  profilePicturePlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profilePicturePlaceholderText: {
-    fontSize: 32,
-    marginBottom: 8,
-    color: '#ffffff',
-  },
-  profilePicturePlaceholderLabel: {
-    fontSize: 14,
-    color: '#cccccc',
-    fontWeight: '400',
-  },
-  bodyweightHeightRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  bodyweightHeightField: {
-    flex: 1,
-  },
-  inputDisabled: {
-    backgroundColor: '#1f1f1f',
-    color: '#888',
-    // Preserve shadow effects from base input style
-  },
-  inputError: {
-    borderColor: '#ff4444',
-    borderWidth: 1,
-    shadowColor: 'rgba(255, 68, 68, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  inputSuccess: {
-    borderColor: 'rgba(191, 168, 77, 0.7)',
-    borderWidth: 1,
-    shadowColor: 'rgba(191, 168, 77, 0.8)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: 5,
-  },
-  successText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: 5,
-  },
-  helperText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: 5,
-    fontStyle: 'italic',
-  },
-  validationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  validationText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '400',
-    marginLeft: 8,
-  },
-  datePickerButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  datePickerExpandedContent: {
-    marginTop: 10,
-  },
-  datePickerSaveButtonTopRight: {
-    backgroundColor: 'rgba(191, 168, 77, 0)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  datePickerSaveTextTopRight: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  datePickerText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  datePickerSaveButtonContainer: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    zIndex: 10,
-  },
-  datePickerSaveButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  datePickerSaveText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  placeholderText: {
-    color: '#777',
-  },
-  dropdownContainer: {
-    backgroundColor: 'transparent',
-    borderRadius: 12,
-    overflow: 'visible',
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownButtonExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  dropdownButtonSelected: {
-    borderColor: 'rgba(191, 168, 77, 0.7)',
-    borderWidth: 1,
-    shadowColor: 'rgba(191, 168, 77, 0.8)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  dropdownButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  dropdownButtonTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
-  },
-  dropdownChevron: {
-    // No rotation - SvgChevronRight already points right
-  },
-  dropdownChevronRotated: {
-    transform: [{ rotate: '90deg' }],
-  },
-  dropdownOptions: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    overflow: 'visible',
-  },
-  dropdownOptionsContainer: {
-    backgroundColor: '#2a2a2a',
-  },
-  citySearchContainer: {
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  citySearchInputInline: {
-    flex: 1,
-    fontSize: 16,
-    color: '#ffffff',
-    padding: 0,
-    margin: 0,
-    backgroundColor: 'transparent',
-  },
-  citySearchClose: {
-    padding: 5,
-    marginLeft: 10,
-  },
-  dropdownOptionsScrollable: {
-    backgroundColor: '#2a2a2a',
-    maxHeight: 180,
-    borderRadius: 12,
-    overflow: 'visible',
-  },
-  cityDropdownExpanded: {
-    backgroundColor: '#2a2a2a',
-    marginTop: 10,
-    maxHeight: 180,
-    overflow: 'hidden',
-  },
-  countryDropdownExpanded: {
-    backgroundColor: '#2a2a2a',
-    marginTop: 10,
-    maxHeight: 180,
-    overflow: 'hidden',
-  },
-  genderDropdownExpanded: {
-    backgroundColor: '#2a2a2a',
-    marginTop: 10,
-    maxHeight: 180,
-    overflow: 'hidden',
-  },
-  dropdownOption: {
-    padding: 15,
-    borderBottomWidth: 0.2,
-    borderBottomColor: '#ffffff',
-  },
-  dropdownOptionLast: {
-    borderBottomWidth: 0,
-  },
-  dropdownOptionSelected: {
-    // No background highlight for selected options
-  },
-  dropdownOptionText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  dropdownOptionTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-  },
-  loadingText: {
-    color: '#888',
-    fontSize: 14,
-    fontWeight: '400',
-    marginTop: 12,
-  },
-  disciplinesContainer: {
-    gap: 12,
-  },
-  disciplineCard: {
-    backgroundColor: '#2a2a2a',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 0.2,
-    borderColor: '#ffffff',
-  },
-  disciplineCardSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 1)',
-    borderWidth: 1.5,
-  },
-  disciplineName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  disciplineNameSelected: {
-    color: 'rgba(191, 168, 77, 1)',
-  },
-  disciplineDescription: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#cccccc',
-  },
-  disciplineDescriptionSelected: {
-    color: '#ffffff',
-  },
-  submitButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
-    width: Math.max(200, screenWidth * 0.5), // Match WorkoutExercisesScreen.js
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    alignSelf: 'center',
-  },
-  submitButtonDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  submitButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  submitButtonTextDisabled: {
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    height: Math.max(50, screenHeight * 0.06), // Match submitButton height
-    width: Math.max(200, screenWidth * 0.5), // Match submitButton width
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match submitButton border radius
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    marginBottom: 40,
-    alignSelf: 'center',
-  },
-  cancelButtonText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  objectiveHeader: {
-    padding: 15,
-    borderBottomWidth: 0.2,
-    borderBottomColor: '#ffffff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  objectiveHeaderText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  objectiveCloseButton: {
-    padding: 5,
-  },
-  objectiveOptions: {
-    backgroundColor: '#2a2a2a',
-  },
-  objectiveOption: {
-    padding: 15,
-    borderBottomWidth: 0.2,
-    borderBottomColor: '#ffffff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  objectiveOptionLast: {
-    borderBottomWidth: 0,
-  },
-  objectiveOptionSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-  },
-  objectiveOptionText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  objectiveOptionTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontWeight: '600',
-  },
-  objectiveCheckmark: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  otherObjectiveContainer: {
-    padding: 15,
-    borderTopWidth: 0.2,
-    borderTopColor: '#ffffff',
-  },
-  otherObjectiveInput: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-});
 
 export default OnboardingScreen;

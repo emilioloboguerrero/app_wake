@@ -1,14 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ScrollView, Modal, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, ScrollView, Modal, Pressable } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
 import { getWeeksBetween } from '../utils/weekCalculation';
 import { getMuscleDisplayName } from '../constants/muscles';
 import SvgChevronDown from './icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const MuscleVolumeStats = ({ weeklyMuscleVolume }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
+  
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [isPeriodDropdownVisible, setIsPeriodDropdownVisible] = useState(false);
   const [isLegendPopupVisible, setIsLegendPopupVisible] = useState(false);
@@ -338,7 +344,7 @@ const MuscleVolumeStats = ({ weeklyMuscleVolume }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

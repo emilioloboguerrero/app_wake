@@ -7,12 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   Image,
   Modal,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import Text from '../components/Text';
 import TextInput from '../components/TextInput';
 // import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
@@ -32,6 +30,7 @@ import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgInfo from '../components/icons/SvgInfo';
 import logger from '../utils/logger.js';
 const ProgramLibraryScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
   
   // FALLBACK: If AuthContext doesn't have user, check Firebase directly
@@ -50,6 +49,12 @@ const ProgramLibraryScreen = ({ navigation }) => {
   }, [contextUser]);
   
   const user = contextUser || fallbackUser;
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   
   // Consolidated state management
   const [state, setState] = useState({
@@ -577,7 +582,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

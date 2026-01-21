@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,8 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FixedWakeHeader } from '../components/WakeHeader';
@@ -14,13 +15,18 @@ import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger.js';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const SessionDetailScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   
   const { sessionId, sessionName, date, sessionData } = route.params;
   const { user } = useAuth();
@@ -139,8 +145,9 @@ const SessionDetailScreen = ({ navigation, route }) => {
           showBackButton={true}
           onBackPress={handleBackPress}
         />
-        <View style={[styles.errorContainer, { marginTop: headerTotalHeight }]}>
-          <Text style={styles.errorText}>No se pudo cargar la sesión</Text>
+        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight }]}>
+          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
+          <Text style={styles.loadingText}>Cargando sesión...</Text>
         </View>
       </SafeAreaView>
     );
@@ -219,7 +226,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -390,6 +397,17 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: Math.min(screenWidth * 0.04, 16),
     color: '#ffffff',
+    opacity: 0.7,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: Math.max(12, screenHeight * 0.015),
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
     opacity: 0.7,
   },
 });

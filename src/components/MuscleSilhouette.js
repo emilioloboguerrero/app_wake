@@ -1,13 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 import SvgInfo from '../components/icons/SvgInfo';
 import { formatWeekDisplay } from '../utils/weekCalculation';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import logger from '../utils/logger';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const MuscleSilhouette = ({ 
   muscleVolumes, 
@@ -22,7 +20,14 @@ const MuscleSilhouette = ({
   onInfoPress,
   showWeeklyAverageNote = false
 }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [isWeekSelectorVisible, setIsWeekSelectorVisible] = useState(false);
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   
   // Normalize volumes to weekly averages
   const normalizedVolumes = useMemo(() => {
@@ -193,7 +198,7 @@ const MuscleSilhouette = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

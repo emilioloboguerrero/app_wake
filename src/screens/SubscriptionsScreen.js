@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Dimensions,
+  useWindowDimensions,
   Linking,
   Platform,
 } from 'react-native';
@@ -20,9 +20,6 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import SvgInfo from '../components/icons/SvgInfo';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -41,6 +38,7 @@ const statusColors = {
 };
 
 const SubscriptionsScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
@@ -55,6 +53,12 @@ const SubscriptionsScreen = ({ navigation }) => {
   const [pendingCancelSubscription, setPendingCancelSubscription] =
     useState(null);
   const [showSubscriptionInfoModal, setShowSubscriptionInfoModal] = useState(false);
+
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight, headerTotalHeight),
+    [screenWidth, screenHeight, headerTotalHeight],
+  );
 
   const createInitialSurveyAnswers = () => ({
     reason: null,
@@ -761,7 +765,7 @@ const SubscriptionsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

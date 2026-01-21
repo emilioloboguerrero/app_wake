@@ -1,12 +1,11 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { User02 as SvgUser02, House02 as SvgHouse02 } from './icons';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const BottomTabBar = () => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
   const insets = useSafeAreaInsets();

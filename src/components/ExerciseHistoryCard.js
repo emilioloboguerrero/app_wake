@@ -1,9 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions, ActivityIndicator } from 'react-native';
 
 const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('es-ES', {
@@ -158,7 +163,7 @@ const SessionCard = ({ session, index }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

@@ -1,12 +1,17 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { getMondayWeek, formatWeekDisplay } from '../utils/weekCalculation';
 import SvgArrowUpSm from './icons/vectors_fig/Arrow/ArrowUpSm';
 import SvgArrowDownLeftSm from './icons/vectors_fig/Arrow/ArrowDownLeftSm';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const WeeklyVolumeTrendChart = ({ weeklyMuscleVolume }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // Create styles with current dimensions - memoized to prevent recalculation
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
+  );
   
   // Calculate volume tendencies
   const calculateVolumeTendencies = useMemo(() => {
@@ -114,7 +119,7 @@ const WeeklyVolumeTrendChart = ({ weeklyMuscleVolume }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   tendenciesCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04),

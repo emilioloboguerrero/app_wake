@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,9 +23,9 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import logger from '../utils/logger.js';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = Dimensions.get('window');
   
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated

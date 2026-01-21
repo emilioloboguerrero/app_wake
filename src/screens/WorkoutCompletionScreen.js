@@ -8,14 +8,12 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   Modal,
   Image,
   Pressable,
 } from 'react-native';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import tutorialManager from '../services/tutorialManager';
@@ -28,6 +26,9 @@ import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
+
+const WorkoutCompletionScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 import { getMondayWeek } from '../utils/weekCalculation';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
@@ -37,6 +38,7 @@ import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
 const WorkoutCompletionScreen = ({ navigation, route }) => {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params;
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
