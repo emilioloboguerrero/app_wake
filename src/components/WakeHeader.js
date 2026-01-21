@@ -11,10 +11,28 @@ export const FixedWakeHeader = ({
   showResetButton = false,
   onResetPress = null,
   resetButtonText = 'Resetear',
+  showMenuButton = false,
+  onMenuPress = null,
+  menuButton = null,
   backgroundColor = '#1a1a1a'
 }) => {
+  const componentStartTime = performance.now();
+  console.log(`[CHILD] [CHECKPOINT] FixedWakeHeader render started - ${componentStartTime.toFixed(2)}ms`);
+  
+  const insetsStartTime = performance.now();
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = Dimensions.get('window');
+  const insetsDuration = performance.now() - insetsStartTime;
+  if (insetsDuration > 10) {
+    console.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
+  }
+  
+  // Get dimensions inside component to avoid blocking module initialization
+  const dimensionsStartTime = performance.now();
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const dimensionsDuration = performance.now() - dimensionsStartTime;
+  if (dimensionsDuration > 10) {
+    console.warn(`[CHILD] ⚠️ SLOW: Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+  }
   
   // Responsive dimensions
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
@@ -66,6 +84,31 @@ export const FixedWakeHeader = ({
         resizeMode="contain"
       />
       
+      {/* Menu Button - aligned with logo center inside header, on the left */}
+      {showMenuButton && (onMenuPress || menuButton) && (
+        <TouchableOpacity 
+          style={[styles.backButton, { 
+            // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
+            // Logo center is at: paddingTop + headerHeight / 2
+            // Position menu button to align with logo center
+            top: Math.max(0, insets.top - 20) + headerHeight / 2 - iconSize / 2, // Center icon with logo, no padding offset needed
+            left: Math.max(32, screenWidth * 0.08)
+          }]}
+          onPress={onMenuPress}
+          activeOpacity={0.7}
+        >
+          {menuButton || (
+            <View style={styles.threeDotsContainer}>
+              <View style={styles.threeDots}>
+                <View style={styles.dot} />
+                <View style={styles.dot} />
+                <View style={styles.dot} />
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
+      
       {/* Back Button - aligned with logo center inside header */}
       {showBackButton && onBackPress && (
         <TouchableOpacity 
@@ -102,11 +145,22 @@ export const FixedWakeHeader = ({
       )}
     </View>
   );
+  
+  const componentEndTime = performance.now();
+  const componentDuration = componentEndTime - componentStartTime;
+  console.log(`[CHILD] [CHECKPOINT] FixedWakeHeader render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+  if (componentDuration > 50) {
+    console.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+  }
 };
 
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
+  const componentStartTime = performance.now();
+  console.log(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
+  
   const insets = useSafeAreaInsets();
+  // Get dimensions inside component to avoid blocking module initialization
   const { height: screenHeight } = Dimensions.get('window');
   
   // Account for full header height plus safe area
@@ -114,12 +168,15 @@ export const WakeHeaderSpacer = () => {
   const safeAreaTop = Math.max(0, insets.top - 20);
   const totalHeight = headerHeight + safeAreaTop;
   
+  const componentEndTime = performance.now();
+  const componentDuration = componentEndTime - componentStartTime;
+  console.log(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+  if (componentDuration > 10) {
+    console.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
+  }
+  
   return <View style={{ height: totalHeight }} />;
 };
-
-
-
-const { width: screenWidth } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   fixedHeaderContainer: {
@@ -172,6 +229,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#3a3a3a',
+  },
+  threeDotsContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  threeDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ffffff',
   },
 });
 

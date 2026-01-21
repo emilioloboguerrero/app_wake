@@ -16,7 +16,6 @@ import SvgVolumeMax from './icons/SvgVolumeMax';
 import SvgVolumeOff from './icons/SvgVolumeOff';
 
 import logger from '../utils/logger.js';
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const TutorialOverlay = ({ 
   visible, 
@@ -24,6 +23,11 @@ const TutorialOverlay = ({
   onClose, 
   onComplete 
 }) => {
+  const componentStartTime = performance.now();
+  console.log(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
+  
+  // Hooks must be called before any early returns (React rules)
+  const hooksStartTime = performance.now();
   const { isMuted, toggleMute } = useVideo();
   const [isLoading, setIsLoading] = useState(true);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
@@ -32,7 +36,32 @@ const TutorialOverlay = ({
   const [animationStarted, setAnimationStarted] = useState(false);
   const videoRef = useRef(null);
   const progressAnimation = useRef(new Animated.Value(0)).current;
+  const hooksDuration = performance.now() - hooksStartTime;
+  if (hooksDuration > 10) {
+    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay hooks took ${hooksDuration.toFixed(2)}ms`);
+  }
 
+  // CRITICAL: Early return BEFORE expensive operations to avoid blocking paint
+  // Check visibility first without doing any expensive work
+  const visibilityCheckStart = performance.now();
+  if (!visible || !tutorialData || tutorialData.length === 0) {
+    return null;
+  }
+  const visibilityCheckDuration = performance.now() - visibilityCheckStart;
+  if (visibilityCheckDuration > 1) {
+    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
+  }
+  
+  // Get dimensions inside component to avoid blocking module initialization
+  // Only do this AFTER we know we're actually rendering
+  const dimensionsStartTime = performance.now();
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const dimensionsDuration = performance.now() - dimensionsStartTime;
+  console.log(`[CHILD] [TIMING] TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+  if (dimensionsDuration > 5) {
+    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay Dimensions.get took ${dimensionsDuration.toFixed(2)}ms`);
+  }
+  
   const currentTutorial = tutorialData?.[currentTutorialIndex];
 
   const handleVideoTap = () => {
@@ -130,6 +159,18 @@ const TutorialOverlay = ({
     return null;
   }
 
+  // Create styles with dimensions
+  const stylesStartTime = performance.now();
+  const styles = createStyles(screenWidth, screenHeight);
+  const stylesDuration = performance.now() - stylesStartTime;
+  console.log(`[CHILD] [TIMING] TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
+  if (stylesDuration > 10) {
+    console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
+  }
+
+  const jsxStartTime = performance.now();
+  console.log(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
+  
   return (
     <Modal
       visible={visible}
@@ -290,11 +331,31 @@ const TutorialOverlay = ({
           
         </TouchableOpacity>
       </TouchableOpacity>
+      {(() => {
+        const jsxEndTime = performance.now();
+        const jsxDuration = jsxEndTime - jsxStartTime;
+        console.log(`[CHILD] [TIMING] TutorialOverlay JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
+        if (jsxDuration > 50) {
+          console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay JSX creation took ${jsxDuration.toFixed(2)}ms`);
+        }
+        return null;
+      })()}
     </Modal>
   );
+  
+  // Track component render completion using useEffect
+  useEffect(() => {
+    const componentEndTime = performance.now();
+    const componentDuration = componentEndTime - componentStartTime;
+    console.log(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+    if (componentDuration > 50) {
+      console.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+    }
+  });
 };
 
-const styles = StyleSheet.create({
+// Styles function - takes screenWidth and screenHeight as parameters
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',

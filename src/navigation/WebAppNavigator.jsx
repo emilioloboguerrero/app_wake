@@ -471,7 +471,7 @@ const WebAppNavigator = () => {
               </Suspense>
             </AuthenticatedLayout>
           }
-        />
+      />
 
       <Route
         path="/course/:courseId/workout/completion"

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Svg, G, Path } from 'react-native-svg';
 import { getMuscleColor, getMuscleColorEnhanced, getMuscleColorWorkoutExecution, getMuscleSelectionColor } from '../utils/muscleColorUtils';
 
-const MuscleSilhouetteSVG = ({ 
+const MuscleSilhouetteSVG = memo(({ 
   muscleVolumes = {}, 
   enhanced = false, 
   useWorkoutExecutionColors = false, 
@@ -10,6 +10,9 @@ const MuscleSilhouetteSVG = ({
   selectedMuscles = null, // Set of selected muscles for filtering mode
   onMuscleClick = null // Callback for when muscle is clicked
 }) => {
+  const componentStartTime = performance.now();
+  console.log(`[CHILD] [CHECKPOINT] MuscleSilhouetteSVG render started - ${componentStartTime.toFixed(2)}ms`);
+  
   // Check if we're in selection mode (clickable)
   const isSelectionMode = selectedMuscles !== null && onMuscleClick !== null;
   
@@ -76,8 +79,19 @@ const MuscleSilhouetteSVG = ({
     );
   };
 
-  return (
-    <Svg width="100%" height={height} viewBox="0 0 7996 8819" preserveAspectRatio="xMidYMid meet" style={{ backgroundColor: 'transparent' }}>
+  const svgReturnStartTime = performance.now();
+  console.log(`[SVG] [CHECKPOINT] Starting SVG JSX creation - ${svgReturnStartTime.toFixed(2)}ms`);
+  
+  // Create the SVG JSX (this is synchronous)
+  // Add GPU acceleration hints for better paint performance
+  const svgStyle = {
+    backgroundColor: 'transparent',
+    // Promote SVG to its own GPU layer for faster paint
+    transform: [{ translateZ: 0 }],
+  };
+  
+  const svgJSX = (
+    <Svg width="100%" height={height} viewBox="0 0 7996 8819" preserveAspectRatio="xMidYMid meet" style={svgStyle}>
       <G id="all">
         {/* Body Outlines - Always visible with white stroke */}
       <G id="outlines">
@@ -349,6 +363,66 @@ const MuscleSilhouetteSVG = ({
       </G>
     </Svg>
   );
-};
+  
+  // Time JSX creation (runs BEFORE return)
+  const svgReturnEndTime = performance.now();
+  const svgReturnDuration = svgReturnEndTime - svgReturnStartTime;
+  console.log(`[SVG] [CHECKPOINT] SVG JSX created - ${svgReturnEndTime.toFixed(2)}ms (took ${svgReturnDuration.toFixed(2)}ms)`);
+  if (svgReturnDuration > 50) {
+    console.warn(`[SVG] ⚠️ SLOW: SVG JSX creation took ${svgReturnDuration.toFixed(2)}ms (threshold: 50ms)`);
+  }
+  
+  const componentEndTime = performance.now();
+  const componentDuration = componentEndTime - componentStartTime;
+  console.log(`[CHILD] [CHECKPOINT] MuscleSilhouetteSVG render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+  if (componentDuration > 50) {
+    console.warn(`[CHILD] ⚠️ SLOW: MuscleSilhouetteSVG render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+  }
+  
+  return svgJSX;
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  // Only re-render if props actually changed
+  const comparisonStartTime = performance.now();
+  
+  if (
+    prevProps.height !== nextProps.height ||
+    prevProps.enhanced !== nextProps.enhanced ||
+    prevProps.useWorkoutExecutionColors !== nextProps.useWorkoutExecutionColors ||
+    prevProps.selectedMuscles !== nextProps.selectedMuscles ||
+    prevProps.onMuscleClick !== nextProps.onMuscleClick
+  ) {
+    const comparisonDuration = performance.now() - comparisonStartTime;
+    console.log(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (basic props) - comparison took ${comparisonDuration.toFixed(2)}ms`);
+    return false; // Props changed, re-render
+  }
+  
+  // Efficiently compare muscleVolumes objects
+  const prevVolumes = prevProps.muscleVolumes || {};
+  const nextVolumes = nextProps.muscleVolumes || {};
+  const prevKeys = Object.keys(prevVolumes);
+  const nextKeys = Object.keys(nextVolumes);
+  
+  if (prevKeys.length !== nextKeys.length) {
+    const comparisonDuration = performance.now() - comparisonStartTime;
+    console.log(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (muscle count: ${prevKeys.length} → ${nextKeys.length}) - comparison took ${comparisonDuration.toFixed(2)}ms`);
+    return false; // Different number of muscles, re-render
+  }
+  
+  // Check if all keys and values match
+  for (const key of prevKeys) {
+    if (prevVolumes[key] !== nextVolumes[key]) {
+      const comparisonDuration = performance.now() - comparisonStartTime;
+      console.log(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (${key}: ${prevVolumes[key]} → ${nextVolumes[key]}) - comparison took ${comparisonDuration.toFixed(2)}ms`);
+      return false; // Value changed, re-render
+    }
+  }
+  
+  const comparisonDuration = performance.now() - comparisonStartTime;
+  console.log(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props unchanged - skipping re-render (comparison took ${comparisonDuration.toFixed(2)}ms)`);
+  return true; // Props are equal, skip re-render
+});
+
+MuscleSilhouetteSVG.displayName = 'MuscleSilhouetteSVG';
 
 export default MuscleSilhouetteSVG;

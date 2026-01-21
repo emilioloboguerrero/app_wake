@@ -21,12 +21,28 @@ import logger from '../utils/logger';
 class AssetBundleService {
   constructor() {
     this.MANIFEST_KEY = 'asset_bundle_manifest_v1';
-    // documentDirectory may be null/undefined on some platforms (e.g. web)
-    this.BASE_DIR = FileSystem.documentDirectory
-      ? `${FileSystem.documentDirectory}assets`
-      : null;
+    // FIX: Defer FileSystem access to prevent blocking on web
+    // FileSystem.documentDirectory can block when accessed at import time
+    this._baseDir = null;
+    this._baseDirInitialized = false;
     this._manifest = null;
     this._initPromise = null;
+  }
+
+  // Lazy getter for BASE_DIR - only access FileSystem when actually needed
+  get BASE_DIR() {
+    if (!this._baseDirInitialized) {
+      try {
+        this._baseDir = FileSystem.documentDirectory
+          ? `${FileSystem.documentDirectory}assets`
+          : null;
+      } catch (error) {
+        logger.error('❌ Error accessing FileSystem.documentDirectory:', error);
+        this._baseDir = null;
+      }
+      this._baseDirInitialized = true;
+    }
+    return this._baseDir;
   }
 
   async _loadManifest() {

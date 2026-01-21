@@ -17,6 +17,9 @@ export const FixedWakeHeader = ({
   showResetButton = false,
   onResetPress = null,
   resetButtonText = 'Resetear',
+  showMenuButton = false,
+  onMenuPress = null,
+  menuButton = null,
   backgroundColor = '#1a1a1a'
 }) => {
   const navigate = useNavigate();
@@ -163,6 +166,42 @@ export const FixedWakeHeader = ({
           objectFit: 'contain'
         }}
       />
+      
+      {/* Menu Button - aligned with logo center, on the left */}
+      {showMenuButton && (onMenuPress || menuButton) && (
+        <button
+          onClick={onMenuPress}
+          style={{
+            position: 'absolute',
+            top: safeAreaTop + headerHeight / 2,
+            left: Math.max(32, screenWidth * 0.08),
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: 40,
+            height: 40,
+            padding: 0,
+            backgroundColor: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            zIndex: 1001,
+            transform: 'translateY(-50%)',
+          }}
+        >
+          {menuButton || (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '4px',
+            }}>
+              <div style={{ width: '4px', height: '4px', borderRadius: '2px', backgroundColor: '#ffffff' }} />
+              <div style={{ width: '4px', height: '4px', borderRadius: '2px', backgroundColor: '#ffffff' }} />
+              <div style={{ width: '4px', height: '4px', borderRadius: '2px', backgroundColor: '#ffffff' }} />
+            </div>
+          )}
+        </button>
+      )}
       
       {/* Back Button - aligned with logo center */}
       {showBackButton && (onBackPress || navigate) && (
