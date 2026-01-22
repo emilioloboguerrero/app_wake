@@ -9,7 +9,7 @@ try {
   const PRsScreenModule = require('./PRsScreen.js');
   PRsScreenBase = PRsScreenModule.PRsScreenBase || PRsScreenModule.default;
 } catch (error) {
-  console.error('[PRsScreen.web] Failed to load base component:', error);
+  logger.error('[PRsScreen.web] Failed to load base component:', error);
 }
 
 const PRsScreen = () => {
@@ -19,7 +19,7 @@ const PRsScreen = () => {
   
   // Ensure we have navigate hook
   if (!navigate) {
-    console.error('[PRsScreen.web] useNavigate returned undefined - not inside Router context?');
+    logger.error('[PRsScreen.web] useNavigate returned undefined - not inside Router context?');
     return <div style={{ padding: 20, color: 'white' }}>Error: Not inside Router context</div>;
   }
 
@@ -27,7 +27,7 @@ const PRsScreen = () => {
   // Use useMemo to ensure stable reference
   const navigation = React.useMemo(() => {
     if (!navigate) {
-      console.error('[PRsScreen.web] useNavigate returned undefined!');
+      logger.error('[PRsScreen.web] useNavigate returned undefined!');
       return null;
     }
     
@@ -42,7 +42,7 @@ const PRsScreen = () => {
                                  ? `${routeParams.libraryId}_${routeParams.exerciseName}` 
                                  : '');
             if (!exerciseKey) {
-              console.error('[PRsScreen.web] Missing exerciseKey for ExerciseDetail navigation');
+              logger.error('[PRsScreen.web] Missing exerciseKey for ExerciseDetail navigation');
               return;
             }
             // Navigate with state to pass all params
@@ -79,13 +79,13 @@ const PRsScreen = () => {
 
   // Debug: Log if navigation is undefined
   if (!navigation) {
-    console.error('[PRsScreen.web] Navigation object is undefined!', { navigate, params, location });
+    logger.error('[PRsScreen.web] Navigation object is undefined!', { navigate, params, location });
     return <div style={{ padding: 20, color: 'white' }}>Error: Navigation not available. Please refresh the page.</div>;
   }
 
   // Ensure PRsScreenBase exists
   if (!PRsScreenBase) {
-    console.error('[PRsScreen.web] PRsScreenBase is undefined!');
+    logger.error('[PRsScreen.web] PRsScreenBase is undefined!');
     return <div style={{ padding: 20, color: 'white' }}>Error: PRsScreenBase not loaded</div>;
   }
 

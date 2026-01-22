@@ -74,7 +74,7 @@ const loadHeavyComponents = async () => {
           require('./styles/global.css');
           logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
-          console.error('[APP] ❌ Error loading heavy components:', error);
+          logger.error('[APP] ❌ Error loading heavy components:', error);
           // Don't throw - let the app continue with partial loading
         }
         resolve();
@@ -152,7 +152,7 @@ export default function App() {
             });
         }
       }).catch((error) => {
-        console.error('[APP] ❌ Error loading components:', error);
+        logger.error('[APP] ❌ Error loading components:', error);
         logger.debug('[APP] Setting componentsLoaded to true anyway to continue...');
         setComponentsLoaded(true); // Continue anyway
       });
@@ -175,7 +175,7 @@ export default function App() {
   React.useEffect(() => {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       const originalWarn = logger.warn;
-      const originalError = console.error;
+      const originalError = logger.error;
       
       // Filter out specific chart-related warnings
       logger.warn = (...args) => {
@@ -195,10 +195,10 @@ export default function App() {
         ) {
           return; // Don't log these warnings
         }
-        originalWarn.apply(console, args);
+        originalWarn(...args);
       };
       
-      console.error = (...args) => {
+      logger.error = (...args) => {
         const message = args.join(' ');
         // Suppress chart-related errors
         if (
@@ -208,12 +208,12 @@ export default function App() {
         ) {
           return; // Don't log these errors
         }
-        originalError.apply(console, args);
+        originalError(...args);
       };
       
       return () => {
         logger.warn = originalWarn;
-        console.error = originalError;
+        logger.error = originalError;
       };
     }
   }, []);
@@ -308,7 +308,7 @@ export default function App() {
           if (mounted) {
             safeLog('error', '⚠️ Web storage initialization failed (non-critical):', error);
             if (debugMode) {
-              console.error('[DEBUG] Storage error details:', error);
+              logger.error('[DEBUG] Storage error details:', error);
             }
           }
         });
@@ -333,7 +333,7 @@ export default function App() {
           if (mounted) {
             safeLog('error', '❌ Auth check failed:', authError);
             if (debugMode) {
-              console.error('[DEBUG] Auth error details:', authError);
+              logger.error('[DEBUG] Auth error details:', authError);
             }
           }
         }
@@ -363,8 +363,8 @@ export default function App() {
         if (mounted) {
           safeLog('error', '❌ App initialization failed:', error);
           if (debugMode) {
-            console.error('[DEBUG] Initialization error stack:', error.stack);
-            console.error('[DEBUG] Error details:', {
+            logger.error('[DEBUG] Initialization error stack:', error.stack);
+            logger.error('[DEBUG] Error details:', {
               name: error.name,
               message: error.message,
               code: error.code,
@@ -383,7 +383,7 @@ export default function App() {
         if (mounted) {
           safeLog('error', 'Unhandled initialization error:', err);
           if (debugMode) {
-            console.error('[DEBUG] Unhandled init error:', err);
+            logger.error('[DEBUG] Unhandled init error:', err);
           }
           setInitError(err);
         }
@@ -499,14 +499,14 @@ export default function App() {
       if (!webStorageService) webStorageService = require('./services/webStorageService').default;
       logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
-      console.error('[APP] ❌ Synchronous load failed:', syncError);
+      logger.error('[APP] ❌ Synchronous load failed:', syncError);
       // Continue anyway - some components might still work
     }
   }
 
   // Final check - if still not loaded, show error instead of infinite loading
   if (!ErrorBoundary || !VideoProvider || !WebAppNavigator) {
-    console.error('[APP] ❌ Critical components failed to load');
+    logger.error('[APP] ❌ Critical components failed to load');
     return (
       <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
         <h1>Error Loading App</h1>

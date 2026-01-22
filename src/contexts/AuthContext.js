@@ -80,35 +80,48 @@ export const AuthProvider = ({ children }) => {
     // Sometimes onAuthStateChanged doesn't fire immediately on page reload
     // This ensures we catch the restored user even if the listener hasn't fired yet
     // Use multiple checks at different intervals to catch IndexedDB restore
+    // Store all timeout IDs for cleanup
+    const timeoutIds = [];
+    
     const checkAfterDelay = (delay, label) => {
-      setTimeout(() => {
-        // Always check - auth state is critical, even if component appears unmounted
-        // The component might be remounting, and we need to capture the user
+      const timeoutId = setTimeout(() => {
+        // Check if component is still mounted before updating state
+        if (!isMounted) {
+          logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] Component unmounted, skipping state update`);
+          return;
+        }
+        
         try {
           const currentUser = auth.currentUser;
           logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] auth.currentUser after ${delay}ms:`, currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'null');
           
           if (currentUser) {
             logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ Found user after delay check (IndexedDB restored)`);
-            // Always update if we have a currentUser - auth state is critical
-            setUser(currentUser);
-            setLoading(false);
-            logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ AuthContext initialized with restored user from IndexedDB`);
+            // Update state only if still mounted
+            if (isMounted) {
+              setUser(currentUser);
+              setLoading(false);
+              logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ AuthContext initialized with restored user from IndexedDB`);
+            }
           } else {
             logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ No user found after delay check`);
             // Only set loading to false on later checks to avoid premature state updates
-            if (delay >= 1000) {
+            if (delay >= 1000 && isMounted) {
               setLoading(false);
               logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] Set loading to false (no user)`);
             }
           }
         } catch (error) {
           logger.error(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ Error in delay check:`, error);
-          if (delay >= 1000) {
+          if (delay >= 1000 && isMounted) {
             setLoading(false);
           }
         }
       }, delay);
+      
+      // Store timeout ID for cleanup
+      timeoutIds.push(timeoutId);
+      return timeoutId;
     };
     
     // Start multiple delay checks at different intervals
@@ -140,10 +153,17 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       isMounted = false;
+      // Clear all timeout IDs from delay checks
+      timeoutIds.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      // Clear the fallback timeout
       clearTimeout(timeout);
+      // Unsubscribe from auth state listener
       if (unsubscribe) {
         unsubscribe();
       }
+      logger.debug('[WAKE] 🔐 AuthProvider cleanup: All timers cleared and listener unsubscribed');
     };
   }, [initialized]); // Only depend on initialized, not loading (loading changes would cause re-runs)
   

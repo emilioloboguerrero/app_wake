@@ -85,7 +85,7 @@ export const FixedWakeHeader = ({
       try {
         onBackPress();
       } catch (error) {
-        console.error('[WakeHeader.web] Error in onBackPress callback:', error);
+        logger.error('[WakeHeader.web] Error in onBackPress callback:', error);
         // Fallback to browser navigation
         navigate(-1);
       }

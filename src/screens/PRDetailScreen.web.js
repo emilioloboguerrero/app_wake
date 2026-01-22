@@ -70,7 +70,7 @@ const PRDetailScreen = () => {
   // Ensure route is always defined with params
   const route = React.useMemo(() => {
     if (!exerciseKey) {
-      console.error('[PRDetailScreen.web] exerciseKey is missing from URL params', { params, location });
+      logger.error('[PRDetailScreen.web] exerciseKey is missing from URL params', { params, location });
     }
     
     return {

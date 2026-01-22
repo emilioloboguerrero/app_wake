@@ -9,10 +9,12 @@ import LoadingScreen from '../screens/LoadingScreen';
 // import LoginScreen from '../screens/LoginScreen.test3'; // Email + Password (freezes)
 import LoginScreen from '../screens/LoginScreen.test3-fixed'; // Email + Password (FIXED)
 
+import logger from '../utils/logger';
+
 const WebAppNavigator = () => {
   const { user, loading } = useAuth();
   
-  console.log('[TEST NAV] WebAppNavigator render:', {
+  logger.log('[TEST NAV] WebAppNavigator render:', {
     user: user ? user.uid : 'null',
     loading,
     pathname: window.location.pathname
