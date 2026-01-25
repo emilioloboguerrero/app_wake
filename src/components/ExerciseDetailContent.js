@@ -13,6 +13,7 @@ import {
   Pressable,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
@@ -21,7 +22,7 @@ import RepEstimatesCard from '../components/RepEstimatesCard';
 import ExerciseHistoryCard from '../components/ExerciseHistoryCard';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import SvgInfo from '../components/icons/SvgInfo';
-import { filterSessionsByPeriod } from '../utils/sessionFilter';
+import { filterSessionsByPeriod, getSessionDateAsDate } from '../utils/sessionFilter';
 import logger from '../utils/logger.js';
 
 const ExerciseDetailContent = ({ 
@@ -52,7 +53,8 @@ const ExerciseDetailContent = ({
     logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
   
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  const user = contextUser || auth.currentUser;
   const [history, setHistory] = useState([]);
   const [exerciseHistory, setExerciseHistory] = useState([]);
   
@@ -72,7 +74,7 @@ const ExerciseDetailContent = ({
   const [loading, setLoading] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
+  const [selectedPeriod, setSelectedPeriod] = useState('3months');
 
   // Scroll tracking for pagination indicator
   const scrollX = new Animated.Value(0);
@@ -197,6 +199,30 @@ const ExerciseDetailContent = ({
       period: selectedPeriod,
       filteredType: Array.isArray(filtered) ? 'array' : typeof filtered
     });
+    if (filtered.length > 0) {
+      const first = filtered[0];
+      const dateRaw = first.date || first.completedAt;
+      logger.log('📊 ExerciseDetailContent: First filtered session debug:', {
+        hasDate: !!dateRaw,
+        dateType: dateRaw == null ? 'null' : typeof dateRaw,
+        dateSeconds: dateRaw?.seconds,
+        hasSets: !!first.sets,
+        setsLength: first.sets?.length ?? 0,
+        firstSetKeys: first.sets?.[0] ? Object.keys(first.sets[0]) : [],
+        firstSetSample: first.sets?.[0] ? { reps: first.sets[0].reps, weight: first.sets[0].weight } : null
+      });
+    } else if (exerciseHistory.length > 0) {
+      const first = exerciseHistory[0];
+      const dateRaw = first.date || first.completedAt;
+      const parsed = getSessionDateAsDate(dateRaw);
+      logger.log('📊 ExerciseDetailContent: All sessions filtered out – date debug:', {
+        period: selectedPeriod,
+        totalSessions: exerciseHistory.length,
+        firstSessionDateRaw: dateRaw,
+        firstSessionDateParsed: parsed ? parsed.toISOString() : null,
+        hasDateSeconds: typeof dateRaw?.seconds === 'number'
+      });
+    }
     return filtered;
   }, [exerciseHistory, selectedPeriod]);
 

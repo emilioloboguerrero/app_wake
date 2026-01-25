@@ -179,6 +179,17 @@ class SessionService {
         // This is a workout object (has exercise names), convert to session format
         logger.log('🔍 VOLUME DEBUG: Converting workout object to session format');
         actualSessionData = this.convertWorkoutToSession(sessionData, userId, courseId);
+        
+        // Get the actual session from sessionManager to preserve startTime
+        try {
+          const currentSession = await sessionManager.getCurrentSession();
+          if (currentSession && currentSession.startTime) {
+            actualSessionData.startTime = currentSession.startTime;
+            logger.log('✅ Preserved startTime from current session:', currentSession.startTime);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Could not get current session for startTime:', error);
+        }
       }
       
       logger.log('🔍 VOLUME DEBUG: actualSessionData created:', {
@@ -507,7 +518,7 @@ class SessionService {
       userId: userId,
       courseId: courseId,
       sessionName: workout.title || 'Workout Session',
-      startTime: new Date().toISOString(),
+      startTime: workout.startTime || new Date().toISOString(), // Use workout startTime if available, otherwise current time
       completedAt: new Date().toISOString(),
       duration: 0,
       exercises: workout.exercises.map(exercise => {

@@ -4,22 +4,168 @@ import logger from './logger';
 import { currentConfig } from '../config/environment';
 import { ApiSecurityMiddleware, SecurityUtils } from '../utils/security';
 
+/**
+ * Request Deduplication System
+ * Prevents duplicate API calls by tracking in-flight requests and returning
+ * the same promise for identical requests within a time window.
+ */
+class RequestDeduplicator {
+  constructor() {
+    // Map of request keys to their promises
+    this.inFlightRequests = new Map();
+    // Map of request keys to their timestamps for cleanup
+    this.requestTimestamps = new Map();
+    // Deduplication window: 5 seconds (requests within this window are considered duplicates)
+    this.deduplicationWindow = 5000;
+    // Cleanup interval: check for stale requests every 10 seconds
+    this.cleanupInterval = 10000;
+    // Start cleanup interval
+    this.startCleanupInterval();
+  }
+
+  /**
+   * Generate a unique key for a request
+   * @param {string} method - HTTP method
+   * @param {string} url - Request URL
+   * @param {string} body - Request body (stringified)
+   * @returns {string} Unique request key
+   */
+  generateRequestKey(method, url, body = null) {
+    // Create a simple hash of the body for key generation
+    let bodyHash = '';
+    if (body) {
+      try {
+        // For simple body hashing, use a combination of length and first/last chars
+        // This is faster than full JSON.stringify for large bodies
+        const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+        bodyHash = `_${bodyStr.length}_${bodyStr.substring(0, 50)}_${bodyStr.substring(Math.max(0, bodyStr.length - 50))}`;
+      } catch (e) {
+        // Fallback: use string representation
+        bodyHash = `_${String(body).substring(0, 100)}`;
+      }
+    }
+    return `${method}_${url}${bodyHash}`;
+  }
+
+  /**
+   * Check if a request is already in flight
+   * @param {string} key - Request key
+   * @returns {Promise|null} Existing promise or null
+   */
+  getInFlightRequest(key) {
+    const request = this.inFlightRequests.get(key);
+    if (request) {
+      const timestamp = this.requestTimestamps.get(key);
+      const age = Date.now() - timestamp;
+      
+      // Only return if within deduplication window
+      if (age < this.deduplicationWindow) {
+        logger.debug(`[DEDUP] Reusing in-flight request: ${key.substring(0, 100)} (age: ${age}ms)`);
+        return request;
+      } else {
+        // Request is stale, remove it
+        this.inFlightRequests.delete(key);
+        this.requestTimestamps.delete(key);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Register a new in-flight request
+   * @param {string} key - Request key
+   * @param {Promise} promise - Request promise
+   */
+  registerRequest(key, promise) {
+    this.inFlightRequests.set(key, promise);
+    this.requestTimestamps.set(key, Date.now());
+
+    // Clean up when request completes (success or error)
+    promise
+      .then(() => {
+        // Small delay before cleanup to allow other duplicate requests to reuse
+        setTimeout(() => {
+          this.inFlightRequests.delete(key);
+          this.requestTimestamps.delete(key);
+        }, 100);
+      })
+      .catch(() => {
+        // Clean up immediately on error
+        this.inFlightRequests.delete(key);
+        this.requestTimestamps.delete(key);
+      });
+  }
+
+  /**
+   * Start cleanup interval to remove stale requests
+   */
+  startCleanupInterval() {
+    if (typeof window !== 'undefined') {
+      setInterval(() => {
+        const now = Date.now();
+        const keysToDelete = [];
+
+        for (const [key, timestamp] of this.requestTimestamps.entries()) {
+          const age = now - timestamp;
+          // Remove requests older than deduplication window + 1 second buffer
+          if (age > this.deduplicationWindow + 1000) {
+            keysToDelete.push(key);
+          }
+        }
+
+        keysToDelete.forEach(key => {
+          this.inFlightRequests.delete(key);
+          this.requestTimestamps.delete(key);
+        });
+
+        if (keysToDelete.length > 0) {
+          logger.debug(`[DEDUP] Cleaned up ${keysToDelete.length} stale request(s)`);
+        }
+      }, this.cleanupInterval);
+    }
+  }
+
+  /**
+   * Clear all in-flight requests (useful for testing or reset)
+   */
+  clear() {
+    this.inFlightRequests.clear();
+    this.requestTimestamps.clear();
+  }
+
+  /**
+   * Get statistics about current in-flight requests
+   * @returns {Object} Statistics
+   */
+  getStats() {
+    return {
+      inFlightCount: this.inFlightRequests.size,
+      oldestRequest: this.requestTimestamps.size > 0
+        ? Math.min(...Array.from(this.requestTimestamps.values()))
+        : null
+    };
+  }
+}
+
 class NetworkService {
   constructor() {
     this.baseURL = currentConfig.apiUrl;
     this.timeout = 10000; // 10 seconds
     this.maxRetries = 3;
     this.retryDelay = 1000; // 1 second
+    // Initialize request deduplicator
+    this.deduplicator = new RequestDeduplicator();
   }
 
-  // Main request method with error handling
+  // Main request method with error handling and deduplication
   async request(endpoint, options = {}) {
     const {
       method = 'GET',
       body = null,
       headers = {},
       timeout = this.timeout,
-      retries = this.maxRetries
+      retries = this.maxRetries,
+      skipDeduplication = false // Allow opt-out for specific requests
     } = options;
 
     const url = `${this.baseURL}${endpoint}`;
@@ -42,12 +188,34 @@ class NetworkService {
       timeout
     };
 
+    let bodyString = null;
     if (body && method !== 'GET') {
       // Sanitize request body
       const sanitizedBody = ApiSecurityMiddleware.sanitizeRequestData(body);
-      requestOptions.body = JSON.stringify(sanitizedBody);
+      bodyString = JSON.stringify(sanitizedBody);
+      requestOptions.body = bodyString;
     }
 
+    // Check for duplicate request (unless deduplication is skipped)
+    if (!skipDeduplication) {
+      const requestKey = this.deduplicator.generateRequestKey(method, url, bodyString);
+      const existingRequest = this.deduplicator.getInFlightRequest(requestKey);
+      
+      if (existingRequest) {
+        logger.debug(`[DEDUP] Deduplicating request: ${method} ${endpoint}`);
+        return existingRequest;
+      }
+
+      // Create the request promise
+      const requestPromise = this.executeRequest(url, requestOptions, retries);
+      
+      // Register it for deduplication
+      this.deduplicator.registerRequest(requestKey, requestPromise);
+      
+      return requestPromise;
+    }
+
+    // Skip deduplication for this request
     return this.executeRequest(url, requestOptions, retries);
   }
 
@@ -139,6 +307,7 @@ class NetworkService {
   // Check network connectivity
   async checkConnectivity() {
     try {
+      // Skip deduplication for health checks
       const response = await this.fetchWithTimeout(`${this.baseURL}/health`, {
         method: 'GET',
         timeout: 5000
@@ -149,6 +318,22 @@ class NetworkService {
       logger.warn('Network connectivity check failed:', error.message);
       return false;
     }
+  }
+
+  /**
+   * Get deduplication statistics (useful for debugging)
+   * @returns {Object} Deduplication stats
+   */
+  getDeduplicationStats() {
+    return this.deduplicator.getStats();
+  }
+
+  /**
+   * Clear all in-flight requests (useful for testing or reset)
+   */
+  clearDeduplicationCache() {
+    this.deduplicator.clear();
+    logger.debug('[DEDUP] Cleared deduplication cache');
   }
 
   // Upload file with progress tracking

@@ -36,7 +36,7 @@ const TAB_CONFIG = [
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const AnimatedVerticalFlatList = Animated.createAnimatedComponent(FlatList);
 
-const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, isActive, isPerfilTabActive, storyCardSnap }) => {
+const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, isActive, isPerfilTabActive, storyCardSnap, storyCardSpacing = 4, styles }) => {
   const cardWidth = storyCardSnap;
   const inputRange = [
     (index - 1) * cardWidth,
@@ -142,6 +142,8 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
     }
   };
 
+  if (!styles) return null;
+
   return (
     <Animated.View
       style={[
@@ -149,7 +151,7 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
         {
           transform: [{ scale }],
           opacity,
-          marginRight: isLast ? 0 : STORY_CARD_SPACING,
+          marginRight: isLast ? 0 : storyCardSpacing,
         },
       ]}
     >
@@ -1929,6 +1931,8 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                             scrollValue={storyScrollX}
                             onLinkPress={handleStoryCardPress}
                             storyCardSnap={STORY_CARD_SNAP}
+                            storyCardSpacing={STORY_CARD_SPACING}
+                            styles={styles}
                             isActive={index === storyActiveIndex}
                             isPerfilTabActive={currentTabIndex === 0}
                           />
@@ -1939,6 +1943,10 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                           index,
                         })}
                         initialScrollIndex={storyCardsWithFallback.length > 1 ? 1 : 0}
+                        removeClippedSubviews={true}
+                        maxToRenderPerBatch={5}
+                        windowSize={5}
+                        initialNumToRender={3}
                         onScrollToIndexFailed={(info) => {
                           const safeIndex = Math.min(
                             info.index,

@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -49,13 +50,15 @@ const ProfileScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  const user = contextUser || auth.currentUser;
   const [loading, setLoading] = useState(true); // Start with true for initial profile load
   const [profileLoading, setProfileLoading] = useState(true); // Separate state for profile data loading
   
   // Settings modal state
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [isSignOutConfirmModalVisible, setIsSignOutConfirmModalVisible] = useState(false);
   
   // Delete account state
   const [isDeleteAccountModalVisible, setIsDeleteAccountModalVisible] = useState(false);
@@ -268,18 +271,28 @@ const ProfileScreen = ({ navigation }) => {
       try {
         const userData = await hybridDataService.loadUserProfile(user.uid);
         
-        // Load profile data
+        // Load profile data - normalize types for consistent comparison
         const profileData = {
-          displayName: userData?.displayName || '',
-          username: userData?.username || user?.email?.split('@')[0] || '',
-          email: user?.email || '',
-          phoneNumber: userData?.phoneNumber || '',
-          gender: userData?.gender || '',
-          bodyweight: userData?.bodyweight || null,
-          height: userData?.height || null,
+          displayName: (userData?.displayName || '').trim(),
+          username: (userData?.username || user?.email?.split('@')[0] || '').trim(),
+          email: (user?.email || '').trim(),
+          phoneNumber: (userData?.phoneNumber || '').trim(),
+          gender: (userData?.gender || '').trim(),
+          // Normalize bodyweight and height - convert to numbers or null
+          bodyweight: userData?.bodyweight ? (typeof userData.bodyweight === 'string' ? parseFloat(userData.bodyweight) : userData.bodyweight) : null,
+          height: userData?.height ? (typeof userData.height === 'string' ? parseFloat(userData.height) : userData.height) : null,
         };
         setUserProfile(profileData);
-        setOriginalProfile(profileData);
+        // Set originalProfile to match exactly - this is the baseline for change detection
+        setOriginalProfile({
+          displayName: profileData.displayName,
+          username: profileData.username,
+          email: profileData.email,
+          phoneNumber: profileData.phoneNumber,
+          gender: profileData.gender,
+          bodyweight: profileData.bodyweight,
+          height: profileData.height,
+        });
       } catch (error) {
         logger.error('Error loading user data:', error);
       }
@@ -287,9 +300,44 @@ const ProfileScreen = ({ navigation }) => {
   };
 
 
+  // Helper function to normalize values for comparison
+  const normalizeValue = (value, isNumeric = false) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '') return null;
+      // If it's a numeric field, try to convert to number
+      if (isNumeric) {
+        const num = parseFloat(trimmed);
+        return isNaN(num) ? null : num;
+      }
+      return trimmed;
+    }
+    if (typeof value === 'number') {
+      return isNaN(value) ? null : value;
+    }
+    return value;
+  };
+
+  // Helper function to compare two values (handles type mismatches)
+  const valuesAreEqual = (val1, val2, isNumeric = false) => {
+    const normalized1 = normalizeValue(val1, isNumeric);
+    const normalized2 = normalizeValue(val2, isNumeric);
+    return normalized1 === normalized2;
+  };
+
   // Check if profile has changed
   const hasProfileChanges = () => {
-    const hasChanges = JSON.stringify(userProfile) !== JSON.stringify(originalProfile);
+    // Compare each field individually with normalization
+    const displayNameChanged = !valuesAreEqual(userProfile.displayName, originalProfile.displayName);
+    const usernameChanged = !valuesAreEqual(userProfile.username, originalProfile.username);
+    const emailChanged = !valuesAreEqual(userProfile.email, originalProfile.email);
+    const phoneNumberChanged = !valuesAreEqual(userProfile.phoneNumber, originalProfile.phoneNumber);
+    const genderChanged = !valuesAreEqual(userProfile.gender, originalProfile.gender);
+    const bodyweightChanged = !valuesAreEqual(userProfile.bodyweight, originalProfile.bodyweight, true);
+    const heightChanged = !valuesAreEqual(userProfile.height, originalProfile.height, true);
+    
+    const hasChanges = displayNameChanged || usernameChanged || emailChanged || phoneNumberChanged || genderChanged || bodyweightChanged || heightChanged;
     const hasValidUsername = !usernameError && userProfile.username.length >= 3;
     return hasChanges && hasValidUsername;
   };
@@ -360,6 +408,11 @@ const ProfileScreen = ({ navigation }) => {
 
   // Handle profile picture change
   const handleChangeProfilePicture = async () => {
+    if (!user?.uid) {
+      logger.warn('Profile picture change skipped: no user');
+      Alert.alert('Error', 'No se pudo identificar tu sesión. Intenta cerrar sesión y volver a entrar.');
+      return;
+    }
     try {
       setLoading(true);
       const newPictureUrl = await profilePictureService.pickAndUploadProfilePicture(user.uid);
@@ -389,6 +442,20 @@ const ProfileScreen = ({ navigation }) => {
   const showSettingsModal = async () => {
     // Load data when modal opens
     await loadUserData();
+    // After loading, ensure originalProfile matches current userProfile exactly
+    // This prevents false positives when comparing for changes
+    setOriginalProfile(prev => {
+      const normalized = {
+        displayName: (userProfile.displayName || '').trim(),
+        username: (userProfile.username || '').trim(),
+        email: (userProfile.email || '').trim(),
+        phoneNumber: (userProfile.phoneNumber || '').trim(),
+        gender: (userProfile.gender || '').trim(),
+        bodyweight: userProfile.bodyweight ? (typeof userProfile.bodyweight === 'string' ? parseFloat(userProfile.bodyweight) : userProfile.bodyweight) : null,
+        height: userProfile.height ? (typeof userProfile.height === 'string' ? parseFloat(userProfile.height) : userProfile.height) : null,
+      };
+      return normalized;
+    });
     setIsSettingsModalVisible(true);
   };
 
@@ -454,13 +521,40 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    logger.log('🔐 handleSignOut called - showing confirmation modal');
+    setIsSignOutConfirmModalVisible(true);
+  };
+
+  const handleSignOutConfirm = async () => {
+    logger.log('🔐 User confirmed sign out');
     try {
+      setIsSignOutConfirmModalVisible(false);
+      // Close the settings modal first
+      hideSettingsModal();
+      
+      // Sign out user
       await authService.signOutUser();
-      Alert.alert('Éxito', 'Has cerrado sesión correctamente');
+      logger.log('🔐 Sign out successful');
+      
+      // On web, force immediate page reload after sign out
+      // This ensures the app restarts and shows the login screen
+      if (typeof window !== 'undefined') {
+        logger.log('🌐 Web detected - AppNavigator will reload page to show login');
+        // AppNavigator will handle the reload in its useEffect
+      } else {
+        // On native, AppNavigator will handle navigation reset
+        logger.log('📱 Native - AppNavigator will handle navigation to Auth screen');
+      }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo cerrar sesión');
+      logger.error('❌ Error signing out:', error);
+      Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
     }
+  };
+
+  const handleSignOutCancel = () => {
+    logger.log('🔐 Sign out cancelled');
+    setIsSignOutConfirmModalVisible(false);
   };
 
   // Handle delete account request
@@ -720,7 +814,7 @@ const ProfileScreen = ({ navigation }) => {
                   <TextInput
                     style={[
                       styles.textInput,
-                      userProfile.displayName !== originalProfile.displayName && styles.textInputChanged
+                      !valuesAreEqual(userProfile.displayName, originalProfile.displayName) && styles.textInputChanged
                     ]}
                     value={userProfile.displayName}
                     onChangeText={(value) => updateProfileField('displayName', value)}
@@ -740,7 +834,7 @@ const ProfileScreen = ({ navigation }) => {
                       <TextInput
                         style={[
                           styles.textInput,
-                          userProfile.bodyweight !== originalProfile.bodyweight && styles.textInputChanged
+                          !valuesAreEqual(userProfile.bodyweight, originalProfile.bodyweight, true) && styles.textInputChanged
                         ]}
                         value={userProfile.bodyweight?.toString() || ''}
                         onChangeText={(value) => updateProfileField('bodyweight', value)}
@@ -757,7 +851,7 @@ const ProfileScreen = ({ navigation }) => {
                       <TextInput
                         style={[
                           styles.textInput,
-                          userProfile.height !== originalProfile.height && styles.textInputChanged
+                          !valuesAreEqual(userProfile.height, originalProfile.height, true) && styles.textInputChanged
                         ]}
                         value={userProfile.height?.toString() || ''}
                         onChangeText={(value) => updateProfileField('height', value)}
@@ -779,7 +873,7 @@ const ProfileScreen = ({ navigation }) => {
                     style={[
                       styles.textInput,
                       usernameError && styles.textInputError,
-                      userProfile.username !== originalProfile.username && !usernameError && styles.textInputChanged
+                      !valuesAreEqual(userProfile.username, originalProfile.username) && !usernameError && styles.textInputChanged
                     ]}
                     value={userProfile.username}
                     onChangeText={(value) => updateProfileField('username', value)}
@@ -790,13 +884,13 @@ const ProfileScreen = ({ navigation }) => {
                     onSubmitEditing={Keyboard.dismiss}
                     blurOnSubmit={true}
                   />
-                  {userProfile.username !== originalProfile.username && isCheckingUsername && (
+                  {!valuesAreEqual(userProfile.username, originalProfile.username) && isCheckingUsername && (
                     <Text style={styles.checkingText}>Verificando disponibilidad...</Text>
                   )}
-                  {userProfile.username !== originalProfile.username && usernameError && (
+                  {!valuesAreEqual(userProfile.username, originalProfile.username) && usernameError && (
                     <Text style={styles.errorText}>{usernameError}</Text>
                   )}
-                  {userProfile.username !== originalProfile.username && !usernameError && userProfile.username.length >= 3 && (
+                  {!valuesAreEqual(userProfile.username, originalProfile.username) && !usernameError && userProfile.username.length >= 3 && (
                     <Text style={styles.successText}>✓ Usuario disponible</Text>
                   )}
                 </View>
@@ -807,7 +901,7 @@ const ProfileScreen = ({ navigation }) => {
                   <TextInput
                     style={[
                       styles.textInput,
-                      userProfile.email !== originalProfile.email && styles.textInputChanged
+                      !valuesAreEqual(userProfile.email, originalProfile.email) && styles.textInputChanged
                     ]}
                     value={userProfile.email}
                     onChangeText={(value) => updateProfileField('email', value)}
@@ -827,7 +921,7 @@ const ProfileScreen = ({ navigation }) => {
                   <TextInput
                     style={[
                       styles.textInput,
-                      userProfile.phoneNumber !== originalProfile.phoneNumber && styles.textInputChanged
+                      !valuesAreEqual(userProfile.phoneNumber, originalProfile.phoneNumber) && styles.textInputChanged
                     ]}
                     value={userProfile.phoneNumber}
                     onChangeText={(value) => updateProfileField('phoneNumber', value)}
@@ -845,21 +939,21 @@ const ProfileScreen = ({ navigation }) => {
                   <TouchableOpacity
                     style={[
                       styles.dropdownButton,
-                      userProfile.gender !== originalProfile.gender && userProfile.gender && styles.dropdownButtonSelected
+                      !valuesAreEqual(userProfile.gender, originalProfile.gender) && userProfile.gender && styles.dropdownButtonSelected
                     ]}
                     onPress={() => setIsGenderDropdownOpen(!isGenderDropdownOpen)}
                   >
                     <Text style={[
                       styles.dropdownButtonText,
                       !userProfile.gender && styles.dropdownPlaceholder,
-                      userProfile.gender !== originalProfile.gender && userProfile.gender && styles.dropdownButtonTextSelected
+                      !valuesAreEqual(userProfile.gender, originalProfile.gender) && userProfile.gender && styles.dropdownButtonTextSelected
                     ]}>
                       {userProfile.gender || 'Selecciona tu género'}
                     </Text>
                     <SvgChevronRight 
                       width={16} 
                       height={16} 
-                      stroke={userProfile.gender !== originalProfile.gender && userProfile.gender ? 'rgba(191, 168, 77, 1)' : '#ffffff'}
+                      stroke={!valuesAreEqual(userProfile.gender, originalProfile.gender) && userProfile.gender ? 'rgba(191, 168, 77, 1)' : '#ffffff'}
                       style={[
                         styles.dropdownChevron,
                         isGenderDropdownOpen && styles.dropdownChevronRotated
@@ -920,15 +1014,55 @@ const ProfileScreen = ({ navigation }) => {
                     onPress={saveProfile}
                     disabled={settingsLoading || !hasProfileChanges()}
                   >
-                    <Text style={[
-                      styles.updateProfileButtonText,
-                      !hasProfileChanges() && styles.updateProfileButtonTextDisabled
-                    ]}>
+                    <Text 
+                      style={[
+                        styles.updateProfileButtonText,
+                        !hasProfileChanges() && styles.updateProfileButtonTextDisabled
+                      ]}
+                      numberOfLines={1}
+                    >
                       {settingsLoading ? 'Actualizando...' : 'Actualizar Perfil'}
                     </Text>
                   </TouchableOpacity>
                 </View>
               </KeyboardAvoidingView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Sign Out Confirmation Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isSignOutConfirmModalVisible}
+        onRequestClose={handleSignOutCancel}
+      >
+        <TouchableWithoutFeedback onPress={handleSignOutCancel} accessible={false}>
+          <View style={styles.signOutConfirmModalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <View style={styles.signOutConfirmModalContent}>
+                <Text style={styles.signOutConfirmModalTitle}>Cerrar Sesión</Text>
+                <Text style={styles.signOutConfirmModalMessage}>
+                  ¿Estás seguro de que deseas cerrar sesión?
+                </Text>
+                <View style={styles.signOutConfirmButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.signOutConfirmCancelButton}
+                    onPress={handleSignOutCancel}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.signOutConfirmCancelButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.signOutConfirmButton}
+                    onPress={handleSignOutConfirm}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.signOutConfirmButtonText}>Cerrar Sesión</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1577,25 +1711,31 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: '#2a2a2a',
   },
   signOutButtonInModal: {
-    backgroundColor: '#ff4444',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 20,
     marginTop: 20,
     marginHorizontal: 20,
+    marginBottom: 10,
     alignItems: 'center',
+    alignSelf: 'center',
+    width: '70%',
+    maxWidth: 250,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   signOutTextInModal: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#cccccc',
+    fontSize: 14,
+    fontWeight: '500',
   },
   deleteAccountButtonInModal: {
-    backgroundColor: 'rgba(220, 53, 69, 0.2)',
+    backgroundColor: 'rgba(220, 53, 69, 0.1)',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    marginTop: 30,
+    marginTop: 10,
     marginHorizontal: 20,
     marginBottom: 20,
     alignItems: 'center',
@@ -1603,12 +1743,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     width: '70%',
     maxWidth: 250,
     borderWidth: 1,
-    borderColor: '#dc3545',
+    borderColor: 'rgba(220, 53, 69, 0.5)',
   },
   deleteAccountTextInModal: {
-    color: '#dc3545',
-    fontSize: 16,
-    fontWeight: '600',
+    color: 'rgba(220, 53, 69, 0.9)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   deleteAccountTextDisabled: {
     color: '#666666',
@@ -1769,6 +1909,75 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Sign Out Confirmation Modal Styles
+  signOutConfirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  signOutConfirmModalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  signOutConfirmModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  signOutConfirmModalMessage: {
+    fontSize: 14,
+    color: '#cccccc',
+    lineHeight: 20,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  signOutConfirmButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  signOutConfirmCancelButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#2a2a2a',
+  },
+  signOutConfirmCancelButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  signOutConfirmButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    backgroundColor: '#ff4444',
+  },
+  signOutConfirmButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
   },
   // Reasons Selection Styles
   reasonsContainer: {
@@ -1940,7 +2149,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingHorizontal: 40,
     borderRadius: 12,
     alignItems: 'center',
-    width: 200,
+    minWidth: 280,
   },
   updateProfileButtonDisabled: {
     backgroundColor: '#3a3a3a',

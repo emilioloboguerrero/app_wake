@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
 import { FixedWakeHeader } from '../components/WakeHeader';
@@ -38,7 +38,9 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
     () => createStyles(screenWidth, screenHeight),
     [screenWidth, screenHeight],
   );
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  // Fallback to Firebase auth when AuthContext user isn't ready yet (e.g. web/IndexedDB restore)
+  const user = contextUser || auth.currentUser;
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(null);
@@ -56,17 +58,14 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    loadAvailableWeeks();
     const currentWeekKey = getMondayWeek();
     setCurrentWeek(currentWeekKey);
-    
-    // Debug: Log what week October 18th should be
-    const testDate = new Date(2025, 9, 18); // October 18, 2025 (month is 0-indexed)
-    const testWeek = getMondayWeek(testDate);
-    logger.log('🔍 DEBUG: October 18, 2025 should be in week:', testWeek);
-    logger.log('🔍 DEBUG: Current week calculation:', currentWeekKey);
-    logger.log('🔍 DEBUG: Current week display:', formatWeekDisplay(currentWeekKey));
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    loadAvailableWeeks();
+  }, [user?.uid]);
 
   useEffect(() => {
     if (selectedWeek) {
@@ -74,7 +73,20 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
     }
   }, [selectedWeek]);
 
+  // Log user/id when volume section is shown (to verify userId is passed correctly to WeeklyMuscleVolumeCard)
+  useEffect(() => {
+    if (selectedWeek && user) {
+      logger.log('[WeeklyVolumeHistoryScreen] User for volume card:', { hasUser: true, uid: user.uid });
+    } else if (selectedWeek) {
+      logger.warn('[WeeklyVolumeHistoryScreen] Volume section visible but no user:', { selectedWeek });
+    }
+  }, [selectedWeek, user]);
+
   const loadAvailableWeeks = async () => {
+    if (!user?.uid) {
+      logger.warn('[WeeklyVolumeHistoryScreen] loadAvailableWeeks skipped – no user');
+      return;
+    }
     try {
       setLoading(true);
       const userDocRef = doc(firestore, 'users', user.uid);
@@ -117,8 +129,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         // Generate all weeks from start date to current week
         const allWeeks = getWeeksBetween(startDate, new Date());
         
-        // Sort them (oldest first, newest last)
-        const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
+        // Sort newest first so current week appears at top of week selector
+        const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
         
         setAvailableWeeks(weeks);
         
@@ -133,7 +145,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - (12 * 7));
         const allWeeks = getWeeksBetween(startDate, new Date());
-        const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
+        const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
         setAvailableWeeks(weeks);
         setSelectedWeek(currentWeekKey);
         logger.log('✅ No data found, showing last 12 weeks:', weeks.length);
@@ -145,7 +157,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - (12 * 7));
       const allWeeks = getWeeksBetween(startDate, new Date());
-      const weeks = allWeeks.sort((a, b) => a.localeCompare(b));
+      const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
       setAvailableWeeks(weeks);
       setSelectedWeek(currentWeekKey);
       logger.log('✅ Error fallback, showing last 12 weeks:', weeks.length);

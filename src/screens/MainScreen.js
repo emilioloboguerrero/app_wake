@@ -40,8 +40,6 @@ import assetBundleService from '../services/assetBundleService';
 
 import logger from '../utils/logger.js';
 import { trackScreenView } from '../services/monitoringService';
-// Debug: Log library image import
-logger.log('📚 Library image imported:', libraryImage);
 
 // Responsive dimensions - keep original mobile proportions
 // Cards should be larger - make them about 85% of screen width
@@ -1804,7 +1802,7 @@ const MainScreen = ({ navigation, route }) => {
                         initialNumToRender={2}
                         maxToRenderPerBatch={3}
                         windowSize={5}
-                        removeClippedSubviews={false}
+                        removeClippedSubviews={true}
                         updateCellsBatchingPeriod={50}
                       />
                       {/* Pagination indicators positioned directly below cards */}

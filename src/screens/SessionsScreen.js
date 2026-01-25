@@ -445,6 +445,19 @@ const SessionsScreen = ({ navigation }) => {
         maxToRenderPerBatch={10} // Render 10 items per batch
         windowSize={10} // Keep 10 screens worth of items in memory
         initialNumToRender={PAGE_SIZE} // Initial render count
+        getItemLayout={useMemo(() => {
+          // Calculate item height: card padding + content + separator
+          const cardPadding = Math.max(20, screenWidth * 0.05) * 2; // top + bottom
+          const cardContent = Math.max(60, screenHeight * 0.08); // estimated content height
+          const separatorHeight = Math.max(8, screenHeight * 0.015);
+          const itemHeight = cardPadding + cardContent + separatorHeight;
+          
+          return (data, index) => ({
+            length: itemHeight,
+            offset: itemHeight * index,
+            index,
+          });
+        }, [screenWidth, screenHeight])}
       />
     </SafeAreaView>
   );

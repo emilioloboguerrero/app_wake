@@ -1,6 +1,7 @@
 // Web wrapper for AllPurchasedCoursesScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { NavigationContainer } from '@react-navigation/native';
 // Import the base component - use the same pattern as MainScreen and LoginScreen
 // Metro should resolve AllPurchasedCoursesScreen.js (not .web.js) when we use explicit .js extension
 const AllPurchasedCoursesScreenModule = require('./AllPurchasedCoursesScreen.js');
@@ -42,7 +43,12 @@ const AllPurchasedCoursesScreen = () => {
     params: {}
   };
 
-  return <AllPurchasedCoursesScreenBase navigation={navigation} route={route} />;
+  // Wrap in NavigationContainer so base screen's useFocusEffect has a context and doesn't throw
+  return (
+    <NavigationContainer independent={true}>
+      <AllPurchasedCoursesScreenBase navigation={navigation} route={route} />
+    </NavigationContainer>
+  );
 };
 
 export default AllPurchasedCoursesScreen;

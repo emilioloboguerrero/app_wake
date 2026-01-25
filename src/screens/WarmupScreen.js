@@ -311,6 +311,16 @@ const WarmupScreen = ({ navigation, route }) => {
     logger.log('Current exercise:', currentExercise);
   }, [videoSource, currentExercise]);
 
+  // Track if component is mounted for setTimeout cleanup
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  
   // Sync video with timer state - memoized callback
   const syncVideoWithTimer = useCallback(() => {
     if (videoPlayer) {
@@ -320,9 +330,13 @@ const WarmupScreen = ({ navigation, route }) => {
           logger.log('Playing video');
           videoPlayer.play();
           // Add a small delay to ensure video starts
-          setTimeout(() => {
-            logger.log('Video should be playing now');
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              logger.log('Video should be playing now');
+            }
           }, 100);
+          // Note: This timeout is in a callback, cleanup is handled by component unmount check
+          return () => clearTimeout(timeoutId);
         } else {
           logger.log('Pausing video');
           videoPlayer.pause();

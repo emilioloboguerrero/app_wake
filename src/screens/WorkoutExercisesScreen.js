@@ -166,8 +166,8 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
             {/* Data rows */}
             {exercise.sets?.map((set, setIndex) => (
               <View key={setIndex} style={styles.setTrackingRow}>
-                <View style={styles.setNumberContainer}>
-                  <Text style={styles.setNumber}>{setIndex + 1}</Text>
+                <View style={styles.setNumberWrapper}>
+                  <Text style={styles.setNumberLikeExercise}>{setIndex + 1}</Text>
                 </View>
                 <View style={styles.setInputsContainer}>
                   {objectivesFields.map((field, fieldIndex) => {
@@ -850,8 +850,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   setsContainer: {
     paddingHorizontal: Math.max(16, screenWidth * 0.04),
     paddingBottom: Math.max(16, screenWidth * 0.04),
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   setTrackingRow: {
     flexDirection: 'row',
@@ -862,19 +860,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     width: Math.max(32, screenWidth * 0.08),
     marginRight: 12,
   },
-  setNumberContainer: {
+  setNumberWrapper: {
     width: Math.max(32, screenWidth * 0.08),
-    height: Math.max(32, screenWidth * 0.08),
-    borderRadius: Math.max(16, screenWidth * 0.04),
-    backgroundColor: '#007AFF',
+    marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  setNumber: {
+  setNumberLikeExercise: {
+    fontSize: Math.min(screenWidth * 0.055, 22),
+    fontWeight: '700',
     color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 14),
-    fontWeight: '600',
   },
   setInputsContainer: {
     flex: 1,
@@ -904,13 +899,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingBottom: Math.max(20, screenHeight * 0.025),
     paddingTop: Math.max(16, screenHeight * 0.02),
     backgroundColor: '#1a1a1a',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   primaryButton: {
     backgroundColor: 'rgba(191, 168, 77, 0.2)',
     borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
+    height: Math.max(50, screenHeight * 0.06),
+    width: Math.max(280, screenWidth * 0.7),
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
   },

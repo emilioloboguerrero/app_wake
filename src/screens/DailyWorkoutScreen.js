@@ -77,6 +77,8 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   const { course } = route.params;
   const { user: contextUser } = useAuth();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
+  // Track failed image loads to show fallbacks
+  const [failedImages, setFailedImages] = React.useState(new Set());
   
   // Memoized streak display component - SMALLER for overlay
   // Moved inside component to access styles
@@ -558,12 +560,20 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
         activeOpacity={0.7}
       >
         {/* Session Thumbnail */}
-        {session.image_url ? (
+        {session.image_url && !failedImages.has(`session-${session.id}`) ? (
           <ExpoImage
             source={{ uri: session.image_url }}
             style={styles.sessionThumbnail}
             contentFit="cover"
             cachePolicy="memory-disk"
+            onError={(error) => {
+              logger.error('❌ Error loading session thumbnail:', {
+                sessionId: session.id,
+                imageUrl: session.image_url,
+                error: error?.message || error
+              });
+              setFailedImages(prev => new Set(prev).add(`session-${session.id}`));
+            }}
           />
         ) : (
           <View style={styles.sessionThumbnailPlaceholder}>
@@ -708,7 +718,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
               </View>
             ) : sessionState.workout ? (
                 <>
-                  {sessionState.workout.image_url ? (
+                  {sessionState.workout.image_url && !failedImages.has(`workout-${sessionState.workout.id}`) ? (
                       <View style={styles.sessionImageContainer}>
                       <ExpoImage
                         source={{ uri: sessionState.workout.image_url }}
@@ -716,6 +726,14 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                         contentFit="cover"
                         cachePolicy="memory-disk"
                         transition={200}
+                        onError={(error) => {
+                          logger.error('❌ Error loading workout image:', {
+                            workoutId: sessionState.workout.id,
+                            imageUrl: sessionState.workout.image_url,
+                            error: error?.message || error
+                          });
+                          setFailedImages(prev => new Set(prev).add(`workout-${sessionState.workout.id}`));
+                        }}
                       />
                         {/* Session Title Overlay - Bottom Left */}
                         <View style={styles.sessionTitleOverlay}>
@@ -800,7 +818,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                     initialNumToRender={5}
                     maxToRenderPerBatch={5}
                     windowSize={5}
-                    removeClippedSubviews={false}
+                    removeClippedSubviews={true}
                     style={{ overflow: 'visible' }}
                     contentContainerStyle={{ overflow: 'visible' }}
                     getItemLayout={(data, index) => ({

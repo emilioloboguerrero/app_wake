@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, ActivityIndicator } from 'react-native';
+import { getSessionDateAsDate } from '../utils/sessionFilter';
+import logger from '../utils/logger';
 
 const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -9,8 +11,9 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
     () => createStyles(screenWidth, screenHeight),
     [screenWidth, screenHeight],
   );
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
+  const formatDate = (dateValue) => {
+    const date = getSessionDateAsDate(dateValue);
+    if (!date) return '?';
     return date.toLocaleDateString('es-ES', {
       day: 'numeric',
       month: 'short'
@@ -60,6 +63,18 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
 
   const recentSessions = validSessions.slice(0, maxSessions);
 
+  logger.log('📊 ExerciseHistoryCard: sessions:', sessions?.length ?? 0, 'validSessions:', validSessions.length, 'recentSessions:', recentSessions.length);
+  if (sessions?.length > 0 && validSessions.length === 0) {
+    const first = sessions[0];
+    const firstSet = first.sets?.[0];
+    logger.warn('📊 ExerciseHistoryCard: No valid sessions – debug:', {
+      sessionsCount: sessions.length,
+      firstSessionHasSets: !!first.sets,
+      firstSessionSetsLength: first.sets?.length ?? 0,
+      firstSet: firstSet ? { reps: firstSet.reps, weight: firstSet.weight, intensity: firstSet.intensity } : null
+    });
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -81,7 +96,7 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
               contentContainerStyle={styles.scrollContent}
             >
               {recentSessions.map((session, index) => (
-                <SessionCard key={`${session.sessionId}-${index}`} session={session} index={index} />
+                <SessionCard key={`${session.sessionId}-${index}`} session={session} index={index} styles={styles} />
               ))}
             </ScrollView>
             {recentSessions.length > 2 && (
@@ -95,9 +110,10 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
   );
 };
 
-const SessionCard = ({ session, index }) => {
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
+const SessionCard = ({ session, index, styles }) => {
+  const formatDate = (dateValue) => {
+    const date = getSessionDateAsDate(dateValue);
+    if (!date) return '?';
     return date.toLocaleDateString('es-ES', {
       day: 'numeric',
       month: 'short'
@@ -139,7 +155,7 @@ const SessionCard = ({ session, index }) => {
   return (
     <View style={styles.sessionCard}>
       <View style={styles.sessionHeader}>
-        <Text style={styles.sessionDate}>{formatDate(session.date)}</Text>
+        <Text style={styles.sessionDate}>{formatDate(session.date || session.completedAt)}</Text>
       </View>
       
       <View style={styles.setsContainer}>

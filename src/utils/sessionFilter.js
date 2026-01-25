@@ -1,3 +1,19 @@
+/**
+ * Get a session's date as a JavaScript Date.
+ * Handles Firestore Timestamp { seconds, nanoseconds }, milliseconds, or ISO string.
+ */
+export const getSessionDateAsDate = (dateValue) => {
+  if (dateValue == null) return null;
+  if (dateValue && typeof dateValue.seconds === 'number') {
+    return new Date(dateValue.seconds * 1000);
+  }
+  if (typeof dateValue === 'number') {
+    return new Date(dateValue);
+  }
+  const d = new Date(dateValue);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // Utility function to filter sessions by time period
 export const filterSessionsByPeriod = (sessions, period) => {
   if (!sessions || sessions.length === 0) return sessions;
@@ -26,20 +42,21 @@ export const filterSessionsByPeriod = (sessions, period) => {
   }
   
   return sessions.filter(session => {
-    // Support both 'date' and 'completedAt' fields
     const dateValue = session.date || session.completedAt;
-    if (!dateValue) {
-      // If no date field, include the session (don't filter it out)
-      return true;
+    if (!dateValue) return true;
+
+    let sessionDate;
+    if (dateValue && typeof dateValue.seconds === 'number') {
+      sessionDate = new Date(dateValue.seconds * 1000);
+    } else if (dateValue && typeof dateValue.toDate === 'function') {
+      sessionDate = dateValue.toDate();
+    } else if (typeof dateValue === 'number') {
+      sessionDate = new Date(dateValue);
+    } else {
+      sessionDate = new Date(dateValue);
     }
-    
-    const sessionDate = new Date(dateValue);
-    // Check if date is valid
-    if (isNaN(sessionDate.getTime())) {
-      // Invalid date, include it anyway to avoid losing data
-      return true;
-    }
-    
+
+    if (isNaN(sessionDate.getTime())) return true;
     return sessionDate >= cutoffDate;
   });
 };

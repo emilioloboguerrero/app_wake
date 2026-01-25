@@ -15,6 +15,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
@@ -81,21 +82,34 @@ const PRsScreen = ({ navigation, route }) => {
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  const user = contextUser || auth.currentUser;
   const [estimates, setEstimates] = useState({});
   const [loading, setLoading] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    logger.log('[PRsScreen] User state:', {
+      hasContextUser: !!contextUser,
+      contextUserId: contextUser?.uid ?? 'null/undefined',
+      hasAuthCurrentUser: !!auth.currentUser,
+      authCurrentUserId: auth.currentUser?.uid ?? 'null/undefined',
+      resolvedHasUser: !!user,
+      resolvedUid: user?.uid ?? 'null/undefined',
+    });
+  }, [contextUser, user]);
+
   const loadEstimates = useCallback(async () => {
     if (!user?.uid) {
       logger.warn('⚠️ PRsScreen: Cannot load estimates - user not available');
+      setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      
+      logger.log('[PRsScreen] loadEstimates called for userId:', user.uid);
       // Fetch both PRs and exercise history in parallel
       const [estimates, allExerciseKeys] = await Promise.all([
         oneRepMaxService.getEstimatesForUser(user.uid),
@@ -130,6 +144,8 @@ const PRsScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (user?.uid) {
       loadEstimates();
+    } else {
+      setLoading(false);
     }
   }, [user?.uid, loadEstimates]);
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 
 // Import navigators
 import AuthNavigator from './AuthNavigator';
@@ -115,6 +116,23 @@ const AppNavigator = () => {
   logger.log('  - User profile:', userProfile ? 'loaded' : 'not loaded');
   logger.log('  - Onboarding completed:', userProfile?.onboardingCompleted);
 
+  // Memoize wrapped components to prevent recreation on every render
+  const WrappedOnboardingScreen = useMemo(
+    () => withErrorBoundary(
+      (props) => <OnboardingScreen {...props} onComplete={refreshUserProfile} />,
+      'OnboardingProfile'
+    ),
+    [refreshUserProfile]
+  );
+
+  const WrappedOnboardingNavigator = useMemo(
+    () => withErrorBoundary(
+      (props) => <OnboardingNavigator {...props} onComplete={refreshUserProfile} />,
+      'Onboarding'
+    ),
+    [refreshUserProfile]
+  );
+
   return (
     <NavigationContainer>
       <Stack.Navigator
@@ -129,17 +147,13 @@ const AppNavigator = () => {
           <Stack.Screen name="Auth" component={AuthNavigator} />
         ) : !userProfile ? (
           // User is authenticated but we haven't loaded their profile yet - show loading
-          <Stack.Screen name="Loading" component={LoadingScreen} />
+          <Stack.Screen name="Loading" component={withErrorBoundary(LoadingScreen, 'Loading')} />
         ) : (userProfile.onboardingCompleted === false && (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)) ? (
           // User hasn't completed base profile (or field missing) → show profile first
-          <Stack.Screen name="OnboardingProfile">
-            {(props) => <OnboardingScreen {...props} onComplete={refreshUserProfile} />}
-          </Stack.Screen>
+          <Stack.Screen name="OnboardingProfile" component={WrappedOnboardingScreen} />
         ) : userProfile.onboardingCompleted === false ? (
           // Base profile done, show the new multi-screen onboarding
-          <Stack.Screen name="Onboarding">
-            {(props) => <OnboardingNavigator {...props} onComplete={refreshUserProfile} />}
-          </Stack.Screen>
+          <Stack.Screen name="Onboarding" component={WrappedOnboardingNavigator} />
         ) : (
           // User is authenticated and has completed onboarding - show main app
           <Stack.Screen name="MainApp" component={MainTabNavigator} />

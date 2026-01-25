@@ -380,7 +380,13 @@ class LibraryResolutionService {
               librarySessionRef: sessionId
             };
           } catch (error) {
-            logger.error(`Error resolving library session ${sessionId}:`, error);
+            // Check if it's a "not found" error - these are handled gracefully
+            const isNotFoundError = error?.message?.includes('not found');
+            if (isNotFoundError) {
+              logger.warn(`⚠️ Library session ${sessionId} not found (handled gracefully)`);
+            } else {
+              logger.error(`Error resolving library session ${sessionId}:`, error);
+            }
             return null;
           }
         })
@@ -536,7 +542,12 @@ class LibraryResolutionService {
 
       return resolvedSession;
     } catch (error) {
-      logger.error('Error resolving library session:', error);
+      // For "not found" errors, don't log here - let the caller handle logging
+      // since these are expected and handled gracefully
+      const isNotFoundError = error?.message?.includes('not found');
+      if (!isNotFoundError) {
+        logger.error('Error resolving library session:', error);
+      }
       throw error;
     }
   }

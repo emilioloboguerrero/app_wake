@@ -16,6 +16,8 @@ import TextInput from '../components/TextInput';
 // import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
+import { isAdmin, isCreator } from '../utils/roleHelper';
+import { auth } from '../config/firebase';
 import hybridDataService from '../services/hybridDataService';
 import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
@@ -35,20 +37,46 @@ const ProgramLibraryScreen = ({ navigation }) => {
   
   // FALLBACK: If AuthContext doesn't have user, check Firebase directly
   const [fallbackUser, setFallbackUser] = React.useState(null);
+  const [userRole, setUserRole] = React.useState('user');
+  
   React.useEffect(() => {
+    logger.log(`🔐 [ProgramLibraryScreen] Auth state - contextUser.uid=${contextUser?.uid}, auth.currentUser.uid=${auth.currentUser?.uid}`);
+    
     if (!contextUser) {
       // Try to get user directly from Firebase as fallback
-      import('../config/firebase').then(({ auth }) => {
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          logger.log('⚠️ ProgramLibraryScreen: Using fallback Firebase user (AuthContext failed)');
-          setFallbackUser(firebaseUser);
-        }
-      });
+      const firebaseUser = auth.currentUser;
+      if (firebaseUser) {
+        logger.log('⚠️ [ProgramLibraryScreen] Using fallback Firebase user (AuthContext failed)');
+        setFallbackUser(firebaseUser);
+      }
     }
   }, [contextUser]);
   
   const user = contextUser || fallbackUser;
+  
+  // Fetch user role when user becomes available
+  React.useEffect(() => {
+    const fetchUserRole = async () => {
+      const effectiveUser = user || auth.currentUser;
+      if (!effectiveUser?.uid) {
+        logger.log('⚠️ [ProgramLibraryScreen] No user available for role fetch');
+        return;
+      }
+      
+      try {
+        logger.log(`🔍 [ProgramLibraryScreen] Fetching user role for uid=${effectiveUser.uid}`);
+        const userDoc = await firestoreService.getUser(effectiveUser.uid);
+        const role = userDoc?.role || 'user';
+        logger.log(`✅ [ProgramLibraryScreen] User role fetched: ${role} (uid=${effectiveUser.uid})`);
+        setUserRole(role);
+      } catch (error) {
+        logger.error('❌ [ProgramLibraryScreen] Error fetching user role:', error);
+        setUserRole('user'); // Default to user on error
+      }
+    };
+    
+    fetchUserRole();
+  }, [user?.uid]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -88,11 +116,15 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   // Check for tutorials to show (defined before fetchCourses since fetchCourses calls it)
   const checkForTutorials = useCallback(async () => {
-    if (!user?.uid) return;
+    const effectiveUser = user || auth.currentUser;
+    if (!effectiveUser?.uid) {
+      logger.log('⚠️ [ProgramLibraryScreen] No user available for tutorials check');
+      return;
+    }
 
     try {
-      logger.log('🎬 Checking for library screen tutorials...');
-      const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'library');
+      logger.log(`🎬 [ProgramLibraryScreen] Checking for library screen tutorials for user: ${effectiveUser.uid}`);
+      const tutorials = await tutorialManager.getTutorialsForScreen(effectiveUser.uid, 'library');
       
       if (tutorials.length > 0) {
         logger.log('📚 Found tutorials to show:', tutorials.length);
@@ -103,7 +135,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
         logger.log('✅ No tutorials to show for library screen');
       }
     } catch (error) {
-      logger.error('❌ Error checking for tutorials:', error);
+      logger.error('❌ [ProgramLibraryScreen] Error checking for tutorials:', error);
     }
   }, [user?.uid]);
 
@@ -112,9 +144,13 @@ const ProgramLibraryScreen = ({ navigation }) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      logger.log('🔍 Loading courses for user...');
+      // Get effective user (from context or Firebase auth)
+      const effectiveUser = user || auth.currentUser;
       
-      if (!user?.uid) {
+      logger.log(`🔍 [ProgramLibraryScreen] Loading courses - effectiveUser.uid=${effectiveUser?.uid}, userRole=${userRole}, contextUser.uid=${contextUser?.uid}, fallbackUser.uid=${fallbackUser?.uid}`);
+      
+      if (!effectiveUser?.uid) {
+        logger.log('⚠️ [ProgramLibraryScreen] No user available, showing error');
         setState(prev => ({
           ...prev,
           courses: [],
@@ -125,15 +161,35 @@ const ProgramLibraryScreen = ({ navigation }) => {
         return;
       }
       
-      // Show ALL published courses to all users (catalog view)
-      logger.log('🔍 Loading all published courses...');
-      const allCourses = await firestoreService.getCourses(user.uid);
+      logger.log(`🔍 [ProgramLibraryScreen] Loading all courses for user: ${effectiveUser.uid}, role: ${userRole}`);
+      const allCourses = await firestoreService.getCourses(effectiveUser.uid);
+      logger.log(`📚 [ProgramLibraryScreen] Total courses fetched: ${allCourses.length}`);
       
-      // Filter to only published courses
-      const publishedCourses = allCourses.filter(course => course.status === 'published');
+      // Filter courses based on user role
+      let filteredCourses;
+      if (isAdmin(userRole)) {
+        // Admins see ALL programs (published + drafts)
+        logger.log('👑 [ProgramLibraryScreen] Admin user - showing all programs (published + drafts)');
+        filteredCourses = allCourses;
+      } else if (isCreator(userRole)) {
+        // Creators see published programs + their own drafts
+        logger.log(`🎨 [ProgramLibraryScreen] Creator user - showing published + own drafts (uid=${effectiveUser.uid})`);
+        filteredCourses = allCourses.filter(course => {
+          const isPublished = course.status === 'published';
+          const isOwnDraft = course.status !== 'published' && course.creator_id === effectiveUser.uid;
+          return isPublished || isOwnDraft;
+        });
+        logger.log(`📚 [ProgramLibraryScreen] Creator filtered courses: ${filteredCourses.length} (published + own drafts)`);
+      } else {
+        // Regular users see only published courses
+        logger.log('👤 [ProgramLibraryScreen] Regular user - showing only published programs');
+        filteredCourses = allCourses.filter(course => course.status === 'published');
+      }
+      
+      logger.log(`✅ [ProgramLibraryScreen] Filtered courses: ${filteredCourses.length} (total: ${allCourses.length})`);
       
       // Transform to match expected format
-      const coursesData = publishedCourses.map(course => ({
+      const coursesData = filteredCourses.map(course => ({
         id: course.id,
         courseId: course.id,
         title: course.title || 'Programa sin título',
@@ -149,9 +205,17 @@ const ProgramLibraryScreen = ({ navigation }) => {
         ...course // Include any other properties
       }));
       
-      logger.log('✅ Published courses loaded:', coursesData.length);
+      logger.log(`✅ [ProgramLibraryScreen] Courses loaded: ${coursesData.length} (role=${userRole})`);
       
-      logger.log('📊 Transformed courses data sample:', coursesData.slice(0, 2));
+      // Log sample of courses with their status
+      const sampleCourses = coursesData.slice(0, 3).map(c => ({
+        id: c.id,
+        title: c.title,
+        status: c.status,
+        creator_id: c.creator_id,
+        isOwnDraft: c.status !== 'published' && c.creator_id === effectiveUser.uid
+      }));
+      logger.log('📊 [ProgramLibraryScreen] Sample courses:', sampleCourses);
       
       setState(prev => ({
         ...prev,
@@ -176,17 +240,26 @@ const ProgramLibraryScreen = ({ navigation }) => {
         error: 'Error al cargar tus programas. Inténtalo de nuevo.'
       }));
     }
-  }, [user?.uid]); // Removed checkForTutorials from dependencies - it's called inside but doesn't need to be a dependency
+  }, [user?.uid, userRole]); // Added userRole to dependencies so it refetches when role changes
 
   useEffect(() => {
+    // Get effective user (from context or Firebase auth)
+    const effectiveUser = user || auth.currentUser;
+    
+    logger.log(`🔄 [ProgramLibraryScreen] useEffect triggered - effectiveUser.uid=${effectiveUser?.uid}, userRole=${userRole}`);
+    
     // Check if user is available, or wait for it to become available
-    if (user?.uid) {
+    if (effectiveUser?.uid) {
+      logger.log(`✅ [ProgramLibraryScreen] User available, fetching courses...`);
       fetchCourses();
     } else {
+      logger.log(`⏳ [ProgramLibraryScreen] User not available yet, waiting...`);
       // On web, user might not be available immediately
       // Set loading to false with empty state if no user after a delay
       const timeoutId = setTimeout(() => {
-        if (!user?.uid) {
+        const finalUser = user || auth.currentUser;
+        if (!finalUser?.uid) {
+          logger.log(`⚠️ [ProgramLibraryScreen] Timeout: User still not available after delay`);
           setState(prev => ({
             ...prev,
             loading: false,
@@ -204,7 +277,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [user?.uid]); // Only depend on user?.uid - fetchCourses will use latest closure
+  }, [user?.uid, userRole, fetchCourses]); // Added userRole and fetchCourses to dependencies
 
   // Debounced search function
   const debouncedSearch = useCallback((query) => {

@@ -20,9 +20,19 @@ const CourseDetailScreen = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Fetch course data from URL param
+  // Fetch course data from URL param or location state
   useEffect(() => {
     const fetchCourse = async () => {
+      // Fix: Check location state first (when navigating from library with course param)
+      const courseFromState = location.state?.course;
+      if (courseFromState) {
+        logger.log('✅ Using course from navigation state:', courseFromState);
+        setCourse(courseFromState);
+        setLoading(false);
+        return;
+      }
+      
+      // If no course in state, fetch from courseId in URL
       if (!courseId) {
         setError('Course ID is required');
         setLoading(false);
@@ -34,6 +44,8 @@ const CourseDetailScreen = () => {
         setError(null);
         logger.log('🔍 Fetching course data for courseId:', courseId);
         
+        // Fix: Fetch course even without user (for public course viewing)
+        // The base component will handle user-specific logic like ownership checks
         const courseData = await firestoreService.getCourse(courseId);
         
         if (!courseData) {
@@ -57,6 +69,8 @@ const CourseDetailScreen = () => {
           price: courseData.price || null,
           access_duration: courseData.access_duration || null,
           free_trial: courseData.free_trial || {},
+          status: courseData.status || 'published',
+          video_intro_url: courseData.video_intro_url || null,
           ...courseData // Include any other properties
         };
         
@@ -70,10 +84,20 @@ const CourseDetailScreen = () => {
       }
     };
     
-    if (user?.uid && courseId) {
-      fetchCourse();
-    }
-  }, [courseId, user?.uid]);
+    // Fix: Fetch course regardless of user availability
+    // The base component will handle user-specific checks
+    fetchCourse();
+    
+    // Safety timeout: Clear loading after 10 seconds if something goes wrong
+    const safetyTimeout = setTimeout(() => {
+      logger.warn('⚠️ Web wrapper: Safety timeout - clearing loading state after 10s');
+      setLoading(false);
+    }, 10000);
+    
+    return () => {
+      clearTimeout(safetyTimeout);
+    };
+  }, [courseId, location.state]); // Added location.state to dependencies
   
   // Create navigation adapter that matches React Navigation API
   const navigation = {

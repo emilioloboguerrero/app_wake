@@ -20,6 +20,16 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
     [screenWidth, screenHeight],
   );
 
+  // Log userId whenever props change (to verify it is passed correctly to this card)
+  useEffect(() => {
+    logger.log('[WeeklyMuscleVolumeCard] Props received:', {
+      hasUserId: !!userId,
+      userId: userId ?? 'null/undefined',
+      userIdType: typeof userId,
+      selectedWeek: selectedWeek ?? 'null',
+    });
+  }, [userId, selectedWeek]);
+
   useEffect(() => {
     loadWeeklyVolumes();
   }, [userId, selectedWeek]);
@@ -28,7 +38,13 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
     try {
       setLoading(true);
       const targetWeek = selectedWeek || getMondayWeek(); // Use selectedWeek if provided, otherwise current week
-      
+      logger.log('[WeeklyMuscleVolumeCard] loadWeeklyVolumes called with userId:', userId ?? 'null/undefined', 'targetWeek:', targetWeek);
+      if (!userId) {
+        logger.warn('[WeeklyMuscleVolumeCard] No userId – cannot load weekly volumes');
+        setWeeklyVolumes({});
+        setLoading(false);
+        return;
+      }
       const userDocRef = doc(firestore, 'users', userId);
       const userDoc = await getDoc(userDocRef);
       
@@ -150,6 +166,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     elevation: 2,
     overflow: 'visible',
     height: 500, // Fixed height to match MuscleSilhouette
+    width: '100%', // Ensure it fills the parent container
   },
   title: {
     color: '#ffffff',

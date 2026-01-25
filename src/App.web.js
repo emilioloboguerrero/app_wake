@@ -142,10 +142,19 @@ export default function App() {
         setComponentsLoaded(true);
         
         // Initialize Service Worker AFTER components are loaded
+        // Only register if /sw.js is served as JS (not as index.html - fixes "unsupported MIME type text/html")
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js')
+          fetch('/sw.js', { method: 'HEAD' })
+            .then((res) => {
+              const ct = res.headers.get('content-type') || '';
+              if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
+                safeLog('log', '[WAKE] Skipping SW registration: /sw.js not served as JavaScript');
+                return null;
+              }
+              return navigator.serviceWorker.register('/sw.js');
+            })
             .then((registration) => {
-              safeLog('log', '✅ Service Worker registered:', registration);
+              if (registration) safeLog('log', '✅ Service Worker registered:', registration);
             })
             .catch((error) => {
               safeLog('error', '❌ Service Worker registration failed:', error);

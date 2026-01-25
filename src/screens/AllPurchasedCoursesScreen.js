@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -37,7 +36,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [restoringPurchases, setRestoringPurchases] = useState(false);
 
   useEffect(() => {
     if (user?.uid) {
@@ -150,76 +148,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   const handleCoursePress = (purchaseData) => {
     navigation.navigate('CourseDetail', { course: purchaseData.courseDetails });
-  };
-
-  // Restore purchases (Apple requirement)
-  // On web, this is not applicable - purchases are managed via Epayco
-  const handleRestorePurchases = async () => {
-    if (isWeb) {
-      Alert.alert(
-        'No disponible en web',
-        'La restauración de compras solo está disponible en dispositivos móviles. En web, tus compras se sincronizan automáticamente con tu cuenta.'
-      );
-      return;
-    }
-
-    if (!user?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para restaurar compras.');
-      return;
-    }
-
-    try {
-      setRestoringPurchases(true);
-      logger.log('🔄 Restoring purchases from AllPurchasedCoursesScreen...');
-      
-      // Import iapService dynamically - only available on native platforms
-      let iapService;
-      try {
-        iapService = require('../services/iapService').default;
-      } catch (error) {
-        // iapService not available (e.g., on web)
-        Alert.alert(
-          'No disponible',
-          'La restauración de compras no está disponible en esta plataforma.'
-        );
-        setRestoringPurchases(false);
-        return;
-      }
-      
-      const result = await iapService.restorePurchases();
-      
-      if (result.success) {
-        const purchaseCount = result.count || result.purchases?.length || 0;
-        if (purchaseCount > 0) {
-          Alert.alert(
-            'Compras restauradas',
-            `Se encontraron ${purchaseCount} compra(s). Las suscripciones se están verificando y aparecerán pronto.`,
-            [
-              { 
-                text: 'Actualizar', 
-                onPress: () => {
-                  fetchAllCourses();
-                }
-              },
-              { text: 'Entendido' }
-            ]
-          );
-        } else {
-          Alert.alert(
-            'Sin compras',
-            'No se encontraron compras para restaurar.',
-            [{ text: 'Entendido' }]
-          );
-        }
-      } else {
-        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras.');
-      }
-    } catch (error) {
-      logger.error('Error restoring purchases:', error);
-      Alert.alert('Error', 'Ocurrió un error al restaurar las compras.');
-    } finally {
-      setRestoringPurchases(false);
-    }
   };
 
   const getStatusBadge = (purchase) => {
@@ -380,20 +308,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           )}
-
-          {/* Restore Purchases Button (Apple Requirement) - Bottom of screen */}
-          <View style={styles.restorePurchasesContainer}>
-            <TouchableOpacity 
-              style={styles.restorePurchasesButton} 
-              onPress={handleRestorePurchases}
-              disabled={restoringPurchases}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.restorePurchasesButtonText}>
-                {restoringPurchases ? 'Restaurando...' : 'Restaurar Compras'}
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -722,26 +636,6 @@ const styles = StyleSheet.create({
   },
   exploreButtonText: {
     color: 'rgba(191, 168, 77, 1)',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  restorePurchasesContainer: {
-    marginTop: 30,
-    marginBottom: 20,
-    paddingHorizontal: 20,
-  },
-  restorePurchasesButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  restorePurchasesButtonText: {
-    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
+// TODO: Migrate to expo-video before SDK 54 when expo-av is removed (expo-video events on web need verification)
 import { Video } from 'expo-av';
 import { useVideo } from '../contexts/VideoContext';
 import SvgPlay from './icons/SvgPlay';
@@ -27,6 +28,7 @@ const TutorialOverlay = ({
   logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
   
   // Hooks must be called before any early returns (React rules)
+  // ALL hooks must be called unconditionally and in the same order every render
   const hooksStartTime = performance.now();
   const { isMuted, toggleMute } = useVideo();
   const [isLoading, setIsLoading] = useState(true);
@@ -34,15 +36,46 @@ const TutorialOverlay = ({
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
   const [animationStarted, setAnimationStarted] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const videoRef = useRef(null);
   const progressAnimation = useRef(new Animated.Value(0)).current;
+  // CRITICAL: useWindowDimensions() must be called BEFORE any early returns
+  // This ensures hooks are always called in the same order (React Rules of Hooks)
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  
+  // CRITICAL: All useEffect hooks must be called BEFORE any early returns
+  // Use tutorialData?.[currentTutorialIndex] instead of currentTutorial since currentTutorial is defined after early return
+  useEffect(() => {
+    if (visible && tutorialData && tutorialData.length > 0 && tutorialData[currentTutorialIndex]) {
+      setIsLoading(true);
+      setIsVideoPlaying(false);
+      setVideoDuration(0);
+      setAnimationStarted(false);
+      setVideoError(false); // Reset error state when changing tutorials
+      progressAnimation.setValue(0); // Reset animation
+    }
+  }, [visible, tutorialData, currentTutorialIndex]);
+  
+  // Track component render completion using useEffect - must be before any returns
+  // This useEffect is always called (before early returns) to maintain hook order
+  useEffect(() => {
+    if (visible && tutorialData && tutorialData.length > 0 && tutorialData[currentTutorialIndex]) {
+      const componentEndTime = performance.now();
+      const componentDuration = componentEndTime - componentStartTime;
+      logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
+      if (componentDuration > 50) {
+        logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
+      }
+    }
+  }, [visible, tutorialData, currentTutorialIndex, componentStartTime]);
+  
   const hooksDuration = performance.now() - hooksStartTime;
   if (hooksDuration > 10) {
     logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay hooks took ${hooksDuration.toFixed(2)}ms`);
   }
 
-  // CRITICAL: Early return BEFORE expensive operations to avoid blocking paint
-  // Check visibility first without doing any expensive work
+  // CRITICAL: Early return AFTER all hooks are called
+  // Check visibility after hooks to avoid blocking paint but maintain hook order
   const visibilityCheckStart = performance.now();
   if (!visible || !tutorialData || tutorialData.length === 0) {
     return null;
@@ -51,9 +84,6 @@ const TutorialOverlay = ({
   if (visibilityCheckDuration > 1) {
     logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
   }
-  
-  // Use hook for reactive dimensions that update on orientation change
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
   const currentTutorial = tutorialData?.[currentTutorialIndex];
 
@@ -92,16 +122,6 @@ const TutorialOverlay = ({
     }
   };
 
-  useEffect(() => {
-    if (visible && currentTutorial) {
-      setIsLoading(true);
-      setIsVideoPlaying(false);
-      setVideoDuration(0);
-      setAnimationStarted(false);
-      progressAnimation.setValue(0); // Reset animation
-    }
-  }, [visible, currentTutorial, currentTutorialIndex]);
-
   const handleNextTutorial = () => {
     if (currentTutorialIndex < tutorialData.length - 1) {
       setCurrentTutorialIndex(currentTutorialIndex + 1);
@@ -125,6 +145,7 @@ const TutorialOverlay = ({
 
   const onVideoLoad = async (status) => {
     setIsLoading(false);
+    setVideoError(false); // Clear any previous errors
     setVideoDuration(status.durationMillis || 0);
     setAnimationStarted(false);
     progressAnimation.setValue(0); // Reset animation
@@ -144,10 +165,38 @@ const TutorialOverlay = ({
     }, 100);
   };
 
+  const onVideoError = (error) => {
+    logger.error('❌ Tutorial video load error:', {
+      tutorialIndex: currentTutorialIndex,
+      videoUrl: currentTutorial?.videoUrl,
+      error: error?.message || error,
+      errorCode: error?.code
+    });
+    
+    setIsLoading(false);
+    setVideoError(true);
+    setVideoDuration(0);
+    setAnimationStarted(false);
+    progressAnimation.setValue(0);
+    
+    // Auto-skip to next tutorial after a short delay, or close if it's the last one
+    setTimeout(() => {
+      if (currentTutorialIndex < tutorialData.length - 1) {
+        logger.log('⏭️ Auto-skipping to next tutorial due to video error');
+        handleNextTutorial();
+      } else {
+        logger.log('✅ Closing tutorial overlay (last tutorial failed)');
+        handleComplete();
+      }
+    }, 2000); // Give user 2 seconds to see the error before auto-skipping
+  };
+
   const onVideoEnd = () => {
     handleNextTutorial();
   };
 
+  // Early return check - must be AFTER all hooks
+  // Note: currentTutorial is defined above, so this check is safe
   if (!visible || !currentTutorial) {
     return null;
   }
@@ -234,18 +283,25 @@ const TutorialOverlay = ({
             </View>
           )}
           
-          <Video
-            ref={videoRef}
-            source={{ uri: currentTutorial.videoUrl }}
-            style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
-            volume={isMuted ? 0 : 1.0}
-            isMuted={isMuted}
-            shouldPlay={false}
-            isLooping={false}
-            useNativeControls={false}
-            resizeMode="cover"
-            onLoad={onVideoLoad}
-            onPlaybackStatusUpdate={(status) => {
+          {videoError ? (
+            <View style={styles.videoErrorContainer}>
+              <Text style={styles.videoErrorText}>Error al cargar el video</Text>
+              <Text style={styles.videoErrorSubtext}>Saltando al siguiente tutorial...</Text>
+            </View>
+          ) : (
+            <Video
+              ref={videoRef}
+              source={{ uri: currentTutorial.videoUrl }}
+              style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
+              volume={isMuted ? 0 : 1.0}
+              isMuted={isMuted}
+              shouldPlay={false}
+              isLooping={false}
+              useNativeControls={false}
+              resizeMode="cover"
+              onLoad={onVideoLoad}
+              onError={onVideoError}
+              onPlaybackStatusUpdate={(status) => {
               if (status.isLoaded) {
                 setIsLoading(false);
                 
@@ -276,7 +332,8 @@ const TutorialOverlay = ({
                 }
               }
             }}
-          />
+            />
+          )}
 
           {/* Skip Button - top-left, below indicator, only while playing */}
           {isVideoPlaying && !isLoading && (
@@ -335,16 +392,6 @@ const TutorialOverlay = ({
       })()}
     </Modal>
   );
-  
-  // Track component render completion using useEffect
-  useEffect(() => {
-    const componentEndTime = performance.now();
-    const componentDuration = componentEndTime - componentStartTime;
-    logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-    if (componentDuration > 50) {
-      logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-    }
-  });
 };
 
 // Styles function - takes screenWidth and screenHeight as parameters
@@ -383,6 +430,30 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     marginTop: 10,
+  },
+  videoErrorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    padding: 20,
+    zIndex: 10,
+  },
+  videoErrorText: {
+    color: '#ff6b6b',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  videoErrorSubtext: {
+    color: '#999999',
+    fontSize: 14,
+    textAlign: 'center',
   },
   progressBarContainer: {
     position: 'absolute',

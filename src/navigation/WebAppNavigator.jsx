@@ -4,6 +4,7 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 import LoadingScreen from '../screens/LoadingScreen';
 // Use mobile components with web wrappers
 // These wrappers provide React Router navigation to the mobile components
@@ -372,15 +373,15 @@ const WebAppNavigator = () => {
       {/* Test routes - must be first to catch before auth */}
       <Route
         path="/test"
-        element={<TestScreen />}
+        element={React.createElement(withErrorBoundary(TestScreen, 'TestScreen'))}
       />
       <Route
         path="/simple-test"
-        element={<SimpleButtonTestScreen />}
+        element={React.createElement(withErrorBoundary(SimpleButtonTestScreen, 'SimpleButtonTestScreen'))}
       />
       
       {/* Public Routes */}
-      <Route path="/login" element={<LoginScreen />} />
+      <Route path="/login" element={React.createElement(withErrorBoundary(LoginScreen, 'Login'))} />
 
       {/* Onboarding Routes */}
       <Route
@@ -388,7 +389,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <OnboardingScreen />
+              {React.createElement(withErrorBoundary(OnboardingScreen, 'Onboarding'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -399,7 +400,7 @@ const WebAppNavigator = () => {
         path="/"
         element={
           <AuthenticatedLayout>
-            <MainScreen />
+            {React.createElement(withErrorBoundary(MainScreen, 'MainScreen'))}
           </AuthenticatedLayout>
         }
       />
@@ -408,7 +409,7 @@ const WebAppNavigator = () => {
         path="/profile"
         element={
           <AuthenticatedLayout>
-            <ProfileScreen />
+            {React.createElement(withErrorBoundary(ProfileScreen, 'Profile'))}
           </AuthenticatedLayout>
         }
       />
@@ -417,7 +418,7 @@ const WebAppNavigator = () => {
         path="/library"
         element={
           <AuthenticatedLayout>
-            <ProgramLibraryScreen />
+            {React.createElement(withErrorBoundary(ProgramLibraryScreen, 'ProgramLibrary'))}
           </AuthenticatedLayout>
         }
       />
@@ -426,7 +427,7 @@ const WebAppNavigator = () => {
         path="/course/:courseId"
         element={
           <AuthenticatedLayout>
-            <CourseDetailScreen />
+            {React.createElement(withErrorBoundary(CourseDetailScreen, 'CourseDetail'))}
           </AuthenticatedLayout>
         }
       />
@@ -435,7 +436,7 @@ const WebAppNavigator = () => {
         path="/creator/:creatorId"
         element={
           <AuthenticatedLayout>
-            <CreatorProfileScreen />
+            {React.createElement(withErrorBoundary(CreatorProfileScreen, 'CreatorProfile'))}
           </AuthenticatedLayout>
         }
       />
@@ -445,7 +446,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <CourseStructureScreen />
+              {React.createElement(withErrorBoundary(CourseStructureScreen, 'CourseStructure'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -456,7 +457,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <DailyWorkoutScreen />
+              {React.createElement(withErrorBoundary(DailyWorkoutScreen, 'DailyWorkout'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -467,7 +468,7 @@ const WebAppNavigator = () => {
           element={
             <AuthenticatedLayout>
               <Suspense fallback={<LoadingScreen />}>
-                <WorkoutExecutionScreen />
+                {React.createElement(withErrorBoundary(WorkoutExecutionScreen, 'WorkoutExecution'))}
               </Suspense>
             </AuthenticatedLayout>
           }
@@ -478,7 +479,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <WorkoutCompletionScreen />
+              {React.createElement(withErrorBoundary(WorkoutCompletionScreen, 'WorkoutCompletion'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -489,7 +490,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <WorkoutExercisesScreen />
+              {React.createElement(withErrorBoundary(WorkoutExercisesScreen, 'WorkoutExercises'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -500,7 +501,7 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
-              <WarmupScreen />
+              {React.createElement(withErrorBoundary(WarmupScreen, 'Warmup'))}
             </Suspense>
           </AuthenticatedLayout>
         }
@@ -510,7 +511,7 @@ const WebAppNavigator = () => {
         path="/sessions"
         element={
           <AuthenticatedLayout>
-            <SessionsScreen />
+            {React.createElement(withErrorBoundary(SessionsScreen, 'Sessions'))}
           </AuthenticatedLayout>
         }
       />
@@ -519,7 +520,7 @@ const WebAppNavigator = () => {
         path="/sessions/:sessionId"
         element={
           <AuthenticatedLayout>
-            <SessionDetailScreen />
+            {React.createElement(withErrorBoundary(SessionDetailScreen, 'SessionDetail'))}
           </AuthenticatedLayout>
         }
       />
@@ -528,7 +529,7 @@ const WebAppNavigator = () => {
         path="/prs"
         element={
           <AuthenticatedLayout>
-            <PRsScreen />
+            {React.createElement(withErrorBoundary(PRsScreen, 'PRs'))}
           </AuthenticatedLayout>
         }
       />
@@ -537,7 +538,7 @@ const WebAppNavigator = () => {
         path="/prs/:exerciseId"
         element={
           <AuthenticatedLayout>
-            <PRDetailScreen />
+            {React.createElement(withErrorBoundary(PRDetailScreen, 'PRDetail'))}
           </AuthenticatedLayout>
         }
       />
@@ -546,7 +547,7 @@ const WebAppNavigator = () => {
         path="/volume"
         element={
           <AuthenticatedLayout>
-            <WeeklyVolumeHistoryScreen />
+            {React.createElement(withErrorBoundary(WeeklyVolumeHistoryScreen, 'WeeklyVolumeHistory'))}
           </AuthenticatedLayout>
         }
       />
@@ -555,7 +556,7 @@ const WebAppNavigator = () => {
         path="/subscriptions"
         element={
           <AuthenticatedLayout>
-            <SubscriptionsScreen />
+            {React.createElement(withErrorBoundary(SubscriptionsScreen, 'Subscriptions'))}
           </AuthenticatedLayout>
         }
       />
@@ -564,7 +565,7 @@ const WebAppNavigator = () => {
         path="/courses"
         element={
           <AuthenticatedLayout>
-            <AllPurchasedCoursesScreen />
+            {React.createElement(withErrorBoundary(AllPurchasedCoursesScreen, 'AllPurchasedCourses'))}
           </AuthenticatedLayout>
         }
       />

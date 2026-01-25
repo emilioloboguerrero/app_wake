@@ -1,5 +1,6 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 import LoginScreen from '../screens/LoginScreen';
 
 const Stack = createStackNavigator();
@@ -14,7 +15,7 @@ const AuthNavigator = () => {
         cardStyle: { backgroundColor: '#1a1a1a' },
       }}
     >
-      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Login" component={withErrorBoundary(LoginScreen, 'Login')} />
     </Stack.Navigator>
   );
 };

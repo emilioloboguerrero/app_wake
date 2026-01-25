@@ -6,17 +6,8 @@ TouchableOpacity,
   StyleSheet,
   Image,
   View,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
-import { isWeb } from '../utils/platform';
-
-// Lazy get dimensions to prevent freeze on web
-const getScreenDimensions = () => {
-  if (isWeb) {
-    return { width: window.innerWidth || 375, height: window.innerHeight || 667 };
-  }
-  return Dimensions.get('window');
-};
 
 const Button = ({
   title,
@@ -28,8 +19,8 @@ const Button = ({
   active = false, // Active state for golden color
   ...props
 }) => {
-  // Get dynamic dimensions for button sizing
-  const { width: screenWidth, height: screenHeight } = getScreenDimensions();
+  // Use hook for reactive dimensions that update on orientation change
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const dynamicButtonStyle = {
     width: Math.max(280, screenWidth * 0.7),
     height: Math.max(50, screenHeight * 0.06),

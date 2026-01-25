@@ -1,7 +1,8 @@
 // Legal Documents WebView Component
-// Opens wolf-20b8b.web.app/legal for legal documents (Terms, Privacy, Refund)
+// Opens https://wakelab.co/legal for legal documents (Terms, Privacy, Refund)
+// On web browsers, opens externally instead of WebView
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -13,6 +14,9 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import logger from '../utils/logger';
+import { isWeb, isPWA } from '../utils/platform';
+
+const LEGAL_URL = 'https://wakelab.co/legal';
 
 const LegalDocumentsWebView = ({
   visible,
@@ -20,6 +24,76 @@ const LegalDocumentsWebView = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [useRedirect, setUseRedirect] = useState(false);
+
+  // Handle redirect for web browsers
+  const handleWebRedirect = () => {
+    if (!isWeb) return;
+    
+    logger.log('🌐 [LegalDocumentsWebView] Using redirect for web browser');
+    setUseRedirect(true);
+    setLoading(false);
+    
+    // Open legal documents in new window/tab
+    try {
+      const newWindow = window.open(
+        LEGAL_URL,
+        '_blank',
+        'noopener,noreferrer'
+      );
+      
+      if (!newWindow) {
+        // Popup blocked - show alert with manual link
+        Alert.alert(
+          'Ventana bloqueada',
+          'Por favor permite ventanas emergentes para ver los documentos legales, o haz clic en el botón para abrir manualmente.',
+          [
+            {
+              text: 'Abrir manualmente',
+              onPress: () => {
+                window.open(LEGAL_URL, '_blank');
+              }
+            },
+            {
+              text: 'Cerrar',
+              style: 'cancel',
+              onPress: () => {
+                onClose?.();
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Focus the new window
+      newWindow.focus();
+      
+      // Close modal after opening external window
+      setTimeout(() => {
+        onClose?.();
+      }, 500);
+    } catch (err) {
+      logger.error('❌ [LegalDocumentsWebView] Error opening redirect window:', err);
+      setError('Error al abrir los documentos legales');
+      setLoading(false);
+    }
+  };
+
+  // Auto-redirect on web when modal opens
+  useEffect(() => {
+    if (visible && isWeb && !isPWA()) {
+      // For regular web browsers, use redirect immediately
+      logger.log('🌐 [LegalDocumentsWebView] Web browser detected - using redirect instead of WebView');
+      handleWebRedirect();
+    } else if (visible) {
+      // For PWA or native, reset state
+      setUseRedirect(false);
+      setLoading(true);
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // Handle WebView navigation
   const handleNavigationStateChange = (navState) => {
@@ -37,14 +111,22 @@ const LegalDocumentsWebView = ({
   const handleWebViewError = (syntheticEvent) => {
     const { nativeEvent } = syntheticEvent;
     logger.error('❌ Legal WebView error:', nativeEvent);
-    setError('Error al cargar los documentos legales');
-    setLoading(false);
+    
+    // On web, if error occurs, redirect
+    if (isWeb && !isPWA()) {
+      logger.warn('⚠️ [LegalDocumentsWebView] WebView error on web - redirecting');
+      handleWebRedirect();
+    } else {
+      setError('Error al cargar los documentos legales');
+      setLoading(false);
+    }
   };
 
   // Handle close
   const handleClose = () => {
     setLoading(true);
     setError(null);
+    setUseRedirect(false);
     onClose?.();
   };
 
@@ -69,49 +151,86 @@ const LegalDocumentsWebView = ({
 
         {/* Content */}
         <View style={styles.content}>
-          {loading && (
-            <View style={styles.loadingContainer}>
-              <View style={styles.loadingContent}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-                <Text style={styles.loadingText}>Cargando documentos...</Text>
-                <Text style={styles.loadingSubtext}>Conectando con nuestros términos y políticas</Text>
+          {useRedirect ? (
+            // Redirect mode for web browsers
+            <View style={styles.redirectContainer}>
+              <View style={styles.redirectContent}>
+                <Text style={styles.redirectTitle}>Abriendo documentos legales...</Text>
+                <Text style={styles.redirectText}>
+                  Se abrirá una nueva ventana con los términos y condiciones, política de privacidad y política de reembolsos.
+                </Text>
+                {error && (
+                  <Text style={styles.redirectErrorText}>{error}</Text>
+                )}
+                <TouchableOpacity
+                  style={styles.redirectButton}
+                  onPress={() => {
+                    window.open(LEGAL_URL, '_blank');
+                  }}
+                >
+                  <Text style={styles.redirectButtonText}>Abrir documentos legales</Text>
+                </TouchableOpacity>
+                <Text style={styles.redirectSubtext}>
+                  Si la ventana no se abrió automáticamente, haz clic en el botón arriba.
+                </Text>
               </View>
             </View>
-          )}
+          ) : (
+            <>
+              {loading && (
+                <View style={styles.loadingContainer}>
+                  <View style={styles.loadingContent}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                    <Text style={styles.loadingText}>Cargando documentos...</Text>
+                    <Text style={styles.loadingSubtext}>Conectando con nuestros términos y políticas</Text>
+                  </View>
+                </View>
+              )}
 
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => {
-                  setError(null);
-                  setLoading(true);
+              {error && !useRedirect && (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  {isWeb && !isPWA() ? (
+                    <TouchableOpacity
+                      style={styles.retryButton}
+                      onPress={handleWebRedirect}
+                    >
+                      <Text style={styles.retryButtonText}>Abrir en nueva ventana</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.retryButton}
+                      onPress={() => {
+                        setError(null);
+                        setLoading(true);
+                      }}
+                    >
+                      <Text style={styles.retryButtonText}>Reintentar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              <WebView
+                source={{ uri: LEGAL_URL }}
+                style={styles.webview}
+                onNavigationStateChange={handleNavigationStateChange}
+                onLoad={handleWebViewLoad}
+                onError={handleWebViewError}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                startInLoadingState={true}
+                scalesPageToFit={true}
+                allowsInlineMediaPlayback={true}
+                mediaPlaybackRequiresUserAction={false}
+                mixedContentMode="compatibility"
+                onShouldStartLoadWithRequest={(request) => {
+                  // Allow all navigation within the WebView
+                  return true;
                 }}
-              >
-                <Text style={styles.retryButtonText}>Reintentar</Text>
-              </TouchableOpacity>
-            </View>
+              />
+            </>
           )}
-
-          <WebView
-            source={{ uri: 'https://wolf-20b8b.web.app/legal' }}
-            style={styles.webview}
-            onNavigationStateChange={handleNavigationStateChange}
-            onLoad={handleWebViewLoad}
-            onError={handleWebViewError}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            startInLoadingState={true}
-            scalesPageToFit={true}
-            allowsInlineMediaPlayback={true}
-            mediaPlaybackRequiresUserAction={false}
-            mixedContentMode="compatibility"
-            onShouldStartLoadWithRequest={(request) => {
-              // Allow all navigation within the WebView
-              return true;
-            }}
-          />
         </View>
 
         {/* Footer */}
@@ -237,6 +356,56 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     textAlign: 'center',
     opacity: 0.7,
+  },
+  redirectContainer: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  redirectContent: {
+    alignItems: 'center',
+    maxWidth: 400,
+  },
+  redirectTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  redirectText: {
+    fontSize: 16,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  redirectErrorText: {
+    fontSize: 14,
+    color: '#ff4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  redirectButton: {
+    backgroundColor: '#BFB84D',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  redirectButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  redirectSubtext: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 8,
   },
 });
 

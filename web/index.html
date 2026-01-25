@@ -12,14 +12,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss: ws:; media-src 'self' blob: https:;">
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/favicon.png" />
-  <link rel="apple-touch-icon" href="/app_icon.png" />
+  <link rel="apple-touch-icon" href="/assets/app_icon.png" />
   <title>Wake - Your Personal Training App</title>
   <!-- EARLY ERROR LOGGER - Disabled for login route -->
   <script>
     // Skip early error logger for login route
     if (window.location.pathname !== '/login') {
       var script = document.createElement('script');
-      script.src = '/debug/early-error-logger.js';
+      script.src = '/early-error-logger.js';
       document.head.appendChild(script);
     } else {
       console.log('[HTML] Login route - skipping early-error-logger.js');
@@ -93,23 +93,6 @@
 
   <script>
     // ============================================
-    // EARLY CONSOLE TEST - BEFORE ANYTHING ELSE
-    // ============================================
-    (function() {
-      'use strict';
-      
-      // Test console IMMEDIATELY
-      try {
-        console.log('[HTML] ✅ Console is working!');
-        console.log('[HTML] Path:', window.location.pathname);
-        console.log('[HTML] Time:', new Date().toISOString());
-      } catch (e) {
-        // If console.log fails, try alert
-        alert('Console blocked! Error: ' + e);
-      }
-    })();
-    
-    // ============================================
     // PERSISTENT ERROR LOGGING SYSTEM
     // Captures errors even if page crashes
     // DISABLED FOR LOGIN ROUTE - was causing freezes
@@ -119,11 +102,8 @@
       
       // Skip error logging on login route to prevent freezes
       if (window.location.pathname === '/login') {
-        // For login route, preserve original console methods
-        // Don't override console.log, console.error, console.warn
         console.log('[WAKE] Error logging disabled for login route');
-        console.log('[WAKE] Login route detected - console methods preserved');
-        return; // Exit early, don't set up error logging or override console
+        return; // Exit early, don't set up error logging
       }
       
       // Initialize error log storage (survives crashes)
@@ -531,20 +511,25 @@
     })();
 
     // Register Service Worker - SKIP FOR LOGIN ROUTE
-    // CRITICAL: Register immediately, not on load, so iOS can detect it when adding to home screen
+    // Only register if /sw.js is served as JS (not as index.html fallback - fixes "unsupported MIME type text/html")
     if ('serviceWorker' in navigator && window.location.pathname !== '/login') {
-      // Register immediately (don't wait for load event)
-      navigator.serviceWorker.register('/sw.js')
-        .then((registration) => {
-          console.log('[HTML] SW registered:', registration);
-          // Force activation
-          if (registration.waiting) {
-            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
-        })
-        .catch((error) => {
-          console.log('[HTML] SW registration failed:', error);
-        });
+      window.addEventListener('load', () => {
+        fetch('/sw.js', { method: 'HEAD' })
+          .then(function (res) {
+            var ct = res.headers.get('content-type') || '';
+            if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
+              console.log('[SW] Skipping registration: /sw.js not served as JavaScript (got ' + ct + ')');
+              return;
+            }
+            return navigator.serviceWorker.register('/sw.js');
+          })
+          .then(function (registration) {
+            if (registration) console.log('SW registered:', registration);
+          })
+          .catch(function (error) {
+            console.log('SW registration failed:', error);
+          });
+      });
     } else if (window.location.pathname === '/login') {
       // Unregister service worker for login route
       navigator.serviceWorker.getRegistrations().then((registrations) => {

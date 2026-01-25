@@ -15,7 +15,11 @@ const ProgramLibraryScreen = () => {
     navigate: (routeName, params) => {
       // Map React Navigation routes to React Router paths
       const routeMap = {
-        'CourseDetail': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}`),
+        'CourseDetail': () => {
+          // Fix: Pass course in state to avoid refetching in CourseDetailScreen
+          const courseId = params?.course?.courseId || params?.course?.id;
+          navigate(`/course/${courseId}`, { state: { course: params?.course } });
+        },
         'DailyWorkout': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout`),
         'Main': () => navigate('/'),
         'MainScreen': () => navigate('/'),

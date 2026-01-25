@@ -348,7 +348,20 @@ class FirestoreService {
                       clientSessionOverrides
                     );
                   } catch (error) {
-                    logger.error('❌ Error resolving library session:', error);
+                    // Library session not found is a handled case - log as warning, not error
+                    // This can happen when a library session was deleted but the course still references it
+                    const isNotFoundError = error?.message?.includes('not found');
+                    if (isNotFoundError) {
+                      logger.warn('⚠️ Library session not found (handled gracefully):', {
+                        librarySessionRef: sessionData.librarySessionRef,
+                        sessionId: sessionDoc.id,
+                        courseId,
+                        message: 'Returning empty session as fallback'
+                      });
+                    } else {
+                      // Other errors (network, permission, etc.) should still be logged as errors
+                      logger.error('❌ Error resolving library session:', error);
+                    }
                     // Fallback to empty session if resolution fails
                     return { ...sessionData, exercises: [] };
                   }

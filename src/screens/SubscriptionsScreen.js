@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader } from '../components/WakeHeader';
@@ -43,7 +43,35 @@ const SubscriptionsScreen = ({ navigation }) => {
   // Calculate header height to match FixedWakeHeader
   const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
   const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  
+  // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
+  // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
+  const user = contextUser || auth.currentUser;
+  
+  // Log user state when component mounts and when user changes
+  useEffect(() => {
+    logger.log('🔍 SubscriptionsScreen: Component mounted/updated');
+    logger.log('🔍 SubscriptionsScreen: User from useAuth():', {
+      hasContextUser: !!contextUser,
+      contextUserId: contextUser?.uid || 'NO_UID',
+      hasFirebaseUser: !!auth.currentUser,
+      firebaseUserId: auth.currentUser?.uid || 'NO_UID',
+      hasEffectiveUser: !!user,
+      effectiveUserId: user?.uid || 'NO_UID',
+      userEmail: user?.email || 'NO_EMAIL',
+      userDisplayName: user?.displayName || 'NO_DISPLAY_NAME',
+      userProviderId: user?.providerData?.[0]?.providerId || 'NO_PROVIDER',
+      fullUserObject: user ? {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        emailVerified: user.emailVerified,
+        providerId: user.providerData?.[0]?.providerId
+      } : null
+    });
+  }, [user, contextUser]);
+  
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState({});
@@ -72,12 +100,19 @@ const SubscriptionsScreen = ({ navigation }) => {
 
   // Load all subscriptions from subscriptions collection (primary source)
   useEffect(() => {
+    logger.log('🔄 SubscriptionsScreen: useEffect triggered for subscriptions loading');
+    logger.log('🔄 SubscriptionsScreen: User check - hasUser:', !!user, 'hasUid:', !!user?.uid);
+    
     if (!user?.uid) {
+      logger.warn('⚠️ SubscriptionsScreen: No user or user.uid, setting empty subscriptions');
       setSubscriptions([]);
       setLoading(false);
       return;
     }
 
+    logger.log('✅ SubscriptionsScreen: User.uid found:', user.uid);
+    logger.log('✅ SubscriptionsScreen: Setting up Firestore listener for user:', user.uid);
+    
     const subscriptionsRef = collection(
       firestore,
       'users',
@@ -88,10 +123,16 @@ const SubscriptionsScreen = ({ navigation }) => {
     const unsubscribe = onSnapshot(
       subscriptionsRef,
       async (snapshot) => {
+        logger.log('📥 SubscriptionsScreen: Firestore snapshot received');
+        logger.log('📥 SubscriptionsScreen: Snapshot size:', snapshot.size, 'docs');
+        logger.log('📥 SubscriptionsScreen: User.uid used in query:', user.uid);
+        
         const allItems = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...docSnap.data(),
         }));
+
+        logger.log('📥 SubscriptionsScreen: All items from Firestore:', allItems.length);
 
         // Filter only MercadoPago subscriptions
         const mercadopagoItems = allItems
@@ -101,6 +142,9 @@ const SubscriptionsScreen = ({ navigation }) => {
             type: 'mercadopago',
           }));
 
+        logger.log('✅ SubscriptionsScreen: MercadoPago subscriptions filtered:', mercadopagoItems.length);
+        logger.log('✅ SubscriptionsScreen: Setting subscriptions state');
+        
         setSubscriptions(mercadopagoItems);
         
         setLoading(false);

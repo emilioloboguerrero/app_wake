@@ -11,6 +11,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
@@ -31,6 +32,7 @@ import { useVideo } from '../contexts/VideoContext';
 import { isWeb } from '../utils/platform';
 import logger from '../utils/logger.js';
 import { useFocusEffect } from '@react-navigation/native';
+import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
 
 // Gesture handler and video - keep as direct imports (needed for hooks)
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
@@ -45,19 +47,16 @@ import { doc, getDoc } from 'firebase/firestore';
 // ============================================================================
 const getSessionManager = () => {
   const startTime = performance.now();
-  logger.debug('[LAZY] Loading sessionManager...');
-  logger.debug(`[TIMING] [CHECKPOINT] Before sessionManager require() - ${startTime.toFixed(2)}ms`);
   try {
     const service = require('../services/sessionManager').default;
     const duration = performance.now() - startTime;
-    logger.debug(`[TIMING] [CHECKPOINT] After sessionManager require() - took ${duration.toFixed(2)}ms`);
+    // Only log if slow (performance issue)
     if (duration > 50) {
       logger.warn(`[TIMING] ⚠️ SLOW: sessionManager took ${duration.toFixed(2)}ms (threshold: 50ms)`);
     }
     return service;
   } catch (error) {
-    const duration = performance.now() - startTime;
-    logger.error(`[TIMING] [ERROR] sessionManager failed after ${duration.toFixed(2)}ms:`, error);
+    logger.error(`[ERROR] sessionManager failed:`, error);
     throw error;
   }
 };
@@ -390,8 +389,10 @@ const useSetData = (workout) => {
     const effectStartTime = performance.now();
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) started - ${effectStartTime.toFixed(2)}ms`);
     if (workout?.exercises && Object.keys(setData).length === 0) {
+      let isMounted = true;
       // Defer expensive data initialization to avoid blocking paint
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (!isMounted) return;
         const deferredStartTime = performance.now();
       const initialSetData = {};
       workout.exercises.forEach((exercise, exerciseIndex) => {
@@ -424,9 +425,11 @@ const useSetData = (workout) => {
       });
         
         // Use startTransition to mark this as non-urgent
-        startTransition(() => {
+        if (isMounted) {
+          startTransition(() => {
       setSetData(initialSetData);
-        });
+          });
+        }
         
         const deferredDuration = performance.now() - deferredStartTime;
         logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) deferred work completed - took ${deferredDuration.toFixed(2)}ms`);
@@ -434,6 +437,11 @@ const useSetData = (workout) => {
           logger.warn(`[EFFECT] ⚠️ SLOW: Deferred useSetData initialization took ${deferredDuration.toFixed(2)}ms`);
         }
       }, 0);
+      
+      return () => {
+        isMounted = false;
+        clearTimeout(timeoutId);
+      };
     }
     const effectDuration = performance.now() - effectStartTime;
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(useSetData initialization) completed - took ${effectDuration.toFixed(2)}ms`);
@@ -445,15 +453,6 @@ const useSetData = (workout) => {
   const updateSetData = useCallback((exerciseIndex, setIndex, field, value) => {
     const key = `${exerciseIndex}_${setIndex}`;
     
-    // 🔍 VOLUME DEBUG: Log setData updates
-    logger.log('🔍 VOLUME DEBUG: updateSetData called:', {
-      exerciseIndex,
-      setIndex,
-      field,
-      value,
-      key
-    });
-    
     // Validate the input
     const isValid = validateInput(value);
     
@@ -464,27 +463,13 @@ const useSetData = (workout) => {
     }));
     
     // Update local state immediately for UI responsiveness
-    setSetData(prev => {
-      const newSetData = {
-        ...prev,
-        [key]: {
-          ...prev[key],
-          [field]: value
-        }
-      };
-      
-      // 🔍 VOLUME DEBUG: Log the updated setData
-      logger.log('🔍 VOLUME DEBUG: setData updated:', {
-        key,
-        field,
-        value,
-        previousData: prev[key],
-        newData: newSetData[key],
-        allSetDataKeys: Object.keys(newSetData)
-      });
-      
-      return newSetData;
-    });
+    setSetData(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value
+      }
+    }));
     
     return { isValid, key };
   }, [validateInput]);
@@ -503,52 +488,62 @@ const useSetData = (workout) => {
 };
 
 const WorkoutExecutionScreen = ({ navigation, route }) => {
-  // ============================================================================
-  // COMPREHENSIVE DEBUGGING SYSTEM - Performance & Timing Tracking
-  // ============================================================================
-  const componentStartTime = performance.now();
-  const renderCountRef = useRef(0);
-  const componentMountTimeRef = useRef(null);
-  
-  logger.debug(`[FREEZE DEBUG] 🟢 Component function started at ${componentStartTime.toFixed(2)}ms`);
-  logger.debug(`[RENDER] [CHECKPOINT] Component function entry`);
-  
-  // Track render count
-  renderCountRef.current += 1;
-  const currentRenderCount = renderCountRef.current;
-  logger.debug(`[RENDER] Render #${currentRenderCount}`);
-  if (currentRenderCount > 20) {
-    logger.error(`[RENDER LOOP] ⚠️ WARNING: Too many renders detected! Render count: ${currentRenderCount}`);
-  }
-  
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
-  // Create styles with dimensions
-  const stylesStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before createStyles() - ${stylesStartTime.toFixed(2)}ms`);
-  const styles = createStyles(screenWidth, screenHeight);
-  const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[TIMING] [CHECKPOINT] After createStyles() - took ${stylesDuration.toFixed(2)}ms`);
-  if (stylesDuration > 200) {
-    logger.warn(`[TIMING] ⚠️ SLOW: createStyles took ${stylesDuration.toFixed(2)}ms (threshold: 200ms)`);
-  }
+  // Track if component is mounted for setTimeout cleanup
+  const isMountedRef = useRef(true);
   
-  const loadingStylesStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before createLoadingOverlayStyles() - ${loadingStylesStartTime.toFixed(2)}ms`);
-  const loadingOverlayStyles = createLoadingOverlayStyles(screenWidth, screenHeight);
-  const loadingStylesDuration = performance.now() - loadingStylesStartTime;
-  logger.debug(`[TIMING] [CHECKPOINT] After createLoadingOverlayStyles() - took ${loadingStylesDuration.toFixed(2)}ms`);
-  if (loadingStylesDuration > 200) {
-    logger.warn(`[TIMING] ⚠️ SLOW: createLoadingOverlayStyles took ${loadingStylesDuration.toFixed(2)}ms (threshold: 200ms)`);
-  }
+  // Refs to store functions so they can be called before they're defined
+  const handleNextSetRef = useRef(null);
+  const loadAlternativesRef = useRef(null);
+  const handleCompleteWorkoutRef = useRef(null);
+  const confirmEndWorkoutRef = useRef(null);
+  const loadAvailableExercisesRef = useRef(null);
+  const executeEndWorkoutRef = useRef(null);
   
-  // TEST VERSION 6: Testing remaining services ONE AT A TIME
+  // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
+  const focusTimeoutIdsRef = useRef([]);
+  
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  
+  // Create styles with dimensions - memoized to prevent recalculation on every render
+  const styles = useMemo(() => {
+    const stylesStartTime = performance.now();
+    const stylesResult = createStyles(screenWidth, screenHeight);
+    const stylesDuration = performance.now() - stylesStartTime;
+    // Only log if slow (performance issue)
+    if (stylesDuration > 200) {
+      logger.warn(`[TIMING] ⚠️ SLOW: createStyles took ${stylesDuration.toFixed(2)}ms (threshold: 200ms)`);
+    }
+    return stylesResult;
+  }, [screenWidth, screenHeight]);
+  
+  // Create loading overlay styles - memoized to prevent recalculation on every render
+  const loadingOverlayStyles = useMemo(() => {
+    const loadingStylesStartTime = performance.now();
+    const loadingStylesResult = createLoadingOverlayStyles(screenWidth, screenHeight);
+    const loadingStylesDuration = performance.now() - loadingStylesStartTime;
+    // Only log if slow (performance issue)
+    if (loadingStylesDuration > 200) {
+      logger.warn(`[TIMING] ⚠️ SLOW: createLoadingOverlayStyles took ${loadingStylesDuration.toFixed(2)}ms (threshold: 200ms)`);
+    }
+    return loadingStylesResult;
+  }, [screenWidth, screenHeight]);
+  
+  // Create confirmation modal styles - memoized to prevent recalculation on every render
+  const confirmModalStylesObj = useMemo(() => {
+    return confirmModalStyles(screenWidth, screenHeight);
+  }, [screenWidth, screenHeight]);
+  
   // Lazy load services - only load when actually needed
-  logger.debug(`[TIMING] [CHECKPOINT] Starting lazy service loading...`);
   const servicesStartTime = performance.now();
   
-  // TEST VERSION 6: Load services that worked in v5
   const { getMuscleDisplayName } = getMuscleConstants();
   const sessionManager = getSessionManager();
   const sessionService = getSessionService();
@@ -558,59 +553,29 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const exerciseHistoryService = getExerciseHistoryService();
   const oneRepMaxService = getOneRepMaxService();
   
-  // TEST VERSION 7: programMediaService - FIXED: Skip on web, lazy load on native
-  // FIX: getProgramMediaService() now checks isWeb and skips require() on web
-  // This prevents the FileSystem import from blocking the main thread on web
+  // programMediaService - Skip on web, lazy load on native
   const programMediaServiceRef = useRef(null);
   const getProgramMediaServiceLazy = () => {
     if (!programMediaServiceRef.current) {
-      logger.debug('[LAZY] Loading programMediaService on-demand...');
       programMediaServiceRef.current = getProgramMediaService();
     }
     return programMediaServiceRef.current;
   };
   
-  // TEST VERSION 6: assetBundleService works - testing monitoringService now (LAST SERVICE)
   const videoCacheService = getVideoCacheService();
   const appResourcesService = getAppResourcesService();
   const assetBundleService = getAssetBundleService();
   const { trackScreenView, trackWorkoutStarted, trackWorkoutCompleted } = getMonitoringService();
   
-  // ✅ ALL SERVICES ENABLED - Testing complete for service layer
-  
   const servicesDuration = performance.now() - servicesStartTime;
-  logger.debug(`[TIMING] [CHECKPOINT] Services loaded - total time: ${servicesDuration.toFixed(2)}ms`);
+  // Only log if slow (performance issue)
   if (servicesDuration > 500) {
     logger.warn(`[TIMING] ⚠️ SLOW: Service loading took ${servicesDuration.toFixed(2)}ms (threshold: 500ms)`);
   }
   
-  // Components and icons are now imported directly (no longer lazy loaded)
-  // This matches the pattern used in working screens (MainScreen, CourseDetailScreen)
-  // Components have been fixed to not block (Dimensions.get moved inside)
-  
-  const routeParamsStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before route.params extraction - ${routeParamsStartTime.toFixed(2)}ms`);
   const { course, workout: initialWorkout, sessionId } = route.params;
-  const routeParamsDuration = performance.now() - routeParamsStartTime;
-  logger.debug(`[FREEZE DEBUG] 🟡 Route params extracted - took ${routeParamsDuration.toFixed(2)}ms`);
-  
-  const useAuthStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before useAuth() - ${useAuthStartTime.toFixed(2)}ms`);
   const { user } = useAuth();
-  const useAuthDuration = performance.now() - useAuthStartTime;
-  logger.debug(`[FREEZE DEBUG] 🟡 useAuth completed - took ${useAuthDuration.toFixed(2)}ms`);
-  if (useAuthDuration > 50) {
-    logger.warn(`[TIMING] ⚠️ SLOW: useAuth took ${useAuthDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
-  
-  const useVideoStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before useVideo() - ${useVideoStartTime.toFixed(2)}ms`);
   const { isMuted, toggleMute } = useVideo();
-  const useVideoDuration = performance.now() - useVideoStartTime;
-  logger.debug(`[FREEZE DEBUG] 🟡 useVideo completed - took ${useVideoDuration.toFixed(2)}ms`);
-  if (useVideoDuration > 50) {
-    logger.warn(`[TIMING] ⚠️ SLOW: useVideo took ${useVideoDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
   
   // TEST VERSION 13: Restore ExerciseItem component from git history
   const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, renderSetHeaders, renderSetInputFields }) => {
@@ -770,10 +735,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const addExerciseModalVideoPlayerCallback = useCallback((player) => {
     if (player) {
       // Defer video operations to avoid blocking
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
     player.loop = true;
     player.muted = isMuted;
+        }
       }, 0);
+      // Store timeout ID for cleanup (though callback cleanup is limited)
+      // The timeout will be cleared if component unmounts before it executes
+      return () => clearTimeout(timeoutId);
     }
   }, [isMuted]);
   
@@ -952,10 +922,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const swapModalVideoPlayerCallback = useCallback((player) => {
     if (player) {
       // Defer video operations to avoid blocking
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
     player.loop = true;
     player.muted = isMuted;
+        }
       }, 0);
+      // Store timeout ID for cleanup (though callback cleanup is limited)
+      return () => clearTimeout(timeoutId);
     }
   }, [isMuted]);
   
@@ -969,9 +943,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const intensityVideoPlayerCallback = useCallback((player) => {
     if (player) {
       // Defer video operations to avoid blocking
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
       player.muted = true; // Start muted
+        }
       }, 0);
+      // Store timeout ID for cleanup (though callback cleanup is limited)
+      return () => clearTimeout(timeoutId);
     }
   }, []);
   
@@ -999,17 +977,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     const effectStartTime = performance.now();
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) started - ${effectStartTime.toFixed(2)}ms`);
+    let isMounted = true;
     // Defer state update to avoid blocking commit phase
-    setTimeout(() => {
-      startTransition(() => {
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        startTransition(() => {
     setRemoteIntensityVideos({});
-      });
+        });
+      }
     }, 0);
     const effectDuration = performance.now() - effectStartTime;
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(setRemoteIntensityVideos) completed - took ${effectDuration.toFixed(2)}ms`);
     if (effectDuration > 50) {
       logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(setRemoteIntensityVideos) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
     }
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, []);
   
   // Expanded card state (null = current exercise, number = alternative index)
@@ -1023,12 +1009,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const videoPlayerCallback = useCallback((player) => {
     if (player) {
       // Defer video operations to avoid blocking
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
       player.loop = false;
       player.muted = isMuted;
       player.volume = 1.0;
       logger.log('Video player initialized with volume');
+        }
       }, 0);
+      // Store timeout ID for cleanup (though callback cleanup is limited)
+      return () => clearTimeout(timeoutId);
     }
   }, [isMuted]);
   
@@ -1051,6 +1041,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   
   // Debounced save timer ref
   const saveTimerRef = useRef(null);
+  // Track all timeout IDs for cleanup on unmount
+  const allTimeoutIdsRef = useRef([]);
   
   // Service cache for alternative exercises (5 minute TTL)
   const serviceCache = useRef({
@@ -1084,34 +1076,31 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [workout, currentExerciseIndex]);
 
-  // TEST VERSION 12: Re-enable useEffect(render completion tracking)
-  // Track render completion
+  // Track render completion - only log warnings when slow
   useEffect(() => {
     const effectStartTime = performance.now();
-    const totalTime = effectStartTime - componentStartTime;
-    logger.debug(`[RENDER] [CHECKPOINT] Component fully mounted - total time: ${totalTime.toFixed(2)}ms`);
-    if (totalTime > 2000) {
-      logger.error(`[RENDER] ⚠️ CRITICAL: Component mount took ${totalTime.toFixed(2)}ms (threshold: 2000ms)`);
-    }
-    componentMountTimeRef.current = totalTime;
     
-    // Track React commit phase completion with more granular timing
+    // Track React commit phase completion - only log if slow
     if (typeof requestAnimationFrame !== 'undefined') {
       const beforeRAF = performance.now();
       requestAnimationFrame(() => {
         const commitTime = performance.now();
         const rafDelay = commitTime - beforeRAF;
-        logger.debug(`[RENDER] [CHECKPOINT] React commit phase completed - ${commitTime.toFixed(2)}ms (${(commitTime - effectStartTime).toFixed(2)}ms after mount, RAF delay: ${rafDelay.toFixed(2)}ms)`);
+        const mountTime = commitTime - effectStartTime;
+        // Only log if slow (performance issue)
         if (rafDelay > 50) {
           logger.warn(`[RENDER] ⚠️ SLOW: requestAnimationFrame delay was ${rafDelay.toFixed(2)}ms (expected ~16ms)`);
         }
+        if (mountTime > 2000) {
+          logger.warn(`[RENDER] ⚠️ SLOW: Component mount took ${mountTime.toFixed(2)}ms (threshold: 2000ms)`);
+        }
         
-        // Track paint with timing
+        // Track paint - only log if slow
         const beforePaintRAF = performance.now();
         requestAnimationFrame(() => {
           const paintTime = performance.now();
           const paintRAFDelay = paintTime - beforePaintRAF;
-          logger.debug(`[PAINT] [CHECKPOINT] Browser paint completed - ${paintTime.toFixed(2)}ms (${(paintTime - commitTime).toFixed(2)}ms after commit, RAF delay: ${paintRAFDelay.toFixed(2)}ms)`);
+          // Only log if slow (performance issue)
           if (paintRAFDelay > 50) {
             logger.warn(`[PAINT] ⚠️ SLOW: Paint requestAnimationFrame delay was ${paintRAFDelay.toFixed(2)}ms (expected ~16ms)`);
           }
@@ -1202,10 +1191,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return () => {
         const cleanupStartTime = performance.now();
         logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup started - ${cleanupStartTime.toFixed(2)}ms`);
+        // Clear any pending timeouts
+        focusTimeoutIdsRef.current.forEach(id => clearTimeout(id));
+        focusTimeoutIdsRef.current = [];
+        
+        let isMounted = true;
         // Screen loses focus - pause all videos
         // CRITICAL: Defer video operations to avoid blocking React commit phase
         // Use setTimeout(0) to schedule after React's commit phase completes
-        setTimeout(() => {
+        const timeoutId1 = setTimeout(() => {
+          if (!isMounted) return;
           const deferredStartTime = performance.now();
           logger.log('🛑 WorkoutExecution screen lost focus - pausing all videos (web)');
           try {
@@ -1219,11 +1214,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               }
               videoPlayer.muted = true; // Mute as extra safety
               // Defer state update to avoid blocking
-              setTimeout(() => {
-                startTransition(() => {
-                  setIsVideoPaused(true); // Update local state
-                });
+              const timeoutId2 = setTimeout(() => {
+                if (isMounted && isMountedRef.current) {
+                  startTransition(() => {
+                    setIsVideoPaused(true); // Update local state
+                  });
+                }
               }, 0);
+              focusTimeoutIdsRef.current.push(timeoutId2);
             }
           } catch (error) {
             logger.log('⚠️ Error accessing video player:', error.message);
@@ -1251,8 +1249,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             logger.warn(`[EFFECT] ⚠️ SLOW: Deferred video cleanup took ${deferredDuration.toFixed(2)}ms`);
           }
         }, 0);
+        focusTimeoutIdsRef.current.push(timeoutId1);
+        
         const cleanupDuration = performance.now() - cleanupStartTime;
         logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) cleanup completed - took ${cleanupDuration.toFixed(2)}ms (video ops deferred)`);
+        
+        return () => {
+          isMounted = false;
+          focusTimeoutIdsRef.current.forEach(id => clearTimeout(id));
+          focusTimeoutIdsRef.current = [];
+        };
       };
       const effectDuration = performance.now() - effectStartTime;
       logger.debug(`[EFFECT] [CHECKPOINT] useEffect(focus/web) setup completed - took ${effectDuration.toFixed(2)}ms`);
@@ -1310,18 +1316,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     */
   }
 
+  // Track timeout IDs for tutorial-related setTimeout calls
+  const tutorialTimeoutIdsRef = useRef([]);
+  
   // Check for tutorials to show
   const checkForTutorials = async () => {
     if (!user?.uid || !course?.courseId) {
       // No user/course, allow video to start immediately
       // CRITICAL: Defer state updates to prevent blocking re-renders
       logger.log('🎬 No user/course data, allowing video to start immediately');
-      setTimeout(() => {
-        startTransition(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          startTransition(() => {
       setCanStartVideo(true);
       setIsVideoPaused(false);
-        });
+          });
+        }
       }, 0);
+      tutorialTimeoutIdsRef.current.push(timeoutId);
       return;
     }
 
@@ -1338,41 +1350,58 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (tutorials.length > 0) {
         logger.log('📚 Found tutorials to show:', tutorials.length);
         // Defer state updates to prevent blocking re-renders
-        setTimeout(() => {
-          startTransition(() => {
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current) {
+            startTransition(() => {
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-          });
+            });
+          }
         }, 0);
+        tutorialTimeoutIdsRef.current.push(timeoutId);
         // Keep video paused while tutorial is showing
       } else {
         logger.log('✅ No tutorials to show for workout execution screen - bypassing tutorial system');
         // No tutorials - bypass tutorial system entirely
         // Defer state updates to prevent blocking re-renders
-        setTimeout(() => {
-          startTransition(() => {
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current) {
+            startTransition(() => {
         setCanStartVideo(true);
         setIsVideoPaused(false);
-          });
+            });
+          }
         }, 0);
+        tutorialTimeoutIdsRef.current.push(timeoutId);
         logger.log('🎬 Set video states after no tutorials:', { canStartVideo: true, isVideoPaused: false });
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
       // On error, allow video to start anyway
       // Defer state updates to prevent blocking re-renders
-      setTimeout(() => {
-        startTransition(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          startTransition(() => {
       setCanStartVideo(true);
       setIsVideoPaused(false);
-        });
+          });
+        }
       }, 0);
+      tutorialTimeoutIdsRef.current.push(timeoutId);
     }
   };
+  
+  // Cleanup tutorial timeouts on unmount
+  useEffect(() => {
+    return () => {
+      tutorialTimeoutIdsRef.current.forEach(id => clearTimeout(id));
+      tutorialTimeoutIdsRef.current = [];
+    };
+  }, []);
 
   // Handle tutorial completion
-  const handleTutorialComplete = async () => {
+  const handleTutorialComplete = useCallback(async () => {
     if (!user?.uid || !course?.courseId || tutorialData.length === 0) return;
 
     try {
@@ -1389,21 +1418,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
-  };
+  }, [user?.uid, course?.courseId, tutorialData, currentTutorialIndex]);
 
   // Handle tutorial close - allow video to start when tutorial is closed
-  const handleTutorialClose = () => {
+  const handleTutorialClose = useCallback(() => {
     // Defer state updates to prevent blocking re-renders
-    setTimeout(() => {
-      startTransition(() => {
+    const timeoutId = setTimeout(() => {
+      if (isMountedRef.current) {
+        startTransition(() => {
     setTutorialVisible(false);
     // Allow video to start after tutorial is closed
     logger.log('🎬 Tutorial closed, allowing exercise video to start...');
     setCanStartVideo(true);
     setIsVideoPaused(false);
-      });
+        });
+      }
     }, 0);
-  };
+    tutorialTimeoutIdsRef.current.push(timeoutId);
+  }, []);
 
   // TEST VERSION 7: Re-enable useEffect(videoUri) to test programMediaService lazy loading
   // Simple video loading - prefer local path, fallback to remote URL (non-blocking)
@@ -1411,21 +1443,31 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     const effectStartTime = performance.now();
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) started - ${effectStartTime.toFixed(2)}ms`);
+    let isMounted = true;
+    const timeoutIds = [];
+    
     const currentExercise = workout?.exercises?.[currentExerciseIndex];
     if (!currentExercise) {
       // Defer state update to avoid blocking commit phase
-      setTimeout(() => {
-        startTransition(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          startTransition(() => {
       setVideoUri(null);
-        });
+          });
+        }
       }, 0);
+      timeoutIds.push(timeoutId);
       const effectDuration = performance.now() - effectStartTime;
       logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed early (no exercise) - took ${effectDuration.toFixed(2)}ms`);
-      return;
+      return () => {
+        isMounted = false;
+        timeoutIds.forEach(id => clearTimeout(id));
+      };
     }
 
     // Defer state update to avoid blocking commit phase
-    setTimeout(() => {
+    const timeoutId1 = setTimeout(() => {
+      if (!isMounted) return;
       // Lazy load programMediaService only when actually needed (deferred require)
       const programMediaService = getProgramMediaServiceLazy();
     // Try to get local path first (synchronous, fast), fallback to remote URL immediately
@@ -1436,21 +1478,34 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       ) || null;
       
       // Use startTransition to mark as non-urgent
-      startTransition(() => {
+      if (isMounted) {
+        startTransition(() => {
     setVideoUri(localPath || currentExercise.video_url || null);
-      });
+        });
+      }
     
       // Preload next video for better UX (also defer)
-      setTimeout(() => {
+      if (isMounted) {
+        const timeoutId2 = setTimeout(() => {
+          if (isMounted) {
     preloadNextVideo();
-      }, 0);
+          }
+        }, 0);
+        timeoutIds.push(timeoutId2);
+      }
     }, 0);
+    timeoutIds.push(timeoutId1);
     
     const effectDuration = performance.now() - effectStartTime;
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoUri) completed - took ${effectDuration.toFixed(2)}ms`);
     if (effectDuration > 100) {
       logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoUri) took ${effectDuration.toFixed(2)}ms (threshold: 100ms)`);
     }
+    
+    return () => {
+      isMounted = false;
+      timeoutIds.forEach(id => clearTimeout(id));
+    };
   }, [currentExerciseIndex, workout, preloadNextVideo, course]);
 
   // Sync video mute state
@@ -1458,17 +1513,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const effectStartTime = performance.now();
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoMute) started - ${effectStartTime.toFixed(2)}ms`);
     // CRITICAL: Defer video operations to avoid blocking React commit phase
+    let isMounted = true;
+    let timeoutId = null;
+    
     if (videoPlayer) {
-      setTimeout(() => {
-        const deferredStartTime = performance.now();
-        try {
+      timeoutId = setTimeout(() => {
+        if (isMounted) {
+          const deferredStartTime = performance.now();
+          try {
       videoPlayer.muted = isMuted;
-        } catch (error) {
-          logger.log('⚠️ Error setting video mute state:', error.message);
-        }
-        const deferredDuration = performance.now() - deferredStartTime;
-        if (deferredDuration > 50) {
-          logger.warn(`[EFFECT] ⚠️ SLOW: Deferred video mute took ${deferredDuration.toFixed(2)}ms`);
+          } catch (error) {
+            logger.log('⚠️ Error setting video mute state:', error.message);
+          }
+          const deferredDuration = performance.now() - deferredStartTime;
+          if (deferredDuration > 50) {
+            logger.warn(`[EFFECT] ⚠️ SLOW: Deferred video mute took ${deferredDuration.toFixed(2)}ms`);
+          }
         }
       }, 0);
     }
@@ -1477,6 +1537,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (effectDuration > 50) {
       logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(videoMute) took ${effectDuration.toFixed(2)}ms (threshold: 50ms)`);
     }
+    
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [isMuted, videoPlayer]);
 
   // Auto-play intensity video when card is expanded and video URI is set
@@ -1485,21 +1550,29 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return;
     }
 
+    let isMounted = true;
+    const timeoutIds = [];
+
     // Defer play to allow video to load after replace()
     // Use a longer delay to ensure video is ready to play
     const playTimeoutId = setTimeout(() => {
+      if (!isMounted) return;
       try {
         if (intensityVideoPlayer && selectedIntensity && intensityVideoUri && !isIntensityVideoPaused) {
           intensityVideoPlayer.play().catch(error => {
             // If play fails (video not ready), retry after a short delay
+            if (!isMounted) return;
             logger.warn('⚠️ Intensity video play failed, retrying...', error);
-            setTimeout(() => {
-              try {
-                intensityVideoPlayer.play();
-              } catch (retryError) {
-                logger.error('❌ Error retrying intensity video play:', retryError);
+            const retryTimeoutId = setTimeout(() => {
+              if (isMounted) {
+                try {
+                  intensityVideoPlayer.play();
+                } catch (retryError) {
+                  logger.error('❌ Error retrying intensity video play:', retryError);
+                }
               }
             }, 300);
+            timeoutIds.push(retryTimeoutId);
           });
           logger.log('🎬 Intensity video auto-played:', selectedIntensity);
         }
@@ -1507,9 +1580,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.error('❌ Error auto-playing intensity video:', error);
       }
     }, 300); // Delay to let video load after replace()
+    timeoutIds.push(playTimeoutId);
 
     return () => {
-      clearTimeout(playTimeoutId);
+      isMounted = false;
+      timeoutIds.forEach(id => clearTimeout(id));
     };
   }, [selectedIntensity, intensityVideoUri, intensityVideoPlayer, isIntensityVideoPaused]);
 
@@ -1769,6 +1844,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     // Set new timer
     saveTimerRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;
       try {
         const currentExercise = workout.exercises[exerciseIndex];
         const currentSet = currentExercise.sets[setIndex];
@@ -1796,7 +1872,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           return fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
         });
         
-        if (hasData) {
+        if (hasData && isMountedRef.current) {
           // Prepare metrics for session manager
           const metrics = Object.keys({...currentSetData, [field]: value}).reduce((acc, key) => {
             const val = key === field ? value : currentSetData[key];
@@ -1823,18 +1899,34 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             allSets.push(setMetrics);
           }
           
-          await sessionManager.addExerciseData(
-            currentExercise.id,
-            currentExercise.name,
-            allSets
-          );
-          logger.log('✅ Exercise data debounced-saved:', allSets);
+          if (isMountedRef.current) {
+            await sessionManager.addExerciseData(
+              currentExercise.id,
+              currentExercise.name,
+              allSets
+            );
+            logger.log('✅ Exercise data debounced-saved:', allSets);
+          }
         }
       } catch (error) {
         logger.error('❌ Error debounced-saving set data:', error);
       }
     }, 2000); // 2 second delay
   }, [workout, setData]);
+  
+  // Cleanup all timeouts on unmount (save timer + all other timeouts)
+  useEffect(() => {
+    return () => {
+      // Clear all tracked timeouts
+      allTimeoutIdsRef.current.forEach(id => clearTimeout(id));
+      allTimeoutIdsRef.current = [];
+      // Clear save timer
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const updateSetData = async (exerciseIndex, setIndex, field, value) => {
     // Use consolidated set data management
@@ -1872,7 +1964,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, []);
 
-  const getFieldDisplayName = (field) => {
+  const getFieldDisplayName = useCallback((field) => {
     const fieldNames = {
       'reps': 'Reps',
       'weight': 'Peso (kg)',
@@ -1889,9 +1981,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       'previous': 'Anterior'
     };
     return fieldNames[field] || field.charAt(0).toUpperCase() + field.slice(1);
-  };
+  }, []);
 
-  const calculateEvenGaps = (set) => {
+  const calculateEvenGaps = useCallback((set) => {
     const skipFields = [
       'id', 'order', 'notes', 'description', 'title', 'name',
       'created_at', 'updated_at', 'createdAt', 'updatedAt',
@@ -1930,9 +2022,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const evenGap = Math.max(totalGapSpace / numberOfGaps, 8); // Minimum 8px gap
     
     return { evenGap, totalBoxWidth };
-  };
+  }, [getFieldDisplayName]);
 
-  const handleDiscardWorkout = async () => {
+  const handleDiscardWorkout = useCallback(async () => {
     // Use custom modal on web, Alert.alert on native
     if (isWeb) {
       setConfirmModalConfig({
@@ -2011,10 +2103,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         ]
       );
     }
-  };
+  }, [isWeb, navigation]);
 
 
-  const handleOpenSetInput = () => {
+  const handleOpenSetInput = useCallback(() => {
     const currentExercise = workout.exercises[currentExerciseIndex];
     const currentSet = currentExercise.sets[currentSetIndex];
     
@@ -2057,9 +2149,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [workout, currentExerciseIndex, currentSetIndex, setData]);
 
-  const handleSaveSetData = async () => {
+  const handleSaveSetData = useCallback(async () => {
     try {
       const key = `${currentExerciseIndex}_${currentSetIndex}`;
       
@@ -2111,17 +2203,19 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         setIsSetInputVisible(false);
         setCurrentSetInputData({});
         
-        // Automatically move to next set
-        handleNextSet();
+        // Automatically move to next set using ref
+        if (handleNextSetRef.current) {
+          handleNextSetRef.current();
+        }
       });
       
     } catch (error) {
       logger.error('❌ Error saving set data:', error);
       Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
     }
-  };
+  }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData]);
 
-  const handleCancelSetInput = () => {
+  const handleCancelSetInput = useCallback(() => {
     // Animate modal out
     Animated.parallel([
       Animated.timing(modalOpacity, {
@@ -2138,10 +2232,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setIsSetInputVisible(false);
       setCurrentSetInputData({});
     });
-  };
+  }, []);
 
   // Swap exercise handlers - OPTIMIZED with cache pre-check
-  const handleOpenSwapModal = (exerciseIndex) => {
+  const handleOpenSwapModal = useCallback((exerciseIndex) => {
     setCurrentSwapExerciseIndex(exerciseIndex);
     
     // Pre-check cache before showing modal
@@ -2161,10 +2255,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Load current exercise video immediately
       if (exercise?.video_url) {
         setSwapModalVideoUri(exercise.video_url);
-        setTimeout(() => {
-          swapModalVideoPlayer.replace(exercise.video_url);
-          setIsSwapModalVideoPaused(false);
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current) {
+            swapModalVideoPlayer.replace(exercise.video_url);
+            setIsSwapModalVideoPaused(false);
+          }
         }, 50);
+        allTimeoutIdsRef.current.push(timeoutId);
       }
     } else {
       // Not cached - show loading state
@@ -2191,12 +2288,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     ]).start();
 
     // Load alternatives if not cached
-    if (!isCached) {
-      loadAlternatives(exerciseIndex);
+    if (!isCached && loadAlternativesRef.current) {
+      loadAlternativesRef.current(exerciseIndex);
     }
-  };
+  }, [workout, swapModalOpacity, swapModalTranslateY]);
 
-  const loadAlternatives = async (exerciseIndex) => {
+  // Store loadAlternatives in ref so it can be called before it's defined
+  const loadAlternatives = useCallback(async (exerciseIndex) => {
     try {
       const exercise = workout.exercises[exerciseIndex];
       const alternatives = exercise.alternatives || {};
@@ -2215,10 +2313,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         const currentExercise = workout.exercises[exerciseIndex];
         if (currentExercise?.video_url) {
           setSwapModalVideoUri(currentExercise.video_url);
-          setTimeout(() => {
-            swapModalVideoPlayer.replace(currentExercise.video_url);
-            setIsSwapModalVideoPaused(false);
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              swapModalVideoPlayer.replace(currentExercise.video_url);
+              setIsSwapModalVideoPaused(false);
+            }
           }, 50);
+          allTimeoutIdsRef.current.push(timeoutId);
         }
         return;
       }
@@ -2300,10 +2401,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (currentExercise?.video_url) {
         setSwapModalVideoUri(currentExercise.video_url);
         // Load video in background without blocking UI
-        setTimeout(() => {
-          swapModalVideoPlayer.replace(currentExercise.video_url);
-          setIsSwapModalVideoPaused(false);
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current) {
+            swapModalVideoPlayer.replace(currentExercise.video_url);
+            setIsSwapModalVideoPaused(false);
+          }
         }, 50);
+        allTimeoutIdsRef.current.push(timeoutId);
       }
     } catch (error) {
       logger.error('❌ Error loading alternatives:', error);
@@ -2311,9 +2415,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } finally {
       setLoadingAlternatives(false);
     }
-  };
+  }, [workout]);
 
-  const handleCloseSwapModal = () => {
+  // Store loadAlternatives in ref so it can be called before it's defined
+  useEffect(() => {
+    loadAlternativesRef.current = loadAlternatives;
+  }, [loadAlternatives]);
+
+  const handleCloseSwapModal = useCallback(() => {
     // Animate modal out
     Animated.parallel([
       Animated.timing(swapModalOpacity, {
@@ -2335,10 +2444,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setIsSwapModalVideoPaused(false);
       setExpandedCardIndex(null);
     });
-  };
+  }, [swapModalOpacity, swapModalTranslateY]);
 
   // Swap modal video tap handler
-  const handleSwapModalVideoTap = () => {
+  const handleSwapModalVideoTap = useCallback(() => {
     if (isSwapModalVideoPaused) {
       swapModalVideoPlayer.play();
       setIsSwapModalVideoPaused(false);
@@ -2346,10 +2455,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       swapModalVideoPlayer.pause();
       setIsSwapModalVideoPaused(true);
     }
-  };
+  }, [isSwapModalVideoPaused, swapModalVideoPlayer]);
 
   // Add exercise modal card tap handler
-  const handleAddExerciseCardTap = (exercise, index) => {
+  const handleAddExerciseCardTap = useCallback((exercise, index) => {
     // If clicking the same card that's already expanded, collapse it
     if (expandedAddExerciseIndex === index) {
       setExpandedAddExerciseIndex(null);
@@ -2367,15 +2476,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setAddExerciseModalVideoUri(exercise.video_url);
       
       // Load video completely in background without blocking UI
-      setTimeout(() => {
-        addExerciseModalVideoPlayer.replace(exercise.video_url);
-        setIsAddExerciseModalVideoPaused(true);
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          addExerciseModalVideoPlayer.replace(exercise.video_url);
+          setIsAddExerciseModalVideoPaused(true);
+        }
       }, 100); // Slightly longer delay to ensure card expansion completes first
+      allTimeoutIdsRef.current.push(timeoutId);
     }
-  };
+  }, [expandedAddExerciseIndex, addExerciseModalVideoPlayer]);
 
   // Add exercise modal video tap handler
-  const handleAddExerciseModalVideoTap = () => {
+  const handleAddExerciseModalVideoTap = useCallback(() => {
     if (isAddExerciseModalVideoPaused) {
       addExerciseModalVideoPlayer.play();
       setIsAddExerciseModalVideoPaused(false);
@@ -2383,10 +2495,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       addExerciseModalVideoPlayer.pause();
       setIsAddExerciseModalVideoPaused(true);
     }
-  };
+  }, [isAddExerciseModalVideoPaused, addExerciseModalVideoPlayer]);
 
   // Intensity video tap handler
-  const handleIntensityVideoTap = (intensity) => {
+  const handleIntensityVideoTap = useCallback((intensity) => {
     // Load the selected intensity video:
     // Use bundled preset only (cloud/remote/local download disabled)
     const videoUri = intensityVideoMap[intensity];
@@ -2402,10 +2514,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       intensityVideoPlayer.pause();
       setIsIntensityVideoPaused(true);
     }
-  };
+  }, [intensityVideoMap, isIntensityVideoPaused, intensityVideoPlayer]);
 
   // Handle intensity card press - expand/collapse video
-  const handleIntensityCardPress = (intensity) => {
+  const handleIntensityCardPress = useCallback((intensity) => {
     if (selectedIntensity === intensity) {
       // Collapse the card
       setSelectedIntensity(null);
@@ -2421,10 +2533,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Play will be handled by useEffect when video is ready
       setIsIntensityVideoPaused(false);
     }
-  };
+  }, [selectedIntensity, intensityVideoMap, intensityVideoPlayer]);
 
   // Toggle intensity video play/pause
-  const toggleIntensityVideo = () => {
+  const toggleIntensityVideo = useCallback(() => {
     if (isIntensityVideoPaused) {
       intensityVideoPlayer.play();
       setIsIntensityVideoPaused(false);
@@ -2432,10 +2544,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       intensityVideoPlayer.pause();
       setIsIntensityVideoPaused(true);
     }
-  };
+  }, [isIntensityVideoPaused, intensityVideoPlayer]);
 
   // Handle card tap (current exercise or alternative) - OPTIMIZED with lazy video loading
-  const handleCardTap = (exercise, index) => {
+  const handleCardTap = useCallback((exercise, index) => {
     // If clicking the same card that's already expanded, do nothing
     if (expandedCardIndex === index) {
       return;
@@ -2450,17 +2562,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setSwapModalVideoUri(exercise.video_url);
       
       // Load video completely in background without blocking UI
-      setTimeout(() => {
-        if (exercise?.video_url) {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current && exercise?.video_url) {
           swapModalVideoPlayer.replace(exercise.video_url);
           setIsSwapModalVideoPaused(false);
         }
       }, 100); // Slightly longer delay to ensure card expansion completes first
+      allTimeoutIdsRef.current.push(timeoutId);
     }
-  };
+  }, [expandedCardIndex, swapModalVideoPlayer]);
 
   // Objective info modal handlers
-  const handleObjectiveCardPress = async (objective) => {
+  const handleObjectiveCardPress = useCallback(async (objective) => {
     try {
       logger.log('🔍 handleObjectiveCardPress called with objective:', objective);
       
@@ -2535,9 +2648,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } catch (error) {
       logger.error('❌ Error in handleObjectiveCardPress:', error);
     }
-  };
+  }, [workout, currentExerciseIndex, user?.uid, intensityVideoPlayer]);
 
-  const handleCloseObjectiveInfoModal = () => {
+  const handleCloseObjectiveInfoModal = useCallback(() => {
     // Pause intensity video if playing
     if (intensityVideoPlayer?.playing) {
       intensityVideoPlayer.pause();
@@ -2551,9 +2664,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     setIsObjectiveInfoModalVisible(false);
     setSelectedObjectiveInfo(null);
-  };
+  }, [intensityVideoPlayer]);
 
-  const handleViewExerciseProgress = async () => {
+  const handleViewExerciseProgress = useCallback(async () => {
     try {
       logger.log('🔍 handleViewExerciseProgress called');
       const currentExercise = workout?.exercises?.[currentExerciseIndex];
@@ -2615,14 +2728,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } catch (error) {
       logger.error('❌ Error in handleViewExerciseProgress:', error);
     }
-  };
+  }, [workout, currentExerciseIndex, user?.uid]);
 
-  const handleCloseExerciseDetailModal = () => {
+  const handleCloseExerciseDetailModal = useCallback(() => {
     setIsExerciseDetailModalVisible(false);
     setModalExerciseData(null);
-  };
+  }, []);
 
-  const handleSwapExercise = (selectedExercise) => {
+  const handleSwapExercise = useCallback((selectedExercise) => {
     if (currentSwapExerciseIndex === null) return;
 
     try {
@@ -2704,10 +2817,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       logger.error('❌ Error swapping exercise:', error);
       Alert.alert('Error', 'No se pudo cambiar el ejercicio. Inténtalo de nuevo.');
     }
-  };
+  }, [currentSwapExerciseIndex, workout, videoPlayer, swapModalVideoPlayer]);
 
   // Add/Remove set functions
-  const addSet = (exerciseIndex) => {
+  const addSet = useCallback((exerciseIndex) => {
     const exercise = workout.exercises[exerciseIndex];
     const lastSet = exercise.sets[exercise.sets.length - 1]; // Use last set for inheritance
     
@@ -2769,9 +2882,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }));
     
     logger.log('✅ Set added to exercise:', exerciseIndex);
-  };
+  }, [workout, setData]);
 
-  const removeSet = (exerciseIndex) => {
+  const removeSet = useCallback((exerciseIndex) => {
     const exercise = workout.exercises[exerciseIndex];
     if (exercise.sets.length <= 1) return; // Don't remove last set
 
@@ -2805,10 +2918,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
 
     logger.log('✅ Set removed from exercise:', exerciseIndex);
-  };
+  }, [workout, currentExerciseIndex, currentSetIndex, setData]);
 
   // Edit mode system functions
-  const handleToggleEditMode = () => {
+  const handleToggleEditMode = useCallback(() => {
     if (isEditMode) {
       // Exit edit mode
       setIsEditMode(false);
@@ -2840,9 +2953,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setIsEditMode(true);
       logger.log('✅ Entered edit mode');
     }
-  };
+  }, [isEditMode, workout, dragAnimatedValues]);
 
-  const handleSaveEditMode = () => {
+  const handleSaveEditMode = useCallback(() => {
     try {
       // Update exercise order field for each exercise
       const exercisesWithOrder = editingExercises.map((exercise, index) => ({
@@ -2895,9 +3008,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setAvailableExercises([]);
       setLoadingAvailableExercises(false);
     }
-  };
+  }, [editingExercises, dragAnimatedValues]);
 
-  const handleCancelEditMode = () => {
+  const handleCancelEditMode = useCallback(() => {
     // Simply exit edit mode without applying changes
     setIsEditMode(false);
     setEditingExercises([]);
@@ -2922,20 +3035,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
     
     logger.log('✅ Edit mode cancelled');
-  };
+  }, [dragAnimatedValues]);
 
-  const handleOpenAddExerciseModal = () => {
+  const handleOpenAddExerciseModal = useCallback(() => {
     try {
       logger.log('➕ Opening add exercise modal');
       setIsAddExerciseModalVisible(true);
-      loadAvailableExercises();
+      if (loadAvailableExercisesRef.current) {
+        loadAvailableExercisesRef.current();
+      }
     } catch (error) {
       logger.error('❌ Error opening add exercise modal:', error);
       Alert.alert('Error', 'No se pudo abrir la lista de ejercicios.');
     }
-  };
+  }, []);
 
-  const handleAddExerciseInEdit = (selectedExercise) => {
+  const handleAddExerciseInEdit = useCallback((selectedExercise) => {
     const newExercise = {
       id: `added_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: selectedExercise.name,
@@ -2961,9 +3076,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setEditingExercises(prev => [...prev, newExercise]);
     setIsAddExerciseModalVisible(false);
     setSearchQuery('');
-  };
+  }, [editingExercises]);
 
-  const handleRemoveExerciseInEdit = (exerciseIndex) => {
+  const handleRemoveExerciseInEdit = useCallback((exerciseIndex) => {
     Alert.alert(
       'Eliminar Ejercicio',
       '¿Estás seguro de que quieres eliminar este ejercicio?',
@@ -2978,7 +3093,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       ]
     );
-  };
+  }, [editingExercises]);
 
   const moveExerciseUp = (index) => {
     if (index > 0) {
@@ -3030,7 +3145,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   // Drag and drop handlers
-  const handlePanGesture = (event, index) => {
+  const handlePanGesture = useCallback((event, index) => {
     if (draggedIndex === index) {
       const { translationY } = event.nativeEvent;
       if (dragAnimatedValues[index]) {
@@ -3044,9 +3159,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Animate other cards to make space
       animateOtherCards(index, dropIndex);
     }
-  };
+  }, [draggedIndex, dragAnimatedValues]);
 
-  const handlePanStateChange = (event, index) => {
+  const handlePanStateChange = useCallback((event, index) => {
     const { state, translationY } = event.nativeEvent;
     
     switch (state) {
@@ -3094,7 +3209,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         });
         break;
     }
-  };
+  }, [draggedIndex, dropZoneIndex, dragAnimatedValues]);
 
   const calculateDropIndex = (translationY, currentIndex) => {
     const cardHeight = 80; // Approximate card height
@@ -3145,9 +3260,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
   };
 
-  const handleDragStart = (index) => {
+  const handleDragStart = useCallback((index) => {
     setDraggedIndex(index);
-  };
+  }, []);
 
   const animateOtherCards = (draggedIndex, dropIndex) => {
     if (dropIndex === null) {
@@ -3206,7 +3321,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   };
 
-  const loadAvailableExercises = async () => {
+  const loadAvailableExercises = useCallback(async () => {
     try {
       setLoadingAvailableExercises(true);
       
@@ -3266,7 +3381,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } finally {
       setLoadingAvailableExercises(false);
     }
-  };
+  }, [course]);
+
+  // Store loadAvailableExercises in ref so it can be called before it's defined
+  useEffect(() => {
+    loadAvailableExercisesRef.current = loadAvailableExercises;
+  }, [loadAvailableExercises]);
 
   // Get all unique implements from available exercises
   const allUniqueImplements = useMemo(() => {
@@ -3284,7 +3404,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [availableExercises]);
 
   // Filter modal handlers
-  const handleOpenFilter = () => {
+  const handleOpenFilter = useCallback(() => {
     // Remember that add exercise modal was open
     setWasAddExerciseModalOpen(isAddExerciseModalVisible);
     // Close add exercise modal and open filter modal
@@ -3292,21 +3412,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setTempSelectedMuscles(new Set(selectedMuscles));
     setTempSelectedImplements(new Set(selectedImplements));
     setIsFilterModalVisible(true);
-  };
+  }, [isAddExerciseModalVisible, selectedMuscles, selectedImplements]);
 
-  const handleCloseFilter = () => {
+  const handleCloseFilter = useCallback(() => {
     setIsFilterModalVisible(false);
     // Reopen add exercise modal if it was open before
     if (wasAddExerciseModalOpen) {
       // Small delay to ensure smooth transition
-      setTimeout(() => {
-        setIsAddExerciseModalVisible(true);
-        setWasAddExerciseModalOpen(false);
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          setIsAddExerciseModalVisible(true);
+          setWasAddExerciseModalOpen(false);
+        }
       }, 100);
+      allTimeoutIdsRef.current.push(timeoutId);
     }
-  };
+  }, [wasAddExerciseModalOpen]);
 
-  const handleToggleMuscle = (muscle) => {
+  const handleToggleMuscle = useCallback((muscle) => {
     setTempSelectedMuscles(prev => {
       const newSet = new Set(prev);
       if (newSet.has(muscle)) {
@@ -3316,9 +3439,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const handleToggleImplement = (implement) => {
+  const handleToggleImplement = useCallback((implement) => {
     setTempSelectedImplements(prev => {
       const newSet = new Set(prev);
       if (newSet.has(implement)) {
@@ -3328,33 +3451,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const handleClearFilter = () => {
+  const handleClearFilter = useCallback(() => {
     setTempSelectedMuscles(new Set());
     setTempSelectedImplements(new Set());
-  };
+  }, []);
 
-  const handleApplyFilter = () => {
+  const handleApplyFilter = useCallback(() => {
     setSelectedMuscles(new Set(tempSelectedMuscles));
     setSelectedImplements(new Set(tempSelectedImplements));
     setIsFilterModalVisible(false);
     // Reopen add exercise modal if it was open before
     if (wasAddExerciseModalOpen) {
       // Small delay to ensure smooth transition
-      setTimeout(() => {
-        setIsAddExerciseModalVisible(true);
-        setWasAddExerciseModalOpen(false);
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          setIsAddExerciseModalVisible(true);
+          setWasAddExerciseModalOpen(false);
+        }
       }, 100);
+      allTimeoutIdsRef.current.push(timeoutId);
     }
-  };
+  }, [tempSelectedMuscles, tempSelectedImplements, wasAddExerciseModalOpen]);
 
-  const handleClearAllFilters = () => {
+  const handleClearAllFilters = useCallback(() => {
     setSelectedMuscles(new Set());
     setSelectedImplements(new Set());
     setTempSelectedMuscles(new Set());
     setTempSelectedImplements(new Set());
-  };
+  }, []);
 
   const checkAllExercisesCompleted = () => {
     if (!workout?.exercises) return false;
@@ -3384,7 +3510,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
   };
 
-  const handleEndWorkout = async () => {
+  const handleEndWorkout = useCallback(async () => {
     logger.log('🔍 handleEndWorkout called');
     
     // Check for validation errors first
@@ -3450,11 +3576,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } else {
       // Workout is complete, proceed normally
       logger.log('✅ Workout complete - proceeding to confirmation');
-      confirmEndWorkout();
+      if (confirmEndWorkoutRef.current) {
+        confirmEndWorkoutRef.current();
+      }
     }
-  };
+  }, [workout, setData, user, course, navigation]);
 
-  const confirmEndWorkout = () => {
+  const confirmEndWorkout = useCallback(() => {
     logger.log('🔍 confirmEndWorkout called - showing confirmation dialog');
     
       // Use web-compatible confirmation on web, Alert.alert on native
@@ -3465,7 +3593,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           onConfirm: async () => {
             logger.log('✅ User confirmed workout completion - starting save process');
             setConfirmModalVisible(false);
-            await executeEndWorkout();
+            if (executeEndWorkoutRef.current) {
+              await executeEndWorkoutRef.current();
+            }
           },
           onCancel: () => {
             logger.log('❌ User cancelled workout completion');
@@ -3492,14 +3622,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           text: 'Finalizar',
           onPress: async () => {
             logger.log('✅ User confirmed workout completion - starting save process');
-            await executeEndWorkout();
+            if (executeEndWorkoutRef.current) {
+              await executeEndWorkoutRef.current();
+            }
           },
         },
       ]
     );
-  };
+  }, [isWeb]);
 
-  const executeEndWorkout = async () => {
+  // Store confirmEndWorkout in ref so it can be called before it's defined
+  useEffect(() => {
+    confirmEndWorkoutRef.current = confirmEndWorkout;
+  }, [confirmEndWorkout]);
+
+  const executeEndWorkout = useCallback(async () => {
                  try {
                    setIsSavingWorkout(true);
                    logger.log('🏁 Ending workout...');
@@ -3570,7 +3707,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                           const key = `${exerciseIndex}_${setIndex}`;
                           const actualSetData = setData[key] || {};
                           
-                          const processedSet = {
+                          return {
                             ...set,
                             // Use actual user data, but preserve template values for intensity
                             weight: actualSetData.weight || '',
@@ -3586,44 +3723,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             rest_time: actualSetData.rest_time || '',
                             duration: actualSetData.duration || ''
                           };
-                          
-                          // 🔍 VOLUME DEBUG: Log each processed set
-                          logger.log('🔍 VOLUME DEBUG: Processed set:', {
-                            exerciseIndex,
-                            setIndex,
-                            key,
-                            originalSet: set,
-                            actualSetData,
-                            processedSet,
-                            hasReps: !!(processedSet.reps && processedSet.reps !== ''),
-                            hasWeight: !!(processedSet.weight && processedSet.weight !== ''),
-                            hasIntensity: !!(processedSet.intensity && processedSet.intensity !== ''),
-                            intensityValue: processedSet.intensity
-                          });
-                          
-                          return processedSet;
                         })
                       }))
                     };
-                    
-                    // 🔍 VOLUME DEBUG: Log final workoutWithSetData
-                    logger.log('🔍 VOLUME DEBUG: Final workoutWithSetData:', {
-                      workoutTitle: workoutWithSetData.title,
-                      exercisesCount: workoutWithSetData.exercises.length,
-                      exercises: workoutWithSetData.exercises.map((exercise, index) => ({
-                        exerciseIndex: index,
-                        exerciseName: exercise.name,
-                        setsCount: exercise.sets.length,
-                        sets: exercise.sets.map((set, setIndex) => ({
-                          setIndex,
-                          reps: set.reps,
-                          weight: set.weight,
-                          intensity: set.intensity,
-                          hasData: !!(set.reps || set.weight),
-                          hasIntensity: !!(set.intensity && set.intensity !== '')
-                        }))
-                      }))
-                    });
                     
                     logger.log('💪 Passing workout with actual set data to session service');
                     const result = await sessionService.completeSession(
@@ -3746,8 +3848,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                  } finally {
                    setIsSavingWorkout(false);
                  }
-  };
+  }, [workout, setData, user, course, navigation, isWeb]);
 
+  // Store executeEndWorkout in ref so it can be called before it's defined
+  useEffect(() => {
+    executeEndWorkoutRef.current = executeEndWorkout;
+  }, [executeEndWorkout]);
 
   const renderSetHeaders = (set, exercise) => {
     const currentExercise = getCurrentExercise();
@@ -3863,19 +3969,133 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
   }, [workout, setValidationErrors, updateSetData]);
 
-  const renderExerciseListView = () => {
+  // Render function for FlatList exercise items
+  const renderExerciseItem = useCallback(({ item: exercise, index: exerciseIndex }) => {
+    const isExpanded = expandedExercises[exerciseIndex];
     return (
-      <ScrollView style={styles.exerciseListView} showsVerticalScrollIndicator={false}>
-        <View style={styles.exerciseListContent}>
-          {/* Spacer for fixed header */}
-          <WakeHeaderSpacer />
-          
-          {/* Exercise Title Section with Edit Button */}
-          <View style={styles.exerciseListTitleSection}>
-            <Text style={styles.exerciseListTitle}>
-              {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
-            </Text>
-            {isEditMode ? (
+      <ExerciseItem
+        exercise={exercise}
+        exerciseIndex={exerciseIndex}
+        isExpanded={isExpanded}
+        onToggleExpansion={toggleExerciseExpansion}
+        onOpenSwapModal={handleOpenSwapModal}
+        onAddSet={addSet}
+        onRemoveSet={removeSet}
+        onSelectSet={handleSelectSet}
+        setData={setData}
+        currentExerciseIndex={currentExerciseIndex}
+        currentSetIndex={currentSetIndex}
+        renderSetHeaders={renderSetHeaders}
+        renderSetInputFields={renderSetInputFields}
+      />
+    );
+  }, [
+    expandedExercises,
+    toggleExerciseExpansion,
+    handleOpenSwapModal,
+    addSet,
+    removeSet,
+    handleSelectSet,
+    setData,
+    currentExerciseIndex,
+    currentSetIndex,
+    renderSetHeaders,
+    renderSetInputFields,
+  ]);
+
+  // Key extractor for FlatList
+  const keyExtractor = useCallback((item, index) => {
+    return `exercise-${index}-${item.id || item.name || index}`;
+  }, []);
+
+  // List header component
+  const ListHeaderComponent = useMemo(() => (
+    <>
+      <WakeHeaderSpacer />
+      <View style={styles.exerciseListTitleSection}>
+        <Text style={styles.exerciseListTitle}>
+          {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
+        </Text>
+        {isEditMode ? (
+          <View style={styles.editModeControls}>
+            <TouchableOpacity 
+              style={styles.addExerciseButton}
+              onPress={handleOpenAddExerciseModal}
+            >
+              <Text style={styles.addExerciseButtonText}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.saveButton}
+              onPress={handleSaveEditMode}
+            >
+              <Text style={styles.saveButtonText}>Guardar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={styles.editButton}
+            onPress={handleToggleEditMode}
+          >
+            <Text style={styles.editButtonText}>Editar</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </>
+  ), [
+    workout?.title,
+    workout?.name,
+    isEditMode,
+    handleOpenAddExerciseModal,
+    handleSaveEditMode,
+    handleToggleEditMode,
+  ]);
+
+  // List footer component
+  const ListFooterComponent = useMemo(() => (
+    <TouchableOpacity 
+      style={[
+        styles.endWorkoutButton,
+        checkAllExercisesCompleted() && styles.endWorkoutButtonActive,
+        hasValidationErrors() && styles.endWorkoutButtonDisabled,
+        isEditMode && styles.endWorkoutButtonDisabled
+      ]}
+      onPress={() => {
+        if (!isEditMode) {
+          logger.log('🏋️ End workout button pressed');
+          handleEndWorkout();
+        }
+      }}
+      disabled={hasValidationErrors() || isSavingWorkout || isEditMode}
+    >
+      <Text style={[
+        styles.endWorkoutButtonText,
+        checkAllExercisesCompleted() && styles.endWorkoutButtonTextActive,
+        hasValidationErrors() && styles.endWorkoutButtonTextDisabled,
+        isSavingWorkout && styles.endWorkoutButtonTextLoading,
+        isEditMode && styles.endWorkoutButtonTextDisabled
+      ]}>
+        {isSavingWorkout ? 'Guardando...' : 'Terminar y guardar'}
+      </Text>
+    </TouchableOpacity>
+  ), [
+    checkAllExercisesCompleted,
+    hasValidationErrors,
+    isEditMode,
+    isSavingWorkout,
+    handleEndWorkout,
+  ]);
+
+  const renderExerciseListView = () => {
+    // Edit mode: Use ScrollView for drag-and-drop functionality
+    if (isEditMode) {
+      return (
+        <ScrollView style={styles.exerciseListView} showsVerticalScrollIndicator={false}>
+          <View style={styles.exerciseListContent}>
+            <WakeHeaderSpacer />
+            <View style={styles.exerciseListTitleSection}>
+              <Text style={styles.exerciseListTitle}>
+                {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
+              </Text>
               <View style={styles.editModeControls}>
                 <TouchableOpacity 
                   style={styles.addExerciseButton}
@@ -3890,25 +4110,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   <Text style={styles.saveButtonText}>Guardar</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={handleToggleEditMode}
-              >
-                <Text style={styles.editButtonText}>Editar</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          {isEditMode ? (
-            // Edit mode: Show simplified exercise cards with drag functionality
+            </View>
+            
             <View style={styles.editModeExerciseList}>
               {editingExercises.map((exercise, exerciseIndex) => {
                 const isDragging = draggedIndex === exerciseIndex;
                 const showDropLineAbove = dropZoneIndex === exerciseIndex && dropZoneIndex !== draggedIndex;
                 const showDropLineBelow = dropZoneIndex === exerciseIndex + 1 && dropZoneIndex !== draggedIndex && dropZoneIndex !== editingExercises.length;
                 
-                // Initialize animated value for this card if it doesn't exist
                 if (!dragAnimatedValues[exerciseIndex]) {
                   dragAnimatedValues[exerciseIndex] = new Animated.Value(0);
                 }
@@ -3924,7 +4133,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 
                 return (
                   <View key={`exercise-container-${exerciseIndex}-${exercise.id}`}>
-                    {/* Drop line above this card */}
                     {showDropLineAbove && (
                       <View style={styles.dropLine} />
                     )}
@@ -3969,65 +4177,57 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 );
               })}
               
-              {/* Drop line below the last card */}
               {dropZoneIndex === editingExercises.length && draggedIndex !== null && (
                 <View style={styles.dropLine} />
               )}
-              
             </View>
-          ) : (
-            // Normal mode: Show full exercise items
-            workout?.exercises?.map((exercise, exerciseIndex) => {
-              const isExpanded = expandedExercises[exerciseIndex];
-              return (
-                <ExerciseItem
-                  key={`exercise-${exerciseIndex}-${exercise.id}`}
-                  exercise={exercise}
-                  exerciseIndex={exerciseIndex}
-                  isExpanded={isExpanded}
-                  onToggleExpansion={toggleExerciseExpansion}
-                  onOpenSwapModal={handleOpenSwapModal}
-                  onAddSet={addSet}
-                  onRemoveSet={removeSet}
-                  onSelectSet={handleSelectSet}
-                  setData={setData}
-                  currentExerciseIndex={currentExerciseIndex}
-                  currentSetIndex={currentSetIndex}
-                  renderSetHeaders={renderSetHeaders}
-                  renderSetInputFields={renderSetInputFields}
-                />
-              );
-            })
-          )}
-          
-          {/* End Workout Button */}
-          <TouchableOpacity 
-            style={[
-              styles.endWorkoutButton,
-              checkAllExercisesCompleted() && styles.endWorkoutButtonActive,
-              hasValidationErrors() && styles.endWorkoutButtonDisabled,
-              isEditMode && styles.endWorkoutButtonDisabled
-            ]}
-            onPress={() => {
-              if (!isEditMode) {
-                logger.log('🏋️ End workout button pressed');
-                handleEndWorkout();
-              }
-            }}
-            disabled={hasValidationErrors() || isSavingWorkout || isEditMode}
-          >
-            <Text style={[
-              styles.endWorkoutButtonText,
-              checkAllExercisesCompleted() && styles.endWorkoutButtonTextActive,
-              hasValidationErrors() && styles.endWorkoutButtonTextDisabled,
-              isSavingWorkout && styles.endWorkoutButtonTextLoading,
-              isEditMode && styles.endWorkoutButtonTextDisabled
-            ]}>
-              {isSavingWorkout ? 'Guardando...' : 'Terminar y guardar'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+            
+            <TouchableOpacity 
+              style={[
+                styles.endWorkoutButton,
+                styles.endWorkoutButtonDisabled
+              ]}
+              disabled={true}
+            >
+              <Text style={[
+                styles.endWorkoutButtonText,
+                styles.endWorkoutButtonTextDisabled
+              ]}>
+                Terminar y guardar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      );
+    }
+
+    // Normal mode: Use FlatList for virtualization
+    return (
+      <FlatList
+        style={styles.exerciseListView}
+        contentContainerStyle={styles.exerciseListContent}
+        data={workout?.exercises || []}
+        renderItem={renderExerciseItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={ListHeaderComponent}
+        ListFooterComponent={ListFooterComponent}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={5}
+        updateCellsBatchingPeriod={50}
+        getItemLayout={(data, index) => {
+          // Estimate item height - collapsed: ~80px, expanded: ~300px
+          // Using average height for better performance
+          const estimatedHeight = expandedExercises[index] ? 300 : 80;
+          return {
+            length: estimatedHeight,
+            offset: estimatedHeight * index,
+            index,
+          };
+        }}
+      />
     );
   };
 
@@ -4156,12 +4356,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           
           // Get exercise history with timeout protection
           const historyStartTime = performance.now();
+          let timeoutId = null;
           const exerciseHistoryData = await Promise.race([
             exerciseHistoryService.getExerciseHistory(user.uid, exerciseKey),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Exercise history request timeout')), 10000)
-            )
-          ]);
+            new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                if (isMountedRef.current) {
+                  reject(new Error('Exercise history request timeout'));
+                }
+              }, 10000);
+              allTimeoutIdsRef.current.push(timeoutId);
+            })
+          ]).finally(() => {
+            // Clear timeout if promise resolved/rejected before timeout
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              allTimeoutIdsRef.current = allTimeoutIdsRef.current.filter(id => id !== timeoutId);
+            }
+          });
           const historyDuration = performance.now() - historyStartTime;
           logger.debug(`[ASYNC] [CHECKPOINT] Exercise history loaded for ${exerciseKey} - took ${historyDuration.toFixed(2)}ms`);
           
@@ -4391,7 +4603,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return !isNaN(numValue) && numValue >= 0; // Must be a positive number
   };
 
-  const handleNextSet = () => {
+  const handleNextSet = useCallback(() => {
     const exercise = workout?.exercises?.[currentExerciseIndex];
     if (!exercise?.sets) return;
 
@@ -4403,13 +4615,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         setCurrentExerciseIndex(currentExerciseIndex + 1);
         setCurrentSetIndex(0);
       } else {
-        // Workout completed
-        handleCompleteWorkout();
+        // Workout completed - use ref to avoid temporal dead zone
+        if (handleCompleteWorkoutRef.current) {
+          handleCompleteWorkoutRef.current();
+        }
       }
     }
-  };
+  }, [workout, currentExerciseIndex, currentSetIndex]);
 
-  const handlePreviousSet = () => {
+  // Store handleNextSet in ref so it can be called before it's defined
+  useEffect(() => {
+    handleNextSetRef.current = handleNextSet;
+  }, [handleNextSet]);
+
+  const handlePreviousSet = useCallback(() => {
     if (currentSetIndex > 0) {
       setCurrentSetIndex(currentSetIndex - 1);
     } else if (currentExerciseIndex > 0) {
@@ -4417,9 +4636,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const prevExercise = workout.exercises[currentExerciseIndex - 1];
       setCurrentSetIndex(prevExercise.sets ? prevExercise.sets.length - 1 : 0);
     }
-  };
+  }, [workout, currentExerciseIndex, currentSetIndex]);
 
-  const handleCompleteWorkout = async () => {
+  const handleCompleteWorkout = useCallback(async () => {
     try {
       logger.log('🏁 Completing workout session...');
       
@@ -4451,7 +4670,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       logger.error('❌ Error completing workout:', error);
       alert('Error al completar el entrenamiento. Inténtalo de nuevo.');
     }
-  };
+  }, [workout, setData, user, course, navigation, confirmEndWorkout]);
+
+  // Store handleCompleteWorkout in ref so it can be called before it's defined
+  useEffect(() => {
+    handleCompleteWorkoutRef.current = handleCompleteWorkout;
+  }, [handleCompleteWorkout]);
 
   const renderExerciseInfo = () => {
     const exercise = workout?.exercises?.[currentExerciseIndex];
@@ -4494,15 +4718,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   // Video tap handler
-  const handleVideoTap = () => {
+  const handleVideoTap = useCallback(() => {
     setIsVideoPaused(!isVideoPaused);
-  };
+  }, [isVideoPaused]);
 
   // Video restart handler
-  const handleVideoRestart = () => {
+  const handleVideoRestart = useCallback(() => {
     if (videoPlayer) {
       // Defer video operations to avoid blocking
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
       videoPlayer.currentTime = 0;
         const playPromise = videoPlayer.play();
         if (playPromise !== undefined) {
@@ -4518,9 +4743,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         startTransition(() => {
       setIsVideoPaused(false);
         });
+        }
       }, 0);
+      allTimeoutIdsRef.current.push(timeoutId);
     }
-  };
+  }, [videoPlayer]);
 
   const renderSetInfo = () => {
     const set = getCurrentSet();
@@ -4653,33 +4880,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     );
   }
 
-  logger.log('🏋️ About to render WorkoutExecutionScreen main content');
-  
-  // Final checkpoint before render
-  const renderStartTime = performance.now();
-  const totalComponentTime = renderStartTime - componentStartTime;
-  logger.debug(`[RENDER] [CHECKPOINT] About to return JSX - total component time so far: ${totalComponentTime.toFixed(2)}ms`);
-  if (totalComponentTime > 1000) {
-    logger.warn(`[RENDER] ⚠️ SLOW: Component took ${totalComponentTime.toFixed(2)}ms before render (threshold: 1000ms)`);
-  }
-  
-  // Track mount time on first render
-  if (!componentMountTimeRef.current && renderCountRef.current === 1) {
-    componentMountTimeRef.current = totalComponentTime;
-    logger.debug(`[RENDER] [CHECKPOINT] First render mount time: ${componentMountTimeRef.current.toFixed(2)}ms`);
-  }
-  
-  logger.debug(`[JSX] [CHECKPOINT] Starting JSX return statement - ${performance.now().toFixed(2)}ms`);
-  const jsxStartTime = performance.now();
-  
-  // Track paint events
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      const paintTime = performance.now();
-      logger.debug(`[PAINT] [CHECKPOINT] First paint frame - ${paintTime.toFixed(2)}ms (${(paintTime - jsxStartTime).toFixed(2)}ms after JSX start)`);
-    });
-  }
-  
   // TEST VERSION: 13 - Enabling JSX rendering
   const TEST_VERSION = 14;
   const TEST_MODE_ENABLED = false; // Set to false to enable full render
@@ -4869,17 +5069,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       </Modal>
       
       {/* Swipeable Content */}
-      {(() => {
-        const swipeableStartTime = performance.now();
-        logger.debug(`[JSX] [CHECKPOINT] Rendering Swipeable Content section - ${swipeableStartTime.toFixed(2)}ms`);
-        return null;
-      })()}
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
-        {(() => {
-          const scrollViewStartTime = performance.now();
-          logger.debug(`[JSX] [CHECKPOINT] Rendering main ScrollView - ${scrollViewStartTime.toFixed(2)}ms`);
-          return null;
-        })()}
         <ScrollView
           ref={scrollViewRef}
           horizontal
@@ -5652,9 +5842,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       )}
       
       {/* Confirmation Modal for Web (Alert.alert doesn't work well on web) */}
-      {confirmModalVisible && confirmModalConfig && (() => {
-        const confirmModalStylesObj = confirmModalStyles(screenWidth, screenHeight);
-        return (
+      {confirmModalVisible && confirmModalConfig && (
           <Modal
             visible={confirmModalVisible}
             transparent={true}
@@ -5706,8 +5894,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               </View>
             </View>
           </Modal>
-        );
-      })()}
+      )}
 
       {/* Loading Overlay for Workout Completion */}
       <Modal
@@ -6001,2261 +6188,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         </View>
       </Modal>
-      {(() => {
-        const jsxEndTime = performance.now();
-        const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[JSX] [CHECKPOINT] JSX return statement completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
-        if (jsxDuration > 100) {
-          logger.warn(`[JSX] ⚠️ SLOW: JSX rendering took ${jsxDuration.toFixed(2)}ms (threshold: 100ms)`);
-        }
-        return null;
-      })()}
       {/* TEST VERSION 1: End of original return statement - All code above is disabled when TEST_MODE_ENABLED is true */}
     </SafeAreaView>
   );
 };
-
-// Styles function - takes screenWidth and screenHeight as parameters
-// This allows styles to be defined at module level while using dimensions from component
-const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  swipeWrapper: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-      scrollContainer: {
-        flex: 1,
-  },
-  swipeContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    width: screenWidth * 2, // Two screens side by side
-  },
-  viewContainer: {
-    width: screenWidth,
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: Math.max(10, screenHeight * 0.012),
-    paddingBottom: Math.max(80, screenHeight * 0.1),
-  },
-      exerciseTitleSection: {
-        marginBottom: Math.max(10, screenHeight * 0.012),
-        paddingTop: 0,
-        marginTop: Math.max(-15, screenHeight * -0.02)
-      },
-      exerciseTitle: {
-        fontSize: Math.min(screenWidth * 0.08, 32),
-        color: '#ffffff',
-        fontWeight: '600',
-        textAlign: 'left',
-        paddingLeft: Math.max(24, screenWidth * 0.06),
-      },
-      exerciseTitleCard: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: Math.max(12, screenWidth * 0.04),
-        padding: 0, // Match videoCard padding
-        marginBottom: 0, // Match videoCard margin
-        marginTop: 0, // Match videoCard margin (removed negative margin)
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        shadowColor: 'rgba(255, 255, 255, 0.4)',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 2,
-        elevation: 2,
-        height: Math.max(480, screenHeight * 0.60), // Match videoCard height: 62% of screen height, min 480px
-        width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
-        overflow: 'hidden', // Match videoCard overflow
-        position: 'relative', // Match videoCard position
-        flexDirection: 'column',
-        justifyContent: 'flex-start',
-      },
-      exerciseTitleCardContent: {
-        paddingTop: Math.max(20, screenWidth * 0.05),
-        paddingHorizontal: Math.max(20, screenWidth * 0.05),
-        paddingBottom: Math.max(10, screenWidth * 0.025),
-        width: '100%',
-        height: '100%',
-      },
-      exerciseTitleCardNoPadding: {
-        backgroundColor: '#44454B',
-        borderRadius: 12,
-        padding: 0,
-        marginBottom: 0,
-        marginTop: 10,
-        borderWidth: 0,
-        borderColor: 'transparent',
-        height: 250, // ← MODIFY THIS LINE TO CHANGE CARD HEIGHT
-        width: screenWidth - 48, // Full width minus padding
-        overflow: 'hidden',
-      },
-      video: {
-        flex: 1,
-        width: '100%',
-        height: '100%',
-      },
-      videoContainer: {
-        flex: 1,
-        width: '100%',
-        height: '100%',
-      },
-      videoErrorText: {
-        fontSize: 16,
-        color: '#ffffff',
-        textAlign: 'center',
-        marginTop: 100,
-      },
-      videoLoadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#333333',
-      },
-      videoLoadingText: {
-        fontSize: 14,
-        color: '#ffffff',
-        marginTop: 10,
-        opacity: 0.8,
-      },
-      videoPlaceholder: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#333333',
-      },
-      videoPlaceholderText: {
-        fontSize: 16,
-        color: '#ffffff',
-        opacity: 0.6,
-      },
-      instructionsTitle: {
-        fontSize: Math.min(screenWidth * 0.05, 20),
-        fontWeight: '600',
-        color: '#ffffff',
-        marginBottom: Math.max(12, screenHeight * 0.015),
-      },
-      objetivosSection: {
-        marginTop: Math.max(-20, screenHeight * -0.025),
-        marginBottom: Math.max(15, screenHeight * 0.02),
-        paddingLeft: Math.max(24, screenWidth * 0.06),
-      },
-      objetivosTitle: {
-        fontSize: Math.min(screenWidth * 0.05, 20),
-        fontWeight: '600',
-        color: '#ffffff',
-        marginLeft: 0,
-      },
-      exerciseDescriptionText: {
-        fontSize: Math.min(screenWidth * 0.035, 14),
-        color: '#ffffff',
-        lineHeight: Math.max(22, screenHeight * 0.03),
-        textAlign: 'left',
-        fontWeight: '500',
-      },
-      descriptionScrollView: {
-        flex: 1,
-        paddingBottom: 20, // Add padding to prevent text from being covered
-      },
-      topGradient: {
-    position: 'absolute',
-        top: 40,
-    left: 0,
-    right: 0,
-        height: 25,
-        backgroundColor: 'rgba(42, 42, 42, 0.9)',
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-        zIndex: 1,
-      },
-      scrollIndicator: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 35,
-        backgroundColor: 'rgba(42, 42, 42, 0.9)',
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
-    alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 8,
-        paddingBottom: 8,
-      },
-      scrollIndicatorText: {
-        fontSize: 11,
-        fontWeight: '500',
-        color: '#ffffff',
-        textAlign: 'center',
-      },
-      topCardsContainer: {
-        marginBottom: Math.max(5, screenHeight * 0.006),
-        overflow: 'visible',
-      },
-      topCardsIndicator: {
-    alignItems: 'center',
-        marginBottom: Math.max(15, screenHeight * 0.018),
-      },
-      horizontalCardsScrollView: {
-        marginBottom: Math.max(15, screenHeight * 0.018),
-        overflow: 'visible',
-      },
-      horizontalCardsContainer: {
-        flexDirection: 'row',
-        gap: Math.max(10, screenWidth * 0.025),
-        overflow: 'visible',
-      },
-      horizontalCard: {
-        minWidth: Math.max(140, screenWidth * 0.35),
-        maxWidth: Math.max(160, screenWidth * 0.4),
-        backgroundColor: '#2a2a2a',
-        borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        shadowColor: 'rgba(255, 255, 255, 0.4)',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 2,
-        elevation: 2,
-        height: Math.max(80, screenHeight * 0.1),
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: Math.max(15, screenWidth * 0.04),
-        paddingRight: Math.max(25, screenWidth * 0.06), // Extra padding for info icon
-      },
-      metricTitle: {
-        fontSize: Math.min(screenWidth * 0.03, 12),
-        fontWeight: '500',
-        color: '#ffffff',
-        opacity: 0.8,
-        textAlign: 'center',
-        marginBottom: Math.max(4, screenHeight * 0.005),
-      },
-      metricValue: {
-        fontSize: Math.min(screenWidth * 0.06, 24),
-        fontWeight: '600',
-        color: '#ffffff',
-        textAlign: 'center',
-      },
-      metricValueContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: Math.max(4, screenHeight * 0.005),
-      },
-      exerciseInfoText: {
-        fontSize: 16,
-        color: '#ffffff',
-        textAlign: 'center',
-      },
-  screenIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    paddingTop: Math.max(10, screenHeight * 0.012),
-    paddingBottom: Math.max(15, screenHeight * 0.018),
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingTop: Math.max(120, screenHeight * 0.15), // Add space to account for header
-  },
-  simpleLoadingContainer: {
-    position: 'absolute',
-    top: Math.max(300, screenHeight * 0.4), // Fixed position from top
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    marginTop: Math.max(12, screenHeight * 0.015),
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: Math.max(10, screenHeight * 0.012),
-  },
-  errorSubtext: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    textAlign: 'center',
-    marginBottom: Math.max(20, screenHeight * 0.025),
-  },
-  backButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    borderRadius: Math.max(8, screenWidth * 0.02),
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  exerciseInfoCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: Math.max(20, screenWidth * 0.05),
-    marginBottom: Math.max(20, screenHeight * 0.025),
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  exerciseName: {
-    fontSize: Math.min(screenWidth * 0.06, 24),
-    fontWeight: '700',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: Math.max(16, screenHeight * 0.02),
-  },
-  exerciseDescription: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    color: '#cccccc',
-    lineHeight: Math.max(22, screenHeight * 0.03),
-    marginBottom: Math.max(16, screenHeight * 0.02),
-    textAlign: 'center',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    marginBottom: Math.max(8, screenHeight * 0.01),
-  },
-  infoLabel: {
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-    color: '#888888',
-    width: Math.max(80, screenWidth * 0.2),
-  },
-  infoValue: {
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    color: '#ffffff',
-    flex: 1,
-  },
-  setInfoCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: Math.max(20, screenWidth * 0.05),
-    marginBottom: Math.max(24, screenHeight * 0.03),
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  setTitle: {
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    fontWeight: '700',
-    color: '#007AFF',
-    textAlign: 'center',
-    marginBottom: Math.max(20, screenHeight * 0.025),
-  },
-  setDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3a3a',
-  },
-  setDetailLabel: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '500',
-    color: '#cccccc',
-  },
-  setDetailValue: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  navigationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Math.max(12, screenWidth * 0.03),
-  },
-  navButton: {
-    flex: 1,
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    alignItems: 'center',
-  },
-  previousButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#666666',
-  },
-  nextButton: {
-    backgroundColor: '#007AFF',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  navButtonText: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  // Exercise List View Styles
-  exerciseListView: {
-    flex: 1,
-  },
-  exerciseListContent: {
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: Math.max(10, screenHeight * 0.012), // Match main content padding
-
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Account for swipe indicator
-  },
-  exerciseListTitleSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Math.max(10, screenHeight * 0.012),
-    paddingTop: 0,
-    marginTop: 0,
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-  },
-  exerciseListTitle: {
-    fontSize: Math.min(screenWidth * 0.08, 32),
-    color: '#ffffff',
-    fontWeight: '600',
-    textAlign: 'left',
-    flex: 1,
-  },
-  editButtonSection: {
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    marginBottom: Math.max(15, screenHeight * 0.018),
-    alignItems: 'center',
-  },
-  editButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    alignItems: 'center',
-  },
-  editButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  editButtonActive: {
-    backgroundColor: '#ff6b6b',
-  },
-
-  // Edit Mode Controls Styles
-  editModeControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-
-  // Edit Mode Exercise Card Styles
-  editModeExerciseList: {
-    // No padding - cards are in the same container as normal exercises
-  },
-  editModeExerciseCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginBottom: Math.max(16, screenHeight * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  editModeExerciseCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    minHeight: Math.max(60, screenHeight * 0.075),
-  },
-  editModeExerciseCardActive: {
-    opacity: 0.8,
-    transform: [{ scale: 1.02 }],
-  },
-  dropLine: {
-    height: 3,
-    backgroundColor: '#ffffff',
-    marginVertical: Math.max(4, screenHeight * 0.005),
-    borderRadius: 2,
-    shadowColor: '#ffffff',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  dragHandle: {
-    marginRight: Math.max(16, screenWidth * 0.04),
-    alignSelf: 'center',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  editModeExerciseContent: {
-    flex: 1,
-    marginRight: 15,
-  },
-  editModeExerciseName: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  removeExerciseButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeExerciseButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Edit Modal Styles
-  editModalContainer: {
-    flex: 1,
-    backgroundColor: '#1A1A1A',
-  },
-  editModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  editModalTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  editModalActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
-  },
-  editModalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  editExerciseItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    marginVertical: 5,
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  dragHandleText: {
-    color: '#666',
-    fontSize: 16,
-  },
-  editExerciseContent: {
-    flex: 1,
-  },
-  editExerciseName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  editExerciseInfo: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 2,
-  },
-  exerciseActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  moveButton: {
-    backgroundColor: '#444',
-    padding: 8,
-    borderRadius: 6,
-  },
-  moveButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: Math.max(8, screenWidth * 0.02),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-
-  // Add Exercise Modal Styles
-  addExerciseModalContainer: {
-    flex: 1,
-    backgroundColor: '#1A1A1A',
-  },
-  addExerciseModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingLeft: Math.max(30, screenWidth * 0.12),
-  },
-  addExerciseModalHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  addExerciseModalTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  searchContainer: {
-    marginBottom: 15,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    marginHorizontal: Math.max(20, screenWidth * 0.05),
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#ffffff',
-    opacity: 0.8,
-  },
-  addExerciseModalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  addExerciseCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginBottom: Math.max(16, screenHeight * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  addExerciseCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    minHeight: Math.max(60, screenHeight * 0.075),
-  },
-  addExerciseContent: {
-    flex: 1,
-    marginRight: 15,
-  },
-  addExerciseName: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  addExerciseButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 40,
-    minHeight: 32,
-  },
-  addExerciseButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  addExerciseExpandedCard: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: Math.max(12, screenWidth * 0.03),
-    flexDirection: 'column',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  addExerciseExpandedCardBorder: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  addExerciseCardBorder: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  addExerciseVideoContainer: {
-    width: '85%',
-    height: 430, // Same height as swap modal
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    overflow: 'hidden',
-    alignSelf: 'center',
-  },
-  addExerciseVideoWrapper: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-  },
-  addExerciseVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  addExerciseVideoPauseOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  addExerciseVideoVolumeOverlay: {
-    position: 'absolute',
-    top: Math.max(12, screenHeight * 0.015),
-    right: Math.max(12, screenWidth * 0.03),
-    width: Math.max(40, screenWidth * 0.1),
-    height: Math.max(40, screenWidth * 0.1),
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addExerciseVideoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#666666',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addExerciseVideoPlaceholderText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.025, 10),
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  addExerciseExpandedName: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  exerciseOption: {
-    backgroundColor: '#2a2a2a',
-    marginVertical: 5,
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  exerciseOptionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  // Filter Button Styles
-  filterButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  filterButtonActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: '#BFA84D',
-  },
-  filterButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  filterButtonTextActive: {
-    color: '#BFA84D',
-  },
-  filterButtonBadge: {
-    color: '#BFA84D',
-  },
-  activeFiltersContainer: {
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  activeFiltersScroll: {
-    flexDirection: 'row',
-  },
-  activeFilterChip: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#BFA84D',
-  },
-  activeFilterChipText: {
-    color: '#BFA84D',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  clearAllFiltersButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  clearAllFiltersButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  // Filter Modal Styles
-  filterModalContainer: {
-    flex: 1,
-    backgroundColor: '#1A1A1A',
-  },
-  filterModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingLeft: Math.max(30, screenWidth * 0.12),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  filterModalTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  filterModalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  filterSection: {
-    marginBottom: 30,
-  },
-  filterSectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 15,
-  },
-  muscleSilhouetteContainer: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  selectedItemsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: '#BFA84D',
-    gap: 8,
-  },
-  filterChipText: {
-    color: '#BFA84D',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  filterChipRemove: {
-    color: '#BFA84D',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  implementsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  implementChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  implementChipSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: '#BFA84D',
-  },
-  implementChipText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  implementChipTextSelected: {
-    color: '#BFA84D',
-  },
-  filterModalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    gap: 12,
-  },
-  filterClearButton: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingVertical: 14,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterClearButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  filterApplyButton: {
-    flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    paddingVertical: 14,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: '#BFA84D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterApplyButtonText: {
-    color: '#BFA84D',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  filterButtonDisabled: {
-    opacity: 0.5,
-  },
-  filterButtonTextDisabled: {
-    opacity: 0.5,
-  },
-  exerciseOptionDescription: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 5,
-  },
-  emptyStateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 50,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-
-  exerciseListItem: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginBottom: Math.max(16, screenHeight * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  exerciseCard: {
-    flexDirection: 'row',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    alignItems: 'center',
-    minHeight: Math.max(60, screenHeight * 0.075),
-  },
-  exerciseNumber: {
-    fontSize: Math.min(screenWidth * 0.08, 32),
-    fontWeight: '700',
-    color: '#ffffff',
-    marginRight: Math.max(16, screenWidth * 0.04),
-    alignSelf: 'center',
-  },
-  exerciseContent: {
-    flex: 1,
-  },
-  exerciseItemTitle: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  exerciseInfo: {
-    fontSize: Math.min(screenWidth * 0.03, 12),
-    fontWeight: '400',
-    color: '#ffffff',
-    opacity: 0.8,
-  },
-  exerciseItemArrow: {
-    // Styles for the SVG icon
-  },
-  arrowButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowRight: {
-    transform: [{ rotate: '180deg' }], // ChevronLeft rotated 180deg = pointing right
-  },
-  arrowDown: {
-    transform: [{ rotate: '270deg' }], // ChevronLeft rotated 270deg = pointing down
-  },
-  setsContainer: {
-    paddingTop: 0,
-    paddingBottom: Math.max(16, screenHeight * 0.02),
-  },
-  setTrackingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(4, screenHeight * 0.005),
-    position: 'relative',
-  },
-  currentSetOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
-    zIndex: 1,
-    pointerEvents: 'none',
-  },
-  setNumberSpace: {
-    width: Math.max(20, screenWidth * 0.05),
-    marginRight: Math.max(20, screenWidth * 0.05),
-    marginLeft: Math.max(26, screenWidth * 0.065),
-  },
-  setNumber: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    color: '#ffffff',
-    marginRight: Math.max(20, screenWidth * 0.05),
-    minWidth: Math.max(20, screenWidth * 0.05),
-    textAlign: 'left',
-  },
-  setNumberContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    paddingHorizontal: Math.max(4, screenWidth * 0.01),
-    marginLeft: Math.max(26, screenWidth * 0.065),
-  },
-  setInputsContainer: {
-    flexDirection: 'row',
-    flex: 1,
-    paddingRight: Math.max(20, screenWidth * 0.05),
-  },
-  inputGroup: {
-    // No padding - boxes should touch each other
-  },
-  headerLabel: {
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  setInput: {
-    backgroundColor: '#3a3a3a',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    paddingHorizontal: Math.max(8, screenWidth * 0.02),
-    paddingVertical: Math.max(6, screenHeight * 0.007),
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    textAlign: 'center',
-    flex: 1,
-  },
-  setInputError: {
-    borderColor: '#ff4444',
-    borderWidth: 2,
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
-  },
-  previousValue: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    color: '#ffffff',
-    textAlign: 'left',
-    flex: 1,
-    paddingVertical: Math.max(6, screenHeight * 0.007),
-    paddingHorizontal: Math.max(8, screenWidth * 0.02),
-    textAlignVertical: 'center',
-  },
-  // Left Menu Button Styles (moved to WakeHeader component)
-  // Removed - menu button is now integrated in WakeHeader
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-    paddingTop: Math.max(100, screenHeight * 0.12), // Position below header
-    paddingLeft: Math.max(24, screenWidth * 0.06),
-  },
-  menuModal: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    minWidth: Math.max(300, screenWidth * 0.5),
-    width: 'auto',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  menuOption: {
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3a3a',
-  },
-  menuOptionLast: {
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    // No border for the last item
-  },
-  menuOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Math.max(12, screenWidth * 0.03),
-  },
-  menuOptionText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.037, 15),
-    fontWeight: '500',
-    flex: 1,
-  },
-  // Set Input Button Styles
-  inputSetButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    marginBottom: Math.max(16, screenHeight * 0.02),
-    alignItems: 'center',
-    borderWidth: 0.2,
-    borderColor: '#ffffff',
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  inputSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  // Set Input Modal Styles
-  setInputModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  setInputModal: {
-    backgroundColor: '#2a2a2a',
-    borderTopLeftRadius: Math.max(20, screenWidth * 0.05),
-    borderTopRightRadius: Math.max(20, screenWidth * 0.05),
-    maxHeight: '90%',
-    minHeight: '80%',
-  },
-  setInputModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-  },
-  setInputModalTitle: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    color: '#ffffff',
-    flex: 1,
-  },
-  setInputModalContent: {
-    flex: 1,
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-  },
-  setInputField: {
-    marginBottom: Math.max(20, screenHeight * 0.025),
-  },
-  setInputFieldLabel: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '500',
-    color: '#ffffff',
-    marginBottom: Math.max(8, screenHeight * 0.01),
-  },
-  setInputFieldInput: {
-    backgroundColor: '#3a3a3a',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-  },
-  setInputFieldInputError: {
-    borderColor: '#ff4444',
-    borderWidth: 2,
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
-  },
-  setInputModalFooter: {
-    flexDirection: 'row',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(40, screenHeight * 0.05),
-    justifyContent: 'center',
-  },
-  cancelSetButton: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#666666',
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    alignItems: 'center',
-  },
-  cancelSetButtonText: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  saveSetButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(18, screenHeight * 0.022),
-    paddingHorizontal: Math.max(40, screenWidth * 0.1),
-    alignItems: 'center',
-    borderColor: '#ffffff',
-    minWidth: Math.max(200, screenWidth * 0.5),
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  saveSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  saveSetButtonDisabled: {
-    backgroundColor: '#666666',
-    opacity: 0.6,
-    shadowOpacity: 0,
-  },
-  saveSetButtonTextDisabled: {
-    color: '#cccccc',
-  },
-  // Video card styles (from WarmupScreen)
-  videoCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: 0,
-    marginBottom: 0,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    height: Math.max(480, screenHeight * 0.60), // Responsive height: 62% of screen height, min 500px
-    overflow: 'hidden',
-    position: 'relative',
-    width: screenWidth - Math.max(48, screenWidth * 0.12),
-  },
-  videoCardNoBorder: {
-    borderWidth: 0,
-    shadowColor: 'transparent',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  videoContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  video: {
-    width: '100%',
-    height: '100%',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-  },
-  videoPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-  },
-  videoPlaceholderText: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    textAlign: 'center',
-  },
-  pauseOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  volumeIconContainer: {
-    position: 'absolute',
-    top: Math.max(12, screenHeight * 0.015),
-    right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
-  },
-  volumeIconButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: Math.max(16, screenWidth * 0.04),
-    padding: Math.max(8, screenWidth * 0.02),
-    minWidth: Math.max(32, screenWidth * 0.08),
-    minHeight: Math.max(32, screenWidth * 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  restartIconContainer: {
-    position: 'absolute',
-    top: Math.max(60, screenHeight * 0.075),
-    right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
-  },
-  restartIconButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: Math.max(16, screenWidth * 0.04),
-    padding: Math.max(8, screenWidth * 0.02),
-    minWidth: Math.max(32, screenWidth * 0.08),
-    minHeight: Math.max(32, screenWidth * 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // End Workout Button Styles
-  endWorkoutButton: {
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
-    height: Math.max(50, screenHeight * 0.06), // Match purchase button height
-    width: Math.max(280, screenWidth * 0.7), // Match purchase button width
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginTop: Math.max(24, screenHeight * 0.03),
-    marginBottom: Math.max(20, screenHeight * 0.025),
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  endWorkoutButtonActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    opacity: 1,
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  endWorkoutButtonDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 1,
-  },
-  endWorkoutButtonText: {
-    color: 'rgba(255, 68, 68, 0.8)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  endWorkoutButtonTextActive: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '700',
-  },
-  endWorkoutButtonTextDisabled: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  endWorkoutButtonTextLoading: {
-    color: 'rgba(191, 168, 77, 0.8)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  // Button container for horizontal layout
-  buttonContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Math.max(10, screenWidth * 0.025),
-  },
-  // Main save button
-  inputSetButton: {
-    flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  inputSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  inputSetButtonDisabled: {
-    backgroundColor: '#666666',
-    opacity: 0.6,
-    shadowOpacity: 0,
-  },
-  inputSetButtonTextDisabled: {
-    color: '#cccccc',
-  },
-  // Small list screen button
-  listScreenButton: {
-    width: Math.max(60, screenWidth * 0.15),
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(14, screenHeight * 0.017),
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Shadow removed - was causing offset bottom shadow
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  // Exercise controls row
-  exerciseControlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    marginHorizontal: Math.max(16, screenWidth * 0.04),
-  },
-  // Swap exercise button
-  swapExerciseButton: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  swapExerciseButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '600',
-  },
-  // Set control buttons
-  setControlButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Math.max(8, screenWidth * 0.02),
-  },
-  setControlButton: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(8, screenWidth * 0.02),
-    padding: Math.max(8, screenWidth * 0.02),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: Math.max(32, screenWidth * 0.08),
-    minHeight: Math.max(32, screenWidth * 0.08),
-  },
-  setControlButtonDisabled: {
-    backgroundColor: '#2a2a2a',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  // Swap modal styles
-  swapModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  swapModalBackdrop: {
-    flex: 1,
-  },
-  swapModalContainer: {
-    backgroundColor: '#2a2a2a',
-    borderTopLeftRadius: Math.max(20, screenWidth * 0.05),
-    borderTopRightRadius: Math.max(20, screenWidth * 0.05),
-    height: '90%',
-    maxHeight: Math.max(800, screenHeight * 0.8),
-  },
-  swapModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: Math.max(20, screenHeight * 0.025),
-  },
-  swapModalTitle: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.06, 24),
-    fontWeight: '600',
-    paddingLeft: Math.max(20, screenWidth * 0.05),
-  },
-  swapModalCloseButton: {
-    width: Math.max(30, screenWidth * 0.075),
-    height: Math.max(30, screenWidth * 0.075),
-    borderRadius: Math.max(15, screenWidth * 0.037),
-    backgroundColor: '#44454B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  swapModalCloseButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  swapModalContent: {
-    flex: 1,
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingTop: Math.max(20, screenHeight * 0.025),
-  },
-  swapModalSubtitle: {
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    marginBottom: Math.max(18, screenHeight * 0.022),
-    opacity: 1,
-    paddingLeft: Math.max(20, screenWidth * 0.05),
-  },
-  sugerenciasText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-  },
-  creatorNameText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  currentExerciseSection: {
-    marginBottom: Math.max(24, screenHeight * 0.03),
-  },
-  currentExerciseLabel: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    opacity: 1,
-    paddingLeft: Math.max(20, screenWidth * 0.05),
-  },
-  // Card styles
-  expandedExerciseCard: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    padding: Math.max(12, screenWidth * 0.03),
-    flexDirection: 'column',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  compactExerciseCard: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    flexDirection: 'column',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  expandedCardBorder: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  compactCardBorder: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  exerciseNameContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-  },
-  swapIconButton: {
-    backgroundColor: '#44454B',
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    width: Math.max(40, screenWidth * 0.1),
-    height: Math.max(40, screenWidth * 0.1),
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  currentExerciseVideoContainer: {
-    width: '85%',
-    height: 430, // Original height
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    overflow: 'hidden',
-    alignSelf: 'center',
-  },
-  currentExerciseVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  currentExerciseVideoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#666666',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  currentExerciseVideoPlaceholderText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.025, 10),
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  swapModalVideoContainer: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-  },
-  swapModalVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  swapModalPauseOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  swapModalVolumeOverlay: {
-    position: 'absolute',
-    top: Math.max(12, screenHeight * 0.015),
-    right: Math.max(12, screenWidth * 0.03),
-    width: Math.max(40, screenWidth * 0.1),
-    height: Math.max(40, screenWidth * 0.1),
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  currentExerciseContent: {
-    width: '100%',
-  },
-  currentExerciseName: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  alternativeExerciseContent: {
-    flex: 1,
-  },
-  alternativeExerciseName: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Math.max(40, screenHeight * 0.05),
-  },
-  loadingText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    marginTop: Math.max(12, screenHeight * 0.015),
-    opacity: 0.8,
-  },
-  noAlternativesContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Math.max(40, screenHeight * 0.05),
-  },
-  noAlternativesText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    opacity: 0.6,
-    textAlign: 'center',
-  },
-  // Info icon container (top-right of objective cards)
-  infoIconContainer: {
-    position: 'absolute',
-    top: Math.max(8, screenHeight * 0.01),
-    right: Math.max(8, screenWidth * 0.02),
-    zIndex: 10,
-  },
-  // Objective Info Modal Styles
-  objectiveInfoModalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  objectiveInfoModalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  objectiveInfoModalContent: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    width: Math.max(350, screenWidth * 0.9),
-    maxWidth: 400,
-    height: Math.max(500, screenHeight * 0.7),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  
-  objectiveInfoScrollContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  
-  objectiveInfoScrollView: {
-    flex: 1,
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-  },
-  objectiveInfoModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Math.max(16, screenHeight * 0.02),
-  },
-  objectiveInfoModalTitle: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.055, 22),
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'left',
-    paddingLeft: Math.max(25, screenWidth * 0.06),
-    paddingTop: Math.max(25, screenHeight * 0.03),
-  },
-  objectiveInfoCloseButton: {
-    width: Math.max(30, screenWidth * 0.075),
-    height: Math.max(30, screenWidth * 0.075),
-    borderRadius: Math.max(15, screenWidth * 0.037),
-    backgroundColor: '#44454B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: Math.max(12, screenWidth * 0.03),
-    marginRight: Math.max(10, screenWidth * 0.03),
-    marginTop: Math.max(5, screenHeight * 0.01),
-  },
-  objectiveInfoCloseButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  objectiveInfoModalDescription: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    lineHeight: Math.max(24, screenHeight * 0.03),
-    opacity: 0.9,
-    marginBottom: Math.max(20, screenHeight * 0.025),
-  },
-  disclaimersSection: {
-    marginTop: Math.max(20, screenHeight * 0.025),
-    paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  disclaimersTitle: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-  },
-  disclaimerText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    lineHeight: Math.max(20, screenHeight * 0.025),
-    opacity: 0.8,
-    marginBottom: Math.max(8, screenHeight * 0.01),
-  },
-  scrollIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 35,
-    backgroundColor: 'rgba(42, 42, 42, 0.9)',
-    borderBottomLeftRadius: Math.max(16, screenWidth * 0.04),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  scrollIndicatorText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-});
-
-// Add loading overlay styles
-// Confirmation Modal Styles - Simplified and improved UI
-const confirmModalStyles = (screenWidth, screenHeight) => StyleSheet.create({
-  confirmModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-  },
-  confirmModalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  confirmModalContent: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    padding: Math.max(32, screenWidth * 0.08),
-    width: '100%',
-    maxWidth: Math.min(screenWidth * 0.85, 360),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    shadowColor: 'rgba(255, 255, 255, 0.3)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 8,
-    alignItems: 'center',
-  },
-  confirmModalTitle: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.065, 26),
-    fontWeight: '700',
-    marginBottom: Math.max(20, screenHeight * 0.025),
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  confirmModalMessage: {
-    color: 'rgba(255, 255, 255, 0.75)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '500',
-    marginBottom: Math.max(32, screenHeight * 0.04),
-    textAlign: 'center',
-    lineHeight: Math.max(24, screenHeight * 0.03),
-  },
-  confirmModalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Math.max(16, screenWidth * 0.04),
-    width: '100%',
-  },
-  confirmModalButton: {
-    flex: 1,
-    paddingVertical: Math.max(12, screenHeight * 0.015),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    borderRadius: Math.max(12, screenWidth * 0.03),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    minHeight: Math.max(44, screenHeight * 0.055),
-  },
-  confirmModalButtonCancel: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  confirmModalButtonConfirm: {
-    backgroundColor: 'rgba(191, 168, 77, 0.25)',
-    borderColor: 'rgba(191, 168, 77, 0.7)',
-  },
-  confirmModalButtonDestructive: {
-    backgroundColor: 'rgba(255, 59, 48, 0.15)',
-    borderColor: 'rgba(255, 59, 48, 0.6)',
-  },
-  confirmModalButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  confirmModalButtonTextCancel: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  confirmModalButtonTextDestructive: {
-    color: 'rgba(255, 59, 48, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-});
-
-const createLoadingOverlayStyles = (screenWidth, screenHeight) => StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingContent: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(15, screenWidth * 0.04),
-    padding: Math.max(30, screenWidth * 0.08),
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  loadingText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    marginTop: 15,
-  },
-  loadingSubtext: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  
-  // Intensity Cards - Exact copy of swap modal compactExerciseCard
-  intensityVideoSection: {
-    marginTop: 24,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  
-  intensityVideoTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  
-  
-  intensityCard: {
-    backgroundColor: '#3a3a3a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    marginBottom: Math.max(12, screenHeight * 0.015),
-    flexDirection: 'column',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  
-  intensityCardExpanded: {
-    // Expanded state - same as normal card
-  },
-  
-  intensityCardLabel: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  
-  intensityCardVideoContainer: {
-    width: '85%',
-    height: 250,
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    overflow: 'hidden',
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  
-  intensityCardVideo: {
-    width: '100%',
-    height: '100%',
-    opacity: 0.7,
-  },
-  
-  intensityVideoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-
-  muscleSilhouetteWrapper: {
-    width: '100%',
-    marginBottom: 0,
-    paddingBottom: 0,
-    // GPU acceleration hints for better paint performance
-    transform: [{ translateZ: 0 }], // Promote to GPU layer
-  },
-  // Muscle activation card styles
-  muscleSilhouetteContainerCard: {
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 0,
-    paddingBottom: 0,
-    // GPU acceleration hints for better paint performance
-    transform: [{ translateZ: 0 }], // Promote to GPU layer
-    height: Math.max(350, screenHeight * 0.42), // Match SVG height, responsive
-    flexShrink: 0,
-  },
-  muscleEmptyState: {
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    minHeight: 280,
-  },
-  muscleEmptyText: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    textAlign: 'center',
-  },
-  muscleToImplementsSpacer: {
-    width: '100%',
-    height: Math.max(80, screenHeight * 0.1),
-    flexShrink: 0,
-    flexGrow: 0,
-    backgroundColor: 'rgba(255, 0, 0, 0.2)', // Temporary - to verify it's rendering
-  },
-  // Implements section under silhouette
-  implementsSection: {
-    marginTop: 0,
-    paddingTop: 0,
-    width: '100%',
-    marginBottom: 0,
-    paddingBottom: 0,
-    flexShrink: 0,
-  },
-  implementsSubtitle: {
-    marginTop: 0,
-    marginBottom: 12,
-    paddingLeft: 0,
-  },
-  implementsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingRight: 8,
-  },
-  implementsPillContainer: {
-    marginBottom: 0,
-  },
-  implementsPill: {
-    // Override some spacing to reuse editButton visual style
-    alignSelf: 'flex-start',
-  },
-  implementsPillText: {
-    // Slight tweak if needed later (currently just inherit editButtonText)
-  },
-  muscleEmptyStateInline: {
-    paddingHorizontal: Math.max(10, screenWidth * 0.025),
-    paddingVertical: Math.max(6, screenHeight * 0.007),
-  },
-  muscleEmptyTextInline: {
-    color: '#cccccc',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-  },
-});
 
 export default WorkoutExecutionScreen;

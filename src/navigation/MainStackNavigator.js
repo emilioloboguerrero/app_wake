@@ -1,5 +1,6 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 
 // Import screens
 import MainScreen from '../screens/MainScreen';
@@ -24,20 +25,20 @@ const MainStackNavigator = () => {
         cardStyle: { backgroundColor: '#1a1a1a' },
       }}
     >
-      <Stack.Screen name="MainScreen" component={MainScreen} />
-      <Stack.Screen name="ProgramLibrary" component={ProgramLibraryScreen} />
-      <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
-      <Stack.Screen name="CreatorProfile" component={CreatorProfileScreen} />
-      <Stack.Screen name="DailyWorkout" component={DailyWorkoutScreen} />
-      <Stack.Screen name="WorkoutExercises" component={WorkoutExercisesScreen} />
+      <Stack.Screen name="MainScreen" component={withErrorBoundary(MainScreen, 'MainScreen')} />
+      <Stack.Screen name="ProgramLibrary" component={withErrorBoundary(ProgramLibraryScreen, 'ProgramLibrary')} />
+      <Stack.Screen name="CourseDetail" component={withErrorBoundary(CourseDetailScreen, 'CourseDetail')} />
+      <Stack.Screen name="CreatorProfile" component={withErrorBoundary(CreatorProfileScreen, 'CreatorProfile')} />
+      <Stack.Screen name="DailyWorkout" component={withErrorBoundary(DailyWorkoutScreen, 'DailyWorkout')} />
+      <Stack.Screen name="WorkoutExercises" component={withErrorBoundary(WorkoutExercisesScreen, 'WorkoutExercises')} />
       <Stack.Screen 
         name="Warmup" 
-        component={WarmupScreen}
+        component={withErrorBoundary(WarmupScreen, 'Warmup')}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
-      <Stack.Screen name="WorkoutCompletion" component={WorkoutCompletionScreen} />
-      <Stack.Screen name="CourseStructure" component={CourseStructureScreen} />
+      <Stack.Screen name="WorkoutExecution" component={withErrorBoundary(WorkoutExecutionScreen, 'WorkoutExecution')} />
+      <Stack.Screen name="WorkoutCompletion" component={withErrorBoundary(WorkoutCompletionScreen, 'WorkoutCompletion')} />
+      <Stack.Screen name="CourseStructure" component={withErrorBoundary(CourseStructureScreen, 'CourseStructure')} />
     </Stack.Navigator>
   );
 };

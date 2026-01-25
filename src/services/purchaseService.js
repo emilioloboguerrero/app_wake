@@ -8,22 +8,46 @@ import logger from '../utils/logger';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
-    if (!courseEntry) return false;
+    logger.log(`🔍 [isCourseEntryActive] Checking course entry:`, {
+      hasEntry: !!courseEntry,
+      status: courseEntry?.status,
+      is_trial: courseEntry?.is_trial,
+      expires_at: courseEntry?.expires_at,
+      expires_at_parsed: courseEntry?.expires_at ? new Date(courseEntry.expires_at).toISOString() : null
+    });
+    
+    if (!courseEntry) {
+      logger.log(`❌ [isCourseEntryActive] No course entry - returning false`);
+      return false;
+    }
+    
     const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
-    const isNotExpired = !expiresAt || expiresAt > new Date();
+    const now = new Date();
+    const isNotExpired = !expiresAt || expiresAt > now;
+    
+    logger.log(`🔍 [isCourseEntryActive] Expiration check:`, {
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
+      now: now.toISOString(),
+      isNotExpired,
+      expiresAt_gt_now: expiresAt ? expiresAt > now : 'N/A (null)'
+    });
 
     if (!isNotExpired) {
+      logger.log(`❌ [isCourseEntryActive] Course expired - returning false`);
       return false;
     }
 
     if (courseEntry.status === 'active') {
+      logger.log(`✅ [isCourseEntryActive] Course is active - returning true`);
       return true;
     }
 
     if (courseEntry.is_trial) {
+      logger.log(`✅ [isCourseEntryActive] Course is trial - returning true`);
       return true;
     }
 
+    logger.log(`❌ [isCourseEntryActive] Course not active and not trial - returning false`);
     return false;
   }
 
@@ -213,21 +237,45 @@ class PurchaseService {
         };
       }
 
+      const requestBody = { userId, courseId, payer_email: payerEmail };
+      logger.log('💳 [prepareSubscription] Request to createSubscriptionCheckout', {
+        params: requestBody,
+        hasUserId: !!userId,
+        hasCourseId: !!courseId,
+        hasPayerEmail: !!payerEmail,
+      });
+
       const response = await fetch(
         "https://us-central1-wolf-20b8b.cloudfunctions.net/createSubscriptionCheckout",
         {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({userId, courseId, payer_email: payerEmail}),
+          body: JSON.stringify(requestBody),
         }
       );
 
-      const result = await response.json();
-
-      if (response.status === 409 && result.requireAlternateEmail) {
+      let result;
+      let responseText;
+      try {
+        responseText = await response.text();
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        logger.error('❌ [prepareSubscription] Failed to parse response:', {
+          error: jsonError.message,
+          responseText: responseText,
+          status: response.status,
+        });
+        // If response is not valid JSON, return error
         return {
           success: false,
-          requiresAlternateEmail: true,
+          error: `Error del servidor (${response.status}): ${response.statusText}. Respuesta: ${responseText?.substring(0, 200)}`,
+        };
+      }
+
+      if (response.status === 409) {
+        return {
+          success: false,
+          requiresAlternateEmail: result.requireAlternateEmail || true,
           error: result.error || "Por favor ingresa tu correo de Mercado Pago",
         };
       }
@@ -241,6 +289,7 @@ class PurchaseService {
         checkoutURL: result.init_point,
       };
     } catch (error) {
+      logger.error('❌ [prepareSubscription] Exception:', error.message);
       return {
         success: false,
         error: error.message || "Error preparing subscription",
@@ -257,9 +306,15 @@ class PurchaseService {
    */
   async preparePurchase(userId, courseId) {
     try {
-      // Get course details to check if subscription
+      logger.log('💳 [preparePurchase] Input', {
+        userId: userId ?? null,
+        courseId: courseId ?? null,
+        hasUserId: !!userId,
+        hasCourseId: !!courseId,
+      });
+
       const courseDetails = await firestoreService.getCourse(courseId);
-      
+
       if (!courseDetails) {
         return {
           success: false,
@@ -267,22 +322,31 @@ class PurchaseService {
         };
       }
 
-      // Check if subscription (monthly)
       if (courseDetails.access_duration === "monthly") {
-        // Subscription - requires Mercado Pago sign-in (handled by Mercado Pago checkout)
-        // Get user email for subscription
         const userDoc = await firestoreService.getUser(userId);
         const payerEmail = userDoc?.email || null;
-        // Call subscription function
+        logger.log('💳 [preparePurchase] Calling purchase web function: createSubscriptionCheckout', {
+          endpoint: 'createSubscriptionCheckout',
+          params: { userId, courseId, payer_email: payerEmail },
+          hasUserId: !!userId,
+          hasCourseId: !!courseId,
+          hasPayerEmail: !!payerEmail,
+        });
         return await this.prepareSubscription(userId, courseId, payerEmail);
       } else {
-        // One-time payment - call existing function
+        const body = { userId, courseId };
+        logger.log('💳 [preparePurchase] Calling purchase web function: createPaymentPreference', {
+          endpoint: 'createPaymentPreference',
+          params: body,
+          hasUserId: !!userId,
+          hasCourseId: !!courseId,
+        });
         const response = await fetch(
           "https://us-central1-wolf-20b8b.cloudfunctions.net/createPaymentPreference",
           {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({userId, courseId}),
+            body: JSON.stringify(body),
           }
         );
 

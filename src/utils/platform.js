@@ -4,6 +4,31 @@
 export const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
 export const isNative = !isWeb;
 
+// Detect if running as PWA (installed web app) vs regular browser
+export const isPWA = () => {
+  if (!isWeb) return false;
+  
+  // Check for standalone display mode (PWA installed)
+  if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+    return true;
+  }
+  
+  // iOS Safari specific check
+  if (window.navigator.standalone === true) {
+    return true;
+  }
+  
+  // Check for minimal-ui mode (also indicates PWA)
+  if (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) {
+    return true;
+  }
+  
+  return false;
+};
+
+// Check if running in regular web browser (not PWA)
+export const isRegularWeb = () => isWeb && !isPWA();
+
 // Get platform-specific storage
 export const getStorage = () => {
   if (isWeb) {
@@ -17,6 +42,8 @@ export const getStorage = () => {
 };
 
 // Get platform-specific dimensions
+// NOTE: For React components, prefer using useWindowDimensions() hook instead
+// This utility is for non-React contexts only (e.g., utility functions, module-level code)
 export const getDimensions = () => {
   if (isWeb) {
     return {
@@ -24,6 +51,8 @@ export const getDimensions = () => {
       height: window.innerHeight
     };
   } else {
+    // For native, we still need Dimensions.get() since this is used outside React components
+    // Components should use useWindowDimensions() hook instead
     const { Dimensions } = require('react-native');
     return Dimensions.get('window');
   }

@@ -1,6 +1,7 @@
 // Web wrapper for MainScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { NavigationContainer } from '@react-navigation/native';
 // Import the base component - Metro should resolve MainScreen.js (not .web.js) when we use explicit .js extension
 // The metro.config.js is configured to prioritize .js over .web.js for explicit imports
 const MainScreenModule = require('./MainScreen.js');
@@ -39,7 +40,12 @@ const MainScreen = () => {
     params: {}
   };
 
-  return <MainScreenBase navigation={navigation} route={route} />;
+  // Wrap in NavigationContainer so base MainScreen's useFocusEffect has a context and doesn't throw
+  return (
+    <NavigationContainer independent={true}>
+      <MainScreenBase navigation={navigation} route={route} />
+    </NavigationContainer>
+  );
 };
 
 export default MainScreen;

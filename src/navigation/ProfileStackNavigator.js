@@ -1,5 +1,6 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 
 // Import screens
 import ProfileScreen from '../screens/ProfileScreen';
@@ -23,15 +24,15 @@ const ProfileStackNavigator = () => {
         cardStyle: { backgroundColor: '#1a1a1a' },
       }}
     >
-      <Stack.Screen name="ProfileHome" component={ProfileScreen} />
-      <Stack.Screen name="AllPurchasedCourses" component={AllPurchasedCoursesScreen} />
-      <Stack.Screen name="Subscriptions" component={SubscriptionsScreen} />
-      <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
-      <Stack.Screen name="ExercisePanel" component={PRsScreen} />
-      <Stack.Screen name="ExerciseDetail" component={PRDetailScreen} />
-      <Stack.Screen name="WeeklyVolumeHistory" component={WeeklyVolumeHistoryScreen} />
-      <Stack.Screen name="Sessions" component={SessionsScreen} />
-      <Stack.Screen name="SessionDetail" component={SessionDetailScreen} />
+      <Stack.Screen name="ProfileHome" component={withErrorBoundary(ProfileScreen, 'ProfileHome')} />
+      <Stack.Screen name="AllPurchasedCourses" component={withErrorBoundary(AllPurchasedCoursesScreen, 'AllPurchasedCourses')} />
+      <Stack.Screen name="Subscriptions" component={withErrorBoundary(SubscriptionsScreen, 'Subscriptions')} />
+      <Stack.Screen name="CourseDetail" component={withErrorBoundary(CourseDetailScreen, 'CourseDetail')} />
+      <Stack.Screen name="ExercisePanel" component={withErrorBoundary(PRsScreen, 'ExercisePanel')} />
+      <Stack.Screen name="ExerciseDetail" component={withErrorBoundary(PRDetailScreen, 'ExerciseDetail')} />
+      <Stack.Screen name="WeeklyVolumeHistory" component={withErrorBoundary(WeeklyVolumeHistoryScreen, 'WeeklyVolumeHistory')} />
+      <Stack.Screen name="Sessions" component={withErrorBoundary(SessionsScreen, 'Sessions')} />
+      <Stack.Screen name="SessionDetail" component={withErrorBoundary(SessionDetailScreen, 'SessionDetail')} />
     </Stack.Navigator>
   );
 };

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, Animated, TouchableWithoutFeedback, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
+import { getSessionDateAsDate } from '../utils/sessionFilter';
 import logger from '../utils/logger.js';
 
 const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', onPeriodChange }) => {
@@ -32,8 +33,9 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     setIsPeriodDropdownVisible(false);
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
+  const formatDate = (dateValue) => {
+    const date = getSessionDateAsDate(dateValue);
+    if (!date) return '?';
     return date.toLocaleDateString('es-ES', {
       day: 'numeric',
       month: 'short'
@@ -105,6 +107,18 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   logger.log('📊 ExerciseProgressChart: validSessions:', validSessions.length);
   logger.log('📊 ExerciseProgressChart: loading:', loading);
 
+  if (sessions?.length > 0 && validSessions.length === 0) {
+    const first = sessions[0];
+    const firstSet = first.sets?.[0];
+    logger.warn('📊 ExerciseProgressChart: No valid sessions – debug:', {
+      sessionsCount: sessions.length,
+      firstSessionHasSets: !!first.sets,
+      firstSessionSetsLength: first.sets?.length ?? 0,
+      firstSet: firstSet ? { reps: firstSet.reps, weight: firstSet.weight, intensity: firstSet.intensity } : null,
+      firstSetHasSetData: firstSet ? hasSetData(firstSet) : false
+    });
+  }
+
   if (validSessions.length === 0) {
     return (
       <View style={styles.container}>
@@ -121,10 +135,12 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     );
   }
 
-  // Sort sessions by date and limit to most recent 50
-  const sortedSessions = [...validSessions].sort((a, b) => 
-    new Date(a.date) - new Date(b.date)
-  ).slice(-50); // Take the last 50 sessions (most recent)
+  // Sort sessions by date and limit to most recent 50 (handle Firestore Timestamp)
+  const sortedSessions = [...validSessions].sort((a, b) => {
+    const dateA = getSessionDateAsDate(a.date || a.completedAt)?.getTime() ?? 0;
+    const dateB = getSessionDateAsDate(b.date || b.completedAt)?.getTime() ?? 0;
+    return dateA - dateB;
+  }).slice(-50); // Take the last 50 sessions (most recent)
 
   // Dynamic label density function - adjusts label frequency based on period
   const getLabelInterval = (period, totalDataPoints) => {
@@ -195,7 +211,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     });
 
     return {
-      date: formatDate(session.date),
+      date: formatDate(session.date || session.completedAt),
       maxWeight: maxWeight,
       avgReps: avgReps
     };

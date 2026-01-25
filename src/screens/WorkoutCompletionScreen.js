@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,9 +26,6 @@ import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
-
-const WorkoutCompletionScreen = ({ navigation, route }) => {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 import { getMondayWeek } from '../utils/weekCalculation';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
@@ -37,9 +34,10 @@ import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/Sha
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
+
 const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params;
+  const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [completionStats, setCompletionStats] = useState(null);
@@ -660,6 +658,507 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     }
   };
 
+  // Create styles with dimensions - memoized to prevent recalculation on every render
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#1a1a1a',
+    },
+    scrollView: {
+      flex: 1,
+    },
+    content: {
+      paddingHorizontal: 24,
+      paddingBottom: 40,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      color: '#cccccc',
+      fontSize: 16,
+      fontWeight: '400',
+      marginTop: 12,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    errorText: {
+      color: '#ff4444',
+      fontSize: 18,
+      fontWeight: '600',
+      textAlign: 'center',
+      marginBottom: 20,
+    },
+    header: {
+      alignItems: 'center',
+      marginBottom: 32,
+    },
+    randomPhrase: {
+      fontSize: 28,
+      fontWeight: '600',
+      color: '#ffffff',
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    exerciseVolumeCard: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+    },
+    exerciseVolumeName: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '600',
+      marginBottom: 8,
+    },
+    exerciseVolumeValue: {
+      color: '#bfa84d',
+      fontSize: 20,
+      fontWeight: '700',
+    },
+    shareButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      paddingHorizontal: Math.max(18, screenWidth * 0.04),
+      height: Math.max(50, screenHeight * 0.06),
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    finishButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      height: Math.max(50, screenHeight * 0.06), // Match WorkoutExecutionScreen endWorkoutButton
+      width: Math.max(280, screenWidth * 0.7), // Match WorkoutExecutionScreen endWorkoutButton width
+      borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExecutionScreen
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center', // Match WorkoutExecutionScreen
+      marginTop: Math.max(24, screenHeight * 0.03), // Match WorkoutExecutionScreen
+      marginBottom: Math.max(20, screenHeight * 0.025), // Match WorkoutExecutionScreen
+    },
+    finishButtonText: {
+      color: '#bfa84d',
+      fontSize: Math.min(screenWidth * 0.045, 18),
+      fontWeight: '600',
+    },
+    shareButtonText: {
+      color: '#bfa84d',
+      fontSize: Math.min(screenWidth * 0.045, 18),
+      fontWeight: '600',
+    },
+    muscleCardsScrollContainer: {
+      paddingHorizontal: Math.max(20, screenWidth * 0.05),
+      gap: 0,
+      overflow: 'visible',
+    },
+    muscleCardFirst: {
+      // Card width = screenWidth - (container padding on both sides)
+      // containerPadding = Math.max(20, screenWidth * 0.05) * 2
+      width: screenWidth - (Math.max(20, screenWidth * 0.05) * 2),
+      marginRight: 15, // Space between cards
+      overflow: 'visible',
+    },
+    muscleCardSecond: {
+      // Card width = screenWidth - (container padding on both sides)
+      // containerPadding = Math.max(20, screenWidth * 0.05) * 2
+      width: screenWidth - (Math.max(20, screenWidth * 0.05) * 2),
+      overflow: 'visible',
+    },
+    paginationContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: Math.max(16, screenHeight * 0.02),
+      marginBottom: Math.max(8, screenHeight * 0.01),
+      gap: 0, // Remove gap - spacing handled by marginHorizontal on dots
+    },
+    paginationDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#ffffff',
+    },
+    paginationDotActive: {
+      width: 24,
+      backgroundColor: '#bfa84d',
+    },
+    muscleVolumeInfoModalContent: {
+      backgroundColor: '#2a2a2a',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      width: Math.max(350, screenWidth * 0.9),
+      maxWidth: 400,
+      height: Math.max(500, screenHeight * 0.7),
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      overflow: 'hidden',
+    },
+    muscleVolumeInfoScrollView: {
+      flex: 1,
+      paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    },
+    muscleVolumeInfoModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    muscleVolumeInfoModalTitle: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.055, 22),
+      fontWeight: '600',
+      flex: 1,
+      textAlign: 'left',
+      paddingLeft: Math.max(25, screenWidth * 0.06),
+      paddingTop: Math.max(25, screenHeight * 0.03),
+    },
+    muscleVolumeInfoCloseButton: {
+      width: Math.max(30, screenWidth * 0.075),
+      height: Math.max(30, screenWidth * 0.075),
+      borderRadius: Math.max(15, screenWidth * 0.037),
+      backgroundColor: '#44454B',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: Math.max(12, screenWidth * 0.03),
+      marginRight: Math.max(10, screenWidth * 0.03),
+      marginTop: Math.max(5, screenHeight * 0.01),
+    },
+    muscleVolumeInfoCloseButtonText: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '600',
+    },
+    muscleVolumeInfoModalDescription: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '400',
+      lineHeight: Math.max(24, screenHeight * 0.03),
+      opacity: 0.9,
+      marginBottom: Math.max(20, screenHeight * 0.025),
+    },
+    disclaimersTitle: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontSize: Math.min(screenWidth * 0.045, 18),
+      fontWeight: '600',
+      marginBottom: Math.max(12, screenHeight * 0.015),
+    },
+    disclaimerText: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.035, 14),
+      fontWeight: '400',
+      lineHeight: Math.max(20, screenHeight * 0.025),
+      opacity: 0.8,
+      marginBottom: Math.max(12, screenHeight * 0.015),
+    },
+    disclaimerContainer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: 35,
+      backgroundColor: 'rgba(42, 42, 42, 0.9)',
+      borderBottomLeftRadius: Math.max(16, screenWidth * 0.04),
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 8,
+    },
+    shareModalContainer: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    },
+    shareModalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: Math.max(24, screenWidth * 0.06),
+      paddingTop: Math.max(20, screenHeight * 0.025),
+      paddingBottom: Math.max(16, screenHeight * 0.02),
+    },
+    shareModalTitle: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.055, 22),
+      fontWeight: '600',
+      flex: 1,
+    },
+    shareModalCloseButton: {
+      width: Math.max(30, screenWidth * 0.075),
+      height: Math.max(30, screenWidth * 0.075),
+      borderRadius: Math.max(15, screenWidth * 0.037),
+      backgroundColor: '#44454B',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: Math.max(12, screenWidth * 0.03),
+    },
+    shareModalCloseButtonText: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '600',
+    },
+    shareCarouselContainer: {
+      flex: 1,
+      overflow: 'visible',
+    },
+    shareCarouselContent: {
+      paddingHorizontal: Math.max(40, screenWidth * 0.1),
+      gap: 0,
+      overflow: 'visible',
+    },
+    shareOptionCard: {
+      width: screenWidth - Math.max(80, screenWidth * 0.2), // Account for container padding - smaller cards
+      marginRight: 8, // Space between cards - reduced for closer spacing
+      backgroundColor: '#1a1a1a',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    shareCardTopLeft: {
+      position: 'absolute',
+      top: Math.max(20, screenHeight * 0.025),
+      left: Math.max(20, screenWidth * 0.05),
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    shareCardLogo: {
+      width: Math.min(screenWidth * 0.15, 60),
+      height: Math.min(screenWidth * 0.15, 60),
+    },
+    shareCardUsername: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.035, 14),
+      fontWeight: '500',
+      opacity: 0.7,
+    },
+    shareCardSessionName: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.045, 18),
+      fontWeight: '600',
+    },
+    shareCardProgramName: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '400',
+    },
+    shareCardDate: {
+      color: 'rgba(255, 255, 255, 0.5)',
+      fontSize: Math.min(screenWidth * 0.03, 12),
+      fontWeight: '400',
+    },
+    shareCardMuscleWrapper: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 1,
+    },
+    shareCardMuscleBackground: {
+      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+      borderRadius: Math.max(20, screenWidth * 0.05),
+      padding: Math.max(20, screenWidth * 0.05),
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: Math.min(screenWidth * 0.75, 400),
+      height: 360,
+    },
+    shareCardBottomLeft: {
+      position: 'absolute',
+      bottom: Math.max(40, screenHeight * 0.05),
+      left: Math.max(20, screenWidth * 0.05),
+      alignItems: 'flex-start',
+    },
+    shareCardSetsNumber: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.15, 60),
+      fontWeight: '700',
+      lineHeight: Math.min(screenWidth * 0.15, 60),
+    },
+    shareCardSetsLabel: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.035, 14),
+      fontWeight: '500',
+      marginTop: 4,
+    },
+    shareCardBottomRight: {
+      position: 'absolute',
+      bottom: Math.max(40, screenHeight * 0.05),
+      right: Math.max(20, screenWidth * 0.05),
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      height: Math.min(screenWidth * 0.15, 60) + Math.min(screenWidth * 0.035, 14) + 4,
+    },
+    shareOptionText: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.05, 20),
+      fontWeight: '600',
+      textAlign: 'center',
+      marginTop: 20,
+    },
+    shareOptionComingSoon: {
+      color: 'rgba(255, 255, 255, 0.6)',
+      fontSize: Math.min(screenWidth * 0.06, 24),
+      fontWeight: '500',
+    },
+    cardFullscreenButton: {
+      position: 'absolute',
+      top: Math.max(20, screenHeight * 0.025),
+      right: Math.max(20, screenWidth * 0.05),
+      width: Math.max(40, screenWidth * 0.1),
+      height: Math.max(40, screenWidth * 0.1),
+      borderRadius: Math.max(20, screenWidth * 0.05),
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    shareModalButtonsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: Math.max(24, screenWidth * 0.06),
+      paddingBottom: 0,
+      paddingTop: 10,
+      marginTop: 0,
+    },
+    shareModalButton: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      height: Math.max(50, screenHeight * 0.06),
+      paddingHorizontal: Math.max(32, screenWidth * 0.08),
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      minWidth: Math.max(200, screenWidth * 0.5),
+    },
+    shareModalButtonDisabled: {
+      opacity: 0.5,
+    },
+    shareModalButtonText: {
+      color: '#bfa84d',
+      fontSize: Math.min(screenWidth * 0.045, 18),
+      fontWeight: '600',
+    },
+    fullscreenContainer: {
+      flex: 1,
+      backgroundColor: '#000000',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    fullscreenTopLeft: {
+      position: 'absolute',
+      top: Math.max(80, screenHeight * 0.1),
+      left: Math.max(40, screenWidth * 0.08),
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    fullscreenSessionName: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.055, 22),
+      fontWeight: '600',
+    },
+    fullscreenProgramName: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.05, 20),
+      fontWeight: '400',
+    },
+    fullscreenDate: {
+      color: 'rgba(255, 255, 255, 0.5)',
+      fontSize: Math.min(screenWidth * 0.035, 14),
+      fontWeight: '400',
+    },
+    fullscreenMuscleWrapper: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 1,
+    },
+    fullscreenMuscleBackground: {
+      backgroundColor: 'rgba(0, 0, 0, 0.4)', // Lighter overlay to match regular view brightness
+      borderRadius: Math.max(20, screenWidth * 0.05),
+      padding: Math.max(20, screenWidth * 0.05),
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: Math.min(screenWidth * 0.85, 500),
+      height: 420,
+    },
+    fullscreenBottomLeft: {
+      position: 'absolute',
+      bottom: Math.max(60, screenHeight * 0.07),
+      left: Math.max(40, screenWidth * 0.08),
+      alignItems: 'flex-start',
+    },
+    fullscreenSetsNumber: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.18, 72),
+      fontWeight: '700',
+      lineHeight: Math.min(screenWidth * 0.18, 72),
+    },
+    fullscreenSetsLabel: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '500',
+      marginTop: 8,
+    },
+    fullscreenBottomRight: {
+      position: 'absolute',
+      bottom: Math.max(60, screenHeight * 0.07),
+      right: Math.max(40, screenWidth * 0.08),
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      height: Math.min(screenWidth * 0.18, 72) + Math.min(screenWidth * 0.04, 16) + 8, // Match height of sets number + label + margin
+    },
+    fullscreenLogo: {
+      width: Math.min(screenWidth * 0.2, 80),
+      height: Math.min(screenWidth * 0.2, 80),
+    },
+    top3RMContainer: {
+      alignItems: 'flex-end',
+    },
+    top3RMExercise: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.035, 14),
+      fontWeight: '400',
+      textAlign: 'right',
+      marginTop: 4,
+    },
+    top3RMValue: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: Math.min(screenWidth * 0.05, 20),
+      fontWeight: '400',
+    },
+    fullscreenUsername: {
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '500',
+      opacity: 0.7,
+    },
+    // Muscle Volume Section Wrapper - breaks out of content padding
+    muscleVolumeSectionWrapper: {
+      marginHorizontal: -24, // Break out of content padding
+      marginBottom: Math.max(8, screenHeight * 0.01),
+      marginTop: Math.max(8, screenHeight * 0.01),
+      overflow: 'visible',
+    },
+    muscleVolumeSection: {
+      overflow: 'visible',
+    },
+    // Actions Row for buttons
+    actionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    },
+  }), [screenWidth, screenHeight]);
+
   const renderExerciseVolumeCard = (exercise) => (
     <View style={styles.exerciseVolumeCard}>
       <Text style={styles.exerciseVolumeName}>{exercise.name}</Text>
@@ -748,12 +1247,20 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               if (!shouldShow) return null;
               if (!hasWeeklyVolumes && !hasSessionVolumes) return null;
               
+              // Calculate card width to match MainScreen pattern
+              // Card width = screenWidth - (padding on both sides)
+              // paddingHorizontal in muscleCardsScrollContainer is Math.max(20, screenWidth * 0.05) on each side
+              const containerPadding = Math.max(20, screenWidth * 0.05) * 2; // Both sides
+              const cardWidth = screenWidth - containerPadding; // Actual card width
+              const cardSpacing = 15; // marginRight between cards
+              const snapInterval = cardWidth + cardSpacing; // Card width + spacing
+              
               return (
               <View style={styles.muscleVolumeSectionWrapper}>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  snapToInterval={screenWidth - Math.max(40, screenWidth * 0.1) + 15} // Card width + margin
+                  snapToInterval={snapInterval}
                   snapToAlignment="start"
                   decelerationRate="fast"
                   contentContainerStyle={styles.muscleCardsScrollContainer}
@@ -794,11 +1301,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                 {(hasWeeklyVolumes && hasSessionVolumes) && (
                 <View style={styles.paginationContainer}>
                   {[0, 1].map((index) => {
-                    const cardWidth = screenWidth - Math.max(40, screenWidth * 0.1) + 15;
+                    // Use the same snapInterval for inputRange calculation
                     const inputRange = [
-                      (index - 1) * cardWidth,
-                      index * cardWidth,
-                      (index + 1) * cardWidth,
+                      (index - 1) * snapInterval,
+                      index * snapInterval,
+                      (index + 1) * snapInterval,
                     ];
                     
                     const opacity = scrollX.interpolate({
@@ -816,15 +1323,14 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                     return (
                       <Animated.View
                         key={index}
-                        style={{
-                          width: 8,
-                          height: 8,
-                          backgroundColor: '#ffffff',
-                          borderRadius: 4,
-                          marginHorizontal: 4,
-                          opacity: opacity,
-                          transform: [{ scale: scale }],
-                        }}
+                        style={[
+                          styles.paginationDot,
+                          {
+                            opacity: opacity,
+                            transform: [{ scale: scale }],
+                            marginHorizontal: 4, // 4px on each side = 8px total between dots
+                          }
+                        ]}
                       />
                     );
                   })}
@@ -1433,699 +1939,5 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#cccccc',
-    fontSize: 16,
-    fontWeight: '400',
-    marginTop: 12,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  randomPhrase: {
-    fontSize: 28,
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-    lineHeight: 36,
-    paddingHorizontal: 20,
-  },
-  timeIndicator: {
-    alignItems: 'center',
-    marginBottom: 0,
-  },
-  indicatorsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10, // Reduced from 20
-    marginTop: 0, // Further reduced from 20
-    gap: 40,
-  },
-  timeValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  timeLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#ffffff',
-  },
-  disciplineMetric: {
-    alignItems: 'center',
-  },
-  metricValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  metricLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#007AFF',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  duration: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#cccccc',
-  },
-  exerciseVolumeCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  exerciseVolumeName: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#ffffff',
-    flex: 1,
-  },
-  exerciseVolumeValue: {
-    fontSize: 16,
-    fontWeight: '400',
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  shareButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    paddingHorizontal: Math.max(18, screenWidth * 0.04),
-    height: Math.max(50, screenHeight * 0.06),
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareButtonDisabled: {
-    opacity: 0.5,
-  },
-  finishButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
-    paddingHorizontal: Math.max(32, screenWidth * 0.08), // Wider padding for text
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 0,
-  },
-  finishButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  // Personal Records Section Styles
-  personalRecordsSection: {
-    marginBottom: 32,
-    marginTop: 8,
-  },
-  personalRecordsTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    gap: 10,
-  },
-  personalRecordsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  prCard: {
-    backgroundColor: 'rgba(191, 168, 77, 0.15)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.3)',
-  },
-  prExerciseName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  prDetails: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'rgba(191, 168, 77, 1)',
-    textAlign: 'center',
-  },
-  // Muscle Volume Section Styles
-  muscleVolumeSectionWrapper: {
-    marginHorizontal: -24, // Break out of content padding
-    marginBottom: Math.max(8, screenHeight * 0.01), // Further reduced from 16
-    marginTop: Math.max(8, screenHeight * 0.01),
-    overflow: 'visible',
-  },
-  muscleVolumeSection: {
-    overflow: 'visible',
-  },
-  muscleCardsScrollContainer: {
-    paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    gap: 0,
-    overflow: 'visible',
-  },
-  muscleCardFirst: {
-    width: screenWidth - Math.max(40, screenWidth * 0.1), // Account for container padding
-    marginRight: 15, // Space between cards
-    overflow: 'visible',
-  },
-  muscleCardSecond: {
-    width: screenWidth - Math.max(40, screenWidth * 0.1), // Account for container padding
-    overflow: 'visible',
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  // Muscle Volume Info Modal Styles
-  muscleVolumeInfoModalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  muscleVolumeInfoModalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  muscleVolumeInfoModalContent: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    width: Math.max(350, screenWidth * 0.9),
-    maxWidth: 400,
-    height: Math.max(500, screenHeight * 0.7),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'visible',
-  },
-  muscleVolumeInfoScrollContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  muscleVolumeInfoScrollView: {
-    flex: 1,
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-  },
-  muscleVolumeInfoModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Math.max(16, screenHeight * 0.02),
-  },
-  muscleVolumeInfoModalTitle: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.055, 22),
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'left',
-    paddingLeft: Math.max(25, screenWidth * 0.06),
-    paddingTop: Math.max(25, screenHeight * 0.03),
-  },
-  muscleVolumeInfoCloseButton: {
-    width: Math.max(30, screenWidth * 0.075),
-    height: Math.max(30, screenWidth * 0.075),
-    borderRadius: Math.max(15, screenWidth * 0.037),
-    backgroundColor: '#44454B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: Math.max(12, screenWidth * 0.03),
-    marginRight: Math.max(10, screenWidth * 0.03),
-    marginTop: Math.max(5, screenHeight * 0.01),
-  },
-  muscleVolumeInfoCloseButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  muscleVolumeInfoModalDescription: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-    lineHeight: Math.max(24, screenHeight * 0.03),
-    opacity: 0.9,
-    marginBottom: Math.max(20, screenHeight * 0.025),
-  },
-  disclaimersSection: {
-    marginTop: Math.max(20, screenHeight * 0.025),
-    paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  disclaimersTitle: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-    marginBottom: Math.max(12, screenHeight * 0.015),
-  },
-  disclaimerText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    lineHeight: Math.max(20, screenHeight * 0.025),
-    opacity: 0.8,
-    marginBottom: Math.max(8, screenHeight * 0.01),
-  },
-  scrollIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 35,
-    backgroundColor: 'rgba(42, 42, 42, 0.9)',
-    borderBottomLeftRadius: Math.max(16, screenWidth * 0.04),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  scrollIndicatorText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  // Share Modal Styles
-  shareModalContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  shareModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: Math.max(20, screenHeight * 0.025),
-    paddingBottom: Math.max(16, screenHeight * 0.02),
-  },
-  shareModalTitle: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.055, 22),
-    fontWeight: '600',
-    flex: 1,
-  },
-  shareModalCloseButton: {
-    width: Math.max(30, screenWidth * 0.075),
-    height: Math.max(30, screenWidth * 0.075),
-    borderRadius: Math.max(15, screenWidth * 0.037),
-    backgroundColor: '#44454B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: Math.max(12, screenWidth * 0.03),
-  },
-  shareModalCloseButtonText: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '600',
-  },
-  shareCarouselContainer: {
-    flex: 1,
-    paddingHorizontal: 0,
-    overflow: 'visible',
-  },
-  shareCarouselContent: {
-    paddingHorizontal: Math.max(40, screenWidth * 0.1),
-    gap: 0,
-    overflow: 'visible',
-  },
-  shareOptionCard: {
-    width: screenWidth - Math.max(80, screenWidth * 0.2), // Account for container padding - smaller cards
-    marginRight: 8, // Space between cards - reduced for closer spacing
-    backgroundColor: '#1a1a1a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    minHeight: Math.max(580, screenHeight * 0.72),
-    position: 'relative',
-    padding: 0,
-    overflow: 'visible',
-  },
-  shareOptionCardLast: {
-    marginRight: 0,
-  },
-  shareCardTopLeft: {
-    position: 'absolute',
-    top: Math.max(20, screenHeight * 0.025),
-    left: Math.max(20, screenWidth * 0.05),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    zIndex: 10,
-  },
-  shareCardTopLeftLeft: {
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  shareCardTopLeftRight: {
-    alignItems: 'flex-start',
-    gap: 3,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  shareCardLogo: {
-    width: Math.min(screenWidth * 0.15, 60),
-    height: Math.min(screenWidth * 0.15, 60),
-  },
-  shareCardUsername: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '500',
-    opacity: 0.7,
-  },
-  shareCardSessionName: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.045, 18),
-    fontWeight: '600',
-  },
-  shareCardProgramName: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '400',
-  },
-  shareCardDate: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: Math.min(screenWidth * 0.03, 12),
-    fontWeight: '400',
-  },
-  shareCardMuscleWrapper: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Math.max(80, screenHeight * 0.1),
-    paddingBottom: Math.max(100, screenHeight * 0.12),
-  },
-  shareCardMuscleBackground: {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    padding: Math.max(20, screenWidth * 0.05),
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: Math.min(screenWidth * 0.75, 400),
-    height: 360,
-  },
-  shareCardBottomLeft: {
-    position: 'absolute',
-    bottom: Math.max(40, screenHeight * 0.05),
-    left: Math.max(20, screenWidth * 0.05),
-    alignItems: 'flex-start',
-  },
-  shareCardSetsNumber: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.15, 60),
-    fontWeight: '700',
-    lineHeight: Math.min(screenWidth * 0.15, 60),
-  },
-  shareCardSetsLabel: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  shareCardBottomRight: {
-    position: 'absolute',
-    bottom: Math.max(40, screenHeight * 0.05),
-    right: Math.max(20, screenWidth * 0.05),
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    height: Math.min(screenWidth * 0.15, 60) + Math.min(screenWidth * 0.035, 14) + 4,
-  },
-  shareOptionText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  shareOptionCardCentered: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareOptionComingSoon: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: Math.min(screenWidth * 0.06, 24),
-    fontWeight: '500',
-  },
-  cardFullscreenButton: {
-    marginTop: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(191, 168, 77, 0.3)',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cardFullscreenButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  sharePaginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  sharePaginationDot: {
-    width: 8,
-    height: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 4,
-    marginHorizontal: 4,
-  },
-  shareModalActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingBottom: 0,
-    paddingTop: 10,
-    marginTop: 0,
-  },
-  shareModalButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    height: Math.max(50, screenHeight * 0.06),
-    paddingHorizontal: Math.max(32, screenWidth * 0.08),
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    minWidth: Math.max(200, screenWidth * 0.5),
-  },
-  shareModalButtonDisabled: {
-    opacity: 0.5,
-  },
-  shareModalButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  // Fullscreen Card Styles
-  fullscreenCardContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  fullscreenCardContent: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  fullscreenCard: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#1a1a1a',
-    position: 'relative',
-  },
-  fullscreenCardText: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  fullscreenTopLeft: {
-    position: 'absolute',
-    top: Math.max(80, screenHeight * 0.1),
-    left: Math.max(40, screenWidth * 0.08),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  fullscreenTopLeftLeft: {
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  fullscreenTopLeftRight: {
-    alignItems: 'flex-start',
-    gap: 4,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  fullscreenSessionName: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.055, 22),
-    fontWeight: '600',
-  },
-  fullscreenProgramName: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    fontWeight: '400',
-  },
-  fullscreenDate: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-  },
-  fullscreenMuscleWrapper: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fullscreenMuscleBackground: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)', // Lighter overlay to match regular view brightness
-    borderRadius: Math.max(20, screenWidth * 0.05),
-    padding: Math.max(20, screenWidth * 0.05),
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: Math.min(screenWidth * 0.85, 500),
-    height: 420,
-  },
-  fullscreenBottomLeft: {
-    position: 'absolute',
-    bottom: Math.max(60, screenHeight * 0.07),
-    left: Math.max(40, screenWidth * 0.08),
-    alignItems: 'flex-start',
-  },
-  fullscreenSetsNumber: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.18, 72),
-    fontWeight: '700',
-    lineHeight: Math.min(screenWidth * 0.18, 72),
-  },
-  fullscreenSetsLabel: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '500',
-    marginTop: 8,
-  },
-  fullscreenBottomRight: {
-    position: 'absolute',
-    bottom: Math.max(60, screenHeight * 0.07),
-    right: Math.max(40, screenWidth * 0.08),
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    height: Math.min(screenWidth * 0.18, 72) + Math.min(screenWidth * 0.04, 16) + 8, // Match height of sets number + label + margin
-  },
-  fullscreenLogo: {
-    width: Math.min(screenWidth * 0.2, 80),
-    height: Math.min(screenWidth * 0.2, 80),
-  },
-  top3RMContainer: {
-    alignItems: 'flex-end',
-    gap: 12,
-    justifyContent: 'center',
-  },
-  top3RMItem: {
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-  },
-  top3RMExercise: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.035, 14),
-    fontWeight: '400',
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  top3RMValue: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    fontWeight: '400',
-  },
-  fullscreenUsername: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    fontWeight: '500',
-    opacity: 0.7,
-  },
-});
 
 export default WorkoutCompletionScreen;

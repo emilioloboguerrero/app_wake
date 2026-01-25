@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import hybridDataService from '../services/hybridDataService';
 import firestoreService from '../services/firestoreService';
+import { withErrorBoundary } from '../utils/withErrorBoundary';
 import OnboardingQuestion1 from '../screens/onboarding/OnboardingQuestion1';
 import OnboardingQuestion2 from '../screens/onboarding/OnboardingQuestion2';
 import OnboardingQuestion3 from '../screens/onboarding/OnboardingQuestion3';
@@ -74,6 +75,14 @@ const OnboardingNavigator = ({ onComplete }) => {
     }
   };
 
+  // Create wrapped components with error boundaries - memoized to prevent recreation
+  const WrappedQuestion1 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion1 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion1'), [handleAnswer]);
+  const WrappedQuestion2 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion2 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion2'), [handleAnswer]);
+  const WrappedQuestion3 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion3 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion3'), [handleAnswer]);
+  const WrappedQuestion4 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion4 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion4'), [handleAnswer]);
+  const WrappedQuestion5 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion5 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion5'), [handleAnswer]);
+  const WrappedComplete = useMemo(() => withErrorBoundary((props) => <OnboardingComplete {...props} onComplete={handleComplete} />, 'OnboardingComplete'), [handleComplete]);
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -82,24 +91,12 @@ const OnboardingNavigator = ({ onComplete }) => {
         cardStyle: { backgroundColor: '#1a1a1a' },
       }}
     >
-      <Stack.Screen name="OnboardingQuestion1">
-        {(props) => <OnboardingQuestion1 {...props} onAnswer={handleAnswer} />}
-      </Stack.Screen>
-      <Stack.Screen name="OnboardingQuestion2">
-        {(props) => <OnboardingQuestion2 {...props} onAnswer={handleAnswer} />}
-      </Stack.Screen>
-      <Stack.Screen name="OnboardingQuestion3">
-        {(props) => <OnboardingQuestion3 {...props} onAnswer={handleAnswer} />}
-      </Stack.Screen>
-      <Stack.Screen name="OnboardingQuestion4">
-        {(props) => <OnboardingQuestion4 {...props} onAnswer={handleAnswer} />}
-      </Stack.Screen>
-      <Stack.Screen name="OnboardingQuestion5">
-        {(props) => <OnboardingQuestion5 {...props} onAnswer={handleAnswer} />}
-      </Stack.Screen>
-      <Stack.Screen name="OnboardingComplete">
-        {(props) => <OnboardingComplete {...props} onComplete={handleComplete} />}
-      </Stack.Screen>
+      <Stack.Screen name="OnboardingQuestion1" component={WrappedQuestion1} />
+      <Stack.Screen name="OnboardingQuestion2" component={WrappedQuestion2} />
+      <Stack.Screen name="OnboardingQuestion3" component={WrappedQuestion3} />
+      <Stack.Screen name="OnboardingQuestion4" component={WrappedQuestion4} />
+      <Stack.Screen name="OnboardingQuestion5" component={WrappedQuestion5} />
+      <Stack.Screen name="OnboardingComplete" component={WrappedComplete} />
     </Stack.Navigator>
   );
 };
