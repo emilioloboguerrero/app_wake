@@ -17,6 +17,7 @@ import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleVolumeStats from '../components/MuscleVolumeStats';
@@ -349,6 +350,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
               <Text style={styles.weekLoadingText}>Cargando semana...</Text>
             </View>
           )}
+          <BottomSpacer />
         </View>
       </ScrollView>
 

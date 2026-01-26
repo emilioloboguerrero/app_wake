@@ -64,15 +64,15 @@ const MainScreen = ({ navigation, route }) => {
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: Math.max(100, screenHeight * 0.15), // Extra padding to ensure pagination is visible
+      paddingBottom: Math.max(24, screenHeight * 0.03), // Small breathing room; tab bar space from BottomSpacer
     },
     contentWrapper: {
       flex: 1,
     },
     userSection: {
-      marginBottom: Math.max(-60, screenHeight * -0.08), // Space between title and cards - less space
+      marginBottom: 12,
       paddingTop: 0,
-      marginTop: 0,
+      marginTop: 10,
     },
     cardsSection: {
       flex: 1,
@@ -88,8 +88,8 @@ const MainScreen = ({ navigation, route }) => {
     cardsAndPaginationWrapper: {
       width: '100%',
       alignItems: 'center',
-      overflow: 'visible', // Ensure pagination indicators are not clipped
-      marginTop: Math.max(80, screenHeight * 0.12), // Push cards and pagination down
+      overflow: 'visible',
+      marginTop: 8, // Gap between greeting and cards
     },
     flatListStyle: {
       height: CARD_HEIGHT,
@@ -102,7 +102,7 @@ const MainScreen = ({ navigation, route }) => {
       alignItems: 'center',
       marginTop: 10, // Position exactly 10px below the card bottom
       paddingTop: 10,
-      paddingBottom: Math.max(60, screenHeight * 0.1), // Account for bottom menu
+      paddingBottom: Math.max(32, screenHeight * 0.05), // Space above tab bar for pagination
       zIndex: 1000, // Very high z-index to ensure visibility above cards
       backgroundColor: 'transparent', // Ensure background doesn't hide anything
     },
@@ -1716,12 +1716,8 @@ const MainScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Fixed Header */}
       <FixedWakeHeader />
-      
-      {/* Fixed Bottom Spacer - Prevents tab bar overlap */}
-      <BottomSpacer />
-      
+
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
@@ -1743,10 +1739,8 @@ const MainScreen = ({ navigation, route }) => {
         alwaysBounceVertical={true}
       >
         <View style={styles.contentWrapper}>
-          {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
-
-          {/* User Greeting Section */}
+          <View style={{ height: 12 }} />
           <View style={styles.userSection}>
             <Text style={styles.greeting}>
               Hola, <Text style={styles.username}>{getFirstName()}</Text>
@@ -1814,9 +1808,12 @@ const MainScreen = ({ navigation, route }) => {
               </View>
             )}
           </View>
+
+          {/* Reserve space at bottom so content isn't hidden behind fixed tab bar */}
+          <BottomSpacer />
         </View>
       </ScrollView>
-      
+
       {/* Tutorial Overlay */}
       <TutorialOverlay
         visible={tutorialVisible}

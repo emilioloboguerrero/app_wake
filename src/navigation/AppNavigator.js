@@ -99,6 +99,24 @@ const AppNavigator = () => {
     checkUserProfile();
   }, [user, loading, refreshKey]);
 
+  // Memoize wrapped components to prevent recreation on every render.
+  // Must be declared before any early return to satisfy Rules of Hooks.
+  const WrappedOnboardingScreen = useMemo(
+    () => withErrorBoundary(
+      (props) => <OnboardingScreen {...props} onComplete={refreshUserProfile} />,
+      'OnboardingProfile'
+    ),
+    [refreshUserProfile]
+  );
+
+  const WrappedOnboardingNavigator = useMemo(
+    () => withErrorBoundary(
+      (props) => <OnboardingNavigator {...props} onComplete={refreshUserProfile} />,
+      'Onboarding'
+    ),
+    [refreshUserProfile]
+  );
+
   // Show loading while checking auth
   if (loading) {
     return <LoadingScreen />;
@@ -115,23 +133,6 @@ const AppNavigator = () => {
   logger.log('  - User:', user ? 'authenticated' : 'not authenticated');
   logger.log('  - User profile:', userProfile ? 'loaded' : 'not loaded');
   logger.log('  - Onboarding completed:', userProfile?.onboardingCompleted);
-
-  // Memoize wrapped components to prevent recreation on every render
-  const WrappedOnboardingScreen = useMemo(
-    () => withErrorBoundary(
-      (props) => <OnboardingScreen {...props} onComplete={refreshUserProfile} />,
-      'OnboardingProfile'
-    ),
-    [refreshUserProfile]
-  );
-
-  const WrappedOnboardingNavigator = useMemo(
-    () => withErrorBoundary(
-      (props) => <OnboardingNavigator {...props} onComplete={refreshUserProfile} />,
-      'Onboarding'
-    ),
-    [refreshUserProfile]
-  );
 
   return (
     <NavigationContainer>

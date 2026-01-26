@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import logger from '../../utils/logger';
 
 const OnboardingComplete = ({ navigation, onComplete }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   const handleComplete = () => {
     onComplete();
   };
@@ -49,7 +50,7 @@ const OnboardingComplete = ({ navigation, onComplete }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

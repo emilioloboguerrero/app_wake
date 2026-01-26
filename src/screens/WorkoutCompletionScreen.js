@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import completionPhrases from '../../assets/data/completionPhrases.json';
@@ -1372,6 +1373,8 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               <Text style={styles.finishButtonText}>Finalizar Entrenamiento</Text>
             </TouchableOpacity>
           </View>
+
+          <BottomSpacer />
         </View>
       </ScrollView>
       

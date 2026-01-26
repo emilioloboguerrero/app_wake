@@ -1,6 +1,6 @@
 // Web wrapper for LoginScreen - provides React Router navigation
 import React, { useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useInRouterContext } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import logger from '../utils/logger';
@@ -9,11 +9,46 @@ import logger from '../utils/logger';
 const LoginScreenModule = require('./LoginScreen.js');
 const LoginScreenBase = LoginScreenModule.LoginScreenBase || LoginScreenModule.default;
 
+// ----- DEBUG: Router context (remove after fixing production useNavigate error) -----
+// Enable: add ?debug=1 to URL, or in console: localStorage.setItem('WAKE_DEBUG','true'); then reload. Rebuild production (see below) to see logs.
+const LOGIN_DEBUG = typeof window !== 'undefined' && (localStorage.getItem('WAKE_DEBUG') === 'true' || window.location.search.includes('debug=1'));
+
 const LoginScreen = () => {
+  const inRouterContext = useInRouterContext();
+  if (LOGIN_DEBUG) {
+    console.log('[LOGIN DEBUG]', {
+      useInRouterContext: inRouterContext,
+      ReactVersion: React.version,
+      NODE_ENV: process.env.NODE_ENV,
+      message: inRouterContext ? 'OK: inside Router' : 'FAIL: NOT inside Router - useNavigate() will throw',
+    });
+    if (!inRouterContext) {
+      console.error('[LOGIN DEBUG] LoginScreen is not inside a <Router>. Check for duplicate React or react-router in the production bundle.');
+    }
+  }
+
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const hasRedirectedRef = useRef(false); // Prevent multiple redirects
   
+  // DEBUG: Check for duplicate React (only when LOGIN_DEBUG)
+  useEffect(() => {
+    if (!LOGIN_DEBUG) return;
+    try {
+      const reactFromRequire = require('react');
+      const sameReact = reactFromRequire === React;
+      console.log('[LOGIN DEBUG] Duplicate React check:', {
+        sameReact,
+        message: sameReact ? 'Single React instance in this chunk' : 'WARNING: Two different React instances – this causes useNavigate() to fail',
+      });
+      if (!sameReact) {
+        console.error('[LOGIN DEBUG] Fix: ensure "react" and "react-dom" are not duplicated in Metro/bundle (check dist chunks and resolve to one copy).');
+      }
+    } catch (e) {
+      console.warn('[LOGIN DEBUG] Could not run duplicate React check:', e);
+    }
+  }, []);
+
   // Redirect to home if already logged in
   useEffect(() => {
     // Always log current state for debugging

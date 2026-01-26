@@ -31,6 +31,7 @@ import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
 import consolidatedDataService from '../services/consolidatedDataService';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EpaycoWebView from '../components/EpaycoWebView';
 import logger from '../utils/logger.js';
@@ -1604,6 +1605,8 @@ useEffect(() => {
           <View style={styles.actionsSection}>
             {renderPurchaseButton()}
           </View>
+
+          <BottomSpacer />
         </View>
       </ScrollView>
 

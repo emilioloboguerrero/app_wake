@@ -18,6 +18,7 @@ import purchaseService from '../services/purchaseService';
 import consolidatedDataService from '../services/consolidatedDataService';
 import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import logger from '../utils/logger.js';
@@ -308,6 +309,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           )}
+          <BottomSpacer />
         </View>
       </ScrollView>
     </SafeAreaView>

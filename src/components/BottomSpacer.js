@@ -2,27 +2,23 @@ import React from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Fixed bottom spacer to prevent tab bar from covering content
+// Bottom spacer so content isn't hidden behind the fixed tab bar (MainScreen, ProfileScreen)
 const BottomSpacer = () => {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   
-  // Responsive spacer height
-  const tabBarHeight = Math.max(60, screenHeight * 0.1); // 8% of screen height, min 60
-  const bottomPadding = 0; // No bottom padding - flush with bottom
-  const totalHeight = tabBarHeight + bottomPadding + 20; // Extra 20px for safety
+  const tabBarHeight = Math.max(50, Math.min(72, screenHeight * 0.08));
+  const topPad = 12; // Match BottomTabBar paddingTop so reserve space matches visual bar
+  const bottomOffset = 24; // Match BottomTabBar.web.js bottom offset
+  const totalHeight = tabBarHeight + topPad + (insets.bottom || 0) + 8 + bottomOffset;
   
   return <View style={[styles.fixedBottomSpacer, { height: totalHeight }]} />;
 };
 
 const styles = StyleSheet.create({
   fixedBottomSpacer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1a1a1a', // Same as app background
-    zIndex: 999, // Above content, below header
+    width: '100%',
+    backgroundColor: 'transparent',
   },
 });
 

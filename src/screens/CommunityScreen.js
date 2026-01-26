@@ -73,28 +73,23 @@ const CommunityScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Fixed Header */}
       <FixedWakeHeader />
-      
-      {/* Fixed Bottom Spacer - Prevents tab bar overlap */}
-      <BottomSpacer />
-      
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
 
-          {/* Title Section */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Comunidad</Text>
           </View>
 
-          {/* Community Content Area - Ready for your Figma designs */}
           <View style={styles.communityContent}>
             <View style={styles.centeredContent}>
               <Text style={styles.soonText}>Pronto...</Text>
             </View>
           </View>
+
+          <BottomSpacer />
         </View>
       </ScrollView>
       

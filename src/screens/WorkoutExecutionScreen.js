@@ -289,6 +289,7 @@ const getMonitoringService = () => {
 import TutorialOverlay from '../components/TutorialOverlay';
 import ExerciseDetailModal from '../components/ExerciseDetailModal';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 
 // ============================================================================
@@ -5440,7 +5441,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     </TouchableOpacity>
                     
                     {/* List Screen Button */}
-          <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.listScreenButton}
                       onPress={() => {
                         // Switch to list view (index 1)
@@ -5454,6 +5455,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   </View>
                 </View>
               </ScrollView>
+                  <BottomSpacer />
         </View>
             
             {/* Exercise List View */}

@@ -17,6 +17,7 @@ import sessionService from '../services/sessionService';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Image as ExpoImage } from 'expo-image';
 
@@ -710,6 +711,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
             </View>
           )}
 
+          <BottomSpacer />
         </View>
       </ScrollView>
       

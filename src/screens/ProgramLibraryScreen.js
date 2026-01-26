@@ -23,6 +23,7 @@ import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { KeyboardAvoidingView, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
@@ -600,6 +601,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
               </View>
             )}
           </View>
+          <BottomSpacer />
         </View>
       </ScrollView>
       </KeyboardAvoidingView>

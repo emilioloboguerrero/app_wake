@@ -19,23 +19,40 @@
     // Skip early error logger for login route
     if (window.location.pathname !== '/login') {
       var script = document.createElement('script');
-      script.src = '/early-error-logger.js';
+      script.src = '/debug/early-error-logger.js';
       document.head.appendChild(script);
     } else {
       console.log('[HTML] Login route - skipping early-error-logger.js');
     }
   </script>
   <style>
-    /* Prevent flash of unstyled content */
+    /* Critical: full viewport height chain for all routes (login + app) */
+    html {
+      height: 100%;
+    }
     body {
       margin: 0;
       padding: 0;
+      min-height: 100%;
+      height: 100%;
       background-color: #1a1a1a;
       color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       overflow-x: hidden;
+    }
+    #root {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 100vh;
+    }
+    #root > * {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     /* Loading screen */
@@ -576,6 +593,7 @@
       }
     }, { passive: false });
   </script>
+  <!-- EXPO_BUNDLE_SCRIPT: replaced by build script with actual bundle script tag -->
 </body>
 </html>
 

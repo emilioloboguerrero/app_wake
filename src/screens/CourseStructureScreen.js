@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 
@@ -450,6 +451,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
               <Text style={styles.noContentText}>No hay módulos disponibles</Text>
             </View>
           )}
+          <BottomSpacer />
         </View>
       </ScrollView>
     </SafeAreaView>

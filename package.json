@@ -10,6 +10,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web && node scripts/inject-expo-script.js",
     "build:android": "expo build:android",
     "build:ios": "npx eas-cli build --platform ios --profile production",
     "build:ios:local": "npx eas-cli build --local --platform ios --profile production",

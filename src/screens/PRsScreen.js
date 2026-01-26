@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
 import logger from '../utils/logger.js';
@@ -297,6 +298,7 @@ const PRsScreen = ({ navigation, route }) => {
               );
             })
           )}
+          <BottomSpacer />
         </View>
       </ScrollView>
       

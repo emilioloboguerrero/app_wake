@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { FixedWakeHeader, WakeHeaderSpacer } from '../../components/WakeHeader';
 const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
 
   // Icon SVGs (simplified versions for the available icons)
   const heartIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -166,7 +167,7 @@ const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

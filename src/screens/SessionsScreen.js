@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
 
@@ -420,24 +421,22 @@ const SessionsScreen = ({ navigation }) => {
             </View>
           )
         )}
-        ListFooterComponent={() => {
-          if (loadingMore) {
-            return (
+        ListFooterComponent={() => (
+          <>
+            {loadingMore && (
               <View style={styles.loadMoreContainer}>
                 <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
                 <Text style={styles.loadMoreText}>Cargando más sesiones...</Text>
               </View>
-            );
-          }
-          if (!hasMore && sessions.length > 0) {
-            return (
+            )}
+            {!loadingMore && !hasMore && sessions.length > 0 && (
               <View style={styles.loadMoreContainer}>
                 <Text style={styles.loadMoreText}>No hay más sesiones</Text>
               </View>
-            );
-          }
-          return null;
-        }}
+            )}
+            <BottomSpacer />
+          </>
+        )}
         onEndReached={loadMoreSessions}
         onEndReachedThreshold={0.5} // Trigger when 50% from bottom
         showsVerticalScrollIndicator={false}

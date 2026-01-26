@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger.js';
@@ -220,6 +221,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
               )
             )}
           </View>
+          <BottomSpacer />
         </View>
       </ScrollView>
     </SafeAreaView>

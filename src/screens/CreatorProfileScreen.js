@@ -6,6 +6,7 @@ import { ImageBackground } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import Text from '../components/Text';
 import firestoreService from '../services/firestoreService';
 import profilePictureService from '../services/profilePictureService';
@@ -1977,6 +1978,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                       />
                     </View>
                   )}
+              <BottomSpacer />
             </View>
           </ScrollView>
 
@@ -2156,6 +2158,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                       )}
                     </>
                   )}
+              <BottomSpacer />
             </View>
           </ScrollView>
 
@@ -2271,6 +2274,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                       </View>
                     </>
                   )}
+              <BottomSpacer />
             </View>
           </ScrollView>
         </Animated.ScrollView>

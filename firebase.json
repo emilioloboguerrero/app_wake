@@ -18,7 +18,7 @@
   ],
 
   "hosting": {
-    "public": "web_app/build",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -65,9 +65,9 @@
     ]
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "config/firebase/firestore.rules"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "config/firebase/storage.rules"
   }
 }

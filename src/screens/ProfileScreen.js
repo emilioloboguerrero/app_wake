@@ -781,11 +781,7 @@ const ProfileScreen = ({ navigation }) => {
   return (
     <>
       <SafeAreaView style={styles.container}>
-        {/* Fixed Header - No back button for main profile */}
         <FixedWakeHeader />
-        
-        {/* Fixed Bottom Spacer - Prevents tab bar overlap */}
-        <BottomSpacer />
 
       {/* Settings Modal */}
       <Modal animationType="slide" transparent={true} visible={isSettingsModalVisible} onRequestClose={hideSettingsModal}>
@@ -1346,8 +1342,7 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.configCardTitle}>Lab</Text>
         </TouchableOpacity>
 
-
-
+        <BottomSpacer />
         </View>
       </ScrollView>
       )}

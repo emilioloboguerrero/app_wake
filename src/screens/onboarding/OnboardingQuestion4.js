@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { FixedWakeHeader, WakeHeaderSpacer } from '../../components/WakeHeader';
 const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
 
   // Icon SVGs for each workout preference
   const intenseIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -129,7 +130,7 @@ const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

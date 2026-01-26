@@ -34,6 +34,7 @@ import profilePictureService from '../services/profilePictureService';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import citiesData from '../../assets/data/cities_data.json';
 
 import { validateForm, validateInput, sanitizeInput } from '../utils/validation.js';
@@ -1730,6 +1731,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
               Cancelar
             </Text>
           </TouchableOpacity>
+
+          <BottomSpacer />
         </View>
       </AnimatedKeyboardAwareScrollView>
     </SafeAreaView>

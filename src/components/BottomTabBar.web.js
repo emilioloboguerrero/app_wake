@@ -10,10 +10,11 @@ const BottomTabBar = () => {
   const navigate = useNavigate();
   const insets = useSafeAreaInsets();
   
-  // Responsive tab bar dimensions - matching MainTabNavigator
-  const tabBarHeight = Math.max(50, screenHeight * 0.1); // 10% of screen height, min 50
-  const iconSize = Math.min(screenWidth * 0.06, 28); // 6% of screen width, max 28
-  const bottomPadding = 0; // No bottom padding - flush with bottom
+  // Responsive tab bar dimensions - fixed above viewport bottom
+  const tabBarHeight = Math.max(50, Math.min(72, screenHeight * 0.08)); // 8% of height, clamp 50–72
+  const iconSize = Math.min(screenWidth * 0.06, 28);
+  const bottomPadding = insets.bottom; // Respect safe area (e.g. notched devices)
+  const bottomOffset = 24; // Bar sits this many px above the viewport bottom
   
   // Determine if tab bar should be visible based on current route
   const shouldShowTabBar = () => {
@@ -47,7 +48,7 @@ const BottomTabBar = () => {
   }
   
   return (
-    <View style={[styles.tabBar, { height: tabBarHeight, paddingBottom: bottomPadding }]}>
+    <View style={[styles.tabBar, { height: tabBarHeight + bottomPadding + 12, paddingTop: 12, paddingBottom: bottomPadding, bottom: bottomOffset }]}>
       <TouchableOpacity
         style={styles.tabButton}
         onPress={() => navigate('/')}
@@ -69,8 +70,7 @@ const BottomTabBar = () => {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'absolute',
-    bottom: 0,
+    position: 'fixed',
     left: 0,
     right: 0,
     backgroundColor: 'transparent',
@@ -78,7 +78,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 0,
     zIndex: 1000,
     elevation: 0,
   },

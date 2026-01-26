@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
+import { View, Image, StyleSheet, TouchableOpacity, Text, useWindowDimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 import logger from '../utils/logger';
@@ -30,9 +30,11 @@ export const FixedWakeHeader = ({
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
-  // Responsive dimensions
-  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
-  const logoWidth = Math.min(screenWidth * 0.35, 120); // 35% of screen width, max 140 (increased from 18% and 80)
+  // Single source of truth for top space: header bar height (web = minimal 32px, native = 40–44px)
+  const headerHeight = Platform.OS === 'web'
+    ? 32
+    : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const logoWidth = Math.min(screenWidth * 0.35, Platform.OS === 'web' ? 100 : 120);
   const logoHeight = logoWidth * 0.57; // Maintain aspect ratio
   const buttonSize = Math.min(headerHeight * 0.6, 44); // 60% of header height, max 44
   const iconSize = 20; // Fixed size for back arrow to match three-dot menu
@@ -41,9 +43,9 @@ export const FixedWakeHeader = ({
 
   return (
     <View style={[styles.fixedHeaderContainer, { 
-      top: 0, // Start from screen top
-      height: headerHeight + Math.max(0, insets.top - 20), // Extend to cover gap
-      paddingTop: Math.max(0, insets.top - 20), // Push content to original position
+      top: 0,
+      height: headerHeight + (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)),
+      paddingTop: Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8),
       paddingHorizontal: screenWidth * 0.06, // 6% of screen width
       backgroundColor,
       pointerEvents: 'box-none' // Allow touches to pass through to content below
@@ -53,7 +55,7 @@ export const FixedWakeHeader = ({
           style={[
             styles.profileButton,
             {
-              top: Math.max(19, screenHeight * 0.021) + Math.max(0, insets.top - 20),
+              top: (Platform.OS === 'web' ? 6 : Math.max(8, screenHeight * 0.012)) + (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)),
               right: Math.max(32, screenWidth * 0.08)
             }
           ]}
@@ -87,7 +89,7 @@ export const FixedWakeHeader = ({
             // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
             // Logo center is at: paddingTop + headerHeight / 2
             // Position menu button to align with logo center
-            top: Math.max(0, insets.top - 20) + headerHeight / 2 - iconSize / 2, // Center icon with logo, no padding offset needed
+            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2 - iconSize / 2,
             left: Math.max(32, screenWidth * 0.08)
           }]}
           onPress={onMenuPress}
@@ -112,7 +114,7 @@ export const FixedWakeHeader = ({
             // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
             // Logo center is at: paddingTop + headerHeight / 2
             // Position back button to align with logo center
-            top: Math.max(0, insets.top - 20) + headerHeight / 2 - iconSize / 2, // Center icon with logo, no padding offset needed
+            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2 - iconSize / 2,
             left: Math.max(32, screenWidth * 0.08)
           }]}
           onPress={onBackPress}
@@ -129,7 +131,7 @@ export const FixedWakeHeader = ({
             // Position reset button to align with logo center, on the right side
             // Logo center is at: paddingTop + headerHeight / 2
             // Button center should align: top + buttonHeight/2 = paddingTop + headerHeight / 2
-            top: Math.max(0, insets.top - 20) + headerHeight / 2,
+            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2,
             right: Math.max(32, screenWidth * 0.08),
             transform: [{ translateY: -16 }] // Half of button height (padding 8*2 + text ~16 = ~32, so -16)
           }]}
@@ -159,9 +161,9 @@ export const WakeHeaderSpacer = () => {
   // Use hook for reactive dimensions that update on orientation change
   const { height: screenHeight } = useWindowDimensions();
   
-  // Account for full header height plus safe area
-  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
-  const safeAreaTop = Math.max(0, insets.top - 20);
+  // Match FixedWakeHeader so content aligns below logo bar (web = 32px, native = 40–44 + inset)
+  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const totalHeight = headerHeight + safeAreaTop;
   
   const componentEndTime = performance.now();

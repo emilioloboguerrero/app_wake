@@ -19,6 +19,7 @@ import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 
 const statusLabels = {
@@ -764,6 +765,7 @@ const SubscriptionsScreen = ({ navigation }) => {
           })
         )}
 
+        <BottomSpacer />
       </ScrollView>
 
       {/* Subscription Management Info Modal */}

@@ -95,9 +95,13 @@ const safeLog = (method, ...args) => {
 };
 
 export default function App() {
+  if (typeof window !== 'undefined') {
+    console.log('[APP WEB] App() running');
+  }
+
   // CRITICAL: ALL HOOKS MUST BE CALLED UNCONDITIONALLY AND IN THE SAME ORDER
   // This ensures React hooks are always called in the same order every render
-  
+
   // Load heavy components for non-login routes (async, non-blocking)
   const [componentsLoaded, setComponentsLoaded] = React.useState(false);
   const [initError, setInitError] = React.useState(null);
@@ -425,77 +429,21 @@ export default function App() {
     }
   }, [fontsLoaded, debugMode, isLoginPath]);
 
-  // Provide initial safe area metrics for web (required for react-native-safe-area-context on web)
-  const initialMetrics = React.useMemo(() => ({
-    frame: { x: 0, y: 0, width: 0, height: 0 },
-    insets: { top: 0, left: 0, right: 0, bottom: 0 },
-  }), []);
+  // Provide initial safe area metrics for web so flex: 1 and SafeAreaView layout correctly
+  const initialMetrics = React.useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        frame: { x: 0, y: 0, width: 375, height: 667 },
+        insets: { top: 0, left: 0, right: 0, bottom: 0 },
+      };
+    }
+    return {
+      frame: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+      insets: { top: 0, left: 0, right: 0, bottom: 0 },
+    };
+  }, []);
 
-  // Conditional returns MUST come after all hooks
-  // CRITICAL: For login route, render with BrowserRouter and AuthProvider only
-  if (isLoginPath) {
-    logger.debug('[APP] Login route - rendering LoginScreen with BrowserRouter and AuthProvider');
-    return (
-      <SafeAreaProvider initialMetrics={initialMetrics}>
-        <BrowserRouter>
-          <AuthProvider>
-            <LoginScreen />
-          </AuthProvider>
-        </BrowserRouter>
-      </SafeAreaProvider>
-    );
-  }
-
-  // For non-login routes, check if components are loaded
-  // Add logging to debug loading state
-  // Note: fontsLoaded is now independent of componentsLoaded
-  if (!componentsLoaded || !fontsLoaded) {
-    logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded, 'isLoginPath:', isLoginPath);
-    return (
-      <div style={{
-        minHeight: '100vh',
-        backgroundColor: '#1a1a1a',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#ffffff',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '3px solid rgba(191, 168, 77, 0.3)',
-            borderTopColor: 'rgba(191, 168, 77, 1)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 20px'
-          }}></div>
-          <p>Cargando...</p>
-        </div>
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Show error if initialization failed critically
-  if (initError && initError.message?.includes('critical')) {
-    return (
-      <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
-        <h1>Error Loading App</h1>
-        <p>{initError.message}</p>
-        <button onClick={() => window.location.reload()}>Reload</button>
-      </div>
-    );
-  }
-
-  // Ensure critical components are loaded before rendering
-  // If they're not loaded yet, try to load them synchronously
+  // Ensure critical components are loaded before rendering main app
   if (!ErrorBoundary || !VideoProvider || !WebAppNavigator || !StatusBar) {
     logger.debug('[APP] ⚠️ Some components not loaded, attempting synchronous load...');
     try {
@@ -509,39 +457,115 @@ export default function App() {
       logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
       logger.error('[APP] ❌ Synchronous load failed:', syncError);
-      // Continue anyway - some components might still work
     }
   }
 
-  // Final check - if still not loaded, show error instead of infinite loading
-  if (!ErrorBoundary || !VideoProvider || !WebAppNavigator) {
+  // Single BrowserRouter at root so useNavigate() always has context (fixes LoginScreen error)
+  const loadingMarkup = (
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#1a1a1a',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#ffffff',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid rgba(191, 168, 77, 0.3)',
+          borderTopColor: 'rgba(191, 168, 77, 1)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+          margin: '0 auto 20px'
+        }}></div>
+        <p>Cargando...</p>
+      </div>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+
+  const hasCritical = !!(ErrorBoundary && VideoProvider && WebAppNavigator);
+  if (typeof window !== 'undefined') {
+    const branch =
+      isLoginPath ? 'login' :
+      !componentsLoaded || !fontsLoaded ? 'loading' :
+      initError && initError.message?.includes('critical') ? 'initError' :
+      !hasCritical ? 'criticalComponentsMissing' : 'main';
+    console.log('[APP WEB] Content branch:', branch, {
+      isLoginPath,
+      componentsLoaded,
+      fontsLoaded,
+      initError: initError ? initError.message : null,
+      hasErrorBoundary: !!ErrorBoundary,
+      hasVideoProvider: !!VideoProvider,
+      hasWebAppNavigator: !!WebAppNavigator,
+      pathname: window.location.pathname,
+    });
+  }
+
+  let content;
+  if (isLoginPath) {
+    logger.debug('[APP] Login route - rendering LoginScreen with AuthProvider');
+    content = (
+      <AuthProvider>
+        <LoginScreen />
+      </AuthProvider>
+    );
+  } else if (!componentsLoaded || !fontsLoaded) {
+    logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded);
+    content = loadingMarkup;
+  } else if (initError && initError.message?.includes('critical')) {
+    content = (
+      <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
+        <h1>Error Loading App</h1>
+        <p>{initError.message}</p>
+        <button onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    );
+  } else if (!ErrorBoundary || !VideoProvider || !WebAppNavigator) {
     logger.error('[APP] ❌ Critical components failed to load');
-    return (
+    content = (
       <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
         <h1>Error Loading App</h1>
         <p>Some components failed to load. Please refresh the page.</p>
         <button onClick={() => window.location.reload()}>Reload</button>
       </div>
     );
+  } else {
+    content = (
+      <ErrorBoundary>
+        <AuthProvider>
+          <VideoProvider>
+            <WebAppNavigator />
+            {StatusBar && <StatusBar style="light" />}
+          </VideoProvider>
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  }
+
+  if (typeof window !== 'undefined') {
+    console.log('[APP WEB] Rendering BrowserRouter + content');
   }
 
   return (
-    <ErrorBoundary>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <SafeAreaProvider initialMetrics={initialMetrics}>
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
-          <AuthProvider>
-            <VideoProvider>
-              <WebAppNavigator />
-              {StatusBar && <StatusBar style="light" />}
-            </VideoProvider>
-          </AuthProvider>
-        </BrowserRouter>
+        {content}
       </SafeAreaProvider>
-    </ErrorBoundary>
+    </BrowserRouter>
   );
 }

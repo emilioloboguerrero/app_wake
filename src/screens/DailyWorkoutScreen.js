@@ -26,6 +26,7 @@ import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import BottomSpacer from '../components/BottomSpacer';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
@@ -879,6 +880,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
               })}
             </View>
           </View>
+          <BottomSpacer />
           </View>
           
       {/* Tutorial Overlay */}
