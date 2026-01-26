@@ -52,12 +52,11 @@ const LoginScreen = () => {
   // Redirect to home if already logged in
   useEffect(() => {
     // Always log current state for debugging
-    logger.debug('[LOGIN SCREEN WEB] useEffect triggered', {
+    logger.log('[LOGIN SCREEN WEB] BREAKPOINT: useEffect triggered. uid:', user?.uid || auth.currentUser?.uid, {
       hasRedirected: hasRedirectedRef.current,
       hasUser: !!user,
       hasFirebaseUser: !!auth.currentUser,
-      loading,
-      userId: user?.uid || auth.currentUser?.uid
+      loading
     });
     
     if (hasRedirectedRef.current) {
@@ -70,15 +69,12 @@ const LoginScreen = () => {
     const currentUser = user || auth.currentUser;
     
     if (!loading && currentUser) {
-      logger.debug('[LOGIN SCREEN WEB] ✅ User authenticated, redirecting to home', {
-        hasAuthContextUser: !!user,
-        hasFirebaseUser: !!auth.currentUser,
-        userId: currentUser?.uid
-      });
+      const uid = currentUser?.uid;
+      logger.log('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget: / (AuthLayout will send to /onboarding if new user)');
       hasRedirectedRef.current = true; // Mark as redirected
       // Use setTimeout to ensure navigation happens after React state updates
       setTimeout(() => {
-        logger.debug('[LOGIN SCREEN WEB] Executing navigate("/")');
+        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing navigate("/"). uid passed to next screen (via AuthContext):', uid);
         navigate('/', { replace: true });
       }, 100); // Small delay to ensure state is stable
     } else if (!loading && !currentUser) {
@@ -86,10 +82,11 @@ const LoginScreen = () => {
       // This handles the case where AuthContext hasn't updated yet but Firebase has
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
-        logger.debug('[LOGIN SCREEN WEB] Found Firebase user but AuthContext not updated yet, redirecting anyway');
+        const uid = firebaseUser.uid;
+        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Firebase user but AuthContext not updated, redirecting. uid:', uid);
         hasRedirectedRef.current = true;
         setTimeout(() => {
-          logger.debug('[LOGIN SCREEN WEB] Executing navigate("/") from Firebase fallback');
+          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing navigate("/") from Firebase fallback. uid:', uid);
           navigate('/', { replace: true });
         }, 100);
       } else {
@@ -120,7 +117,7 @@ const LoginScreen = () => {
         
         const firebaseUser = auth.currentUser;
         if (firebaseUser && !loading) {
-          logger.debug('[LOGIN SCREEN WEB] Polling found user, redirecting');
+          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Polling found user, redirecting. uid:', firebaseUser.uid);
           hasRedirectedRef.current = true;
           clearInterval(pollInterval);
           navigate('/', { replace: true });

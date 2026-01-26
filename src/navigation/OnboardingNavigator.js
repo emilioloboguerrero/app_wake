@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,6 +18,12 @@ const Stack = createStackNavigator();
 const OnboardingNavigator = ({ onComplete }) => {
   const { user } = useAuth();
   const [onboardingAnswers, setOnboardingAnswers] = useState({});
+
+  useEffect(() => {
+    const uid = user?.uid;
+    logger.log('[ONBOARDING_NAV] BREAKPOINT: OnboardingNavigator mounted. uid:', uid);
+    if (!uid) logger.warn('[ONBOARDING_NAV] BREAKPOINT: No uid in OnboardingNavigator');
+  }, [user?.uid]);
 
   const handleAnswer = (questionKey, answer) => {
     setOnboardingAnswers(prev => ({

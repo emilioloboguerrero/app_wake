@@ -429,18 +429,29 @@ export default function App() {
     }
   }, [fontsLoaded, debugMode, isLoginPath]);
 
-  // Provide initial safe area metrics for web so flex: 1 and SafeAreaView layout correctly
+  // Frame = window size. Insets from env(safe-area-inset-*) so PWA on iPhone gets notch/home-indicator padding.
   const initialMetrics = React.useMemo(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.document) {
       return {
         frame: { x: 0, y: 0, width: 375, height: 667 },
         insets: { top: 0, left: 0, right: 0, bottom: 0 },
       };
     }
-    return {
-      frame: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
-      insets: { top: 0, left: 0, right: 0, bottom: 0 },
-    };
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    let top = 0, bottom = 0, left = 0, right = 0;
+    try {
+      const el = window.document.createElement('div');
+      el.style.cssText =
+        'position:fixed;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);visibility:hidden;pointer-events:none;';
+      window.document.body.appendChild(el);
+      const s = window.getComputedStyle(el);
+      const parse = (v) => { const n = parseInt(String(v), 10); return Number.isNaN(n) ? 0 : Math.max(0, n); };
+      top = parse(s.paddingTop); bottom = parse(s.paddingBottom);
+      left = parse(s.paddingLeft); right = parse(s.paddingRight);
+      window.document.body.removeChild(el);
+    } catch (_) {}
+    return { frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } };
   }, []);
 
   // Ensure critical components are loaded before rendering main app
@@ -463,7 +474,7 @@ export default function App() {
   // Single BrowserRouter at root so useNavigate() always has context (fixes LoginScreen error)
   const loadingMarkup = (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
       backgroundColor: '#1a1a1a',
       display: 'flex',
       alignItems: 'center',
@@ -511,14 +522,12 @@ export default function App() {
     });
   }
 
+  // Single AuthProvider for entire app so auth state persists when navigating from /login to /
+  // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
   if (isLoginPath) {
-    logger.debug('[APP] Login route - rendering LoginScreen with AuthProvider');
-    content = (
-      <AuthProvider>
-        <LoginScreen />
-      </AuthProvider>
-    );
+    logger.debug('[APP] Login route - rendering LoginScreen');
+    content = <LoginScreen />;
   } else if (!componentsLoaded || !fontsLoaded) {
     logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded);
     content = loadingMarkup;
@@ -542,18 +551,16 @@ export default function App() {
   } else {
     content = (
       <ErrorBoundary>
-        <AuthProvider>
-          <VideoProvider>
-            <WebAppNavigator />
-            {StatusBar && <StatusBar style="light" />}
-          </VideoProvider>
-        </AuthProvider>
+        <VideoProvider>
+          <WebAppNavigator />
+          {StatusBar && <StatusBar style="light" />}
+        </VideoProvider>
       </ErrorBoundary>
     );
   }
 
   if (typeof window !== 'undefined') {
-    console.log('[APP WEB] Rendering BrowserRouter + content');
+    console.log('[APP WEB] Rendering BrowserRouter + AuthProvider + content');
   }
 
   return (
@@ -564,7 +571,9 @@ export default function App() {
       }}
     >
       <SafeAreaProvider initialMetrics={initialMetrics}>
-        {content}
+        <AuthProvider>
+          {content}
+        </AuthProvider>
       </SafeAreaProvider>
     </BrowserRouter>
   );

@@ -13,6 +13,7 @@ import {
   TouchableWithoutFeedback,
   TextInput,
   Keyboard,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
@@ -80,9 +81,9 @@ const PRsScreen = ({ navigation, route }) => {
   
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
-  // Calculate header height to match FixedWakeHeader
-  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
-  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTop;
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const [estimates, setEstimates] = useState({});

@@ -22,7 +22,7 @@ import hybridDataService from '../services/hybridDataService';
 import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { KeyboardAvoidingView, Keyboard, TouchableWithoutFeedback } from 'react-native';
@@ -518,7 +518,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
 
@@ -602,7 +602,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
             )}
           </View>
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -666,7 +666,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingTop: 10,
     paddingBottom: 20, // Normal padding
   },
   titleSection: {

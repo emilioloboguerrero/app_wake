@@ -4,11 +4,12 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import { useVideo } from '../contexts/VideoContext';
 import { useAuth } from '../contexts/AuthContext';
 import tutorialManager from '../services/tutorialManager';
@@ -31,6 +32,12 @@ const WarmupScreen = ({ navigation, route }) => {
     container: {
       flex: 1,
       backgroundColor: '#1a1a1a',
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
     },
     content: {
       flex: 1,
@@ -644,13 +651,18 @@ const WarmupScreen = ({ navigation, route }) => {
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
       />
-      
-      <View style={styles.content}>
-        {/* Spacer for fixed header */}
-        <WakeHeaderSpacer />
-        
-        {/* Title Section */}
-        <View style={styles.titleSection}>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <WakeHeaderContent style={styles.content}>
+          {/* Spacer for fixed header */}
+          <WakeHeaderSpacer />
+
+          {/* Title Section */}
+          <View style={styles.titleSection}>
           <Text style={styles.title}>Calentamiento</Text>
         </View>
         
@@ -750,8 +762,9 @@ const WarmupScreen = ({ navigation, route }) => {
             </View>
           </View>
         </View>
-      </View>
-      
+      </WakeHeaderContent>
+      </ScrollView>
+
       {/* Tutorial Overlay */}
       <TutorialOverlay
         visible={tutorialVisible}

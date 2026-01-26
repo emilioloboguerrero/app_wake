@@ -69,9 +69,19 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  // Match Wake header background max height (see FixedWakeHeader)
-  const headerHeightBase = Math.max(60, screenHeight * 0.08);
-  const wakeHeaderBgHeight = headerHeightBase + Math.max(0, insets.top - 20);
+  // Match WakeHeader / WakeHeaderSpacer: web uses insets.top for PWA notch; native uses insets.top - 8
+  const headerHeightBase = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const safeAreaTop = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const wakeHeaderBgHeight = headerHeightBase + safeAreaTop;
+
+  // BREAKPOINT: Log uid on mount so we can verify it is passed to this screen
+  useEffect(() => {
+    const uid = user?.uid || auth.currentUser?.uid;
+    logger.log('[ONBOARDING] BREAKPOINT: Screen mounted. uid:', uid, 'fromUseAuth:', !!user, 'fromAuthCurrentUser:', !!auth.currentUser);
+    if (!uid) {
+      logger.warn('[ONBOARDING] BREAKPOINT: No uid available on OnboardingScreen mount');
+    }
+  }, [user?.uid]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(() => StyleSheet.create({
@@ -1173,7 +1183,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       <Animated.View style={[
         styles.animatedLogoContainer,
         {
-          top: screenHeight * 0.03, // Align with other headers (no extra offset)
+          top: Math.max(screenHeight * 0.03, safeAreaTop), // Below safe area (notch) and at least 3% from top
           transform: [
             { scale: logoScale },
             { translateY: logoTranslateY }
@@ -1183,10 +1193,10 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       onLayout={({ nativeEvent }) => {
         // Calculate the expanded logo height: 3x scale of 60px = 180px
         // Plus container padding: 15px top + 15px bottom = 30px
-        // Plus top offset: screenHeight * 0.03
+        // Plus top offset: same as animated logo top (safe area + 3% min)
         const expandedLogoHeight = 60 * 3; // 180px
         const containerPadding = 30; // paddingVertical: 15 * 2
-        const topOffset = screenHeight * 0.03;
+        const topOffset = Math.max(screenHeight * 0.03, safeAreaTop);
         const totalHeight = topOffset + expandedLogoHeight + containerPadding + 50; // Small buffer
         
         setMeasuredHeaderHeight(totalHeight);

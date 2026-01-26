@@ -16,7 +16,7 @@ import sessionManager from '../services/sessionManager';
 import sessionService from '../services/sessionService';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Image as ExpoImage } from 'expo-image';
@@ -673,7 +673,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
         contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           <WakeHeaderSpacer />
 
           {/* Title Section */}
@@ -712,7 +712,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
           )}
 
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       
       {/* Start Workout Button - Fixed at bottom */}

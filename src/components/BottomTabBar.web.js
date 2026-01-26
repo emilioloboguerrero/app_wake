@@ -10,12 +10,11 @@ const BottomTabBar = () => {
   const navigate = useNavigate();
   const insets = useSafeAreaInsets();
   
-  // Responsive tab bar dimensions - fixed above viewport bottom
-  const tabBarHeight = Math.max(50, Math.min(72, screenHeight * 0.08)); // 8% of height, clamp 50–72
-  const iconSize = Math.min(screenWidth * 0.06, 28);
-  const bottomPadding = insets.bottom; // Respect safe area (e.g. notched devices)
-  const bottomOffset = 24; // Bar sits this many px above the viewport bottom
-  
+  // Use stable defaults so first paint matches later (avoids tab bar "pop" when insets/dimensions resolve)
+  const tabBarHeight = Math.max(50, Math.min(72, (screenHeight || 600) * 0.08));
+  const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
+  const bottomPadding = insets.bottom ?? 0;
+
   // Determine if tab bar should be visible based on current route
   const shouldShowTabBar = () => {
     const path = location.pathname;
@@ -46,33 +45,41 @@ const BottomTabBar = () => {
   if (!shouldShowTabBar()) {
     return null;
   }
-  
+
+  const fixedWrapperStyle = {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  };
+
   return (
-    <View style={[styles.tabBar, { height: tabBarHeight + bottomPadding + 12, paddingTop: 12, paddingBottom: bottomPadding, bottom: bottomOffset }]}>
-      <TouchableOpacity
-        style={styles.tabButton}
-        onPress={() => navigate('/')}
-        activeOpacity={0.7}
-      >
-        <SvgHouse02 {...getIconProps(isMainActive)} />
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={styles.tabButton}
-        onPress={() => navigate('/profile')}
-        activeOpacity={0.7}
-      >
-        <SvgUser02 {...getIconProps(isProfileActive)} />
-      </TouchableOpacity>
-    </View>
+    <div className="wake-tab-bar-root" style={fixedWrapperStyle}>
+      <View style={[styles.tabBar, { height: tabBarHeight + 12, paddingTop: 12, paddingBottom: 0 }]}>
+        <TouchableOpacity
+          style={styles.tabButton}
+          onPress={() => navigate('/')}
+          activeOpacity={0.7}
+        >
+          <SvgHouse02 {...getIconProps(isMainActive)} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.tabButton}
+          onPress={() => navigate('/profile')}
+          activeOpacity={0.7}
+        >
+          <SvgUser02 {...getIconProps(isProfileActive)} />
+        </TouchableOpacity>
+      </View>
+    </div>
   );
 };
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'fixed',
-    left: 0,
-    right: 0,
+    width: '100%',
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     flexDirection: 'row',

@@ -2,6 +2,7 @@
 // SIMPLIFIED VERSION - Login route isolated
 // LAZY LOADING: Heavy screens are loaded only when needed
 import React, { lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
@@ -53,6 +54,8 @@ import BottomTabBar from '../components/BottomTabBar.web';
 // Layout component for authenticated routes
 const AuthenticatedLayout = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const isOnOnboardingPath = location.pathname === '/onboarding';
   const [userProfile, setUserProfile] = React.useState(null);
   const [profileLoading, setProfileLoading] = React.useState(false);
   const checkedUserIdRef = React.useRef(null);
@@ -122,14 +125,18 @@ const AuthenticatedLayout = ({ children }) => {
     }
   }, [loading, user, firebaseUser]);
 
+  // Use effective uid from context or Firebase so we run profile fetch even when context lags
+  const effectiveUidForFetch = user?.uid || firebaseUser?.uid;
+
   React.useEffect(() => {
     // Skip if already checked for this user
-    if (user && checkedUserIdRef.current === user.uid) {
+    if (effectiveUidForFetch && checkedUserIdRef.current === effectiveUidForFetch) {
+      logger.debug('[AUTH LAYOUT] checkUserProfile skipped (already checked for uid)', effectiveUidForFetch);
       return;
     }
     
     // Skip if no user and we've already cleared
-    if (!user && checkedUserIdRef.current === null) {
+    if (!effectiveUidForFetch && checkedUserIdRef.current === null) {
       return;
     }
     
@@ -137,23 +144,29 @@ const AuthenticatedLayout = ({ children }) => {
     let timeoutId = null;
     
     const checkUserProfile = async () => {
-      if (user && !loading) {
+      // Start fetch whenever we have a uid (from context or Firebase). Do not require !loading:
+      // if AuthContext is still loading but we have firebaseUser/directFirebaseCheck we'd otherwise
+      // show "Waiting for profile" forever without ever starting the fetch.
+      if (effectiveUidForFetch) {
+        logger.log('[AUTH LAYOUT] BREAKPOINT: Starting profile fetch for uid:', effectiveUidForFetch);
         setProfileLoading(true);
-        checkedUserIdRef.current = user.uid;
+        checkedUserIdRef.current = effectiveUidForFetch;
         
         timeoutId = setTimeout(() => {
           if (mounted) {
+            logger.warn('[AUTH LAYOUT] BREAKPOINT: Profile fetch timeout (10s), assuming new user. uid:', effectiveUidForFetch);
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             setProfileLoading(false);
           }
         }, 10000);
         
         try {
-          const cached = await webStorageService.getItem(`onboarding_status_${user.uid}`);
+          const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
           if (cached) {
             const status = JSON.parse(cached);
             const cacheAge = Date.now() - (status.cachedAt || 0);
             if (cacheAge < 5 * 60 * 1000) {
+              logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
               if (mounted) {
                 setUserProfile({
                   profileCompleted: status.profileCompleted ?? false,
@@ -166,8 +179,8 @@ const AuthenticatedLayout = ({ children }) => {
             }
           }
           
-          const profilePromise = firestoreService.getUser(user.uid);
-          const timeoutPromise = new Promise((_, reject) => 
+          const profilePromise = firestoreService.getUser(effectiveUidForFetch);
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Firestore timeout')), 5000)
           );
           
@@ -175,27 +188,32 @@ const AuthenticatedLayout = ({ children }) => {
           
           if (mounted) {
             if (profile) {
+              logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from Firestore. uid:', effectiveUidForFetch, 'onboardingCompleted:', profile.onboardingCompleted, 'profileCompleted:', profile.profileCompleted);
               setUserProfile(profile);
-              webStorageService.setItem(`onboarding_status_${user.uid}`, JSON.stringify({
+              webStorageService.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
                 onboardingCompleted: profile.onboardingCompleted ?? false,
                 profileCompleted: profile.profileCompleted ?? false,
                 cachedAt: Date.now()
               })).catch(() => {});
             } else {
+              logger.log('[AUTH LAYOUT] BREAKPOINT: No profile (new user). uid:', effectiveUidForFetch, '-> setting onboarding not completed');
               setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             }
           }
         } catch (error) {
+          logger.warn('[AUTH LAYOUT] BREAKPOINT: Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
           if (mounted) {
             try {
-              const cached = await webStorageService.getItem(`onboarding_status_${user.uid}`);
+              const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
               if (cached) {
                 const status = JSON.parse(cached);
+                logger.log('[AUTH LAYOUT] Using cached onboarding status after error. uid:', effectiveUidForFetch, status);
                 setUserProfile({
                   profileCompleted: status.profileCompleted ?? false,
                   onboardingCompleted: status.onboardingCompleted ?? false
                 });
               } else {
+                logger.log('[AUTH LAYOUT] No cache, assuming new user after error. uid:', effectiveUidForFetch);
                 setUserProfile({ profileCompleted: false, onboardingCompleted: false });
               }
             } catch {
@@ -208,7 +226,8 @@ const AuthenticatedLayout = ({ children }) => {
           }
           if (timeoutId) clearTimeout(timeoutId);
         }
-      } else if (!user && !loading) {
+      } else if (!effectiveUidForFetch) {
+        logger.debug('[AUTH LAYOUT] No user, clearing userProfile');
         setUserProfile(null);
         setProfileLoading(false);
         checkedUserIdRef.current = null;
@@ -221,7 +240,7 @@ const AuthenticatedLayout = ({ children }) => {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [user?.uid, loading]);
+  }, [effectiveUidForFetch]);
 
   // Determine if we have a user (from context or Firebase)
   // CRITICAL: If Firebase has a user, proceed even if AuthContext is still loading
@@ -294,29 +313,57 @@ const AuthenticatedLayout = ({ children }) => {
     return <LoadingScreen />;
   }
   
+  const effectiveUid = finalHasUser?.uid || hasUser?.uid;
   if (finalHasUser) {
-    logger.debug('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', finalHasUser.uid);
+    logger.debug('[AUTH LAYOUT] ✅ User authenticated. uid:', finalHasUser.uid);
   }
-  
-  logger.debug('[AUTH LAYOUT] ✅ User authenticated, showing children. User:', hasUser?.uid || 'from Firebase');
 
-  // For now, skip onboarding check to get MainScreen working
-  // TODO: Re-enable onboarding check later
-  // if (userProfile) {
-  //   if (userProfile.onboardingCompleted === false && 
-  //       (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)) {
-  //     return <Navigate to="/onboarding" replace />;
-  //   } else if (userProfile.onboardingCompleted === false) {
-  //     return <Navigate to="/onboarding" replace />;
-  //   }
-  // }
+  // Wait for profile when we have an authenticated user: either still loading or not yet known
+  // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
+  if (finalHasUser && (profileLoading || userProfile === null)) {
+    logger.log('[AUTH LAYOUT] BREAKPOINT: Waiting for profile. uid:', effectiveUid, 'profileLoading:', profileLoading, 'userProfile:', userProfile ? 'set' : 'null');
+    return <LoadingScreen />;
+  }
 
-  // Show children immediately - don't wait for profile loading
-  // Profile loading happens in background
+  // Onboarding: only redirect based on explicit profile data (userProfile is now set from Firestore or "new user" default)
+  // - profileCompleted: false/undefined = user has not filled base profile (name, etc.)
+  // - onboardingCompleted: false = user has not finished the onboarding questions flow
+  const needsOnboarding = userProfile && (
+    userProfile.onboardingCompleted === false ||
+    (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
+  );
+  const hasCompletedOnboarding = userProfile && userProfile.onboardingCompleted === true;
+
+  if (isOnOnboardingPath) {
+    // We're on /onboarding: only render onboarding screen if they still need it
+    if (hasCompletedOnboarding) {
+      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding but profile complete, redirecting to /. uid:', effectiveUid);
+      return <Navigate to="/" replace />;
+    }
+    logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding, rendering children. uid:', effectiveUid);
+  } else {
+    // We're on another route: redirect to onboarding only when profile explicitly says incomplete
+    if (needsOnboarding) {
+      logger.log('[AUTH LAYOUT] BREAKPOINT: Onboarding decision - redirecting to /onboarding.', {
+        uid: effectiveUid,
+        onboardingCompleted: userProfile.onboardingCompleted,
+        profileCompleted: userProfile.profileCompleted
+      });
+      return <Navigate to="/onboarding" replace />;
+    }
+  }
+
+  logger.log('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
+  // Render tab bar in a portal to document.body so position:fixed is relative to viewport
+  // (ancestors with flex/transform create a containing block and can put the bar in the middle)
+  const tabBarEl =
+    typeof document !== 'undefined' && document.body
+      ? createPortal(<BottomTabBar />, document.body)
+      : <BottomTabBar />;
   return (
     <>
       {children}
-      <BottomTabBar />
+      {tabBarEl}
     </>
   );
 };

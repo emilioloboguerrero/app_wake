@@ -209,7 +209,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 5,
-    marginTop: 4,
+    marginTop: 0,
     marginBottom: 0,
   },
   optionCube: {

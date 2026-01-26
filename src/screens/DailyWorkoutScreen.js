@@ -25,7 +25,7 @@ import exerciseLibraryService from '../services/exerciseLibraryService';
 import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
 import TutorialOverlay from '../components/TutorialOverlay';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import logger from '../utils/logger.js';
@@ -676,8 +676,13 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        
-          <View style={styles.content}>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <WakeHeaderContent style={styles.content}>
             {/* Spacer for fixed header */}
             <WakeHeaderSpacer />
 
@@ -881,8 +886,9 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
             </View>
           </View>
           <BottomSpacer />
-          </View>
-          
+          </WakeHeaderContent>
+        </ScrollView>
+
       {/* Tutorial Overlay */}
       <TutorialOverlay
         visible={tutorialVisible}
@@ -900,8 +906,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: '#1a1a1a',
     overflow: 'visible',
   },
+  scrollView: {
+    flex: 1,
+  },
+  contentScrollContent: {
+    flexGrow: 1,
+  },
   content: {
-    paddingTop: 10,
     paddingBottom: 20,
     overflow: 'visible',
   },

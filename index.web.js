@@ -110,6 +110,9 @@ console.log('[INDEX] About to import registerRootComponent');
 import { registerRootComponent } from 'expo';
 console.log('[INDEX] ✅ registerRootComponent imported');
 
+// Patch ScrollView touch-action for all screens (vertical=pan-y, horizontal=pan-x) on web/PWA
+import './src/patches/scrollViewTouchAction.web.js';
+
 console.log('[INDEX] About to import App from ./src/App.web');
 import App from './src/App.web';
 console.log('[INDEX] ✅ App imported');

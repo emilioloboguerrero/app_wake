@@ -47,6 +47,7 @@
       flex-direction: column;
       height: 100%;
       min-height: 100vh;
+      min-height: 100dvh;
     }
     #root > * {
       flex: 1;
@@ -577,21 +578,8 @@
       lastTouchEnd = now;
     }, false);
 
-    // Prevent pull-to-refresh on mobile
-    let touchStartY = 0;
-    document.addEventListener('touchstart', (e) => {
-      touchStartY = e.touches[0].clientY;
-    }, { passive: true });
-
-    document.addEventListener('touchmove', (e) => {
-      const touchY = e.touches[0].clientY;
-      const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-      
-      // Prevent pull-to-refresh when at top
-      if (scrollTop === 0 && touchY > touchStartY) {
-        e.preventDefault();
-      }
-    }, { passive: false });
+    // Pull-to-refresh: left to browser default (no document-level prevention)
+    // so vertical scroll works in the in-app ScrollView and pull-to-refresh remains a feature
   </script>
   <!-- EXPO_BUNDLE_SCRIPT: replaced by build script with actual bundle script tag -->
 </body>

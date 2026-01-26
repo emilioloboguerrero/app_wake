@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +18,7 @@ import { isWeb } from '../utils/platform';
 import purchaseService from '../services/purchaseService';
 import consolidatedDataService from '../services/consolidatedDataService';
 import { auth } from '../config/firebase';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -31,9 +32,9 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
   const user = contextUser || auth.currentUser;
   
-  // Calculate header height to match FixedWakeHeader
-  const headerHeight = Math.max(60, screenHeight * 0.08); // 8% of screen height, min 60
-  const headerTotalHeight = headerHeight + Math.max(0, insets.top - 20);
+  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTop;
   const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -250,7 +251,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
 
@@ -310,7 +311,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
             </View>
           )}
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
     </SafeAreaView>
   );

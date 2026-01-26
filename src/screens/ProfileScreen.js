@@ -30,7 +30,7 @@ import hybridDataService from '../services/hybridDataService';
 import tutorialManager from '../services/tutorialManager';
 import profilePictureService from '../services/profilePictureService';
 import TutorialOverlay from '../components/TutorialOverlay';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import Settings from '../components/icons/vectors_fig/Interface/Settings';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -1257,7 +1257,7 @@ const ProfileScreen = ({ navigation }) => {
         </View>
       ) : (
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          <View style={styles.content}>
+          <WakeHeaderContent style={styles.content}>
             {/* Spacer for fixed header */}
             <WakeHeaderSpacer />
 
@@ -1343,7 +1343,7 @@ const ProfileScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       )}
       

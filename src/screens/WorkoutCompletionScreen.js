@@ -15,7 +15,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
@@ -1199,7 +1199,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.container}>
       <FixedWakeHeader />
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           <WakeHeaderSpacer />
           
           {/* Header */}
@@ -1375,7 +1375,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           </View>
 
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       
       {/* Tutorial Overlay */}

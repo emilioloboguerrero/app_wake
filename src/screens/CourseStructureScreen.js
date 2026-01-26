@@ -12,7 +12,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -97,7 +97,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
       overflow: 'visible',
     },
     content: {
-      paddingTop: 10,
       paddingBottom: 20, // Normal padding
       overflow: 'visible',
     },
@@ -435,7 +434,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
       <WakeHeaderSpacer />
       
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           {/* Title Section */}
           <View style={styles.titleSection}>
             <Text style={styles.courseTitle}>{courseData?.title || course.title}</Text>
@@ -452,7 +451,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
             </View>
           )}
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
     </SafeAreaView>
   );

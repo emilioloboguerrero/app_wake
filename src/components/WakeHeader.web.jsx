@@ -1,6 +1,9 @@
 // Web version of FixedWakeHeader component
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import logger from '../utils/logger';
 
 // Simple SVG icons for web
@@ -25,50 +28,18 @@ export const FixedWakeHeader = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // Responsive dimensions - use state to handle window resize and ensure values are set on reload
-  const [dimensions, setDimensions] = React.useState(() => {
-    if (typeof window !== 'undefined' && window.innerWidth > 0 && window.innerHeight > 0) {
-      return {
-        width: window.innerWidth,
-        height: window.innerHeight
-      };
-    }
-    return { width: 375, height: 667 };
-  });
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    const updateDimensions = () => {
-      if (window.innerWidth > 0 && window.innerHeight > 0) {
-        setDimensions({
-          width: window.innerWidth,
-          height: window.innerHeight
-        });
-      }
-    };
-    
-    // Update immediately in case window wasn't ready on mount
-    updateDimensions();
-    
-    // Also try after a short delay to catch cases where window isn't ready yet
-    const timeoutId = setTimeout(updateDimensions, 100);
-    
-    window.addEventListener('resize', updateDimensions);
-    
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', updateDimensions);
-    };
-  }, []);
-  
-  const screenWidth = dimensions.width;
-  const screenHeight = dimensions.height;
-  const headerHeight = Math.max(60, screenHeight * 0.08);
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const headerHeight = 32;
+  const initialSafeTopRef = React.useRef(null);
+  if (initialSafeTopRef.current === null) {
+    initialSafeTopRef.current = Math.max(0, insets.top);
+  }
+  const safeAreaTop = initialSafeTopRef.current;
   const logoWidth = Math.min(screenWidth * 0.35, 120);
   const logoHeight = logoWidth * 0.57;
   const iconSize = 20;
+  const barCenterTop = safeAreaTop + headerHeight / 2;
   
   const shouldShowProfileButton = profileImageUrl !== null || onProfilePress;
   
@@ -86,7 +57,6 @@ export const FixedWakeHeader = ({
         onBackPress();
       } catch (error) {
         logger.error('[WakeHeader.web] Error in onBackPress callback:', error);
-        // Fallback to browser navigation
         navigate(-1);
       }
     } else {
@@ -94,19 +64,15 @@ export const FixedWakeHeader = ({
     }
   };
 
-  // Calculate safe area insets for web (usually 0, but account for it)
-  const safeAreaTop = typeof window !== 'undefined' && window.visualViewport 
-    ? Math.max(0, (window.innerHeight - window.visualViewport.height) / 2)
-    : 0;
-  const headerTotalHeight = headerHeight + safeAreaTop;
-
-  return (
+  const headerEl = (
     <div style={{
       position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
-      height: headerTotalHeight,
+      minHeight: headerHeight + safeAreaTop,
+      height: headerHeight + safeAreaTop,
+      flexShrink: 0,
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
@@ -114,16 +80,19 @@ export const FixedWakeHeader = ({
       paddingTop: safeAreaTop,
       paddingLeft: screenWidth * 0.06,
       paddingRight: screenWidth * 0.06,
+      paddingBottom: 0,
       backgroundColor: backgroundColor,
       zIndex: 1000,
+      boxSizing: 'border-box',
     }}>
       {shouldShowProfileButton && (
         <button
           onClick={handleProfilePress}
           style={{
             position: 'absolute',
-            top: Math.max(19, screenHeight * 0.021),
+            top: barCenterTop,
             right: Math.max(32, screenWidth * 0.08),
+            transform: 'translateY(-50%)',
             width: 44,
             height: 44,
             borderRadius: 22,
@@ -174,7 +143,7 @@ export const FixedWakeHeader = ({
           onClick={onMenuPress}
           style={{
             position: 'absolute',
-            top: safeAreaTop + headerHeight / 2,
+            top: barCenterTop,
             left: Math.max(32, screenWidth * 0.08),
             display: 'flex',
             justifyContent: 'center',
@@ -210,7 +179,7 @@ export const FixedWakeHeader = ({
           onClick={handleBackPress}
           style={{
             position: 'absolute',
-            top: safeAreaTop + headerHeight / 2,
+            top: barCenterTop,
             left: Math.max(32, screenWidth * 0.08),
             display: 'flex',
             justifyContent: 'center',
@@ -241,8 +210,9 @@ export const FixedWakeHeader = ({
           }}
           style={{
             position: 'absolute',
-            top: safeAreaTop + headerHeight / 2,
+            top: barCenterTop,
             right: Math.max(32, screenWidth * 0.08),
+            transform: 'translateY(-50%)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
@@ -252,7 +222,6 @@ export const FixedWakeHeader = ({
             borderRadius: 8,
             cursor: 'pointer',
             zIndex: 1001,
-            transform: 'translateY(-50%)',
           }}
         >
           <span style={{
@@ -264,52 +233,28 @@ export const FixedWakeHeader = ({
       )}
     </div>
   );
+  return (typeof document !== 'undefined' && document.body)
+    ? createPortal(headerEl, document.body)
+    : headerEl;
 };
 
-// Header spacer component
+// Header spacer: matches FixedWakeHeader (32px + safe area top). Freeze height on first layout so it doesn't change on scroll.
 export const WakeHeaderSpacer = () => {
-  // Responsive dimensions - use state to handle window resize
-  const [dimensions, setDimensions] = React.useState(() => {
-    if (typeof window !== 'undefined' && window.innerWidth > 0 && window.innerHeight > 0) {
-      return {
-        width: window.innerWidth,
-        height: window.innerHeight
-      };
-    }
-    return { width: 375, height: 667 };
-  });
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    const updateDimensions = () => {
-      if (window.innerWidth > 0 && window.innerHeight > 0) {
-        setDimensions({
-          width: window.innerWidth,
-          height: window.innerHeight
-        });
-      }
-    };
-    
-    updateDimensions();
-    const timeoutId = setTimeout(updateDimensions, 100);
-    window.addEventListener('resize', updateDimensions);
-    
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', updateDimensions);
-    };
-  }, []);
-  
-  const screenHeight = dimensions.height;
-  const headerHeight = Math.max(60, screenHeight * 0.08);
-  const safeAreaTop = typeof window !== 'undefined' && window.visualViewport 
-    ? Math.max(0, (window.innerHeight - window.visualViewport.height) / 2)
-    : 0;
-  const totalHeight = headerHeight + safeAreaTop;
-  
-  return <div style={{ height: totalHeight }} />;
+  const insets = useSafeAreaInsets();
+  const ref = React.useRef(null);
+  if (ref.current === null) {
+    ref.current = 32 + Math.max(0, insets.top);
+  }
+  const totalHeight = ref.current;
+  return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 };
+
+// Single place to control space between header (spacer) and content. Use this to wrap content below WakeHeaderSpacer.
+const GAP_AFTER_HEADER = -20;
+
+export const WakeHeaderContent = ({ style, gapAfterHeader = GAP_AFTER_HEADER, ...rest }) => (
+  <View style={[{ paddingTop: gapAfterHeader }, style]} {...rest} />
+);
 
 export default FixedWakeHeader;
 

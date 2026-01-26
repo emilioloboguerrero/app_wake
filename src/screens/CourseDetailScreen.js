@@ -30,7 +30,7 @@ import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
 import consolidatedDataService from '../services/consolidatedDataService';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EpaycoWebView from '../components/EpaycoWebView';
@@ -1393,7 +1393,7 @@ useEffect(() => {
       />
       
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
+        <WakeHeaderContent style={styles.content}>
           {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
 
@@ -1607,7 +1607,7 @@ useEffect(() => {
           </View>
 
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
 
       {/* Email Input Modal for Mercado Pago */}
@@ -1714,7 +1714,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 10,
     paddingBottom: 80,
     overflow: 'visible',
   },

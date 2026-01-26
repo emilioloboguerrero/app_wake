@@ -32,7 +32,7 @@ import updateEventManager from '../services/updateEventManager';
 import tutorialManager from '../services/tutorialManager';
 import consolidatedDataService from '../services/consolidatedDataService';
 import TutorialOverlay from '../components/TutorialOverlay';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
@@ -72,7 +72,7 @@ const MainScreen = ({ navigation, route }) => {
     userSection: {
       marginBottom: 12,
       paddingTop: 0,
-      marginTop: 10,
+      marginTop: 0,
     },
     cardsSection: {
       flex: 1,
@@ -328,6 +328,16 @@ const MainScreen = ({ navigation, route }) => {
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
   const user = contextUser || auth.currentUser;
+
+  // BREAKPOINT: Log uid on mount so we can verify it is passed to this screen
+  useEffect(() => {
+    const uid = user?.uid;
+    logger.log('[MAIN_SCREEN] BREAKPOINT: Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
+    if (!uid) {
+      logger.warn('[MAIN_SCREEN] BREAKPOINT: No uid available on MainScreen mount');
+    }
+  }, [user?.uid, contextUser]);
+
   const [userProfile, setUserProfile] = useState({
     displayName: '',
     username: '',
@@ -1738,9 +1748,8 @@ const MainScreen = ({ navigation, route }) => {
         bounces={true}
         alwaysBounceVertical={true}
       >
-        <View style={styles.contentWrapper}>
+        <WakeHeaderContent style={styles.contentWrapper}>
           <WakeHeaderSpacer />
-          <View style={{ height: 12 }} />
           <View style={styles.userSection}>
             <Text style={styles.greeting}>
               Hola, <Text style={styles.username}>{getFirstName()}</Text>
@@ -1811,7 +1820,7 @@ const MainScreen = ({ navigation, route }) => {
 
           {/* Reserve space at bottom so content isn't hidden behind fixed tab bar */}
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
 
       {/* Tutorial Overlay */}

@@ -30,7 +30,8 @@ export const FixedWakeHeader = ({
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
-  // Single source of truth for top space: header bar height (web = minimal 32px, native = 40–44px)
+  // Same as first commit: web = 0 top, native = insets.top - 8 (capped 0) for consistent UI
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const headerHeight = Platform.OS === 'web'
     ? 32
     : Math.max(40, Math.min(44, screenHeight * 0.055));
@@ -43,9 +44,10 @@ export const FixedWakeHeader = ({
 
   return (
     <View style={[styles.fixedHeaderContainer, { 
+      position: Platform.OS === 'web' ? 'fixed' : 'absolute',
       top: 0,
-      height: headerHeight + (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)),
-      paddingTop: Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8),
+      height: headerHeight + safeAreaTop,
+      paddingTop: safeAreaTop,
       paddingHorizontal: screenWidth * 0.06, // 6% of screen width
       backgroundColor,
       pointerEvents: 'box-none' // Allow touches to pass through to content below
@@ -55,7 +57,7 @@ export const FixedWakeHeader = ({
           style={[
             styles.profileButton,
             {
-              top: (Platform.OS === 'web' ? 6 : Math.max(8, screenHeight * 0.012)) + (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)),
+              top: safeAreaTop + (Platform.OS === 'web' ? 6 : Math.max(8, screenHeight * 0.012)),
               right: Math.max(32, screenWidth * 0.08)
             }
           ]}
@@ -89,7 +91,7 @@ export const FixedWakeHeader = ({
             // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
             // Logo center is at: paddingTop + headerHeight / 2
             // Position menu button to align with logo center
-            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2 - iconSize / 2,
+            top: safeAreaTop + headerHeight / 2 - iconSize / 2,
             left: Math.max(32, screenWidth * 0.08)
           }]}
           onPress={onMenuPress}
@@ -111,10 +113,7 @@ export const FixedWakeHeader = ({
       {showBackButton && onBackPress && (
         <TouchableOpacity 
           style={[styles.backButton, { 
-            // Logo is centered in headerHeight area using flexbox (alignItems: 'center')
-            // Logo center is at: paddingTop + headerHeight / 2
-            // Position back button to align with logo center
-            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2 - iconSize / 2,
+            top: safeAreaTop + headerHeight / 2 - iconSize / 2,
             left: Math.max(32, screenWidth * 0.08)
           }]}
           onPress={onBackPress}
@@ -131,7 +130,7 @@ export const FixedWakeHeader = ({
             // Position reset button to align with logo center, on the right side
             // Logo center is at: paddingTop + headerHeight / 2
             // Button center should align: top + buttonHeight/2 = paddingTop + headerHeight / 2
-            top: (Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8)) + headerHeight / 2,
+            top: safeAreaTop + headerHeight / 2,
             right: Math.max(32, screenWidth * 0.08),
             transform: [{ translateY: -16 }] // Half of button height (padding 8*2 + text ~16 = ~32, so -16)
           }]}
@@ -161,9 +160,9 @@ export const WakeHeaderSpacer = () => {
   // Use hook for reactive dimensions that update on orientation change
   const { height: screenHeight } = useWindowDimensions();
   
-  // Match FixedWakeHeader so content aligns below logo bar (web = 32px, native = 40–44 + inset)
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  // Match FixedWakeHeader (first commit: web 0, native insets.top - 8)
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
+  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const totalHeight = headerHeight + safeAreaTop;
   
   const componentEndTime = performance.now();
@@ -176,9 +175,16 @@ export const WakeHeaderSpacer = () => {
   return <View style={{ height: totalHeight }} />;
 };
 
+// Single place to control space between header (spacer) and content. Use this to wrap content below WakeHeaderSpacer.
+const GAP_AFTER_HEADER = -20;
+
+export const WakeHeaderContent = ({ style, gapAfterHeader = GAP_AFTER_HEADER, ...rest }) => (
+  <View style={[{ paddingTop: gapAfterHeader }, style]} {...rest} />
+);
+
 const styles = StyleSheet.create({
   fixedHeaderContainer: {
-    position: 'absolute',
+    position: 'absolute', // overridden to 'fixed' on web via inline style so header stays put on scroll
     left: 0,
     right: 0,
     flexDirection: 'row',
