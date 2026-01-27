@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   Image,
   Modal,
+  Platform,
 } from 'react-native';
 import Text from '../components/Text';
 import TextInput from '../components/TextInput';
@@ -508,7 +509,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
   }, [state.swipedCourses, handleCoursePress, handleImageLoadStart, handleImageLoad, handleImageError, renderModulesView]); // Removed state.imageLoadingStates to prevent infinite loop
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Fixed Header with Back Button */}
       <FixedWakeHeader 
         showBackButton={true}

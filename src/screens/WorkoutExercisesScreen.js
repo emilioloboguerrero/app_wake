@@ -10,6 +10,7 @@ import {
   Image,
   useWindowDimensions,
   FlatList,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import sessionManager from '../services/sessionManager';
@@ -629,7 +630,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
@@ -644,7 +645,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
@@ -658,7 +659,7 @@ const WorkoutExercisesScreen = ({ navigation, route }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Top background filler to cover notch/status bar behind header */}
       <View style={styles.topBackground} />
       <FixedWakeHeader 

@@ -33,8 +33,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const user = contextUser || auth.currentUser;
   
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -239,7 +239,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   }, [allCourses]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Fixed Header with Back Button */}
       <FixedWakeHeader 
         showBackButton={true}

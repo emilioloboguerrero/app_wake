@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   useWindowDimensions,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../../components/WakeHeader';
@@ -87,7 +88,7 @@ const OnboardingQuestion2 = ({ navigation, onAnswer }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
 
       <ScrollView 

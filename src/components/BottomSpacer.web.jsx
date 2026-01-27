@@ -1,19 +1,28 @@
-// Web version of BottomSpacer - same formula as BottomTabBar.web so reserved space matches bar
+// Web version of BottomSpacer - same "freeze on first read" approach as WakeHeaderSpacer
+// so bottom never pops when safe area resolves late.
 import React from 'react';
-import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const TAB_BAR_CONTENT_HEIGHT = 62;
+const TOP_PAD = 12;
+
 const BottomSpacer = () => {
-  const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-
-  const tabBarHeight = Math.max(50, Math.min(72, screenHeight * 0.08));
-  const topPad = 12;
-  const bottomPadding = insets.bottom || 0;
-  // Match BottomTabBar.web exactly: bar is at bottom: 0 with height = tabBarHeight + 12 + bottomPadding
-  const totalHeight = tabBarHeight + topPad + bottomPadding;
-
-  return <div style={{ height: totalHeight, width: '100%' }} />;
+  const ref = React.useRef(null);
+  if (ref.current === null) {
+    ref.current = TAB_BAR_CONTENT_HEIGHT + TOP_PAD + Math.max(0, insets.bottom ?? 0);
+  }
+  const totalHeight = ref.current;
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: totalHeight,
+        flexShrink: 0,
+        boxSizing: 'border-box',
+      }}
+    />
+  );
 };
 
 export default BottomSpacer;

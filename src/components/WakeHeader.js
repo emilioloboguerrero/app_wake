@@ -176,7 +176,8 @@ export const WakeHeaderSpacer = () => {
 };
 
 // Single place to control space between header (spacer) and content. Use this to wrap content below WakeHeaderSpacer.
-const GAP_AFTER_HEADER = -20;
+// Export so screens with manual spacers can use the same gap (matches DailyWorkoutScreen).
+export const GAP_AFTER_HEADER = -20;
 
 export const WakeHeaderContent = ({ style, gapAfterHeader = GAP_AFTER_HEADER, ...rest }) => (
   <View style={[{ paddingTop: gapAfterHeader }, style]} {...rest} />

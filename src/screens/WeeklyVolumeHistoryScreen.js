@@ -17,7 +17,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
-import { FixedWakeHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
@@ -32,8 +32,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -212,16 +212,17 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.loadingContainer}>
-          {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Cargando historial...</Text>
+          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+            <ActivityIndicator size="large" color="#ffffff" />
+            <Text style={styles.loadingText}>Cargando historial...</Text>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -229,25 +230,26 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
 
   if (availableWeeks.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.emptyContainer}>
-          {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <Text style={styles.emptyTitle}>No hay datos de volumen</Text>
-          <Text style={styles.emptyText}>
-            Completa algunos entrenamientos para ver tu historial de volumen semanal.
-          </Text>
+          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+            <Text style={styles.emptyTitle}>No hay datos de volumen</Text>
+            <Text style={styles.emptyText}>
+              Completa algunos entrenamientos para ver tu historial de volumen semanal.
+            </Text>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader 
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
@@ -256,8 +258,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          
-          {/* Title */}
+          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
           <Text style={styles.title}>Historial de Volumen</Text>
 
           {/* Weekly Volume Trend Chart */}
@@ -352,6 +353,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
             </View>
           )}
           <BottomSpacer />
+          </View>
         </View>
       </ScrollView>
 

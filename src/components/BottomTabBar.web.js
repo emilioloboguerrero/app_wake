@@ -1,19 +1,20 @@
+// Fixed heights + frozen bottom inset (same approach as WakeHeader for top) so bar never pops.
+const TAB_BAR_CONTENT_HEIGHT = 62;
+const TAB_BAR_TOP_PAD = 12;
+
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { User02 as SvgUser02, House02 as SvgHouse02 } from './icons';
+import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 
 const BottomTabBar = () => {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
-  const insets = useSafeAreaInsets();
-  
-  // Use stable defaults so first paint matches later (avoids tab bar "pop" when insets/dimensions resolve)
-  const tabBarHeight = Math.max(50, Math.min(72, (screenHeight || 600) * 0.08));
+  const paddingBottom = useFrozenBottomInset();
+
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
-  const bottomPadding = insets.bottom ?? 0;
 
   // Determine if tab bar should be visible based on current route
   const shouldShowTabBar = () => {
@@ -52,11 +53,12 @@ const BottomTabBar = () => {
     left: 0,
     right: 0,
     zIndex: 1000,
+    paddingBottom,
   };
 
   return (
     <div className="wake-tab-bar-root" style={fixedWrapperStyle}>
-      <View style={[styles.tabBar, { height: tabBarHeight + 12, paddingTop: 12, paddingBottom: 0 }]}>
+      <View style={[styles.tabBar, { height: TAB_BAR_CONTENT_HEIGHT + TAB_BAR_TOP_PAD, paddingTop: TAB_BAR_TOP_PAD, paddingBottom: 0 }]}>
         <TouchableOpacity
           style={styles.tabButton}
           onPress={() => navigate('/')}

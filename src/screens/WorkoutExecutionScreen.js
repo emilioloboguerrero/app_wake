@@ -23,6 +23,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Keyboard,
+  Platform,
   TouchableWithoutFeedback,
 } from 'react-native';
 
@@ -4863,7 +4864,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   if (!currentExercise || !currentSet) {
     logger.log('❌ WorkoutExecutionScreen: No exercise or set available');
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>No hay ejercicios disponibles</Text>
@@ -4888,7 +4889,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST MODE: If enabled, only render test button
   if (TEST_MODE_ENABLED) {
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         {/* TEST VERSION 1: Test Button Only */}
       <TouchableOpacity 
           style={{
@@ -4924,7 +4925,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // To re-enable, set TEST_MODE_ENABLED to false above
   
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {(() => {
         const headerStartTime = performance.now();
         logger.debug(`[JSX] [CHECKPOINT] Rendering FixedWakeHeader - ${headerStartTime.toFixed(2)}ms`);
@@ -5088,7 +5089,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 logger.debug(`[JSX] [CHECKPOINT] Rendering inner ScrollView - ${innerScrollStartTime.toFixed(2)}ms`);
                 return null;
               })()}
-              <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContentContainer}
+                showsVerticalScrollIndicator={false}
+              >
                 <View style={styles.content}>
                   {/* Spacer for fixed header */}
                   {(() => {
@@ -5454,8 +5459,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     </TouchableOpacity>
                   </View>
                 </View>
-              </ScrollView>
                   <BottomSpacer />
+              </ScrollView>
         </View>
             
             {/* Exercise List View */}

@@ -26,6 +26,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  // Reserve bottom space inside scroll (like DailyWorkoutScreen) so content is never covered; extra padding for screenIndicator overlay
+  scrollContentContainer: {
+    flexGrow: 1,
+    paddingBottom: Math.max(50, screenHeight * 0.06), // Space so BottomSpacer isn't hidden under screenIndicator
+  },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingTop: Math.max(10, screenHeight * 0.012),

@@ -20,7 +20,7 @@ import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
@@ -82,8 +82,8 @@ const PRsScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const [estimates, setEstimates] = useState({});
@@ -206,7 +206,7 @@ const PRsScreen = ({ navigation, route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton
           onBackPress={() => safeNavigation.goBack()}
@@ -229,7 +229,7 @@ const PRsScreen = ({ navigation, route }) => {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton
           onBackPress={() => safeNavigation.goBack()}
@@ -239,6 +239,7 @@ const PRsScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
+          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
           <TouchableOpacity 
             style={styles.titleContainer}
             onPress={() => setIsInfoModalVisible(true)}
@@ -300,6 +301,7 @@ const PRsScreen = ({ navigation, route }) => {
             })
           )}
           <BottomSpacer />
+          </View>
         </View>
       </ScrollView>
       

@@ -1,8 +1,16 @@
 // Web-specific App entry point
 import React from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen.web';
 import logger from './utils/logger';
+import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
+
+// Applies frozen bottom inset (like WakeHeader freezes top) so bottom never pops after mount.
+function FrozenBottomWrapper({ children }) {
+  const paddingBottom = useFrozenBottomInset();
+  return <View style={{ flex: 1, paddingBottom }}>{children}</View>;
+}
 
 // Helper function to check if we're on login path (called dynamically)
 const getIsLoginPath = () => {
@@ -429,29 +437,30 @@ export default function App() {
     }
   }, [fontsLoaded, debugMode, isLoginPath]);
 
-  // Frame = window size. Insets from env(safe-area-inset-*) so PWA on iPhone gets notch/home-indicator padding.
-  const initialMetrics = React.useMemo(() => {
-    if (typeof window === 'undefined' || !window.document) {
-      return {
-        frame: { x: 0, y: 0, width: 375, height: 667 },
-        insets: { top: 0, left: 0, right: 0, bottom: 0 },
-      };
-    }
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    let top = 0, bottom = 0, left = 0, right = 0;
-    try {
-      const el = window.document.createElement('div');
-      el.style.cssText =
-        'position:fixed;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);visibility:hidden;pointer-events:none;';
-      window.document.body.appendChild(el);
-      const s = window.getComputedStyle(el);
-      const parse = (v) => { const n = parseInt(String(v), 10); return Number.isNaN(n) ? 0 : Math.max(0, n); };
-      top = parse(s.paddingTop); bottom = parse(s.paddingBottom);
-      left = parse(s.paddingLeft); right = parse(s.paddingRight);
-      window.document.body.removeChild(el);
-    } catch (_) {}
-    return { frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } };
+  // Defer safe-area measurement so env() has resolved (avoids 0→34 pop when NativeSafeAreaProvider fires ~50ms later).
+  const [initialMetrics, setInitialMetrics] = React.useState(null);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.document) return;
+    const id = setTimeout(() => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      let top = 0, bottom = 0, left = 0, right = 0;
+      try {
+        const el = window.document.createElement('div');
+        el.style.cssText =
+          'position:fixed;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);visibility:hidden;pointer-events:none;';
+        window.document.body.appendChild(el);
+        const s = window.getComputedStyle(el);
+        const parse = (v) => { const n = parseInt(String(v), 10); return Number.isNaN(n) ? 0 : Math.max(0, n); };
+        top = parse(s.paddingTop);
+        bottom = parse(s.paddingBottom);
+        left = parse(s.paddingLeft);
+        right = parse(s.paddingRight);
+        window.document.body.removeChild(el);
+      } catch (_) {}
+      setInitialMetrics({ frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } });
+    }, 60);
+    return () => clearTimeout(id);
   }, []);
 
   // Ensure critical components are loaded before rendering main app
@@ -474,7 +483,7 @@ export default function App() {
   // Single BrowserRouter at root so useNavigate() always has context (fixes LoginScreen error)
   const loadingMarkup = (
     <div style={{
-      minHeight: '100dvh',
+      minHeight: '100svh',
       backgroundColor: '#1a1a1a',
       display: 'flex',
       alignItems: 'center',
@@ -563,6 +572,20 @@ export default function App() {
     console.log('[APP WEB] Rendering BrowserRouter + AuthProvider + content');
   }
 
+  // Mount SafeAreaProvider only after deferred insets measurement so insets are correct from first paint (no 0→34 pop).
+  if (!initialMetrics) {
+    return (
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
+        {loadingMarkup}
+      </BrowserRouter>
+    );
+  }
+
   return (
     <BrowserRouter
       future={{
@@ -572,7 +595,9 @@ export default function App() {
     >
       <SafeAreaProvider initialMetrics={initialMetrics}>
         <AuthProvider>
-          {content}
+          <FrozenBottomWrapper>
+            {content}
+          </FrozenBottomWrapper>
         </AuthProvider>
       </SafeAreaProvider>
     </BrowserRouter>

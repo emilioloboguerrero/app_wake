@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
@@ -390,51 +391,54 @@ const CourseStructureScreen = ({ navigation, route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           title="Estructura del Curso" 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <WakeHeaderSpacer />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Cargando estructura...</Text>
-        </View>
+        <WakeHeaderContent>
+          <WakeHeaderSpacer />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#ffffff" />
+            <Text style={styles.loadingText}>Cargando estructura...</Text>
+          </View>
+        </WakeHeaderContent>
       </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           title="Estructura del Curso" 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <WakeHeaderSpacer />
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchCourseData}>
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
+        <WakeHeaderContent>
+          <WakeHeaderSpacer />
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchCourseData}>
+              <Text style={styles.retryButtonText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        </WakeHeaderContent>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader 
         title="Estructura del Curso" 
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
       />
-      <WakeHeaderSpacer />
-      
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <WakeHeaderContent style={styles.content}>
+          <WakeHeaderSpacer />
           {/* Title Section */}
           <View style={styles.titleSection}>
             <Text style={styles.courseTitle}>{courseData?.title || course.title}</Text>

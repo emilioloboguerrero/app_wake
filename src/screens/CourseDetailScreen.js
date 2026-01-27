@@ -14,6 +14,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Platform,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Text from '../components/Text';
@@ -1343,7 +1344,7 @@ useEffect(() => {
   // If user is not available, don't block the UI - show the screen with purchase button
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
@@ -1361,7 +1362,7 @@ useEffect(() => {
   // If user is not logged in, skip this and show the purchase button
   if (checkingOwnership && user?.uid) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
@@ -1376,7 +1377,7 @@ useEffect(() => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Fixed Header with Back Button */}
       <FixedWakeHeader 
         showBackButton={true}

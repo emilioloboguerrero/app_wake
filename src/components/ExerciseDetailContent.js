@@ -23,6 +23,7 @@ import ExerciseHistoryCard from '../components/ExerciseHistoryCard';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import SvgInfo from '../components/icons/SvgInfo';
 import { filterSessionsByPeriod, getSessionDateAsDate } from '../utils/sessionFilter';
+import { GAP_AFTER_HEADER } from './WakeHeader';
 import logger from '../utils/logger.js';
 
 const ExerciseDetailContent = ({ 
@@ -281,6 +282,8 @@ const ExerciseDetailContent = ({
       <View style={styles.content}>
         {/* Spacer for fixed header - matches header height */}
         {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
+        {/* Same gap between header and content as WakeHeaderContent (global GAP_AFTER_HEADER) */}
+        {headerSpacerHeight > 0 && <View style={{ paddingTop: GAP_AFTER_HEADER }} />}
         
         {/* Top padding when used in modal (no title, no header spacer) */}
         {!showTitle && headerSpacerHeight === 0 && (

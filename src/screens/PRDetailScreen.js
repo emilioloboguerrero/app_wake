@@ -24,8 +24,8 @@ const PRDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   // Safety check for route
   if (!route || !route.params) {
     logger.error('❌ PRDetailScreen: route or route.params is undefined', { route, navigation });
@@ -88,7 +88,7 @@ const PRDetailScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader 
         showBackButton={true}
         onBackPress={handleBackPress}

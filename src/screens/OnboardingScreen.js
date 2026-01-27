@@ -1178,7 +1178,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Animated Logo */}
       <Animated.View style={[
         styles.animatedLogoContainer,

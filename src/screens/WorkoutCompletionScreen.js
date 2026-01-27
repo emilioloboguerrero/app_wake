@@ -13,6 +13,7 @@ import {
   Modal,
   Image,
   Pressable,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -1171,7 +1172,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#ffffff" />
@@ -1183,7 +1184,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   if (!completionStats || completionStats.error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>No se pudieron calcular las estadísticas</Text>
@@ -1196,7 +1197,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <WakeHeaderContent style={styles.content}>

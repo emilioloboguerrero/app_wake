@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FixedWakeHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,8 +21,8 @@ const SessionDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -142,12 +142,12 @@ const SessionDetailScreen = ({ navigation, route }) => {
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader 
           showBackButton={true}
           onBackPress={handleBackPress}
         />
-        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight }]}>
+        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight + GAP_AFTER_HEADER }]}>
           <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
           <Text style={styles.loadingText}>Cargando sesión...</Text>
         </View>
@@ -159,7 +159,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
   const exerciseKeys = Object.keys(exercises);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader 
         showBackButton={true}
         onBackPress={handleBackPress}
@@ -169,6 +169,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
+          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
           {/* Session Header */}
           <View style={styles.sessionHeader}>
             <Text style={styles.sessionName}>{sessionName}</Text>
@@ -223,6 +224,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
             )}
           </View>
           <BottomSpacer />
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>

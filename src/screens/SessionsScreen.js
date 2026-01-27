@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
@@ -26,8 +26,9 @@ const SessionsScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  // Match actual header height: web header uses full insets.top; native uses insets.top - 8
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -383,7 +384,7 @@ const SessionsScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader 
         showBackButton
         onBackPress={handleBackPress}
@@ -400,11 +401,11 @@ const SessionsScreen = ({ navigation }) => {
           <>
             {/* Spacer for fixed header - matches header height */}
             <View style={{ height: headerTotalHeight }} />
-            {/* Title */}
-            <Text style={styles.title}>Sesiones</Text>
-            
-            {/* Sets Comparison Card */}
-            {sessions.length > 0 && renderSetsComparison()}
+            {/* Same gap between header and content as WakeHeaderContent (global GAP_AFTER_HEADER) */}
+            <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+              <Text style={styles.title}>Sesiones</Text>
+              {sessions.length > 0 && renderSetsComparison()}
+            </View>
           </>
         )}
         ListEmptyComponent={() => (

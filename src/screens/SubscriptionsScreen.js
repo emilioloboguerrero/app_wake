@@ -18,7 +18,7 @@ import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
-import { FixedWakeHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 
@@ -42,8 +42,8 @@ const SubscriptionsScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTop;
+  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const { user: contextUser } = useAuth();
   
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
@@ -422,7 +422,7 @@ const SubscriptionsScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <Modal
         visible={showCancelSurvey}
         transparent
@@ -650,6 +650,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.contentContainer}>
         {/* Spacer for fixed header - matches header height */}
         <View style={{ height: headerTotalHeight }} />
+        <View style={{ paddingTop: GAP_AFTER_HEADER }}>
         <View style={styles.titleWrapper}>
           <TouchableOpacity
             style={styles.titleButton}
@@ -766,6 +767,7 @@ const SubscriptionsScreen = ({ navigation }) => {
         )}
 
         <BottomSpacer />
+        </View>
       </ScrollView>
 
       {/* Subscription Management Info Modal */}

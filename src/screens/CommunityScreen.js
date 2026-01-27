@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import tutorialManager from '../services/tutorialManager';
@@ -72,7 +73,7 @@ const CommunityScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>

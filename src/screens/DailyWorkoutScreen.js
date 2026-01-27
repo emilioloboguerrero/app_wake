@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   Animated,
   FlatList,
+  Platform,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -670,7 +671,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
 
 
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         {/* Fixed Header with Back Button */}
         <FixedWakeHeader 
           showBackButton={true}

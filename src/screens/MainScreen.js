@@ -12,6 +12,7 @@ import {
   Alert,
   ScrollView,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
@@ -47,12 +48,18 @@ const CARD_SPACING = 0; // No spacing - cards overlap for 3D carousel effect
 
 const MainScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  
+  // On web, useWindowDimensions uses visualViewport and updates on scroll (address bar hide/show), causing bottom jump. Freeze height for bottom spacing.
+  const stableHeightRef = useRef(null);
+  if (Platform.OS === 'web' && stableHeightRef.current === null) {
+    stableHeightRef.current = screenHeight;
+  }
+  const heightForBottomPadding = Platform.OS === 'web' ? (stableHeightRef.current ?? screenHeight) : screenHeight;
+
   // Calculate card dimensions based on current screen size
   const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
   const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
   const CARD_HEIGHT = Math.max(500, screenHeight * 0.65); // 68% of screen height, min 500
-  
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -64,10 +71,10 @@ const MainScreen = ({ navigation, route }) => {
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: Math.max(24, screenHeight * 0.03), // Small breathing room; tab bar space from BottomSpacer
+      paddingBottom: Math.max(50, heightForBottomPadding * 0.06), // Space above BottomSpacer; on web use frozen height so scroll does not change it
     },
     contentWrapper: {
-      flex: 1,
+      // No flex: 1 — keeps header-to-content gap consistent (matches DailyWorkoutScreen). Flex was causing uneven spacing inside the screen on PWA.
     },
     userSection: {
       marginBottom: 12,
@@ -75,7 +82,7 @@ const MainScreen = ({ navigation, route }) => {
       marginTop: 0,
     },
     cardsSection: {
-      flex: 1,
+      minHeight: CARD_HEIGHT + 80, // Reserve space for cards + pagination so we don't need flex on wrapper (consistent spacing on PWA)
     },
     swipeableContainer: {
       flex: 1,
@@ -102,7 +109,7 @@ const MainScreen = ({ navigation, route }) => {
       alignItems: 'center',
       marginTop: 10, // Position exactly 10px below the card bottom
       paddingTop: 10,
-      paddingBottom: Math.max(32, screenHeight * 0.05), // Space above tab bar for pagination
+      paddingBottom: Math.max(32, heightForBottomPadding * 0.05), // Space above tab bar; on web use frozen height so scroll does not change it
       zIndex: 1000, // Very high z-index to ensure visibility above cards
       backgroundColor: 'transparent', // Ensure background doesn't hide anything
     },
@@ -322,7 +329,7 @@ const MainScreen = ({ navigation, route }) => {
       letterSpacing: 0.5,
     },
     // Navigation buttons
-  }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT]);
+  }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT, heightForBottomPadding]);
   
   const { user: contextUser } = useAuth();
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
@@ -1725,7 +1732,7 @@ const MainScreen = ({ navigation, route }) => {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
 
       <ScrollView

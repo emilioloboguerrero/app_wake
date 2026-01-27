@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -780,7 +781,7 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
 
       {/* Settings Modal */}
@@ -1256,7 +1257,11 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.loadingText}>Cargando perfil...</Text>
         </View>
       ) : (
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContentContainer}
+          showsVerticalScrollIndicator={false}
+        >
           <WakeHeaderContent style={styles.content}>
             {/* Spacer for fixed header */}
             <WakeHeaderSpacer />
@@ -1421,8 +1426,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  // Match WorkoutExecutionScreen: reserve bottom space so content isn't hidden behind tab bar
+  scrollContentContainer: {
+    flexGrow: 1,
+    paddingBottom: Math.max(50, screenHeight * 0.06),
+  },
   content: {
-    flex: 1,
+    // No flex: 1 — keeps header-to-content gap consistent (matches DailyWorkoutScreen). Flex was causing uneven spacing inside the screen on PWA.
   },
   titleSection: {
     paddingTop: 0,
