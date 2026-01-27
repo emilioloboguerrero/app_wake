@@ -538,15 +538,13 @@ const ProfileScreen = ({ navigation }) => {
       await authService.signOutUser();
       logger.log('🔐 Sign out successful');
       
-      // On web, force immediate page reload after sign out
-      // This ensures the app restarts and shows the login screen
+      // On web/PWA, force full reload to /login so the app always shows the login screen
       if (typeof window !== 'undefined') {
-        logger.log('🌐 Web detected - AppNavigator will reload page to show login');
-        // AppNavigator will handle the reload in its useEffect
-      } else {
-        // On native, AppNavigator will handle navigation reset
-        logger.log('📱 Native - AppNavigator will handle navigation to Auth screen');
+        logger.log('🌐 Web: reloading to /login');
+        window.location.replace('/login');
+        return;
       }
+      // On native, AppNavigator handles navigation to Auth screen via auth state
     } catch (error) {
       logger.error('❌ Error signing out:', error);
       Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
@@ -800,7 +798,7 @@ const ProfileScreen = ({ navigation }) => {
                   
                   <ScrollView 
                     style={styles.settingsModalContent}
-                    contentContainerStyle={{flexGrow: 1, paddingBottom: 100}}
+                    contentContainerStyle={{flexGrow: 1, paddingBottom: 24}}
                     showsVerticalScrollIndicator={false} 
                     keyboardShouldPersistTaps="handled"
                   >
@@ -1091,7 +1089,7 @@ const ProfileScreen = ({ navigation }) => {
                   
                   <ScrollView 
                     style={styles.deleteModalScrollView}
-                    contentContainerStyle={{flexGrow: 1, paddingBottom: 100}}
+                    contentContainerStyle={{flexGrow: 1, paddingBottom: 24}}
                     showsVerticalScrollIndicator={false} 
                     keyboardShouldPersistTaps="handled"
                   >
@@ -1426,10 +1424,9 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  // Match WorkoutExecutionScreen: reserve bottom space so content isn't hidden behind tab bar
   scrollContentContainer: {
     flexGrow: 1,
-    paddingBottom: Math.max(50, screenHeight * 0.06),
+    paddingBottom: 24,
   },
   content: {
     // No flex: 1 — keeps header-to-content gap consistent (matches DailyWorkoutScreen). Flex was causing uneven spacing inside the screen on PWA.
@@ -1813,7 +1810,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   deleteModalContent: {
     paddingHorizontal: 24,
     paddingTop: 10,
-    paddingBottom: 80,
+    paddingBottom: 24,
   },
   deleteModalTitle: {
     fontSize: 22,

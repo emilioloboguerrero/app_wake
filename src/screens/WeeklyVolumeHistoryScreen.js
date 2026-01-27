@@ -17,7 +17,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
-import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
+import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
@@ -219,7 +219,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         />
         <View style={styles.loadingContainer}>
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+          <View style={{ marginTop: getGapAfterHeader() }}>
             <ActivityIndicator size="large" color="#ffffff" />
             <Text style={styles.loadingText}>Cargando historial...</Text>
           </View>
@@ -237,7 +237,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         />
         <View style={styles.emptyContainer}>
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+          <View style={{ marginTop: getGapAfterHeader() }}>
             <Text style={styles.emptyTitle}>No hay datos de volumen</Text>
             <Text style={styles.emptyText}>
               Completa algunos entrenamientos para ver tu historial de volumen semanal.
@@ -258,7 +258,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+          <View style={{ marginTop: getGapAfterHeader() }}>
           <Text style={styles.title}>Historial de Volumen</Text>
 
           {/* Weekly Volume Trend Chart */}
@@ -592,7 +592,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   disclaimersSection: {
     marginTop: Math.max(20, screenHeight * 0.025),
     paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
+    paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },

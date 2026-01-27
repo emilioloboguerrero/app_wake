@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+
 // SVG Icons for web
 const HouseIcon = ({ size = 24, stroke = '#ffffff', fill = 'none', strokeWidth = 2.5, opacity = 1 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
@@ -43,7 +44,7 @@ const BottomNavigation = () => {
   // Determine if tab bar should be visible
   const shouldShowTabBar = !location.pathname.startsWith('/login') && 
                           !location.pathname.startsWith('/onboarding');
-  
+
   if (!shouldShowTabBar) {
     return null;
   }

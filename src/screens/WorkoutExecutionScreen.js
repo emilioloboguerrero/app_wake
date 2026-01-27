@@ -33,6 +33,7 @@ import { useVideo } from '../contexts/VideoContext';
 import { isWeb } from '../utils/platform';
 import logger from '../utils/logger.js';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
 
 // Gesture handler and video - keep as direct imports (needed for hooks)
@@ -289,7 +290,7 @@ const getMonitoringService = () => {
 // Components are imported directly since they no longer block (Dimensions.get moved inside)
 import TutorialOverlay from '../components/TutorialOverlay';
 import ExerciseDetailModal from '../components/ExerciseDetailModal';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 
@@ -492,7 +493,8 @@ const useSetData = (workout) => {
 const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  
+  const insets = useSafeAreaInsets();
+
   // Track if component is mounted for setTimeout cleanup
   const isMountedRef = useRef(true);
   
@@ -2575,73 +2577,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [expandedCardIndex, swapModalVideoPlayer]);
 
   // Objective info modal handlers
-  const handleObjectiveCardPress = useCallback(async (objective) => {
+  const handleObjectiveCardPress = useCallback((objective) => {
     try {
       logger.log('🔍 handleObjectiveCardPress called with objective:', objective);
-      
-      // Special handling for "previous" - show exercise history in ExerciseDetailModal
-      if (objective === 'previous') {
-        logger.log('🔍 Opening exercise history for "previous" objective');
-        const currentExercise = workout?.exercises?.[currentExerciseIndex];
-        if (!currentExercise) {
-          logger.error('❌ Cannot show exercise history - no current exercise');
-          return;
-        }
-
-        // Extract libraryId and exerciseName
-        const libraryId = currentExercise.primary ? Object.keys(currentExercise.primary)[0] : '';
-        const exerciseName = currentExercise.name;
-        
-        logger.log('🔍 Exercise data:', { libraryId, exerciseName, currentExercise });
-        
-        if (!libraryId || !exerciseName) {
-          logger.error('❌ Missing exercise data for exercise history:', { libraryId, exerciseName });
-          return;
-        }
-
-        // Create exercise key
-        const exerciseKey = `${libraryId}_${exerciseName}`;
-        logger.log('🔍 Exercise key:', exerciseKey);
-        
-        // Store basic exercise data first (needed for modal)
-        const basicExerciseData = {
-          exerciseKey,
-          exerciseName,
-          libraryId,
-          currentEstimate: null,
-          lastUpdated: null
-        };
-        
-        // Fetch current estimate for this exercise if user is available
-        if (user?.uid) {
-          try {
-            logger.log('🔍 Fetching estimates for user:', user.uid);
-            const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
-            const estimate = estimates[exerciseKey];
-            logger.log('🔍 Estimate data:', estimate);
-            
-            // Update with estimate data if available
-            basicExerciseData.currentEstimate = estimate?.current || null;
-            basicExerciseData.lastUpdated = estimate?.lastUpdated || null;
-          } catch (error) {
-            logger.error('❌ Error fetching estimates for exercise history modal:', error);
-            // Continue with basic data (no estimates)
-          }
-        } else {
-          logger.warn('⚠️ Cannot fetch estimates - user not available');
-        }
-        
-        logger.log('🔍 Setting modal exercise data:', basicExerciseData);
-        // Store the exercise data for the modal
-        setModalExerciseData(basicExerciseData);
-        
-        logger.log('🔍 Opening ExerciseDetailModal');
-        // Show the ExerciseDetailModal with exercise history
-        setIsExerciseDetailModalVisible(true);
-        return;
-      }
-
-      // For other objectives, show the info modal with description
+      // Show the objective info modal (same pop-up as Repeticiones, etc.). "Anterior" has its own
+      // title/description in objectivesInfoService, so no special-case — use the shared info modal.
       const info = objectivesInfoService.getObjectiveInfo(objective);
       if (info) {
         setSelectedObjectiveInfo(info);
@@ -2650,7 +2590,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     } catch (error) {
       logger.error('❌ Error in handleObjectiveCardPress:', error);
     }
-  }, [workout, currentExerciseIndex, user?.uid, intensityVideoPlayer]);
+  }, []);
 
   const handleCloseObjectiveInfoModal = useCallback(() => {
     // Pause intensity video if playing
@@ -4012,7 +3952,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // List header component
   const ListHeaderComponent = useMemo(() => (
-    <>
+    <WakeHeaderContent>
       <WakeHeaderSpacer />
       <View style={styles.exerciseListTitleSection}>
         <Text style={styles.exerciseListTitle}>
@@ -4042,7 +3982,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         )}
       </View>
-    </>
+    </WakeHeaderContent>
   ), [
     workout?.title,
     workout?.name,
@@ -4093,7 +4033,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return (
         <ScrollView style={styles.exerciseListView} showsVerticalScrollIndicator={false}>
           <View style={styles.exerciseListContent}>
-            <WakeHeaderSpacer />
+            <WakeHeaderContent>
+              <WakeHeaderSpacer />
             <View style={styles.exerciseListTitleSection}>
               <Text style={styles.exerciseListTitle}>
                 {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
@@ -4198,6 +4139,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 Terminar y guardar
               </Text>
             </TouchableOpacity>
+            </WakeHeaderContent>
           </View>
         </ScrollView>
       );
@@ -4214,7 +4156,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         ListHeaderComponent={ListHeaderComponent}
         ListFooterComponent={ListFooterComponent}
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
         maxToRenderPerBatch={10}
         windowSize={5}
         initialNumToRender={5}
@@ -5081,6 +5024,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           onMomentumScrollEnd={onMomentumScrollEnd}
           scrollEventThrottle={16}
           style={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
         >
             {/* Exercise Detail View */}
         <View style={styles.viewContainer}>
@@ -5094,7 +5038,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 contentContainerStyle={styles.scrollContentContainer}
                 showsVerticalScrollIndicator={false}
               >
-                <View style={styles.content}>
+                <WakeHeaderContent style={styles.content}>
                   {/* Spacer for fixed header */}
                   {(() => {
                     const spacerStartTime = performance.now();
@@ -5246,7 +5190,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         <MuscleSilhouetteSVG
                           muscleVolumes={muscleVolumesForCurrentExercise}
                           useWorkoutExecutionColors={true}
-                          height={Math.max(300, screenHeight * 0.38)}
+                          height={Math.max(260, screenHeight * 0.32)}
                         />
                       ) : (
                         <View style={styles.muscleEmptyState}>
@@ -5458,7 +5402,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       <SvgListChecklist width={24} height={24} color="rgba(191, 168, 77, 1)" />
                     </TouchableOpacity>
                   </View>
-                </View>
+                </WakeHeaderContent>
                   <BottomSpacer />
               </ScrollView>
         </View>
@@ -5470,8 +5414,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       </ScrollView>
       </KeyboardAvoidingView>
       
-      {/* Animated Pagination Indicators */}
-      <View style={styles.screenIndicator}>
+      {/* Animated Pagination Indicators - pushed into bottom safe area, 12px lower than default */}
+      <View style={[styles.screenIndicator, { bottom: -(insets.bottom ) }]}>
         {renderPaginationIndicators()}
       </View>
 

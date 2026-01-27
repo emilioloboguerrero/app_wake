@@ -18,7 +18,7 @@ import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
-import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
+import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 
@@ -650,7 +650,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.contentContainer}>
         {/* Spacer for fixed header - matches header height */}
         <View style={{ height: headerTotalHeight }} />
-        <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+        <View style={{ marginTop: getGapAfterHeader() }}>
         <View style={styles.titleWrapper}>
           <TouchableOpacity
             style={styles.titleButton}

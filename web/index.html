@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="description" content="Wake - Your Personal Training App" />
+  <meta name="description" content="Wake Lab" />
   <meta name="theme-color" content="#1a1a1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -11,20 +11,9 @@
   <!-- Content Security Policy to help prevent extension injection issues -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss: ws:; media-src 'self' blob: https:;">
   <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/favicon.png" />
-  <link rel="apple-touch-icon" href="/assets/app_icon.png" />
-  <title>Wake - Your Personal Training App</title>
-  <!-- EARLY ERROR LOGGER - Disabled for login route -->
-  <script>
-    // Skip early error logger for login route
-    if (window.location.pathname !== '/login') {
-      var script = document.createElement('script');
-      script.src = '/debug/early-error-logger.js';
-      document.head.appendChild(script);
-    } else {
-      console.log('[HTML] Login route - skipping early-error-logger.js');
-    }
-  </script>
+  <link rel="icon" href="/app_icon.png" />
+  <link rel="apple-touch-icon" href="/app_icon.png" />
+  <title>Wake lab</title>
   <style>
     /* Critical: full viewport height chain for all routes (login + app) */
     html {
@@ -110,424 +99,6 @@
   </div>
 
   <script>
-    // ============================================
-    // PERSISTENT ERROR LOGGING SYSTEM
-    // Captures errors even if page crashes
-    // DISABLED FOR LOGIN ROUTE - was causing freezes
-    // ============================================
-    (function() {
-      'use strict';
-      
-      // Skip error logging on login route to prevent freezes
-      if (window.location.pathname === '/login') {
-        console.log('[WAKE] Error logging disabled for login route');
-        return; // Exit early, don't set up error logging
-      }
-      
-      // Initialize error log storage (survives crashes)
-      const ERROR_LOG_KEY = 'WAKE_ERROR_LOG';
-      const MAX_LOG_ENTRIES = 100;
-      
-      // FREEZE DETECTION: DISABLED - was causing performance issues
-      // The setInterval was running every 500ms and could interfere with React's event loop
-      // let lastHeartbeat = Date.now();
-      // let freezeDetected = false;
-      // 
-      // // Heartbeat to detect freezes (disabled for now)
-      // // setInterval(function() { ... }, 500);
-      
-      function initErrorLog() {
-        try {
-          const existing = localStorage.getItem(ERROR_LOG_KEY);
-          if (!existing) {
-            localStorage.setItem(ERROR_LOG_KEY, JSON.stringify([]));
-          }
-        } catch (e) {
-          // If localStorage fails, continue without persistence
-        }
-      }
-      
-      function saveErrorLog(entry) {
-        try {
-          // SYNC OPERATION - must complete immediately, no async
-          const existing = localStorage.getItem(ERROR_LOG_KEY);
-          const logs = existing ? JSON.parse(existing) : [];
-          
-          // Add timestamp and entry
-          const logEntry = {
-            ...entry,
-            timestamp: new Date().toISOString(),
-            url: window.location.href,
-            userAgent: navigator.userAgent
-          };
-          
-          logs.push(logEntry);
-          
-          // Keep only last N entries
-          if (logs.length > MAX_LOG_ENTRIES) {
-            logs.splice(0, logs.length - MAX_LOG_ENTRIES);
-          }
-          
-          // CRITICAL: Use synchronous localStorage write
-          localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(logs));
-          
-          // Update heartbeat to show we're still alive
-          lastHeartbeat = Date.now();
-          
-          // Try to log to console (but don't block if it fails)
-          try {
-            if (typeof console !== 'undefined' && console.error) {
-              console.error('[PERSISTED ERROR]', entry);
-            }
-          } catch (e) {
-            // Console logging failed, but we still saved to localStorage
-          }
-        } catch (e) {
-          // If JSON operations fail, try to save at least a simple message
-          try {
-            const simpleMsg = String(entry.message || entry.type || 'Unknown error');
-            localStorage.setItem(ERROR_LOG_KEY + '_LAST', simpleMsg + ' | ' + Date.now());
-          } catch (e2) {
-            // Complete failure - can't save anything
-          }
-        }
-      }
-      
-      function isExtensionError(message, source) {
-        return message.includes('chrome-extension://') ||
-               message.includes('ERR_FILE_NOT_FOUND') ||
-               message.includes('pejdijmoenmkgeppbflobdenhhabjlaj') ||
-               (source && source.includes('chrome-extension://'));
-      }
-      
-      // Initialize log storage immediately
-      initErrorLog();
-      
-      // Store original methods
-      const originalError = console.error;
-      const originalWarn = console.warn;
-      const originalLog = console.log;
-      
-      // Enhanced console.error with persistence and aggressive extension error suppression
-      console.error = function(...args) {
-        const message = String(args.join(' '));
-        
-        // Aggressively suppress Chrome extension errors
-        if (isExtensionError(message, '') || 
-            message.includes('chrome-extension://') ||
-            message.includes('ERR_FILE_NOT_FOUND') ||
-            message.includes('pejdijmoenmkgeppbflobdenhhabjlaj') ||
-            args.some(arg => String(arg).includes('chrome-extension://'))) {
-          // Silently log extension errors but don't show in console
-          try {
-            saveErrorLog({
-              type: 'extension_error',
-              message: message,
-              suppressed: true,
-              args: args.map(a => String(a))
-            });
-          } catch (e) {
-            // If logging fails, just suppress
-          }
-          return; // Completely suppress from console
-        }
-        
-        // Log real errors persistently
-        try {
-          saveErrorLog({
-            type: 'console_error',
-            message: message,
-            args: args.map(a => {
-              try {
-                return String(a);
-              } catch {
-                return '[Object]';
-              }
-            }),
-            stack: args.find(a => a && a.stack)?.stack
-          });
-        } catch (e) {
-          // If logging fails, still show the error
-        }
-        
-        originalError.apply(console, args);
-      };
-      
-      // Enhanced console.warn with persistence
-      console.warn = function(...args) {
-        const message = String(args.join(' '));
-        
-        // Skip Chrome extension warnings
-        if (isExtensionError(message, '')) {
-          return; // Suppress these warnings
-        }
-        
-        // Log warnings persistently
-        saveErrorLog({
-          type: 'console_warn',
-          message: message,
-          args: args.map(a => String(a))
-        });
-        
-        originalWarn.apply(console, args);
-      };
-      
-      // Catch global JavaScript errors
-      window.addEventListener('error', function(event) {
-        try {
-          const message = String(event.message || '');
-          const source = String(event.filename || event.target?.src || '');
-          const error = event.error;
-          
-          // Suppress Chrome extension errors from crashing the app
-          if (isExtensionError(message, source) || 
-              (error && String(error).includes('chrome-extension://'))) {
-            // Log but don't crash
-            saveErrorLog({
-              type: 'extension_error',
-              message: message,
-              source: source,
-              suppressed: true
-            });
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            return false;
-          }
-          
-          // Log real errors persistently
-          saveErrorLog({
-            type: 'global_error',
-            message: message,
-            source: source,
-            lineno: event.lineno,
-            colno: event.colno,
-            stack: error?.stack,
-            errorName: error?.name,
-            errorMessage: error?.message
-          });
-        } catch (e) {
-          // If error logging itself fails, at least prevent crash
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }, true);
-      
-      // Catch errors from resource loading (images, scripts, etc.)
-      document.addEventListener('error', function(event) {
-        const target = event.target;
-        if (target && target.src) {
-          // Suppress extension errors
-          if (target.src.includes('chrome-extension://')) {
-            event.preventDefault();
-            event.stopPropagation();
-            return false;
-          }
-          
-          // Log resource loading errors
-          saveErrorLog({
-            type: 'resource_error',
-            tagName: target.tagName,
-            src: target.src,
-            message: 'Failed to load resource'
-          });
-        }
-      }, true);
-      
-      // Catch unhandled promise rejections
-      window.addEventListener('unhandledrejection', function(event) {
-        try {
-          const reason = String(event.reason || '');
-          
-          // Suppress extension-related rejections
-          if (isExtensionError(reason, '')) {
-            saveErrorLog({
-              type: 'extension_rejection',
-              reason: reason,
-              suppressed: true
-            });
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            return false;
-          }
-          
-          // Log real promise rejections
-          const error = event.reason;
-          saveErrorLog({
-            type: 'unhandled_rejection',
-            reason: reason,
-            stack: error?.stack,
-            errorName: error?.name,
-            errorMessage: error?.message,
-            errorString: String(error)
-          });
-        } catch (e) {
-          // If error logging itself fails, at least prevent crash
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }, true);
-      
-      // Expose error log retrieval function globally (with fallback)
-      window.getWakeErrorLog = function() {
-        try {
-          const logs = localStorage.getItem(ERROR_LOG_KEY);
-          return logs ? JSON.parse(logs) : [];
-        } catch (e) {
-          // Fallback: try to log to console even if localStorage fails
-          try {
-            originalError('Failed to retrieve error log:', e);
-          } catch {}
-          return [];
-        }
-      };
-      
-      // Expose function to clear error log
-      window.clearWakeErrorLog = function() {
-        try {
-          localStorage.removeItem(ERROR_LOG_KEY);
-          initErrorLog();
-          originalLog('Error log cleared');
-        } catch (e) {
-          try {
-            originalError('Failed to clear error log:', e);
-          } catch {}
-        }
-      };
-      
-      // Expose function to export error log
-      window.exportWakeErrorLog = function() {
-        try {
-          const logs = window.getWakeErrorLog();
-          const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `wake-errors-${new Date().toISOString()}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 100);
-        } catch (e) {
-          try {
-            originalError('Failed to export error log:', e);
-          } catch {}
-        }
-      };
-      
-      // Create a simple way to access logs even if console is frozen
-      // Store a reference in a way that survives page issues
-      window.__WAKE_DEBUG__ = {
-        getLogs: window.getWakeErrorLog,
-        clearLogs: window.clearWakeErrorLog,
-        exportLogs: window.exportWakeErrorLog,
-        // Direct localStorage access as fallback
-        getRawLogs: function() {
-          try {
-            return localStorage.getItem(ERROR_LOG_KEY);
-          } catch (e) {
-            return null;
-          }
-        },
-        // Test function to verify error logging is working
-        test: function() {
-          try {
-            // Create a test error
-            const testError = new Error('Test error for WAKE error logging');
-            saveErrorLog({
-              type: 'test',
-              message: 'Error logging system test',
-              testError: testError.message,
-              timestamp: new Date().toISOString()
-            });
-            const logs = window.getWakeErrorLog();
-            const testLog = logs.find(log => log.type === 'test');
-            if (testLog) {
-              originalLog('[WAKE] ✅ Error logging test PASSED');
-              originalLog('[WAKE] Test log entry:', testLog);
-              return true;
-            } else {
-              originalError('[WAKE] ❌ Error logging test FAILED - no test log found');
-              return false;
-            }
-          } catch (e) {
-            originalError('[WAKE] ❌ Error logging test FAILED:', e);
-            return false;
-          }
-        }
-      };
-      
-      
-      // Log initialization
-      try {
-        saveErrorLog({
-          type: 'system',
-          message: 'Error logging system initialized',
-          timestamp: new Date().toISOString()
-        });
-        
-        // Store a simple flag that error logging is ready (for quick access)
-        try {
-          localStorage.setItem('WAKE_ERROR_LOG_READY', 'true');
-        } catch {}
-        
-        try {
-          originalLog('[WAKE] ✅ Persistent error logging initialized.');
-          originalLog('[WAKE] 📋 To access logs after freeze:');
-          originalLog('  1. Open new tab/window');
-          originalLog('  2. Run: JSON.parse(localStorage.getItem("WAKE_ERROR_LOG") || "[]")');
-          originalLog('  3. Or check: localStorage.getItem("WAKE_ERROR_LOG_READY")');
-        } catch {}
-      } catch (e) {
-        // If initialization logging fails, at least try to log
-        try {
-          localStorage.setItem('WAKE_ERROR_LOG_INIT_FAILED', String(e));
-        } catch {}
-      }
-      
-      // CRITICAL: Catch errors that happen during page load BEFORE React loads
-      // This runs immediately and catches errors that might freeze the page
-      window.addEventListener('error', function(event) {
-        try {
-          const message = String(event.message || '');
-          const source = String(event.filename || event.target?.src || '');
-          
-          // Log ALL errors immediately (before any filtering)
-          saveErrorLog({
-            type: 'early_error',
-            message: message,
-            source: source,
-            lineno: event.lineno,
-            colno: event.colno,
-            errorString: String(event.error || ''),
-            stack: event.error?.stack
-          });
-        } catch (e) {
-          // If even error logging fails, try to save a simple flag
-          try {
-            localStorage.setItem('WAKE_CRITICAL_ERROR', Date.now().toString());
-          } catch {}
-        }
-      }, true);
-      
-      // Catch unhandled rejections that happen early
-      window.addEventListener('unhandledrejection', function(event) {
-        try {
-          saveErrorLog({
-            type: 'early_rejection',
-            reason: String(event.reason || ''),
-            errorString: String(event.reason || ''),
-            stack: event.reason?.stack
-          });
-        } catch (e) {
-          try {
-            localStorage.setItem('WAKE_CRITICAL_REJECTION', Date.now().toString());
-          } catch {}
-        }
-      }, true);
-    })();
-
     // Register Service Worker - SKIP FOR LOGIN ROUTE
     // Only register if /sw.js is served as JS (not as index.html fallback - fixes "unsupported MIME type text/html")
     if ('serviceWorker' in navigator && window.location.pathname !== '/login') {
@@ -536,24 +107,18 @@
           .then(function (res) {
             var ct = res.headers.get('content-type') || '';
             if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
-              console.log('[SW] Skipping registration: /sw.js not served as JavaScript (got ' + ct + ')');
               return;
             }
             return navigator.serviceWorker.register('/sw.js');
           })
-          .then(function (registration) {
-            if (registration) console.log('SW registered:', registration);
-          })
-          .catch(function (error) {
-            console.log('SW registration failed:', error);
-          });
+          .then(function () {})
+          .catch(function () {});
       });
     } else if (window.location.pathname === '/login') {
       // Unregister service worker for login route
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         registrations.forEach((registration) => {
           registration.unregister();
-          console.log('[HTML] Service worker unregistered for login route');
         });
       });
     }
@@ -580,6 +145,68 @@
 
     // Pull-to-refresh: left to browser default (no document-level prevention)
     // so vertical scroll works in the in-app ScrollView and pull-to-refresh remains a feature
+
+    // iOS PWA viewport fix: 100vh/100svh use "small" viewport leaving a bottom gap. Run before React so we
+    // catch standalone even when matchMedia/navigator.standalone report late. Uses all detection methods,
+    // delayed re-checks, and display-mode listener.
+    (function() {
+      function isStandalone() {
+        if (window.matchMedia) {
+          if (window.matchMedia('(display-mode: standalone)').matches) return true;
+          if (window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+        }
+        return !!(window.navigator && window.navigator.standalone === true);
+      }
+      function isIOS() {
+        return /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+      }
+      function shouldApplyPWAViewportFix() {
+        if (isStandalone()) return true;
+        if (!isIOS() || !window.screen || !window.screen.availHeight) return false;
+        var ih = window.innerHeight || 0;
+        if (window.visualViewport && window.visualViewport.height) {
+          ih = Math.max(ih, window.visualViewport.height);
+        }
+        return ih >= window.screen.availHeight - 2;
+      }
+      function applyPWAViewportHeight() {
+        if (!shouldApplyPWAViewportFix()) return;
+        var root = document.getElementById('root');
+        if (!root) return;
+        var h = window.innerHeight || 0;
+        if (window.visualViewport && window.visualViewport.height) {
+          h = Math.max(h, window.visualViewport.height);
+        }
+        if (isIOS() && window.screen && window.screen.availHeight) {
+          h = Math.max(h, window.screen.availHeight);
+        }
+        if (h <= 0) return;
+        document.documentElement.style.setProperty('height', h + 'px');
+        document.documentElement.style.setProperty('min-height', h + 'px');
+        document.body.style.setProperty('height', h + 'px');
+        document.body.style.setProperty('min-height', h + 'px');
+        root.style.setProperty('height', h + 'px');
+        root.style.setProperty('min-height', h + 'px');
+        root.style.setProperty('max-height', h + 'px');
+      }
+      applyPWAViewportHeight();
+      setTimeout(applyPWAViewportHeight, 100);
+      setTimeout(applyPWAViewportHeight, 300);
+      setTimeout(applyPWAViewportHeight, 800);
+      window.addEventListener('resize', applyPWAViewportHeight);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', applyPWAViewportHeight);
+        window.visualViewport.addEventListener('scroll', applyPWAViewportHeight);
+      }
+      var mq = window.matchMedia && window.matchMedia('(display-mode: standalone)');
+      if (mq && mq.addEventListener) {
+        mq.addEventListener('change', function(e) { if (e.matches) applyPWAViewportHeight(); });
+      }
+      var mqMin = window.matchMedia && window.matchMedia('(display-mode: minimal-ui)');
+      if (mqMin && mqMin.addEventListener) {
+        mqMin.addEventListener('change', function(e) { if (e.matches) applyPWAViewportHeight(); });
+      }
+    })();
   </script>
   <!-- EXPO_BUNDLE_SCRIPT: replaced by build script with actual bundle script tag -->
 </body>

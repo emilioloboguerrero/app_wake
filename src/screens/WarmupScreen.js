@@ -11,13 +11,13 @@ import {
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import SvgPlay from '../components/icons/SvgPlay';
+import SvgVolumeMax from '../components/icons/SvgVolumeMax';
+import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import { useVideo } from '../contexts/VideoContext';
 import { useAuth } from '../contexts/AuthContext';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
-import SvgPlay from '../components/icons/SvgPlay';
-import SvgVolumeMax from '../components/icons/SvgVolumeMax';
-import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import warmupData from '../../assets/data/warmup_data.json';
 import assetBundleService from '../services/assetBundleService';
 import logger from '../utils/logger';
@@ -80,7 +80,7 @@ const WarmupScreen = ({ navigation, route }) => {
       paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
     },
     videoCard: {
-      height: Math.max(500, screenHeight * 0.60), // Responsive height - TALLER
+      height: Math.max(450, screenHeight * 0.55), // Slightly taller video card
       backgroundColor: '#1a1a1a',
       borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
       overflow: 'hidden',
@@ -691,15 +691,11 @@ const WarmupScreen = ({ navigation, route }) => {
                   nativeControls={false}
                   showsTimecodes={false}
                 />
-                
-                {/* Play icon overlay */}
                 {!isActive && (
                   <View style={styles.pauseOverlay}>
                     <SvgPlay width={48} height={48} />
                   </View>
                 )}
-                
-                {/* Volume icon overlay - only show when paused */}
                 {!isActive && (
                   <View style={styles.volumeIconContainer}>
                     <TouchableOpacity 

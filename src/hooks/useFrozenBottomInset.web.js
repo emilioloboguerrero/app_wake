@@ -1,15 +1,12 @@
+import { isPWA } from '../utils/platform';
+
 /**
- * Returns a bottom inset that is frozen on first read (like WakeHeader's safeAreaTop).
- * Prevents the bottom from jumping when insets update after mount.
+ * Returns the bottom inset used for tab bar, spacer, and content padding.
+ * Extra padding so the bar and content sit higher from the viewport bottom.
+ * Only applied in PWA; regular web gets 0.
  */
-import { useRef } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+const BOTTOM_PADDING = 24;
 
 export default function useFrozenBottomInset() {
-  const insets = useSafeAreaInsets();
-  const ref = useRef(null);
-  if (ref.current === null) {
-    ref.current = Math.max(0, insets.bottom ?? 0);
-  }
-  return ref.current;
+  return isPWA() ? BOTTOM_PADDING : 0;
 }

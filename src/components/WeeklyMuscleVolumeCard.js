@@ -165,7 +165,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     overflow: 'visible',
-    height: 500, // Fixed height to match MuscleSilhouette
+    height: 500, // Restored original muscle card size
     width: '100%', // Ensure it fills the parent container
   },
   title: {
@@ -196,7 +196,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   musclesList: {
     gap: Math.max(10, screenHeight * 0.012),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
+    paddingBottom: 24,
   },
   scrollIndicator: {
     position: 'absolute',

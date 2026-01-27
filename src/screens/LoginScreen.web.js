@@ -1,6 +1,6 @@
 // Web wrapper for LoginScreen - provides React Router navigation
 import React, { useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useInRouterContext } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import logger from '../utils/logger';
@@ -9,45 +9,10 @@ import logger from '../utils/logger';
 const LoginScreenModule = require('./LoginScreen.js');
 const LoginScreenBase = LoginScreenModule.LoginScreenBase || LoginScreenModule.default;
 
-// ----- DEBUG: Router context (remove after fixing production useNavigate error) -----
-// Enable: add ?debug=1 to URL, or in console: localStorage.setItem('WAKE_DEBUG','true'); then reload. Rebuild production (see below) to see logs.
-const LOGIN_DEBUG = typeof window !== 'undefined' && (localStorage.getItem('WAKE_DEBUG') === 'true' || window.location.search.includes('debug=1'));
-
 const LoginScreen = () => {
-  const inRouterContext = useInRouterContext();
-  if (LOGIN_DEBUG) {
-    console.log('[LOGIN DEBUG]', {
-      useInRouterContext: inRouterContext,
-      ReactVersion: React.version,
-      NODE_ENV: process.env.NODE_ENV,
-      message: inRouterContext ? 'OK: inside Router' : 'FAIL: NOT inside Router - useNavigate() will throw',
-    });
-    if (!inRouterContext) {
-      console.error('[LOGIN DEBUG] LoginScreen is not inside a <Router>. Check for duplicate React or react-router in the production bundle.');
-    }
-  }
-
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const hasRedirectedRef = useRef(false); // Prevent multiple redirects
-  
-  // DEBUG: Check for duplicate React (only when LOGIN_DEBUG)
-  useEffect(() => {
-    if (!LOGIN_DEBUG) return;
-    try {
-      const reactFromRequire = require('react');
-      const sameReact = reactFromRequire === React;
-      console.log('[LOGIN DEBUG] Duplicate React check:', {
-        sameReact,
-        message: sameReact ? 'Single React instance in this chunk' : 'WARNING: Two different React instances – this causes useNavigate() to fail',
-      });
-      if (!sameReact) {
-        console.error('[LOGIN DEBUG] Fix: ensure "react" and "react-dom" are not duplicated in Metro/bundle (check dist chunks and resolve to one copy).');
-      }
-    } catch (e) {
-      console.warn('[LOGIN DEBUG] Could not run duplicate React check:', e);
-    }
-  }, []);
 
   // Redirect to home if already logged in
   useEffect(() => {
@@ -72,10 +37,10 @@ const LoginScreen = () => {
       const uid = currentUser?.uid;
       logger.log('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget: / (AuthLayout will send to /onboarding if new user)');
       hasRedirectedRef.current = true; // Mark as redirected
-      // Use setTimeout to ensure navigation happens after React state updates
+      // Force full reload to / so App.web.js re-renders with main app (reliable fix for "sometimes doesn't navigate")
       setTimeout(() => {
-        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing navigate("/"). uid passed to next screen (via AuthContext):', uid);
-        navigate('/', { replace: true });
+        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace("/"). uid:', uid);
+        window.location.replace('/');
       }, 100); // Small delay to ensure state is stable
     } else if (!loading && !currentUser) {
       // If loading is false but no user, check Firebase directly as fallback
@@ -86,8 +51,8 @@ const LoginScreen = () => {
         logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Firebase user but AuthContext not updated, redirecting. uid:', uid);
         hasRedirectedRef.current = true;
         setTimeout(() => {
-          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing navigate("/") from Firebase fallback. uid:', uid);
-          navigate('/', { replace: true });
+          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace("/") from Firebase fallback. uid:', uid);
+          window.location.replace('/');
         }, 100);
       } else {
         logger.debug('[LOGIN SCREEN WEB] No user found, waiting...', {
@@ -120,7 +85,7 @@ const LoginScreen = () => {
           logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Polling found user, redirecting. uid:', firebaseUser.uid);
           hasRedirectedRef.current = true;
           clearInterval(pollInterval);
-          navigate('/', { replace: true });
+          window.location.replace('/');
         }
       }, 100); // Check every 100ms
       
@@ -153,29 +118,19 @@ const LoginScreen = () => {
         'Home': '/',
       };
 
-      // Always try to navigate if route is mapped
+      // Always try to navigate if route is mapped. Use full reload so App.web.js switches to main app reliably.
       const performNavigation = () => {
         if (routeMap[routeName]) {
-          logger.debug('[LOGIN SCREEN WEB] ✅ Navigating to:', routeMap[routeName]);
-          hasRedirectedRef.current = true; // Set flag before navigation
-          try {
-            navigate(routeMap[routeName], { replace: true });
-            logger.debug('[LOGIN SCREEN WEB] ✅ Navigate call completed');
-          } catch (navError) {
-            logger.error('[LOGIN SCREEN WEB] ❌ Navigation error:', navError);
-            hasRedirectedRef.current = false; // Reset flag on error
-          }
+          const path = routeMap[routeName];
+          logger.debug('[LOGIN SCREEN WEB] ✅ Reloading to:', path);
+          hasRedirectedRef.current = true;
+          window.location.replace(path);
         } else {
           // Fallback: try to construct path from route name
           const path = `/${routeName.toLowerCase()}`;
-          logger.debug('[LOGIN SCREEN WEB] Navigating to fallback path:', path);
+          logger.debug('[LOGIN SCREEN WEB] Reloading to fallback path:', path);
           hasRedirectedRef.current = true;
-          try {
-            navigate(path, { replace: true });
-          } catch (navError) {
-            logger.error('[LOGIN SCREEN WEB] ❌ Navigation error:', navError);
-            hasRedirectedRef.current = false;
-          }
+          window.location.replace(path);
         }
       };
       

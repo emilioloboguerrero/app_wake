@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import logger from '../utils/logger';
+import { isPWA } from '../utils/platform';
 
 // Simple SVG icons for web
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (
@@ -250,11 +251,18 @@ export const WakeHeaderSpacer = () => {
 };
 
 // Single place to control space between header (spacer) and content. Use this to wrap content below WakeHeaderSpacer.
+// Use marginTop (not paddingTop): CSS does not support negative padding, so negative values have no effect on web.
 export const GAP_AFTER_HEADER = -20;
+// Tighter gap in PWA to reduce space between header and content (more negative = content pulled up).
+export const GAP_AFTER_HEADER_PWA = -32;
 
-export const WakeHeaderContent = ({ style, gapAfterHeader = GAP_AFTER_HEADER, ...rest }) => (
-  <View style={[{ paddingTop: gapAfterHeader }, style]} {...rest} />
-);
+/** Use this when you need the effective gap (PWA-aware on web, GAP_AFTER_HEADER on native). */
+export const getGapAfterHeader = () => (isPWA() ? GAP_AFTER_HEADER_PWA : GAP_AFTER_HEADER);
+
+export const WakeHeaderContent = ({ style, gapAfterHeader, ...rest }) => {
+  const effectiveGap = gapAfterHeader ?? getGapAfterHeader();
+  return <View style={[{ marginTop: effectiveGap }, style]} {...rest} />;
+};
 
 export default FixedWakeHeader;
 

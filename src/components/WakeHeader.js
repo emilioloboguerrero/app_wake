@@ -179,8 +179,12 @@ export const WakeHeaderSpacer = () => {
 // Export so screens with manual spacers can use the same gap (matches DailyWorkoutScreen).
 export const GAP_AFTER_HEADER = -20;
 
+/** Use when you need the effective gap (PWA-aware on web via getGapAfterHeader in .web.jsx). */
+export const getGapAfterHeader = () => GAP_AFTER_HEADER;
+
+// Use marginTop so negative gap works on web (CSS ignores negative padding).
 export const WakeHeaderContent = ({ style, gapAfterHeader = GAP_AFTER_HEADER, ...rest }) => (
-  <View style={[{ paddingTop: gapAfterHeader }, style]} {...rest} />
+  <View style={[{ marginTop: gapAfterHeader }, style]} {...rest} />
 );
 
 const styles = StyleSheet.create({

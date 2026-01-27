@@ -42,8 +42,10 @@ const BottomTabBar = () => {
       style: { opacity: isActive ? 1 : 0.6 }
     };
   };
+
+  const show = shouldShowTabBar();
   
-  if (!shouldShowTabBar()) {
+  if (!show) {
     return null;
   }
 

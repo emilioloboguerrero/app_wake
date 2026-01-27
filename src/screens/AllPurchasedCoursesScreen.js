@@ -327,8 +327,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 0, // No extra padding - spacer handles it
-    paddingBottom: 80,
+    paddingTop: 0,
+    paddingBottom: 24,
   },
   screenTitle: {
     fontSize: 32,

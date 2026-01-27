@@ -13,10 +13,13 @@ const WebVideoPlayer = ({
   onPlay,
   onPause,
   onEnd,
+  onLoad,
+  onError,
   style,
   className = '',
   controls = true,
-  playsInline = true
+  playsInline = true,
+  videoRefCallback,
 }) => {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -24,8 +27,16 @@ const WebVideoPlayer = ({
   const [showControls, setShowControls] = useState(controls);
 
   useEffect(() => {
+    logger.debug('[WebVideoPlayer] effect', {
+      srcType: typeof src,
+      srcPreview: src == null ? 'null' : String(src).slice(0, 80),
+      hasVideoEl: !!videoRef.current,
+    });
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      logger.warn('[WebVideoPlayer] effect run but videoRef.current is null');
+      return;
+    }
 
     // Set initial state
     video.loop = loop;
@@ -48,14 +59,35 @@ const WebVideoPlayer = ({
       onEnd?.();
     };
 
+    const handleError = (e) => {
+      logger.error('[WebVideoPlayer] video error', {
+        message: e?.message,
+        type: e?.type,
+        target: e?.target?.error?.message,
+        code: e?.target?.error?.code,
+        src: video?.src?.slice?.(0, 80),
+      });
+      onError?.(e);
+    };
+
     const handleLoadedMetadata = () => {
-      // Video metadata loaded
+      const durationMs = video.duration && Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0;
+      logger.debug('[WebVideoPlayer] loadedmetadata', { durationMs, durationSec: video.duration, src: video?.src?.slice?.(0, 80) });
+      if (typeof onLoad === 'function' && durationMs > 0) {
+        onLoad(durationMs);
+      }
     };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+    if (typeof videoRefCallback === 'function') {
+      logger.debug('[WebVideoPlayer] calling videoRefCallback with video element');
+      videoRefCallback(video);
+    }
 
     // Auto-play if requested
     if (autoplay) {
@@ -68,9 +100,13 @@ const WebVideoPlayer = ({
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      if (typeof videoRefCallback === 'function') {
+        videoRefCallback(null);
+      }
     };
-  }, [src, loop, isMuted, autoplay, onPlay, onPause, onEnd, playsInline]);
+  }, [src, loop, isMuted, autoplay, onPlay, onPause, onEnd, onLoad, onError, playsInline, videoRefCallback]);
 
   const togglePlayPause = () => {
     const video = videoRef.current;
@@ -101,6 +137,10 @@ const WebVideoPlayer = ({
     togglePlayPause();
   };
 
+  const srcForVideo = src == null || src === '' ? undefined : (typeof src === 'string' ? src : String(src));
+  if (src != null && src !== '' && typeof src !== 'string') {
+    logger.warn('[WebVideoPlayer] src is not string', { type: typeof src, value: src });
+  }
   return (
     <div
       className={`web-video-player ${className}`}
@@ -109,7 +149,7 @@ const WebVideoPlayer = ({
     >
       <video
         ref={videoRef}
-        src={src}
+        src={srcForVideo}
         className="web-video-element"
         playsInline={playsInline}
         preload="metadata"

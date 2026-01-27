@@ -19,8 +19,7 @@ import Text from '../components/Text';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
-import { getStorage } from '../utils/platform';
-import { isWeb } from '../utils/platform';
+import { getStorage, isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
@@ -71,7 +70,7 @@ const MainScreen = ({ navigation, route }) => {
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: Math.max(50, heightForBottomPadding * 0.06), // Space above BottomSpacer; on web use frozen height so scroll does not change it
+      paddingBottom: 24,
     },
     contentWrapper: {
       // No flex: 1 — keeps header-to-content gap consistent (matches DailyWorkoutScreen). Flex was causing uneven spacing inside the screen on PWA.
@@ -109,7 +108,7 @@ const MainScreen = ({ navigation, route }) => {
       alignItems: 'center',
       marginTop: 10, // Position exactly 10px below the card bottom
       paddingTop: 10,
-      paddingBottom: Math.max(32, heightForBottomPadding * 0.05), // Space above tab bar; on web use frozen height so scroll does not change it
+      paddingBottom: 24,
       zIndex: 1000, // Very high z-index to ensure visibility above cards
       backgroundColor: 'transparent', // Ensure background doesn't hide anything
     },
@@ -126,7 +125,7 @@ const MainScreen = ({ navigation, route }) => {
       backgroundColor: '#2a2a2a',
       borderRadius: Math.max(12, screenWidth * 0.04), // 4% of screen width, min 12
       padding: Math.max(16, screenWidth * 0.05), // 5% of screen width, min 16
-      paddingBottom: Math.max(30, screenHeight * 0.04), // 4% of screen height, min 30
+      paddingBottom: 24,
       borderWidth: 1,
       borderColor: '#3a3a3a',
       justifyContent: 'flex-end',

@@ -1,7 +1,7 @@
 {
-  "name": "Wake - Your Personal Training App",
+  "name": "Wake lab",
   "short_name": "Wake",
-  "description": "Wake - Your Personal Training App",
+  "description": "Wake lab",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

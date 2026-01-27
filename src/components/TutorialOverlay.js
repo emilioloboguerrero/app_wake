@@ -9,13 +9,11 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
-// TODO: Migrate to expo-video before SDK 54 when expo-av is removed (expo-video events on web need verification)
-import { Video } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 import { useVideo } from '../contexts/VideoContext';
 import SvgPlay from './icons/SvgPlay';
 import SvgVolumeMax from './icons/SvgVolumeMax';
 import SvgVolumeOff from './icons/SvgVolumeOff';
-
 import logger from '../utils/logger.js';
 
 const TutorialOverlay = ({ 
@@ -37,12 +35,21 @@ const TutorialOverlay = ({
   const [videoDuration, setVideoDuration] = useState(0);
   const [animationStarted, setAnimationStarted] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const videoRef = useRef(null);
   const progressAnimation = useRef(new Animated.Value(0)).current;
   // CRITICAL: useWindowDimensions() must be called BEFORE any early returns
   // This ensures hooks are always called in the same order (React Rules of Hooks)
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
+  const videoUrl = tutorialData?.[currentTutorialIndex]?.videoUrl ?? '';
+  const videoRef = useRef(null);
   
+  // Sync mute state when context isMuted changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.setIsMutedAsync(isMuted).catch(() => {});
+    }
+  }, [isMuted]);
+
   // CRITICAL: All useEffect hooks must be called BEFORE any early returns
   // Use tutorialData?.[currentTutorialIndex] instead of currentTutorial since currentTutorial is defined after early return
   useEffect(() => {
@@ -87,38 +94,41 @@ const TutorialOverlay = ({
   
   const currentTutorial = tutorialData?.[currentTutorialIndex];
 
-  const handleVideoTap = () => {
-    if (videoRef.current) {
-      if (isVideoPlaying) {
-        // Pause video and animation
-        videoRef.current.pauseAsync();
-        progressAnimation.stopAnimation();
-        logger.log('Paused video and animation');
-      } else {
-        // Resume video and animation
-        videoRef.current.playAsync();
-        if (animationStarted) {
-          // Resume animation from current position
-          const remainingDuration = videoDuration * (1 - progressAnimation._value);
-          Animated.timing(progressAnimation, {
-            toValue: 1,
-            duration: remainingDuration,
-            useNativeDriver: false,
-          }).start();
-          logger.log('Resumed animation for', remainingDuration, 'ms');
-        }
+  const handleVideoTap = async () => {
+    if (!videoRef.current) return;
+    if (isVideoPlaying) {
+      await videoRef.current.pauseAsync();
+      setIsVideoPlaying(false);
+      progressAnimation.stopAnimation();
+      logger.log('Paused video and animation');
+    } else {
+      await videoRef.current.playAsync();
+      setIsVideoPlaying(true);
+      if (animationStarted) {
+        const remainingDuration = videoDuration * (1 - progressAnimation._value);
+        Animated.timing(progressAnimation, {
+          toValue: 1,
+          duration: remainingDuration,
+          useNativeDriver: false,
+        }).start();
+        logger.log('Resumed animation for', remainingDuration, 'ms');
+      } else if (videoDuration > 0) {
+        setAnimationStarted(true);
+        Animated.timing(progressAnimation, {
+          toValue: 1,
+          duration: videoDuration,
+          useNativeDriver: false,
+        }).start();
+        logger.log('Started synchronized animation for', videoDuration, 'ms');
       }
     }
   };
 
   const handleVolumeToggle = async () => {
     toggleMute();
-    // Update video audio settings immediately
     if (videoRef.current) {
-      const newMutedState = !isMuted;
-      await videoRef.current.setVolumeAsync(newMutedState ? 0 : 1.0);
-      await videoRef.current.setIsMutedAsync(newMutedState);
-      logger.log('Video audio updated - muted:', newMutedState, 'volume:', newMutedState ? 0 : 1.0);
+      await videoRef.current.setIsMutedAsync(!isMuted).catch(() => {});
+      logger.log('Video audio updated - muted:', !isMuted);
     }
   };
 
@@ -143,24 +153,32 @@ const TutorialOverlay = ({
     onClose?.();
   };
 
-  const onVideoLoad = async (status) => {
+  const onVideoLoad = (status) => {
+    const s = status?.nativeEvent ?? status;
+    if (s && !s.isLoaded) return;
+    const duration = s?.durationMillis ?? s?.duration ?? 0;
     setIsLoading(false);
-    setVideoError(false); // Clear any previous errors
-    setVideoDuration(status.durationMillis || 0);
+    setVideoError(false);
+    setVideoDuration(duration);
     setAnimationStarted(false);
-    progressAnimation.setValue(0); // Reset animation
-    logger.log('Video', currentTutorialIndex, 'loaded, duration:', status.durationMillis);
-    
-    // Reset video position to 0 and start playing
+    progressAnimation.setValue(0);
+    logger.log('Video', currentTutorialIndex, 'loaded, duration:', duration);
     setTimeout(async () => {
       if (videoRef.current) {
-        await videoRef.current.setPositionAsync(0); // Reset to beginning
-        // Ensure audio is properly configured
-        await videoRef.current.setVolumeAsync(isMuted ? 0 : 1.0);
-        await videoRef.current.setIsMutedAsync(isMuted);
-        await videoRef.current.playAsync();
-        logger.log('Video', currentTutorialIndex, 'position reset to 0, audio configured, and started playing');
-        // Animation will start when onPlaybackStatusUpdate detects playing state
+        await videoRef.current.setPositionAsync(0).catch(() => {});
+        await videoRef.current.setIsMutedAsync(isMuted).catch(() => {});
+        await videoRef.current.playAsync().catch(() => {});
+        setIsVideoPlaying(true);
+        if (duration > 0) {
+          setAnimationStarted(true);
+          Animated.timing(progressAnimation, {
+            toValue: 1,
+            duration,
+            useNativeDriver: false,
+          }).start();
+          logger.log('Started synchronized animation for', duration, 'ms');
+        }
+        logger.log('Video', currentTutorialIndex, 'position reset to 0, started playing');
       }
     }, 100);
   };
@@ -193,6 +211,15 @@ const TutorialOverlay = ({
 
   const onVideoEnd = () => {
     handleNextTutorial();
+  };
+
+  const onPlaybackStatusUpdate = (status) => {
+    if (status?.isPlaying !== undefined) {
+      setIsVideoPlaying(status.isPlaying);
+    }
+    if (status?.didJustFinish && !status?.isLooping) {
+      onVideoEnd();
+    }
   };
 
   // Early return check - must be AFTER all hooks
@@ -288,96 +315,58 @@ const TutorialOverlay = ({
               <Text style={styles.videoErrorText}>Error al cargar el video</Text>
               <Text style={styles.videoErrorSubtext}>Saltando al siguiente tutorial...</Text>
             </View>
-          ) : (
-            <Video
-              ref={videoRef}
-              source={{ uri: currentTutorial.videoUrl }}
-              style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
-              volume={isMuted ? 0 : 1.0}
-              isMuted={isMuted}
-              shouldPlay={false}
-              isLooping={false}
-              useNativeControls={false}
-              resizeMode="cover"
-              onLoad={onVideoLoad}
-              onError={onVideoError}
-              onPlaybackStatusUpdate={(status) => {
-              if (status.isLoaded) {
-                setIsLoading(false);
-                
-                if (status.isPlaying && !isVideoPlaying) {
-                  setIsVideoPlaying(true);
-                  logger.log('Video started playing, muted:', isMuted, 'volume:', isMuted ? 0 : 1.0);
-                  
-                  // Start animation only when video actually starts playing
-                  if (!animationStarted && videoDuration > 0) {
-                    setAnimationStarted(true);
-                    Animated.timing(progressAnimation, {
-                      toValue: 1,
-                      duration: videoDuration,
-                      useNativeDriver: false,
-                    }).start();
-                    logger.log('Started synchronized animation for', videoDuration, 'ms');
-                  }
-                }
-                
-                if (!status.isPlaying && isVideoPlaying) {
-                  setIsVideoPlaying(false);
-                  logger.log('Video paused');
-                }
-                
-                if (status.didJustFinish) {
-                  logger.log('Video finished');
-                  onVideoEnd();
-                }
-              }
-            }}
-            />
-          )}
-
-          {/* Skip Button - top-left, below indicator, only while playing */}
-          {isVideoPlaying && !isLoading && (
-            <View style={styles.skipButtonContainer}>
+          ) : currentTutorial.videoUrl ? (
+            <>
+              <Video
+                key={currentTutorialIndex}
+                ref={videoRef}
+                source={{ uri: currentTutorial.videoUrl }}
+                style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
+                resizeMode={ResizeMode.COVER}
+                useNativeControls={false}
+                isLooping={false}
+                onLoad={onVideoLoad}
+                onError={onVideoError}
+                onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+                progressUpdateIntervalMillis={250}
+              />
               <TouchableOpacity
-                style={styles.skipButton}
-                onPress={handleNextTutorial}
+                style={styles.videoTapArea}
+                activeOpacity={1}
+                onPress={handleVideoTap}
+              />
+              {!isVideoPlaying && !isLoading && (
+                <View style={styles.playIconContainer} pointerEvents="none">
+                  <SvgPlay width={60} height={60} fill="#FFFFFF" />
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.volumeIconContainer}
+                onPress={handleVolumeToggle}
                 activeOpacity={0.8}
               >
-                <Text style={styles.skipButtonText}>Saltar</Text>
+                <View style={styles.volumeIconButton}>
+                  {isMuted ? (
+                    <SvgVolumeOff width={24} height={24} fill="#FFFFFF" />
+                  ) : (
+                    <SvgVolumeMax width={24} height={24} fill="#FFFFFF" />
+                  )}
+                </View>
               </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Pause/Play Icon Overlay */}
-          {!isVideoPlaying && !isLoading && (
-            <View style={styles.playIconContainer}>
-              <SvgPlay width={60} height={60} color="#ffffff" />
-            </View>
-          )}
-
-          {/* Volume Control - only show when paused */}
-          {!isVideoPlaying && !isLoading && (
-            <View style={styles.volumeIconContainer}>
-              <TouchableOpacity 
-                style={styles.volumeIconButton}
-                onPress={handleVolumeToggle}
-                activeOpacity={0.7}
-              >
-                {isMuted ? (
-                  <SvgVolumeOff width={24} height={24} color="white" />
-                ) : (
-                  <SvgVolumeMax width={24} height={24} color="white" />
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Tap to pause/resume */}
-          <TouchableOpacity 
-            style={styles.videoTapArea}
-            onPress={handleVideoTap}
-            activeOpacity={1}
-          />
+              {/* Skip Button - top-left, below indicator, only while playing */}
+              {isVideoPlaying && !isLoading && (
+                <View style={styles.skipButtonContainer}>
+                  <TouchableOpacity
+                    style={styles.skipButton}
+                    onPress={handleNextTutorial}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.skipButtonText}>Saltar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          ) : null}
           
         </TouchableOpacity>
       </TouchableOpacity>

@@ -1,18 +1,14 @@
-// Web version of BottomSpacer - same "freeze on first read" approach as WakeHeaderSpacer
-// so bottom never pops when safe area resolves late.
+// Web version of BottomSpacer - matches BottomTabBar height (TAB_BAR_CONTENT_HEIGHT + TOP_PAD)
+// plus useFrozenBottomInset so content clears the fixed bar and its bottom padding.
 import React from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 
 const TAB_BAR_CONTENT_HEIGHT = 62;
 const TOP_PAD = 12;
 
 const BottomSpacer = () => {
-  const insets = useSafeAreaInsets();
-  const ref = React.useRef(null);
-  if (ref.current === null) {
-    ref.current = TAB_BAR_CONTENT_HEIGHT + TOP_PAD + Math.max(0, insets.bottom ?? 0);
-  }
-  const totalHeight = ref.current;
+  const frozenBottom = useFrozenBottomInset();
+  const totalHeight = TAB_BAR_CONTENT_HEIGHT + TOP_PAD + frozenBottom;
   return (
     <div
       style={{

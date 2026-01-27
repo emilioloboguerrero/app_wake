@@ -1,3 +1,4 @@
+
 /**
  * Responsive styles utility
  * 
@@ -36,7 +37,7 @@ export const responsiveStyles = (screenWidth, screenHeight) => {
     contentPadding: {
       paddingHorizontal: screenWidth * 0.06, // 6% of screen width
       paddingTop: Math.max(20, screenHeight * 0.025), // 2.5% of screen height, min 20
-      paddingBottom: Math.max(80, screenHeight * 0.1), // 10% of screen height, min 80
+      paddingBottom: 24,
     },
     
     // Button dimensions

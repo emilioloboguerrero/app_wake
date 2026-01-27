@@ -67,7 +67,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: screenHeight * 0.1,
-    paddingBottom: screenHeight * 0.12,
+    paddingBottom: 24,
     gap: screenHeight * 0.04,
   },
   iconContainer: {

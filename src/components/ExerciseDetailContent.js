@@ -23,7 +23,7 @@ import ExerciseHistoryCard from '../components/ExerciseHistoryCard';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import SvgInfo from '../components/icons/SvgInfo';
 import { filterSessionsByPeriod, getSessionDateAsDate } from '../utils/sessionFilter';
-import { GAP_AFTER_HEADER } from './WakeHeader';
+import { getGapAfterHeader } from './WakeHeader';
 import logger from '../utils/logger.js';
 
 const ExerciseDetailContent = ({ 
@@ -282,8 +282,8 @@ const ExerciseDetailContent = ({
       <View style={styles.content}>
         {/* Spacer for fixed header - matches header height */}
         {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
-        {/* Same gap between header and content as WakeHeaderContent (global GAP_AFTER_HEADER) */}
-        {headerSpacerHeight > 0 && <View style={{ paddingTop: GAP_AFTER_HEADER }} />}
+        {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
+        {headerSpacerHeight > 0 && <View style={{ marginTop: getGapAfterHeader() }} />}
         
         {/* Top padding when used in modal (no title, no header spacer) */}
         {!showTitle && headerSpacerHeight === 0 && (
@@ -699,7 +699,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   disclaimersSection: {
     marginTop: Math.max(20, screenHeight * 0.025),
     paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
+    paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },

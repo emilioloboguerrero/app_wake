@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen.web';
 import logger from './utils/logger';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
+import { isPWA } from './utils/platform';
 
 // Applies frozen bottom inset (like WakeHeader freezes top) so bottom never pops after mount.
 function FrozenBottomWrapper({ children }) {
@@ -103,9 +104,6 @@ const safeLog = (method, ...args) => {
 };
 
 export default function App() {
-  if (typeof window !== 'undefined') {
-    console.log('[APP WEB] App() running');
-  }
 
   // CRITICAL: ALL HOOKS MUST BE CALLED UNCONDITIONALLY AND IN THE SAME ORDER
   // This ensures React hooks are always called in the same order every render
@@ -438,6 +436,7 @@ export default function App() {
   }, [fontsLoaded, debugMode, isLoginPath]);
 
   // Defer safe-area measurement so env() has resolved (avoids 0→34 pop when NativeSafeAreaProvider fires ~50ms later).
+  // Use 250ms so more devices have env(safe-area-inset-*) ready; freezing 0 made the bar "too high".
   const [initialMetrics, setInitialMetrics] = React.useState(null);
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.document) return;
@@ -458,9 +457,76 @@ export default function App() {
         right = parse(s.paddingRight);
         window.document.body.removeChild(el);
       } catch (_) {}
-      setInitialMetrics({ frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } });
-    }, 60);
+      if (isPWA()) bottom = 0;
+      const metrics = { frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } };
+      setInitialMetrics(metrics);
+    }, 250);
     return () => clearTimeout(id);
+  }, []);
+
+  // iOS PWA standalone: 100vh/100svh use the "small" viewport (Safari-with-toolbar height), leaving a gap.
+  // Use isPWA() (matchMedia + navigator.standalone + minimal-ui), display-mode listener, delayed re-checks,
+  // and on iOS PWA use screen.availHeight. If standalone isn't detected, still apply on iOS when viewport
+  // is already near full height (innerHeight >= screen.availHeight - 2).
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.document) return;
+    const root = document.getElementById('root');
+    if (!root) return;
+    const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+    const getCurrentHeight = () =>
+      Math.max(
+        (window.visualViewport && window.visualViewport.height) || 0,
+        window.innerHeight || 0
+      );
+    const shouldApply = () => {
+      if (isPWA()) return true;
+      if (!isIOS() || !window.screen || !window.screen.availHeight) return false;
+      return getCurrentHeight() >= window.screen.availHeight - 2;
+    };
+    const getHeight = () => {
+      let h = getCurrentHeight();
+      if ((isPWA() || shouldApply()) && isIOS() && window.screen && window.screen.availHeight) {
+        h = Math.max(h, window.screen.availHeight);
+      }
+      return h;
+    };
+    const setHeight = () => {
+      if (!shouldApply()) return;
+      const h = getHeight();
+      document.documentElement.style.setProperty('height', `${h}px`);
+      document.documentElement.style.setProperty('min-height', `${h}px`);
+      document.body.style.setProperty('height', `${h}px`);
+      document.body.style.setProperty('min-height', `${h}px`);
+      root.style.setProperty('height', `${h}px`);
+      root.style.setProperty('min-height', `${h}px`);
+      root.style.setProperty('max-height', `${h}px`);
+    };
+    setHeight();
+    const t1 = setTimeout(setHeight, 100);
+    const t2 = setTimeout(setHeight, 300);
+    const t3 = setTimeout(setHeight, 800);
+    window.addEventListener('resize', setHeight);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setHeight);
+      window.visualViewport.addEventListener('scroll', setHeight);
+    }
+    const mq = window.matchMedia('(display-mode: standalone)');
+    const mqMin = window.matchMedia('(display-mode: minimal-ui)');
+    const onDisplayModeChange = (e) => { if (e.matches) setHeight(); };
+    mq.addEventListener('change', onDisplayModeChange);
+    mqMin.addEventListener('change', onDisplayModeChange);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      window.removeEventListener('resize', setHeight);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', setHeight);
+        window.visualViewport.removeEventListener('scroll', setHeight);
+      }
+      mq.removeEventListener('change', onDisplayModeChange);
+      mqMin.removeEventListener('change', onDisplayModeChange);
+    };
   }, []);
 
   // Ensure critical components are loaded before rendering main app
@@ -512,25 +578,6 @@ export default function App() {
     </div>
   );
 
-  const hasCritical = !!(ErrorBoundary && VideoProvider && WebAppNavigator);
-  if (typeof window !== 'undefined') {
-    const branch =
-      isLoginPath ? 'login' :
-      !componentsLoaded || !fontsLoaded ? 'loading' :
-      initError && initError.message?.includes('critical') ? 'initError' :
-      !hasCritical ? 'criticalComponentsMissing' : 'main';
-    console.log('[APP WEB] Content branch:', branch, {
-      isLoginPath,
-      componentsLoaded,
-      fontsLoaded,
-      initError: initError ? initError.message : null,
-      hasErrorBoundary: !!ErrorBoundary,
-      hasVideoProvider: !!VideoProvider,
-      hasWebAppNavigator: !!WebAppNavigator,
-      pathname: window.location.pathname,
-    });
-  }
-
   // Single AuthProvider for entire app so auth state persists when navigating from /login to /
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
@@ -566,10 +613,6 @@ export default function App() {
         </VideoProvider>
       </ErrorBoundary>
     );
-  }
-
-  if (typeof window !== 'undefined') {
-    console.log('[APP WEB] Rendering BrowserRouter + AuthProvider + content');
   }
 
   // Mount SafeAreaProvider only after deferred insets measurement so insets are correct from first paint (no 0→34 pop).

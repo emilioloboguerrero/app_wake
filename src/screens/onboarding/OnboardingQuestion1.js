@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { FixedWakeHeader, WakeHeaderSpacer } from '../../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../../components/WakeHeader';
 
 const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -93,8 +93,8 @@ const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <WakeHeaderSpacer />
-
+        <WakeHeaderContent>
+          <WakeHeaderSpacer />
         {/* Large centered question */}
         <View style={styles.questionContainer}>
           <Text style={styles.question}>
@@ -163,6 +163,7 @@ const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
             </Text>
           )}
         </View>
+        </WakeHeaderContent>
       </ScrollView>
     </SafeAreaView>
   );

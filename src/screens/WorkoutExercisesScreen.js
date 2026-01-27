@@ -758,7 +758,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingTop: 0,
-    paddingBottom: 100,
+    paddingBottom: 24,
   },
   titleSection: {
     marginBottom: Math.max(24, screenHeight * 0.03),

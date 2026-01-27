@@ -20,7 +20,7 @@ import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
+import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
@@ -239,7 +239,7 @@ const PRsScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+          <View style={{ marginTop: getGapAfterHeader() }}>
           <TouchableOpacity 
             style={styles.titleContainer}
             onPress={() => setIsInfoModalVisible(true)}
@@ -386,8 +386,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: 0, // No extra padding - spacer handles it
-    paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingTop: 0,
+    paddingBottom: 24,
   },
   titleContainer: {
     flexDirection: 'row',

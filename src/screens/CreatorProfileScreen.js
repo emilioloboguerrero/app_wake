@@ -5,6 +5,10 @@ import { firestore } from '../config/firebase';
 import { ImageBackground } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import SvgPlay from '../components/icons/SvgPlay';
+import SvgVolumeMax from '../components/icons/SvgVolumeMax';
+import SvgVolumeOff from '../components/icons/SvgVolumeOff';
+import SvgArrowReload from '../components/icons/SvgArrowReload';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import Text from '../components/Text';
@@ -17,10 +21,6 @@ import { getMondayWeek, formatWeekDisplay, getWeekDates, getWeeksBetween } from 
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import logger from '../utils/logger';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
-import SvgPlay from '../components/icons/SvgPlay';
-import SvgArrowReload from '../components/icons/SvgArrowReload';
-import SvgVolumeMax from '../components/icons/SvgVolumeMax';
-import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgInfo from '../components/icons/SvgInfo';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
@@ -182,6 +182,7 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
               player={videoPlayer}
               style={[styles.storyMedia, { opacity: 0.7 }]}
               contentFit="cover"
+              fullscreenOptions={{ allowed: false }}
               allowsPictureInPicture={false}
               nativeControls={false}
               showsTimecodes={false}
@@ -3542,7 +3543,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   disclaimersSection: {
     marginTop: Math.max(20, screenHeight * 0.025),
     paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12),
+    paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -3651,7 +3652,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   },
   musclesList: {
     gap: Math.max(10, screenHeight * 0.012),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
+    paddingBottom: 24,
   },
   muscleListScrollIndicator: {
     position: 'absolute',

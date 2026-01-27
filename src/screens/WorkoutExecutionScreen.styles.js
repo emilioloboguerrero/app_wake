@@ -29,12 +29,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   // Reserve bottom space inside scroll (like DailyWorkoutScreen) so content is never covered; extra padding for screenIndicator overlay
   scrollContentContainer: {
     flexGrow: 1,
-    paddingBottom: Math.max(50, screenHeight * 0.06), // Space so BottomSpacer isn't hidden under screenIndicator
+    paddingBottom: 0,
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingTop: Math.max(10, screenHeight * 0.012),
-    paddingBottom: Math.max(80, screenHeight * 0.1),
+    paddingBottom: 0,
   },
       exerciseTitleSection: {
         marginBottom: Math.max(10, screenHeight * 0.012),
@@ -61,7 +61,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(480, screenHeight * 0.60), // Match videoCard height: 62% of screen height, min 480px
+        height: Math.max(380, screenHeight * 0.50), // Slightly shorter card (matches smaller muscle block)
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'hidden', // Match videoCard overflow
         position: 'relative', // Match videoCard position
@@ -83,7 +83,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
         marginTop: 10,
         borderWidth: 0,
         borderColor: 'transparent',
-        height: 250, // ← MODIFY THIS LINE TO CHANGE CARD HEIGHT
+        height: 220, // Slightly taller card
         width: screenWidth - 48, // Full width minus padding
         overflow: 'hidden',
       },
@@ -411,7 +411,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   exerciseListContent: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingTop: Math.max(10, screenHeight * 0.012), // Match main content padding
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Account for swipe indicator
+    paddingBottom: 24,
   },
   exerciseListTitleSection: {
     flexDirection: 'row',
@@ -1337,7 +1337,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
     paddingVertical: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingBottom: 24,
     justifyContent: 'center',
   },
   cancelSetButton: {
@@ -1392,7 +1392,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(480, screenHeight * 0.60), // Responsive height: 62% of screen height, min 500px
+    height: Math.max(410, screenHeight * 0.57), // Video card (~20px taller)
     overflow: 'hidden',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),
@@ -1930,7 +1930,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   disclaimersSection: {
     marginTop: Math.max(20, screenHeight * 0.025),
     paddingTop: Math.max(16, screenHeight * 0.02),
-    paddingBottom: Math.max(100, screenHeight * 0.12), // Added bottom padding for desliza overlay
+    paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -2185,7 +2185,7 @@ const createLoadingOverlayStyles = (screenWidth, screenHeight) => StyleSheet.cre
     paddingBottom: 0,
     // GPU acceleration hints for better paint performance
     transform: [{ translateZ: 0 }], // Promote to GPU layer
-    height: Math.max(350, screenHeight * 0.42), // Match SVG height, responsive
+    height: Math.max(300, screenHeight * 0.36), // Slightly shorter silhouette area
     flexShrink: 0,
   },
   muscleEmptyState: {
@@ -2193,7 +2193,7 @@ const createLoadingOverlayStyles = (screenWidth, screenHeight) => StyleSheet.cre
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: Math.max(16, screenWidth * 0.04),
-    minHeight: 280,
+    minHeight: 240,
   },
   muscleEmptyText: {
     color: '#cccccc',

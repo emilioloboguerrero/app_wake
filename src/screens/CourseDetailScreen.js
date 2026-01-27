@@ -1441,22 +1441,18 @@ useEffect(() => {
                   >
                     <VideoView 
                       player={videoPlayer}
-                      style={[styles.video, { opacity: 0.7 }]}
+                      style={[styles.video, { opacity: isVideoPaused ? 0.7 : 1 }]}
                       contentFit="cover"
                       fullscreenOptions={{ allowed: false }}
                       allowsPictureInPicture={false}
                       nativeControls={false}
                       showsTimecodes={false}
                     />
-                    
-                    {/* Play icon overlay when paused */}
                     {isVideoPaused && (
                       <View style={styles.pauseOverlay}>
                         <SvgPlay width={48} height={48} />
                       </View>
                     )}
-                    
-                    {/* Volume icon overlay - only show when paused */}
                     {isVideoPaused && (
                       <View style={styles.volumeIconContainer}>
                         <TouchableOpacity 
@@ -1472,8 +1468,6 @@ useEffect(() => {
                         </TouchableOpacity>
                       </View>
                     )}
-                    
-                    {/* Restart icon overlay - only show when paused */}
                     {isVideoPaused && (
                       <View style={styles.restartIconContainer}>
                         <TouchableOpacity 
@@ -1715,7 +1709,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingBottom: 80,
+    paddingBottom: 24,
     overflow: 'visible',
   },
   titleSection: {

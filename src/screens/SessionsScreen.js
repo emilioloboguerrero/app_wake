@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
+import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
@@ -401,8 +401,8 @@ const SessionsScreen = ({ navigation }) => {
           <>
             {/* Spacer for fixed header - matches header height */}
             <View style={{ height: headerTotalHeight }} />
-            {/* Same gap between header and content as WakeHeaderContent (global GAP_AFTER_HEADER) */}
-            <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+            {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
+            <View style={{ marginTop: getGapAfterHeader() }}>
               <Text style={styles.title}>Sesiones</Text>
               {sessions.length > 0 && renderSetsComparison()}
             </View>
@@ -474,8 +474,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: 0, // No extra padding - spacer handles it
-    paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingTop: 0,
+    paddingBottom: 24,
   },
   title: {
     fontSize: Math.min(screenWidth * 0.07, 28),

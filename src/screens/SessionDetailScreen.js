@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FixedWakeHeader, GAP_AFTER_HEADER } from '../components/WakeHeader';
+import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
@@ -147,7 +147,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
           showBackButton={true}
           onBackPress={handleBackPress}
         />
-        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight + GAP_AFTER_HEADER }]}>
+        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight + getGapAfterHeader() }]}>
           <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
           <Text style={styles.loadingText}>Cargando sesión...</Text>
         </View>
@@ -169,7 +169,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ paddingTop: GAP_AFTER_HEADER }}>
+          <View style={{ marginTop: getGapAfterHeader() }}>
           {/* Session Header */}
           <View style={styles.sessionHeader}>
             <Text style={styles.sessionName}>{sessionName}</Text>
@@ -241,7 +241,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingBottom: Math.max(40, screenHeight * 0.05),
+    paddingBottom: 24,
     paddingTop: 0, // No extra padding - spacer handles it
   },
   sessionHeader: {

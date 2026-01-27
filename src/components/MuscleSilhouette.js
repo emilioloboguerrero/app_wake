@@ -211,7 +211,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     overflow: 'visible',
-    height: 500, // Fixed height to match WeeklyMuscleVolumeCard
+    height: 500, // Restored original muscle card size
   },
   title: {
     color: '#ffffff',

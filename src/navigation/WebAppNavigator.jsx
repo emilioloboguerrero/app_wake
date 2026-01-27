@@ -39,11 +39,6 @@ import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web'
 import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
-// Test screen for debugging freeze issues
-import TestScreen from '../screens/TestScreen.web';
-// Simple button test screen for testing button responsiveness
-import SimpleButtonTestScreen from '../screens/SimpleButtonTestScreen.web';
-// AllPurchasedCoursesScreen is imported directly above (not lazy) to avoid hook order issues
 const OnboardingScreen = lazy(() => import('../screens/OnboardingScreen'));
 
 import firestoreService from '../services/firestoreService';
@@ -417,17 +412,6 @@ const WebAppNavigator = () => {
 
   return (
     <Routes>
-      {/* Test routes - must be first to catch before auth */}
-      <Route
-        path="/test"
-        element={React.createElement(withErrorBoundary(TestScreen, 'TestScreen'))}
-      />
-      <Route
-        path="/simple-test"
-        element={React.createElement(withErrorBoundary(SimpleButtonTestScreen, 'SimpleButtonTestScreen'))}
-      />
-      
-      {/* Public Routes */}
       <Route path="/login" element={React.createElement(withErrorBoundary(LoginScreen, 'Login'))} />
 
       {/* Onboarding Routes */}
