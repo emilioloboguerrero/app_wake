@@ -111,7 +111,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     ? (isPWAMode ? expandedLogoHeight + EXPANDED_PADDING_EXTRA : 64)
     : 0;
   // Scroll content: paddingTop = header bar height (like WakeHeader); spacer = expanded area so form starts below logo; no static container padding so spacer shrinks as user scrolls
-  const scrollContentPaddingTop = wakeHeaderBgHeight;
+  const scrollContentPaddingTop = Platform.OS === 'web' ? wakeHeaderBgHeight + 150 : wakeHeaderBgHeight;
   const scrollSpacerHeight = Platform.OS === 'web' ? webTopPadding : wakeHeaderBgHeight;
 
   const effectiveUid = user?.uid || auth.currentUser?.uid;
@@ -1311,6 +1311,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     logger.log('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
     if (!uidForSubmit) {
       logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
+      Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
+      return;
     }
 
     setLoading(true);
@@ -1367,9 +1369,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       // Upload profile picture if provided
       if (formData.profilePicture) {
         try {
-          const profilePictureUrl = await profilePictureService.uploadProfilePicture(user.uid, formData.profilePicture);
+          const profilePictureUrl = await profilePictureService.uploadProfilePicture(uidForSubmit, formData.profilePicture);
           userData.profilePictureUrl = profilePictureUrl;
-          userData.profilePicturePath = `profiles/${user.uid}/profile.jpg`;
+          userData.profilePicturePath = `profiles/${uidForSubmit}/profile.jpg`;
         } catch (error) {
           logger.error('Error uploading profile picture:', error);
           // Continue without profile picture rather than failing the entire onboarding
@@ -1411,7 +1413,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       // Update user document in Firestore using hybrid service
       // Cache profile completion status locally for offline access
       try {
-        await AsyncStorage.setItem(`onboarding_status_${user.uid}`, JSON.stringify({
+        await AsyncStorage.setItem(`onboarding_status_${uidForSubmit}`, JSON.stringify({
           onboardingCompleted: false,
           profileCompleted: true,
           cachedAt: Date.now()
@@ -1422,7 +1424,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         // Continue anyway - Firestore update is more important
       }
 
-      await hybridDataService.updateUserProfile(user.uid, userData);
+      await hybridDataService.updateUserProfile(uidForSubmit, userData);
 
       logger.debug('✅ Onboarding completed successfully');
       
@@ -1478,7 +1480,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   return (
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Animated Logo */}
-      {/* Logo bar: same position as WakeHeader (top 0, height 32 on web) so end state matches other screens */}
+      {/* Logo bar: same position/size as FixedWakeHeader (top 0, height headerHeight+safeAreaTop, paddingTop safeAreaTop) so collapsed state matches other screens and leaves room for notch */}
       <Animated.View
         style={[
           styles.animatedLogoContainer,
@@ -1488,6 +1490,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
             height: wakeHeaderBgHeight,
             paddingTop: safeAreaTop,
             paddingHorizontal: screenWidth * 0.06,
+            // Pin scale to top so collapsed header ends at same place as FixedWakeHeader (notch space preserved)
+            transformOrigin: 'top',
             transform: [
               { scale: logoScale },
               { translateY: logoTranslateY }

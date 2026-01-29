@@ -18,6 +18,7 @@ import profilePictureService from './profilePictureService';
 import hybridDataService from './hybridDataService';
 import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
+import firestoreService from './firestoreService';
 import { handleError, handleNetworkOperation } from '../utils/errorHandler';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
@@ -42,7 +43,19 @@ class AuthService {
         displayName: displayName
       });
 
-      logger.log('[AUTH] registerUser success. uid:', cred.user?.uid, '— Firestore user doc is NOT created here; first write will be from onboarding or setDoc(merge).');
+      // Create or update Firestore user doc so every sign-in method has a document
+      try {
+        await firestoreService.updateUser(cred.user.uid, {
+          email: cred.user.email,
+          displayName: displayName || cred.user.email?.split('@')[0] || 'Usuario',
+          provider: 'email',
+          lastLoginAt: new Date(),
+        });
+        logger.log('[AUTH] registerUser: Firestore user doc created/updated for uid:', cred.user?.uid);
+      } catch (docError) {
+        logger.warn('[AUTH] registerUser: Firestore doc create/update failed (non-fatal):', docError?.message);
+      }
+
       return cred.user;
     } catch (error) {
       // Don't use handleNetworkOperation for web - it can cause freezes
@@ -84,6 +97,21 @@ class AuthService {
         hasUser: !!finalUser,
         userId: finalUser?.uid
       });
+
+      // Create or update Firestore user doc so every sign-in method has a document
+      if (finalUser?.uid) {
+        try {
+          await firestoreService.updateUser(finalUser.uid, {
+            email: finalUser.email,
+            displayName: finalUser.displayName || finalUser.email?.split('@')[0] || 'Usuario',
+            provider: 'email',
+            lastLoginAt: new Date(),
+          });
+          logger.debug('[AUTH] signInUser: Firestore user doc created/updated for uid:', finalUser.uid);
+        } catch (docError) {
+          logger.warn('[AUTH] signInUser: Firestore doc create/update failed (non-fatal):', docError?.message);
+        }
+      }
       
       return finalUser || userCredential.user;
     } catch (error) {

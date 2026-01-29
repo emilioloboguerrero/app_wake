@@ -211,21 +211,7 @@ class AppleAuthService {
       
       logger.log('Apple sign-in successful:', firebaseUser.uid);
       
-      // Check if user exists in Firestore before allowing access
-      const existingUser = await firestoreService.getUser(firebaseUser.uid);
-      
-      if (!existingUser) {
-        // User doesn't exist - sign them out and show message
-        await auth.signOut();
-        logger.log('New user attempted sign-in');
-        return {
-          success: false,
-          error: 'REGISTRATION_REQUIRED',
-          message: 'No encontramos una cuenta asociada con este correo de Apple. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
-        };
-      }
-      
-      // User exists - update user document in Firestore
+      // Create or update user document in Firestore (same as Google — create if missing)
       await this.createOrUpdateUserDocument(firebaseUser);
       
       return { 
