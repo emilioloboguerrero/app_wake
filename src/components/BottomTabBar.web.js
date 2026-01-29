@@ -1,6 +1,8 @@
 // Fixed heights + frozen bottom inset (same approach as WakeHeader for top) so bar never pops.
 const TAB_BAR_CONTENT_HEIGHT = 62;
 const TAB_BAR_TOP_PAD = 12;
+// Extra bottom padding only for the tab bar (not spacer or root). Pushes bar content up.
+const TAB_BAR_EXTRA_BOTTOM = 12;
 
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
@@ -12,7 +14,7 @@ const BottomTabBar = () => {
   const { width: screenWidth } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
-  const paddingBottom = useFrozenBottomInset();
+  const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM;
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
 

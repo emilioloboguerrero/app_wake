@@ -42,6 +42,7 @@ class AuthService {
         displayName: displayName
       });
 
+      logger.log('[AUTH] registerUser success. uid:', cred.user?.uid, '— Firestore user doc is NOT created here; first write will be from onboarding or setDoc(merge).');
       return cred.user;
     } catch (error) {
       // Don't use handleNetworkOperation for web - it can cause freezes

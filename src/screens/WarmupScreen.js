@@ -80,7 +80,7 @@ const WarmupScreen = ({ navigation, route }) => {
       paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
     },
     videoCard: {
-      height: Math.max(450, screenHeight * 0.55), // Slightly taller video card
+      height: Math.max(420, screenHeight * 0.55), // Slightly taller video card
       backgroundColor: '#1a1a1a',
       borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
       overflow: 'hidden',

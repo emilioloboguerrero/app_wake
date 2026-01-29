@@ -127,10 +127,12 @@ class HybridDataService {
    */
   async updateUserProfile(userId, changes) {
     try {
-      logger.debug('🔄 Updating user profile:', changes);
+      logger.debug('[HYBRID] updateUserProfile called. userId:', userId, 'keys:', changes ? Object.keys(changes) : []);
       
       // 1. Get current profile
       let currentProfile = await this.loadUserProfile(userId);
+      const isNewUser = !currentProfile;
+      logger.log('[HYBRID] updateUserProfile: currentProfile exists:', !!currentProfile, 'isNewUser:', isNewUser);
       
       // 2. If no profile exists, create a new one (for new users)
       if (!currentProfile) {
@@ -151,7 +153,8 @@ class HybridDataService {
         JSON.stringify({ data: currentProfile, lastSync: Date.now() })
       );
       
-      // 4. Update Firestore
+      // 4. Update Firestore (firestoreService.updateUser now creates doc if missing)
+      logger.debug('[HYBRID] Calling firestoreService.updateUser for users/', userId);
       await firestoreService.updateUser(userId, changes);
       
       logger.debug('✅ User profile updated successfully');

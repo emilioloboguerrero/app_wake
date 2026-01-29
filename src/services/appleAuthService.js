@@ -382,6 +382,7 @@ class AppleAuthService {
 
       // Check if user already exists in Firestore
       const existingUser = await firestoreService.getUser(firebaseUser.uid);
+      logger.log('[APPLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
       
       if (existingUser) {
         // User exists - update login time and provider info
@@ -389,11 +390,11 @@ class AppleAuthService {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.log('Updated existing user document');
+        logger.log('[APPLE AUTH] Updated existing user document');
       } else {
-        // This should not happen as we check before calling this function
-        // But if it does, log a warning
-        logger.warn('Attempted to update user document for non-existent user');
+        // New Apple user - updateUser now creates doc if missing
+        logger.log('[APPLE AUTH] No document for new Apple user — calling updateUser (will create doc)');
+        await firestoreService.updateUser(firebaseUser.uid, userData);
       }
       
     } catch (error) {

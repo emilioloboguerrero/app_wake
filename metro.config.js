@@ -1,5 +1,7 @@
 // MINIMAL METRO CONFIG
+const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
+const defaultResolve = require('metro-resolver').resolve;
 
 const config = getDefaultConfig(__dirname);
 
@@ -17,5 +19,25 @@ config.resolver.sourceExts = [
   'web.jsx', // Then .web.jsx for platform-specific JSX
   'json',
 ];
+
+// Single source of truth for layout viewport on web: use our Dimensions so useWindowDimensions() returns canonical size.
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    platform === 'web' &&
+    context.originModulePath &&
+    context.originModulePath.includes('useWindowDimensions') &&
+    moduleName === '../Dimensions'
+  ) {
+    return {
+      type: 'sourceFile',
+      filePath: path.resolve(__dirname, 'src/utils/layoutViewportDimensions.web.js'),
+    };
+  }
+  return defaultResolve(
+    { ...context, resolveRequest: defaultResolve },
+    moduleName,
+    platform
+  );
+};
 
 module.exports = config;

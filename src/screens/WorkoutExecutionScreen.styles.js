@@ -61,7 +61,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(380, screenHeight * 0.50), // Slightly shorter card (matches smaller muscle block)
+        height: Math.max(400, screenHeight * 0.53), // 400px min, 50% of screen
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'hidden', // Match videoCard overflow
         position: 'relative', // Match videoCard position
@@ -1392,7 +1392,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(410, screenHeight * 0.57), // Video card (~20px taller)
+    height: Math.max(400, screenHeight * 0.53), // 400px min, 50% of screen (matches muscles card)
     overflow: 'hidden',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),

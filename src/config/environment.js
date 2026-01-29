@@ -62,6 +62,16 @@ const getConfig = () => {
   return config[environment];
 };
 
+// Production debug: enable logs and on-screen panel via ?wake_debug=1 or localStorage WAKE_DEBUG=true
+export const isProductionDebug = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.location?.search?.includes('wake_debug=1')) return true;
+    if (window.localStorage?.getItem('WAKE_DEBUG') === 'true') return true;
+  } catch (_) {}
+  return false;
+};
+
 // Export current configuration
 export const currentConfig = getConfig();
 export const isDevelopment = getEnvironment() === ENV.DEVELOPMENT;

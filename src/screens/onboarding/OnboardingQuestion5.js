@@ -55,7 +55,7 @@ const OnboardingQuestion5 = ({ navigation, onAnswer }) => {
       const obstaclesText = selectedOption ? selectedOption.text : null;
       
       onAnswer('obstacles', obstaclesText);
-      navigation.navigate('OnboardingComplete');
+      navigation.replace('OnboardingComplete');
     }
   };
 

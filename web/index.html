@@ -169,17 +169,39 @@
         }
         return ih >= window.screen.availHeight - 2;
       }
-      function applyPWAViewportHeight() {
-        if (!shouldApplyPWAViewportFix()) return;
-        var root = document.getElementById('root');
-        if (!root) return;
+      function getCanonicalHeight() {
         var h = window.innerHeight || 0;
         if (window.visualViewport && window.visualViewport.height) {
           h = Math.max(h, window.visualViewport.height);
         }
         if (isIOS() && window.screen && window.screen.availHeight) {
-          h = Math.max(h, window.screen.availHeight);
+          var nearFull = h >= window.screen.availHeight - 2;
+          if (isStandalone() || nearFull) {
+            h = Math.max(h, window.screen.availHeight);
+          }
         }
+        return Math.round(h);
+      }
+      function getCanonicalWidth() {
+        if (window.visualViewport) {
+          return Math.round(window.visualViewport.width * window.visualViewport.scale);
+        }
+        return document.documentElement.clientWidth || window.innerWidth || 0;
+      }
+      function setLayoutViewportCSSVars() {
+        var w = getCanonicalWidth();
+        var h = getCanonicalHeight();
+        if (w > 0 && h > 0) {
+          document.documentElement.style.setProperty('--layout-width-px', w + 'px');
+          document.documentElement.style.setProperty('--layout-height-px', h + 'px');
+        }
+      }
+      function applyPWAViewportHeight() {
+        setLayoutViewportCSSVars();
+        if (!shouldApplyPWAViewportFix()) return;
+        var root = document.getElementById('root');
+        if (!root) return;
+        var h = getCanonicalHeight();
         if (h <= 0) return;
         document.documentElement.style.setProperty('height', h + 'px');
         document.documentElement.style.setProperty('min-height', h + 'px');

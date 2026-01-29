@@ -75,21 +75,7 @@ class GoogleAuthService {
         
         logger.log('Google sign-in successful (Web):', firebaseUser.uid);
         
-        // Check if user exists in Firestore before allowing access
-        const existingUser = await firestoreService.getUser(firebaseUser.uid);
-        
-        if (!existingUser) {
-          // User doesn't exist - sign them out and show message
-          await auth.signOut();
-          logger.log('New user attempted sign-in, redirecting to website');
-          return {
-            success: false,
-            error: 'REGISTRATION_REQUIRED',
-            message: 'No encontramos una cuenta asociada con este correo de Google. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
-          };
-        }
-        
-        // User exists - update user document in Firestore
+        // Create or update user document (allows new users — no account required)
         await this.createOrUpdateUserDocument(firebaseUser);
         
         return { 
@@ -162,21 +148,7 @@ class GoogleAuthService {
       
       logger.log('Google sign-in successful:', firebaseUser.uid);
       
-      // Check if user exists in Firestore before allowing access
-      const existingUser = await firestoreService.getUser(firebaseUser.uid);
-      
-      if (!existingUser) {
-        // User doesn't exist - sign them out and show message
-        await auth.signOut();
-        logger.log('New user attempted sign-in, redirecting to website');
-        return {
-          success: false,
-          error: 'REGISTRATION_REQUIRED',
-          message: 'No encontramos una cuenta asociada con este correo de Google. Si ya tienes una cuenta, asegúrate de usar el mismo correo electrónico con el que te registraste.'
-        };
-      }
-      
-      // User exists - update user document in Firestore
+      // Create or update user document (allows new users — no account required)
       await this.createOrUpdateUserDocument(firebaseUser);
       
       return { 
@@ -311,6 +283,7 @@ class GoogleAuthService {
 
       // Check if user already exists in Firestore
       const existingUser = await firestoreService.getUser(firebaseUser.uid);
+      logger.log('[GOOGLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
       
       if (existingUser) {
         // User exists - update login time and provider info
@@ -318,11 +291,11 @@ class GoogleAuthService {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.log('Updated existing user document');
+        logger.log('[GOOGLE AUTH] Updated existing user document');
       } else {
-        // This should not happen as we check before calling this function
-        // But if it does, log a warning
-        logger.warn('Attempted to update user document for non-existent user');
+        // New Google user - updateUser now creates doc if missing
+        logger.log('[GOOGLE AUTH] No document for new Google user — calling updateUser (will create doc)');
+        await firestoreService.updateUser(firebaseUser.uid, userData);
       }
       
     } catch (error) {

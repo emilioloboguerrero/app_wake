@@ -1,9 +1,9 @@
 // Web App Navigator - React Router based navigation for PWA
 // SIMPLIFIED VERSION - Login route isolated
 // LAZY LOADING: Heavy screens are loaded only when needed
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import LoadingScreen from '../screens/LoadingScreen';
@@ -44,16 +44,70 @@ const OnboardingScreen = lazy(() => import('../screens/OnboardingScreen'));
 import firestoreService from '../services/firestoreService';
 import webStorageService from '../services/webStorageService';
 import logger from '../utils/logger';
+import { isSafariWeb } from '../utils/platform';
 import BottomTabBar from '../components/BottomTabBar.web';
+import OnboardingNavigator from './OnboardingNavigator';
+import { NavigationContainer } from '@react-navigation/native';
+
+export const RefreshProfileContext = createContext(null);
+
+// Wrapper so OnboardingScreen (profile step) can refetch profile and navigate to questions on web
+const OnboardingProfileRoute = () => {
+  const ctx = useContext(RefreshProfileContext);
+  const navigate = useNavigate();
+  const refreshUserProfile = ctx?.refreshUserProfile;
+  const onComplete = React.useCallback(() => {
+    if (refreshUserProfile) refreshUserProfile();
+    navigate('/onboarding/questions', { replace: true });
+  }, [refreshUserProfile, navigate]);
+  const route = { params: {}, name: 'Onboarding' };
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      {React.createElement(withErrorBoundary(() => <OnboardingScreen route={route} onComplete={onComplete} />, 'Onboarding'))}
+    </Suspense>
+  );
+};
+
+// Wrapper so OnboardingNavigator (questions flow) can refetch and go home on complete
+const OnboardingQuestionsRoute = () => {
+  const ctx = useContext(RefreshProfileContext);
+  const navigate = useNavigate();
+  const refreshUserProfile = ctx?.refreshUserProfile;
+  const onComplete = React.useCallback(async () => {
+    if (refreshUserProfile) {
+      const p = refreshUserProfile();
+      if (p && typeof p.then === 'function') await p;
+    }
+    navigate('/', { replace: true });
+  }, [refreshUserProfile, navigate]);
+  return (
+    <NavigationContainer independent={true}>
+      {React.createElement(withErrorBoundary(() => <OnboardingNavigator onComplete={onComplete} />, 'OnboardingQuestions'))}
+    </NavigationContainer>
+  );
+};
 
 // Layout component for authenticated routes
 const AuthenticatedLayout = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const isOnOnboardingPath = location.pathname === '/onboarding';
+  const isOnOnboardingQuestionsPath = location.pathname === '/onboarding/questions';
   const [userProfile, setUserProfile] = React.useState(null);
   const [profileLoading, setProfileLoading] = React.useState(false);
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const checkedUserIdRef = React.useRef(null);
+  const refreshResolveRef = React.useRef(null);
+
+  const refreshUserProfile = React.useCallback(() => {
+    logger.log('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
+    const promise = new Promise((resolve) => {
+      refreshResolveRef.current = resolve;
+    });
+    checkedUserIdRef.current = null;
+    setRefreshKey((k) => k + 1);
+    return promise;
+  }, []);
   
   // Check Firebase user directly - this is the source of truth
   // Use useState to store Firebase user and update it when needed
@@ -124,17 +178,17 @@ const AuthenticatedLayout = ({ children }) => {
   const effectiveUidForFetch = user?.uid || firebaseUser?.uid;
 
   React.useEffect(() => {
-    // Skip if already checked for this user
+    // Skip if already checked for this user (refreshUserProfile clears ref to force refetch)
     if (effectiveUidForFetch && checkedUserIdRef.current === effectiveUidForFetch) {
       logger.debug('[AUTH LAYOUT] checkUserProfile skipped (already checked for uid)', effectiveUidForFetch);
       return;
     }
-    
+
     // Skip if no user and we've already cleared
     if (!effectiveUidForFetch && checkedUserIdRef.current === null) {
       return;
     }
-    
+
     let mounted = true;
     let timeoutId = null;
     
@@ -220,12 +274,18 @@ const AuthenticatedLayout = ({ children }) => {
             setProfileLoading(false);
           }
           if (timeoutId) clearTimeout(timeoutId);
+          const resolve = refreshResolveRef.current;
+          refreshResolveRef.current = null;
+          if (resolve) resolve();
         }
       } else if (!effectiveUidForFetch) {
         logger.debug('[AUTH LAYOUT] No user, clearing userProfile');
         setUserProfile(null);
         setProfileLoading(false);
         checkedUserIdRef.current = null;
+        const resolve = refreshResolveRef.current;
+        refreshResolveRef.current = null;
+        if (resolve) resolve();
       }
     };
 
@@ -235,7 +295,7 @@ const AuthenticatedLayout = ({ children }) => {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [effectiveUidForFetch]);
+  }, [effectiveUidForFetch, refreshKey]);
 
   // Determine if we have a user (from context or Firebase)
   // CRITICAL: If Firebase has a user, proceed even if AuthContext is still loading
@@ -255,6 +315,17 @@ const AuthenticatedLayout = ({ children }) => {
   
   const finalHasUser = hasUser || directFirebaseCheck;
   
+  // Show loading ONLY if:
+  // 1. AuthContext is loading AND Firebase doesn't have a user (genuine loading state)
+  // 2. But add a timeout to prevent infinite loading
+  const shouldShowLoading = loading && !hasFirebaseUser;
+  
+  // Add timeout to prevent infinite loading. Safari: use 2s (AuthContext gives up at 3s).
+  // Other browsers: 5s to allow IndexedDB restore. (Declare before logger.prod so not used before init.)
+  const loadingTimeoutMs = isSafariWeb() ? 2000 : 5000;
+  const [loadingTimeout, setLoadingTimeout] = React.useState(false);
+  
+  logger.prod('LAYOUT', { loading, hasFirebaseUser: !!firebaseUser, finalHasUser: !!finalHasUser, shouldShowLoading, loadingTimeoutMs });
   logger.debug('[AUTH LAYOUT] ========================================');
   logger.debug('[AUTH LAYOUT] Auth state check:', {
     userFromContext: user?.uid || 'none',
@@ -268,42 +339,45 @@ const AuthenticatedLayout = ({ children }) => {
     finalHasUser: finalHasUser?.uid || 'none'
   });
   logger.debug('[AUTH LAYOUT] ========================================');
-
-  // Show loading ONLY if:
-  // 1. AuthContext is loading AND Firebase doesn't have a user (genuine loading state)
-  // 2. But add a timeout to prevent infinite loading
-  const shouldShowLoading = loading && !hasFirebaseUser;
-  
-  // Add timeout to prevent infinite loading - wait up to 5 seconds for auth to restore
-  const [loadingTimeout, setLoadingTimeout] = React.useState(false);
   React.useEffect(() => {
     if (shouldShowLoading) {
       const timeout = setTimeout(() => {
-        logger.debug('[AUTH LAYOUT] Timeout: AuthContext loading too long (5s), proceeding anyway');
+        logger.prod('LAYOUT loading timeout fired', loadingTimeoutMs + 'ms', 'Safari:', isSafariWeb());
+        logger.debug(`[AUTH LAYOUT] Timeout: AuthContext loading too long (${loadingTimeoutMs}ms), proceeding anyway${isSafariWeb() ? ' [Safari]' : ''}`);
         setLoadingTimeout(true);
-      }, 5000); // Increased to 5 seconds to allow IndexedDB restore
+      }, loadingTimeoutMs);
       return () => clearTimeout(timeout);
     } else {
       setLoadingTimeout(false);
     }
-  }, [shouldShowLoading]);
+  }, [shouldShowLoading, loadingTimeoutMs]);
 
   if (shouldShowLoading && !loadingTimeout) {
+    logger.prod('LAYOUT showing LoadingScreen', 'loading:', loading, 'loadingTimeout:', loadingTimeout);
     logger.debug('[AUTH LAYOUT] Showing loading screen - loading:', loading, 'hasFirebaseUser:', hasFirebaseUser);
     return <LoadingScreen />;
   }
 
+  // Once we've waited the loading timeout (2s Safari / 5s other) and still have no user, go to login.
+  // Don't wait for AuthContext's fallback — Safari may never fire onAuthStateChanged.
+  if (loadingTimeout && !finalHasUser) {
+    logger.prod('LAYOUT redirect to /login (loading timeout, no user)');
+    logger.debug('[AUTH LAYOUT] Loading timeout fired with no user, redirecting to login');
+    return <Navigate to="/login" replace />;
+  }
+
   // Use finalHasUser which includes direct Firebase check
   // Redirect to login if not authenticated (after checking both AuthContext and Firebase)
-  // But only if we're not already on the login page and loading is complete
   if (!finalHasUser && !loading) {
+    logger.prod('LAYOUT redirect to /login', 'no user');
     logger.debug('[AUTH LAYOUT] ❌ No user found after all checks, redirecting to login');
     logger.debug('[AUTH LAYOUT] Checked: AuthContext user, firebaseUser state, direct Firebase check');
     return <Navigate to="/login" replace />;
   }
   
-  // If still loading and no user, show loading screen
+  // If still loading and no user (and we haven't timed out yet), show loading screen
   if (!finalHasUser && loading) {
+    logger.prod('LAYOUT LoadingScreen (no user, loading)', loading);
     logger.debug('[AUTH LAYOUT] ⏳ Still loading auth state, showing loading screen');
     return <LoadingScreen />;
   }
@@ -316,6 +390,7 @@ const AuthenticatedLayout = ({ children }) => {
   // Wait for profile when we have an authenticated user: either still loading or not yet known
   // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
   if (finalHasUser && (profileLoading || userProfile === null)) {
+    logger.prod('LAYOUT LoadingScreen (waiting for profile)', { uid: effectiveUid, profileLoading, hasProfile: !!userProfile });
     logger.log('[AUTH LAYOUT] BREAKPOINT: Waiting for profile. uid:', effectiveUid, 'profileLoading:', profileLoading, 'userProfile:', userProfile ? 'set' : 'null');
     return <LoadingScreen />;
   }
@@ -335,7 +410,19 @@ const AuthenticatedLayout = ({ children }) => {
       logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding but profile complete, redirecting to /. uid:', effectiveUid);
       return <Navigate to="/" replace />;
     }
+    // Profile already done but questions not: send to questions flow (e.g. after refresh)
+    if (userProfile.profileCompleted && !userProfile.onboardingCompleted) {
+      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding, profile done, redirecting to questions. uid:', effectiveUid);
+      return <Navigate to="/onboarding/questions" replace />;
+    }
     logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding, rendering children. uid:', effectiveUid);
+  } else if (isOnOnboardingQuestionsPath) {
+    // On questions flow: allow even if refetch hasn't updated profile yet
+    if (hasCompletedOnboarding) {
+      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions but onboarding complete, redirecting to /. uid:', effectiveUid);
+      return <Navigate to="/" replace />;
+    }
+    logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions, rendering children. uid:', effectiveUid);
   } else {
     // We're on another route: redirect to onboarding only when profile explicitly says incomplete
     if (needsOnboarding) {
@@ -356,10 +443,10 @@ const AuthenticatedLayout = ({ children }) => {
       ? createPortal(<BottomTabBar />, document.body)
       : <BottomTabBar />;
   return (
-    <>
+    <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
       {children}
       {tabBarEl}
-    </>
+    </RefreshProfileContext.Provider>
   );
 };
 
@@ -419,9 +506,15 @@ const WebAppNavigator = () => {
         path="/onboarding"
         element={
           <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              {React.createElement(withErrorBoundary(OnboardingScreen, 'Onboarding'))}
-            </Suspense>
+            <OnboardingProfileRoute />
+          </AuthenticatedLayout>
+        }
+      />
+      <Route
+        path="/onboarding/questions"
+        element={
+          <AuthenticatedLayout>
+            <OnboardingQuestionsRoute />
           </AuthenticatedLayout>
         }
       />

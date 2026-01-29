@@ -13,7 +13,6 @@ import {
   useWindowDimensions,
   Animated,
   FlatList,
-  Platform,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -671,7 +670,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
 
 
     return (
-      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+      <SafeAreaView style={styles.container}>
         {/* Fixed Header with Back Button */}
         <FixedWakeHeader 
           showBackButton={true}
@@ -1005,7 +1004,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(650, screenHeight * 0.75), // Slightly taller video/image cards
+    height: Math.max(700, screenHeight * 0.82), // TALLER: 80% of screen height, min 700px
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1077,7 +1076,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   // Combined Programa + Sessions Card (Card 2)
   programAndSessionsContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(650, screenHeight * 0.75),
+    height: Math.max(700, screenHeight * 0.82),
     overflow: 'visible',
   },
   // Programa Card at Bottom - Half height, full width
@@ -1554,7 +1553,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    height: Math.max(500, screenHeight * 0.6), // Slightly taller no-workout card
+    height: Math.max(500, screenHeight * 0.6), // Responsive height: 60% of screen height, min 500px
   },
   cardNoWorkoutText: {
     color: '#ffffff',

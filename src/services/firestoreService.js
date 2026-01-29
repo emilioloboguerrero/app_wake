@@ -58,8 +58,13 @@ class FirestoreService {
 
   async getUser(userId) {
     try {
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
-      return userDoc.exists() ? userDoc.data() : null;
+      const userRef = doc(firestore, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) {
+        logger.debug('[FIRESTORE] getUser: no document for users/', userId);
+        return null;
+      }
+      return userDoc.data();
     } catch (error) {
       // Handle offline/network errors gracefully
       if (error.code === 'unavailable' || error.message.includes('offline')) {
@@ -73,9 +78,18 @@ class FirestoreService {
   }
 
   async updateUser(userId, userData) {
+    const userRef = doc(firestore, 'users', userId);
     try {
-      await updateDoc(doc(firestore, 'users', userId), userData);
+      const existing = await getDoc(userRef);
+      if (existing.exists()) {
+        logger.debug('[FIRESTORE] updateUser: document exists, updating users/', userId);
+        await updateDoc(userRef, userData);
+      } else {
+        logger.log('[FIRESTORE] updateUser: no document for users/', userId, '— creating with setDoc(merge).');
+        await setDoc(userRef, { ...userData, created_at: serverTimestamp() }, { merge: true });
+      }
     } catch (error) {
+      logger.error('[FIRESTORE] updateUser failed for users/', userId, error?.code, error?.message);
       throw error;
     }
   }

@@ -4,6 +4,14 @@
 export const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
 export const isNative = !isWeb;
 
+// Detect Safari on web (desktop or iOS). Used to work around Firebase Auth + IndexedDB
+// issues where onAuthStateChanged may never fire in Safari.
+export const isSafariWeb = () => {
+  if (!isWeb || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return (ua.includes('Safari') && !ua.includes('Chrome') && !ua.includes('Chromium')) || !!navigator.userAgentData?.brands?.some(b => b.brand === 'Safari');
+};
+
 // Detect if running as PWA (installed web app) vs regular browser
 export const isPWA = () => {
   if (!isWeb) return false;

@@ -2,7 +2,7 @@
 // Using Firebase SDK for Expo
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { isWeb } from '../utils/platform';
@@ -30,11 +30,12 @@ try {
   if (isWeb) {
     // Web: Use initializeAuth with browserLocalPersistence
     // This ensures persistence is set BEFORE auth is initialized
-    logger.debug('[FIREBASE] 🔐 Initializing auth with browserLocalPersistence...');
+    logger.debug('[FIREBASE] 🔐 Initializing auth with browserLocalPersistence + popupRedirectResolver...');
     auth = initializeAuth(app, {
-      persistence: browserLocalPersistence
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
     });
-    logger.debug('[FIREBASE] ✅ Auth initialized with browserLocalPersistence (IndexedDB)');
+    logger.debug('[FIREBASE] ✅ Auth initialized (IndexedDB + popup sign-in ready)');
     
     // Check if there's a current user immediately after initialization
     setTimeout(() => {

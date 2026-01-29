@@ -1,6 +1,7 @@
 // Web version of Bottom Navigation Menu
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useWindowDimensions } from 'react-native';
 
 
 // SVG Icons for web
@@ -33,9 +34,8 @@ const UserIcon = ({ size = 24, stroke = '#ffffff', fill = 'none', strokeWidth = 
 const BottomNavigation = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 667;
-  const tabBarHeight = Math.max(60, screenHeight * 0.1);
+  const { height: screenHeight } = useWindowDimensions();
+  const tabBarHeight = Math.max(60, (screenHeight || 667) * 0.1);
   const iconSize = 24;
   
   const isMainActive = location.pathname === '/' || location.pathname.startsWith('/course');

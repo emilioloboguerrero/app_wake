@@ -16,7 +16,6 @@ import {
   TouchableWithoutFeedback,
   useWindowDimensions,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,14 +23,16 @@ import { useAuth } from '../contexts/AuthContext';
 // Create animated component ONCE outside the component to prevent re-creation
 const AnimatedKeyboardAwareScrollView = Animated.createAnimatedComponent(KeyboardAwareScrollView);
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { signOut, updateProfile } from 'firebase/auth';
+import { updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import firestoreService from '../services/firestoreService';
 import logger from '../utils/logger';
 import hybridDataService from '../services/hybridDataService';
 import profilePictureService from '../services/profilePictureService';
+import authService from '../services/authService';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
+import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -39,6 +40,7 @@ import citiesData from '../../assets/data/cities_data.json';
 
 import { validateForm, validateInput, sanitizeInput } from '../utils/validation.js';
 import { trackUserRegistration } from '../services/monitoringService';
+import { isPWA } from '../utils/platform';
 import { 
   validateDisplayName, 
   validateUsername as validateUsernameFormat,
@@ -65,44 +67,96 @@ const OBJECTIVE_OPTIONS = [
   'Otro',
 ];
 
+// Universal date picker (same UI on web, PWA, iOS, Android)
+const MONTHS_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+const WEEKDAYS_ES = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'];
+const getDaysInMonth = (year, monthIndex) => new Date(year, monthIndex + 1, 0).getDate();
+const CURRENT_YEAR = new Date().getFullYear();
+const MIN_YEAR = 1900;
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - MIN_YEAR + 1 }, (_, i) => CURRENT_YEAR - i);
+
+// Build calendar grid for a month: array of rows, each row has 7 cells (null = empty, number = day)
+const getCalendarGrid = (year, monthIndex) => {
+  const first = new Date(year, monthIndex, 1).getDay();
+  const days = getDaysInMonth(year, monthIndex);
+  const cells = [...Array(first).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  const pad = (7 - (cells.length % 7)) % 7;
+  const padded = [...cells, ...Array(pad).fill(null)];
+  const rows = [];
+  for (let i = 0; i < padded.length; i += 7) rows.push(padded.slice(i, i + 7));
+  return rows;
+};
+
 const OnboardingScreen = ({ navigation, route, onComplete }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  // Match WakeHeader / WakeHeaderSpacer: web uses insets.top for PWA notch; native uses insets.top - 8
+  // Match WakeHeader exactly: same safeAreaTop and header height as other screens
+  // Match FixedWakeHeader exactly: position, height, safe area, logo size
   const headerHeightBase = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTop = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const wakeHeaderBgHeight = headerHeightBase + safeAreaTop;
+  // On web use larger base size so when scaled 3x the logo stays sharper (less upscale from tiny pixels)
+  const logoWidth = Math.min(screenWidth * 0.35, Platform.OS === 'web' ? 160 : 120);
+  const logoHeight = logoWidth * 0.57;
 
-  // BREAKPOINT: Log uid on mount so we can verify it is passed to this screen
+  // PWA: expanded area height so scroll spacer clears the big logo; no static padding (spacer scrolls away)
+  const expandedLogoHeight = Math.ceil((wakeHeaderBgHeight / 2) + 40 + (logoHeight * 3) / 2);
+  const isPWAMode = Platform.OS === 'web' && isPWA();
+  const EXPANDED_PADDING_EXTRA = 32;
+  const webTopPadding = Platform.OS === 'web'
+    ? (isPWAMode ? expandedLogoHeight + EXPANDED_PADDING_EXTRA : 64)
+    : 0;
+  // Scroll content: paddingTop = header bar height (like WakeHeader); spacer = expanded area so form starts below logo; no static container padding so spacer shrinks as user scrolls
+  const scrollContentPaddingTop = wakeHeaderBgHeight;
+  const scrollSpacerHeight = Platform.OS === 'web' ? webTopPadding : wakeHeaderBgHeight;
+
+  const effectiveUid = user?.uid || auth.currentUser?.uid;
+
+  // Log uid sources on mount and when user/uid changes (verify uid is passed correctly)
   useEffect(() => {
-    const uid = user?.uid || auth.currentUser?.uid;
-    logger.log('[ONBOARDING] BREAKPOINT: Screen mounted. uid:', uid, 'fromUseAuth:', !!user, 'fromAuthCurrentUser:', !!auth.currentUser);
-    if (!uid) {
-      logger.warn('[ONBOARDING] BREAKPOINT: No uid available on OnboardingScreen mount');
+    logger.log('[ONBOARDING] uid check:', {
+      effectiveUid: effectiveUid ?? null,
+      fromUseAuth: user?.uid ?? null,
+      fromAuthCurrentUser: auth.currentUser?.uid ?? null,
+      hasUser: !!user,
+      hasAuthCurrentUser: !!auth.currentUser,
+      routeParams: route?.params ?? {},
+      routeName: route?.name ?? null,
+    });
+    if (!effectiveUid) {
+      logger.warn('[ONBOARDING] No uid available — user:', !!user, 'auth.currentUser:', !!auth.currentUser);
     }
-  }, [user?.uid]);
+  }, [effectiveUid, user?.uid, auth.currentUser?.uid, route?.params, route?.name]);
+
+  // Log when AuthContext user reference changes (e.g. after sign-in restore)
+  useEffect(() => {
+    logger.log('[ONBOARDING] useAuth user changed:', user?.uid ?? 'null', 'email:', user?.email ?? 'null');
+  }, [user]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
+  // No static top padding on web: logo bar at top 0 (same as WakeHeader); space is in scroll spacer so it shrinks as user scrolls
   const styles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: '#1a1a1a',
     },
     animatedLogoContainer: {
-      position: 'absolute',
-      // top: now set dynamically with insets.top + 10
       left: 0,
       right: 0,
-      alignItems: 'center',
+      top: 0,
+      flexDirection: 'column',
       zIndex: 1000,
       backgroundColor: '#1a1a1a',
-      paddingVertical: 15,
-      paddingHorizontal: 24,
     },
-    animatedLogo: {
-      width: 120,
-      height: 60,
+    animatedLogoInner: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     logoSpacer: {
       height: Math.max(80, Math.min(200, screenHeight * 0.16)),
@@ -298,6 +352,175 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     },
     datePickerExpandedContent: {
       marginTop: 10,
+    },
+    calendarContainer: {
+      backgroundColor: 'rgba(0,0,0,0.2)',
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+      paddingHorizontal: 4,
+    },
+    calendarNavButton: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    calendarNavButtonDisabled: {
+      opacity: 0.35,
+    },
+    calendarTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      flex: 1,
+    },
+    calendarTitleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      gap: 4,
+    },
+    calendarTitleButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    calendarTitleChevron: {
+      opacity: 0.8,
+    },
+    calendarWeekdayRow: {
+      flexDirection: 'row',
+      marginBottom: 6,
+    },
+    calendarWeekday: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 4,
+    },
+    calendarWeekdayText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: 'rgba(255,255,255,0.5)',
+      textTransform: 'uppercase',
+    },
+    calendarGrid: {},
+    calendarRow: {
+      flexDirection: 'row',
+      marginBottom: 2,
+    },
+    calendarDayCellInner: {
+      flex: 1,
+      margin: 2,
+    },
+    calendarDayCell: {
+      flex: 1,
+      aspectRatio: 1,
+      maxHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+    },
+    calendarDayEmpty: {
+      backgroundColor: 'transparent',
+    },
+    calendarDay: {
+      backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    calendarDaySelected: {
+      backgroundColor: 'rgba(191, 168, 77, 0.4)',
+    },
+    calendarDayDisabled: {
+      opacity: 0.3,
+    },
+    calendarDayText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: '#ffffff',
+    },
+    calendarDayTextSelected: {
+      color: '#ffffff',
+      fontWeight: '700',
+    },
+    calendarDayTextDisabled: {
+      color: 'rgba(255,255,255,0.5)',
+    },
+    calendarMonthPicker: {
+      marginBottom: 12,
+    },
+    calendarMonthGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      justifyContent: 'center',
+    },
+    calendarMonthCell: {
+      width: '30%',
+      minWidth: 72,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    calendarMonthCellSelected: {
+      backgroundColor: 'rgba(191, 168, 77, 0.35)',
+    },
+    calendarMonthCellText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: '#ffffff',
+    },
+    calendarMonthCellTextSelected: {
+      color: '#ffffff',
+      fontWeight: '700',
+    },
+    calendarYearPicker: {
+      marginBottom: 12,
+      borderRadius: 8,
+      backgroundColor: 'rgba(0,0,0,0.2)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.1)',
+      overflow: 'hidden',
+    },
+    calendarYearScroll: {
+      maxHeight: 180,
+      ...(Platform.OS === 'web' && {
+        scrollbarColor: 'rgba(255,255,255,0.35) #2a2a2a',
+      }),
+    },
+    calendarYearOption: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(255,255,255,0.08)',
+    },
+    calendarYearOptionLast: {
+      borderBottomWidth: 0,
+    },
+    calendarYearOptionSelected: {
+      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    },
+    calendarYearOptionText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: '#ffffff',
+    },
+    calendarYearOptionTextSelected: {
+      color: 'rgba(191, 168, 77, 1)',
+      fontWeight: '700',
     },
     datePickerSaveButtonTopRight: {
       backgroundColor: 'rgba(191, 168, 77, 0)',
@@ -595,24 +818,23 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     },
   }), [screenWidth, screenHeight]);
   const [loading, setLoading] = useState(false);
-  // Measure animated header to offset content precisely under it
-  const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(0);
   const [availableDisciplines, setAvailableDisciplines] = useState([]);
   const [disciplinesLoading, setDisciplinesLoading] = useState(true);
   
   // Animation values for logo
   const scrollY = useRef(new Animated.Value(0)).current;
   
-  // Logo animation interpolations
+  // Logo animation: end size matches WakeHeader (100px on web, 120 native)
+  const logoScaleEnd = Platform.OS === 'web' ? 100 / logoWidth : 1;
   const logoScale = scrollY.interpolate({
-    inputRange: [0, 300], // Adjust scroll distance as needed
-    outputRange: [3, 1], // Start 3x size, end at 0.8x to match header size
+    inputRange: [0, 300],
+    outputRange: [3, logoScaleEnd],
     extrapolate: 'clamp',
   });
 
   const logoTranslateY = scrollY.interpolate({
     inputRange: [0, 300],
-    outputRange: [40, 0], // Start higher, move to top
+    outputRange: [40, 0],
     extrapolate: 'clamp',
   });
   
@@ -638,7 +860,10 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   const [errors, setErrors] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempBirthDate, setTempBirthDate] = useState(new Date()); // Current date as default for picker
+  const [tempBirthDate, setTempBirthDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState({ year: new Date().getFullYear(), monthIndex: new Date().getMonth() });
+  const [showCalendarMonthPicker, setShowCalendarMonthPicker] = useState(false);
+  const [showCalendarYearPicker, setShowCalendarYearPicker] = useState(false);
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
@@ -829,12 +1054,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     return c ? c.label : 'Selecciona tu país...';
   };
 
-  const handleDateChange = (event, selectedDate) => {
-    if (selectedDate) {
-      setTempBirthDate(selectedDate); // Update temporary date without saving
-    }
-  };
-
   const handleSaveDate = () => {
     setFormData(prev => ({
       ...prev,
@@ -853,8 +1072,66 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   };
 
   const handleOpenDatePicker = () => {
-    setTempBirthDate(formData.birthDate); // Initialize with current date
+    const initialDate = formData.birthDate || new Date();
+    setTempBirthDate(initialDate);
+    setCalendarView({ year: initialDate.getFullYear(), monthIndex: initialDate.getMonth() });
+    setShowCalendarMonthPicker(false);
+    setShowCalendarYearPicker(false);
     setShowDatePicker(true);
+  };
+
+  const handleSelectMonth = (monthIndex) => {
+    setCalendarView((prev) => ({ ...prev, monthIndex }));
+    setShowCalendarMonthPicker(false);
+  };
+
+  const handleSelectYear = (year) => {
+    setCalendarView((prev) => ({ ...prev, year }));
+    setShowCalendarYearPicker(false);
+  };
+
+  // Calendar view: grid and navigation
+  const calendarGrid = useMemo(
+    () => getCalendarGrid(calendarView.year, calendarView.monthIndex),
+    [calendarView.year, calendarView.monthIndex]
+  );
+  const today = useMemo(() => new Date(), []);
+  const canGoPrev = calendarView.year > MIN_YEAR || calendarView.monthIndex > 0;
+  const canGoNext =
+    calendarView.year < today.getFullYear() ||
+    (calendarView.year === today.getFullYear() && calendarView.monthIndex < today.getMonth());
+
+  const handleCalendarPrev = () => {
+    if (!canGoPrev) return;
+    if (calendarView.monthIndex === 0) {
+      setCalendarView({ year: calendarView.year - 1, monthIndex: 11 });
+    } else {
+      setCalendarView({ year: calendarView.year, monthIndex: calendarView.monthIndex - 1 });
+    }
+  };
+  const handleCalendarNext = () => {
+    if (!canGoNext) return;
+    if (calendarView.monthIndex === 11) {
+      setCalendarView({ year: calendarView.year + 1, monthIndex: 0 });
+    } else {
+      setCalendarView({ year: calendarView.year, monthIndex: calendarView.monthIndex + 1 });
+    }
+  };
+  const handleCalendarDaySelect = (day) => {
+    setTempBirthDate(new Date(calendarView.year, calendarView.monthIndex, day));
+  };
+  const isDayDisabled = (day) => {
+    const d = new Date(calendarView.year, calendarView.monthIndex, day);
+    const min = new Date(MIN_YEAR, 0, 1);
+    return d > today || d < min;
+  };
+  const isDaySelected = (day) => {
+    if (!tempBirthDate) return false;
+    return (
+      tempBirthDate.getDate() === day &&
+      tempBirthDate.getMonth() === calendarView.monthIndex &&
+      tempBirthDate.getFullYear() === calendarView.year
+    );
   };
 
   const handleGenderSelect = (genderValue) => {
@@ -1022,6 +1299,12 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       return;
     }
 
+    const uidForSubmit = user?.uid || auth.currentUser?.uid;
+    logger.log('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
+    if (!uidForSubmit) {
+      logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
+    }
+
     setLoading(true);
     
     try {
@@ -1163,8 +1446,15 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           onPress: async () => {
             try {
               setLoading(true);
-              await signOut(auth);
+              await authService.signOutUser();
               logger.debug('✅ User signed out successfully');
+              // On web/PWA, force full reload to /login (same as ProfileScreen sign-out flow)
+              if (typeof window !== 'undefined') {
+                logger.log('[ONBOARDING] Web: reloading to /login after cancel');
+                window.location.replace('/login');
+                return;
+              }
+              // On native, auth state change will navigate to login
             } catch (error) {
               logger.error('Error signing out:', error);
               Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
@@ -1180,32 +1470,33 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   return (
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Animated Logo */}
-      <Animated.View style={[
-        styles.animatedLogoContainer,
-        {
-          top: Math.max(screenHeight * 0.03, safeAreaTop), // Below safe area (notch) and at least 3% from top
-          transform: [
-            { scale: logoScale },
-            { translateY: logoTranslateY }
-          ]
-        }
-      ]}
-      onLayout={({ nativeEvent }) => {
-        // Calculate the expanded logo height: 3x scale of 60px = 180px
-        // Plus container padding: 15px top + 15px bottom = 30px
-        // Plus top offset: same as animated logo top (safe area + 3% min)
-        const expandedLogoHeight = 60 * 3; // 180px
-        const containerPadding = 30; // paddingVertical: 15 * 2
-        const topOffset = Math.max(screenHeight * 0.03, safeAreaTop);
-        const totalHeight = topOffset + expandedLogoHeight + containerPadding + 50; // Small buffer
-        
-        setMeasuredHeaderHeight(totalHeight);
-      }}>
-        <Image 
-          source={require('../../assets/wake-logo-new.png')} 
-          style={styles.animatedLogo}
-          resizeMode="contain"
-        />
+      {/* Logo bar: same position as WakeHeader (top 0, height 32 on web) so end state matches other screens */}
+      <Animated.View
+        style={[
+          styles.animatedLogoContainer,
+          {
+            position: Platform.OS === 'web' ? 'fixed' : 'absolute',
+            top: 0,
+            height: wakeHeaderBgHeight,
+            paddingTop: safeAreaTop,
+            paddingHorizontal: screenWidth * 0.06,
+            transform: [
+              { scale: logoScale },
+              { translateY: logoTranslateY }
+            ]
+          }
+        ]}
+      >
+        <View style={styles.animatedLogoInner}>
+          <Image
+            source={require('../../assets/wake-logo-new.png')}
+            style={[
+              { width: logoWidth, height: logoHeight },
+              Platform.OS === 'web' && { imageRendering: 'high-quality' }
+            ]}
+            resizeMode="contain"
+          />
+        </View>
       </Animated.View>
       
       <AnimatedKeyboardAwareScrollView
@@ -1218,14 +1509,14 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         )}
         scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollViewNormal}
+        contentContainerStyle={[styles.scrollViewNormal, { paddingTop: scrollContentPaddingTop }]}
         enableOnAndroid={true}
         extraScrollHeight={20}
           enableResetScrollToCoords={false}
       >
         <View style={styles.content}>
-          {/* Start content right below the measured animated header */}
-          <View style={{ height: measuredHeaderHeight || Math.max(100, screenHeight * 0.18) }} />
+          {/* Spacer: clears expanded logo when scroll=0; scrolls away so no huge static padding */}
+          <View style={{ height: scrollSpacerHeight }} />
           
 
           {/* Profile Picture and Name/Username Row */}
@@ -1462,18 +1753,153 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                 
                 {showDatePicker && (
                   <View style={styles.datePickerExpandedContent}>
-                    <DateTimePicker
-                      testID="dateTimePicker"
-                      value={tempBirthDate || new Date()}
-                      mode="date"
-                      display="inline"
-                      onChange={handleDateChange}
-                      maximumDate={new Date()}
-                      minimumDate={new Date(1900, 0, 1)}
-                      textColor="#ffffff"
-                      themeVariant="dark"
-                      accentColor="rgba(191, 168, 77, 1)"
-                    />
+                    <View style={styles.calendarContainer}>
+                      <View style={styles.calendarHeader}>
+                        <TouchableOpacity
+                          style={[styles.calendarNavButton, !canGoPrev && styles.calendarNavButtonDisabled]}
+                          onPress={handleCalendarPrev}
+                          disabled={!canGoPrev}
+                        >
+                          <SvgChevronLeft width={22} height={22} stroke="#ffffff" strokeWidth={2} />
+                        </TouchableOpacity>
+                        <View style={styles.calendarTitleRow}>
+                          <TouchableOpacity
+                            style={styles.calendarTitleButton}
+                            onPress={() => {
+                              setShowCalendarYearPicker(false);
+                              setShowCalendarMonthPicker((v) => !v);
+                            }}
+                          >
+                            <Text style={styles.calendarTitleButtonText}>
+                              {MONTHS_ES[calendarView.monthIndex]}
+                            </Text>
+                            <View style={styles.calendarTitleChevron}>
+                              <SvgChevronRight width={16} height={16} stroke="#ffffff" strokeWidth={2} />
+                            </View>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.calendarTitleButton}
+                            onPress={() => {
+                              setShowCalendarMonthPicker(false);
+                              setShowCalendarYearPicker((v) => !v);
+                            }}
+                          >
+                            <Text style={styles.calendarTitleButtonText}>{calendarView.year}</Text>
+                            <View style={styles.calendarTitleChevron}>
+                              <SvgChevronRight width={16} height={16} stroke="#ffffff" strokeWidth={2} />
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.calendarNavButton, !canGoNext && styles.calendarNavButtonDisabled]}
+                          onPress={handleCalendarNext}
+                          disabled={!canGoNext}
+                        >
+                          <SvgChevronRight width={22} height={22} stroke="#ffffff" strokeWidth={2} />
+                        </TouchableOpacity>
+                      </View>
+                      {showCalendarMonthPicker && (
+                        <View style={styles.calendarMonthPicker}>
+                          <View style={styles.calendarMonthGrid}>
+                            {MONTHS_ES.map((label, index) => (
+                              <TouchableOpacity
+                                key={label}
+                                style={[
+                                  styles.calendarMonthCell,
+                                  calendarView.monthIndex === index && styles.calendarMonthCellSelected,
+                                ]}
+                                onPress={() => handleSelectMonth(index)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.calendarMonthCellText,
+                                    calendarView.monthIndex === index && styles.calendarMonthCellTextSelected,
+                                  ]}
+                                >
+                                  {label}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      )}
+                      {showCalendarYearPicker && (
+                        <View style={styles.calendarYearPicker}>
+                          <ScrollView
+                            style={styles.calendarYearScroll}
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator={true}
+                            indicatorStyle="black"
+                          >
+                            {YEAR_OPTIONS.map((y, index) => (
+                              <TouchableOpacity
+                                key={y}
+                                style={[
+                                  styles.calendarYearOption,
+                                  index === YEAR_OPTIONS.length - 1 && styles.calendarYearOptionLast,
+                                  calendarView.year === y && styles.calendarYearOptionSelected,
+                                ]}
+                                onPress={() => handleSelectYear(y)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.calendarYearOptionText,
+                                    calendarView.year === y && styles.calendarYearOptionTextSelected,
+                                  ]}
+                                >
+                                  {y}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                      {!showCalendarMonthPicker && !showCalendarYearPicker && (
+                        <>
+                          <View style={styles.calendarWeekdayRow}>
+                            {WEEKDAYS_ES.map((wd) => (
+                              <View key={wd} style={styles.calendarWeekday}>
+                                <Text style={styles.calendarWeekdayText}>{wd}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          <View style={styles.calendarGrid}>
+                            {calendarGrid.map((row, rowIndex) => (
+                              <View key={rowIndex} style={styles.calendarRow}>
+                                {row.map((day, colIndex) => (
+                                  <View key={colIndex} style={[styles.calendarDayCell, styles.calendarDayCellInner]}>
+                                    {day === null ? (
+                                      <View style={[styles.calendarDayCell, styles.calendarDayEmpty]} />
+                                    ) : (
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.calendarDayCell,
+                                          styles.calendarDay,
+                                          isDaySelected(day) && styles.calendarDaySelected,
+                                          isDayDisabled(day) && styles.calendarDayDisabled,
+                                        ]}
+                                        onPress={() => !isDayDisabled(day) && handleCalendarDaySelect(day)}
+                                        disabled={isDayDisabled(day)}
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.calendarDayText,
+                                            isDaySelected(day) && styles.calendarDayTextSelected,
+                                            isDayDisabled(day) && styles.calendarDayTextDisabled,
+                                          ]}
+                                        >
+                                          {day}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                ))}
+                              </View>
+                            ))}
+                          </View>
+                        </>
+                      )}
+                    </View>
                   </View>
                 )}
               </View>

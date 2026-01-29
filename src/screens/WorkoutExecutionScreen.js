@@ -33,7 +33,6 @@ import { useVideo } from '../contexts/VideoContext';
 import { isWeb } from '../utils/platform';
 import logger from '../utils/logger.js';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
 
 // Gesture handler and video - keep as direct imports (needed for hooks)
@@ -493,7 +492,6 @@ const useSetData = (workout) => {
 const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
 
   // Track if component is mounted for setTimeout cleanup
   const isMountedRef = useRef(true);
@@ -5414,8 +5412,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       </ScrollView>
       </KeyboardAvoidingView>
       
-      {/* Animated Pagination Indicators - pushed into bottom safe area, 12px lower than default */}
-      <View style={[styles.screenIndicator, { bottom: -(insets.bottom ) }]}>
+      {/* Animated Pagination Indicators */}
+      <View style={styles.screenIndicator}>
         {renderPaginationIndicators()}
       </View>
 

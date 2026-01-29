@@ -21,6 +21,7 @@ const getIsLoginPath = () => {
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
 const BrowserRouter = require('react-router-dom').BrowserRouter;
 const AuthProvider = require('./contexts/AuthContext').AuthProvider;
+const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
 // CRITICAL: DO NOT import useMontserratFonts from './config/fonts'
 // That file conditionally calls useFonts from expo-google-fonts, which violates Rules of Hooks
@@ -132,6 +133,14 @@ export default function App() {
   // Don't conditionally change this value as it can affect hook order
   const fontsLoaded = fontsLoadedFromHook;
   
+  // Production debug: log on mount so we see something in console (Safari etc.)
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { isSafariWeb } = require('./utils/platform');
+      logger.prod('App.web mounted', window.location.pathname, 'Safari:', isSafariWeb());
+    }
+  }, []);
+
   // Service worker management (for both login and non-login routes)
   React.useEffect(() => {
     if (isLoginPath) {
@@ -488,9 +497,24 @@ export default function App() {
       if ((isPWA() || shouldApply()) && isIOS() && window.screen && window.screen.availHeight) {
         h = Math.max(h, window.screen.availHeight);
       }
-      return h;
+      return Math.round(h);
+    };
+    const getWidth = () => {
+      if (window.visualViewport) {
+        return Math.round(window.visualViewport.width * window.visualViewport.scale);
+      }
+      return window.document.documentElement.clientWidth || window.innerWidth || 0;
+    };
+    const setLayoutViewportCSSVars = () => {
+      const w = getWidth();
+      const h = getHeight();
+      if (w > 0 && h > 0 && window.document.documentElement) {
+        window.document.documentElement.style.setProperty('--layout-width-px', `${w}px`);
+        window.document.documentElement.style.setProperty('--layout-height-px', `${h}px`);
+      }
     };
     const setHeight = () => {
+      setLayoutViewportCSSVars();
       if (!shouldApply()) return;
       const h = getHeight();
       document.documentElement.style.setProperty('height', `${h}px`);
@@ -641,6 +665,7 @@ export default function App() {
           <FrozenBottomWrapper>
             {content}
           </FrozenBottomWrapper>
+          <WakeDebugPanel />
         </AuthProvider>
       </SafeAreaProvider>
     </BrowserRouter>

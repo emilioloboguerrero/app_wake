@@ -28,6 +28,7 @@ const LoginScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState(null);
   const [passwordError, setPasswordError] = useState(null);
+  const [authError, setAuthError] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -64,22 +65,21 @@ const LoginScreen = ({ navigation }) => {
 
   const handleEmailChange = (text) => {
     setEmail(text);
-    if (emailError) {
-      setEmailError(null);
-    }
+    if (emailError) setEmailError(null);
+    if (authError) setAuthError(null);
   };
 
   const handlePasswordChange = (text) => {
     setPassword(text);
-    if (passwordError) {
-      setPasswordError(null);
-    }
+    if (passwordError) setPasswordError(null);
+    if (authError) setAuthError(null);
   };
 
   // Sign In handler
   const handleContinue = async () => {
     setEmailError(null);
     setPasswordError(null);
+    setAuthError(null);
     setShowForgotPassword(false);
 
     if (!email.trim()) {
@@ -107,7 +107,6 @@ const LoginScreen = ({ navigation }) => {
       const user = await authService.signInUser(email, password);
       setIsLoading(false);
       
-      // Log success with details
       logger.debug('[LOGIN SCREEN] ✅ Login successful', {
         userId: user?.uid,
         email: user?.email,
@@ -115,51 +114,61 @@ const LoginScreen = ({ navigation }) => {
         firebaseUserId: auth.currentUser?.uid
       });
       
-      // Try immediate navigation as primary method, useEffect as backup
-      // Check both returned user and Firebase currentUser
       const currentUser = user || auth.currentUser;
       if (currentUser) {
         logger.debug('[LOGIN SCREEN] User available immediately, calling navigation.replace');
-        // Small delay to ensure Firebase auth state is fully propagated
         setTimeout(() => {
           navigation.replace('MainApp');
         }, 200);
       } else {
         logger.debug('[LOGIN SCREEN] User not immediately available, waiting for AuthContext update');
       }
-      // Navigation will also happen via useEffect in LoginScreen.web.js when user state updates (backup)
     } catch (error) {
       setIsLoading(false);
       
-      let errorMessage = 'Ocurrió un error. Por favor intenta de nuevo.';
-      
-      if (error.code) {
-        switch (error.code) {
+      let errorMessage = 'No pudimos iniciar sesión. Intenta de nuevo.';
+      const code = error?.code;
+
+      if (code) {
+        switch (code) {
           case 'auth/user-not-found':
-            errorMessage = 'No encontramos una cuenta con este correo electrónico.';
+            errorMessage = 'No hay ninguna cuenta con este correo. Crea una cuenta o revisa el correo.';
+            setEmailError(errorMessage);
             break;
           case 'auth/wrong-password':
-            errorMessage = 'Contraseña incorrecta';
+            errorMessage = 'Contraseña incorrecta. Revisa tu contraseña o usa "¿Olvidaste tu contraseña?".';
+            setPasswordError('Contraseña incorrecta');
             setShowForgotPassword(true);
             break;
           case 'auth/invalid-credential':
-            errorMessage = 'Correo o contraseña incorrectos';
+            errorMessage = 'Correo o contraseña incorrectos. Revisa los datos o crea una cuenta si no tienes una.';
             setShowForgotPassword(true);
             break;
           case 'auth/invalid-email':
-            errorMessage = 'Correo electrónico no válido';
+            errorMessage = 'Correo electrónico no válido.';
+            setEmailError(errorMessage);
             break;
           case 'auth/too-many-requests':
-            errorMessage = 'Demasiados intentos fallidos. Intenta más tarde';
+            errorMessage = 'Demasiados intentos. Espera un momento e intenta de nuevo.';
+            break;
+          case 'auth/user-disabled':
+            errorMessage = 'Esta cuenta ha sido desactivada. Contacta a soporte si crees que es un error.';
+            break;
+          case 'auth/network-request-failed':
+            errorMessage = 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = 'Inicio de sesión con correo no está habilitado. Contacta a soporte.';
             break;
           default:
-            errorMessage = error.message || errorMessage;
+            errorMessage = error?.message || errorMessage;
         }
       } else {
-        errorMessage = error.message || errorMessage;
+        errorMessage = error?.message || errorMessage;
       }
-      
-      Alert.alert('Error', errorMessage);
+
+      setAuthError(errorMessage);
+      logger.debug('[LOGIN SCREEN] Sign-in error:', code, errorMessage);
     }
   };
 
@@ -167,6 +176,7 @@ const LoginScreen = ({ navigation }) => {
   const handleRegister = async () => {
     setEmailError(null);
     setPasswordError(null);
+    setAuthError(null);
     setShowForgotPassword(false);
 
     if (!email.trim()) {
@@ -190,7 +200,7 @@ const LoginScreen = ({ navigation }) => {
     }
 
     if (!acceptTerms) {
-      Alert.alert('Atención', 'Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
+      setAuthError('Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
       return;
     }
 
@@ -199,72 +209,108 @@ const LoginScreen = ({ navigation }) => {
       const initialDisplayName = email.split('@')[0];
       const user = await authService.registerUser(email, password, initialDisplayName);
       setIsLoading(false);
-      // Immediately navigate after successful registration
-      // Check both the returned user and auth.currentUser as fallback
       if (user || auth.currentUser) {
         logger.debug('[LOGIN SCREEN] Registration successful, navigating to MainApp');
         navigation.replace('MainApp');
       }
-      // Navigation will also happen via useEffect when user state updates (backup)
     } catch (error) {
       setIsLoading(false);
       
-      let errorMessage = 'Ocurrió un error al crear la cuenta. Por favor intenta de nuevo.';
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'Ya existe una cuenta con este correo electrónico';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'La contraseña es muy débil. Usa al menos 6 caracteres';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Correo electrónico no válido';
-          break;
+      let errorMessage = 'No pudimos crear la cuenta. Intenta de nuevo.';
+      const code = error?.code;
+
+      if (code) {
+        switch (code) {
+          case 'auth/email-already-in-use':
+            errorMessage = 'Ya existe una cuenta con este correo. Inicia sesión o usa "¿Olvidaste tu contraseña?" si no la recuerdas.';
+            setEmailError('Este correo ya está registrado');
+            break;
+          case 'auth/weak-password':
+            errorMessage = 'La contraseña es muy débil. Usa al menos 6 caracteres.';
+            setPasswordError('Mínimo 6 caracteres');
+            break;
+          case 'auth/invalid-email':
+            errorMessage = 'Correo electrónico no válido.';
+            setEmailError(errorMessage);
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = 'El registro con correo no está habilitado. Contacta a soporte.';
+            break;
+          case 'auth/network-request-failed':
+            errorMessage = 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+            break;
+          default:
+            errorMessage = error?.message || errorMessage;
+        }
+      } else {
+        errorMessage = error?.message || errorMessage;
       }
-      
-      Alert.alert('Error', errorMessage);
+
+      setAuthError(errorMessage);
+      logger.debug('[LOGIN SCREEN] Register error:', code, errorMessage);
     }
   };
 
   // Google Sign-In handler
   const handleGoogleLogin = async () => {
+    setAuthError(null);
     setIsLoading(true);
     try {
       const result = await googleAuthService.signIn();
       
       if (result.success) {
         setIsLoading(false);
-        // Navigation will happen via useEffect when user state updates
+        const currentUser = result.user || auth.currentUser;
+        if (currentUser) {
+          logger.debug('[LOGIN SCREEN] Google sign-in successful, calling navigation.replace (same as email sign-in)');
+          setTimeout(() => {
+            navigation.replace('MainApp');
+          }, 200);
+        }
       } else {
-        Alert.alert('Error', result.error || 'Error al iniciar sesión con Google');
         setIsLoading(false);
+        setAuthError(result.error || 'No se pudo iniciar sesión con Google. Intenta de nuevo.');
       }
     } catch (error) {
       logger.error('Google Sign-In Error:', error);
-      Alert.alert('Error', 'Error al iniciar sesión con Google');
       setIsLoading(false);
+      setAuthError(error?.message || 'Error al iniciar sesión con Google. Intenta de nuevo.');
     }
   };
 
   // Forgot Password handler
   const handleForgotPassword = async () => {
+    setAuthError(null);
     if (!email.trim()) {
-      Alert.alert('Atención', 'Por favor ingresa tu correo electrónico primero');
+      setAuthError('Ingresa tu correo electrónico para recuperar tu contraseña.');
+      setEmailError('Ingresa tu correo');
       return;
     }
 
     if (!validateEmail(email)) {
-      Alert.alert('Atención', 'Por favor ingresa un correo electrónico válido');
+      setAuthError('Correo electrónico no válido.');
+      setEmailError('Correo no válido');
       return;
     }
 
     try {
       await authService.resetPassword(email);
+      setAuthError(null);
       Alert.alert('Éxito', 'Revisa tu correo (spam). Puede estar en la carpeta de spam.');
     } catch (error) {
       logger.error('Password Reset Error:', error);
-      Alert.alert('Error', 'Error al enviar el email de recuperación');
+      const code = error?.code;
+      let msg = 'No pudimos enviar el correo de recuperación. Intenta de nuevo.';
+      if (code === 'auth/user-not-found') {
+        msg = 'No hay ninguna cuenta con este correo. Revisa el correo o crea una cuenta.';
+      } else if (code === 'auth/invalid-email') {
+        msg = 'Correo electrónico no válido.';
+      } else if (code === 'auth/too-many-requests') {
+        msg = 'Demasiados intentos. Espera un momento e intenta de nuevo.';
+      } else if (error?.message) {
+        msg = error.message;
+      }
+      setAuthError(msg);
     }
   };
 
@@ -348,6 +394,13 @@ const LoginScreen = ({ navigation }) => {
               </View>
             )}
 
+            {/* Auth error message (sign-in / sign-up failures) */}
+            {authError && (
+              <View style={styles.authErrorBlock}>
+                <Text style={styles.authErrorText}>{authError}</Text>
+              </View>
+            )}
+
             {/* Main Action Button */}
             <TouchableOpacity
               style={[
@@ -376,6 +429,7 @@ const LoginScreen = ({ navigation }) => {
                 setIsSignUp(!isSignUp);
                 setEmailError(null);
                 setPasswordError(null);
+                setAuthError(null);
                 setShowForgotPassword(false);
                 setAcceptTerms(false);
               }}
@@ -479,6 +533,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
     marginLeft: 4,
+  },
+  authErrorBlock: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 107, 107, 0.12)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.35)',
+  },
+  authErrorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   termsContainer: {
     width: '100%',

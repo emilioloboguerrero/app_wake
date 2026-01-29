@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import logger from '../utils/logger';
+import { isSafariWeb } from '../utils/platform';
 
 const AuthContext = createContext({});
 
@@ -26,6 +27,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (initialized) return; // Prevent multiple initializations
     
+    const safari = isSafariWeb();
+    logger.prod('AUTH init', { safari, fallbackMs: safari ? 3000 : 10000 });
     logger.debug('[WAKE] 🔐 ========================================');
     logger.debug('[WAKE] 🔐 AuthProvider: Setting up auth listener');
     logger.debug('[WAKE] 🔐 ========================================');
@@ -37,6 +40,7 @@ export const AuthProvider = ({ children }) => {
     // CRITICAL: Check currentUser IMMEDIATELY before setting up listener
     // This helps us see if IndexedDB has restored auth state
     const immediateCheck = auth.currentUser;
+    logger.prod('AUTH immediate auth.currentUser', immediateCheck ? immediateCheck.uid : null);
     logger.debug('[WAKE] 🔐 [IMMEDIATE CHECK] auth.currentUser:', immediateCheck ? `User: ${immediateCheck.uid}` : 'null');
     logger.debug('[WAKE] 🔐 [IMMEDIATE CHECK] auth.currentUser?.email:', immediateCheck?.email || 'N/A');
     
@@ -53,6 +57,7 @@ export const AuthProvider = ({ children }) => {
       const isInitialState = !initialAuthStateReceived;
       initialAuthStateReceived = true;
       
+      logger.prod('AUTH onAuthStateChanged', isInitialState ? 'INITIAL' : 'SUBSEQUENT', user ? user.uid : null);
       logger.debug(`[WAKE] 🔐 [onAuthStateChanged] ${isInitialState ? 'INITIAL' : 'SUBSEQUENT'} Fired! User:`, user ? `User: ${user.uid}, Email: ${user.email}` : 'null');
       
       if (isMounted) {
@@ -69,6 +74,7 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
       }
     }, (error) => {
+      logger.prod('AUTH onAuthStateChanged ERROR', String(error?.message || error));
       logger.error('[WAKE] 🔐 [onAuthStateChanged] ❌ Error in auth state listener:', error);
       if (isMounted) {
         setLoading(false);
@@ -96,6 +102,7 @@ export const AuthProvider = ({ children }) => {
           logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] auth.currentUser after ${delay}ms:`, currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'null');
           
           if (currentUser) {
+            logger.prod('AUTH delay check', label, 'user', currentUser.uid);
             logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ Found user after delay check (IndexedDB restored)`);
             // Update state only if still mounted
             if (isMounted) {
@@ -104,6 +111,7 @@ export const AuthProvider = ({ children }) => {
               logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ AuthContext initialized with restored user from IndexedDB`);
             }
           } else {
+            if (delay >= 1000) logger.prod('AUTH delay check', label, 'no user');
             logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ No user found after delay check`);
             // Only set loading to false on later checks to avoid premature state updates
             if (delay >= 1000 && isMounted) {
@@ -112,6 +120,7 @@ export const AuthProvider = ({ children }) => {
             }
           }
         } catch (error) {
+          logger.prod('AUTH delay check ERROR', label, String(error?.message || error));
           logger.error(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ Error in delay check:`, error);
           if (delay >= 1000 && isMounted) {
             setLoading(false);
@@ -132,24 +141,28 @@ export const AuthProvider = ({ children }) => {
     checkAfterDelay(1000, '1s');
     checkAfterDelay(2000, '2s');
     
-    // Fallback timeout - if auth state doesn't resolve in 10 seconds, check currentUser directly
+    // Safari workaround: Firebase Auth + IndexedDB persistence often never fires onAuthStateChanged
+    // in Safari (desktop/iOS). Use a shorter fallback so users see login instead of infinite loading.
+    const fallbackMs = isSafariWeb() ? 3000 : 10000;
     const timeout = setTimeout(() => {
       if (isMounted && loading) {
-        logger.debug('[WAKE] 🔐 [TIMEOUT FALLBACK] Auth timeout (10s) - checking currentUser directly as fallback');
+        logger.prod('AUTH TIMEOUT FALLBACK', fallbackMs + 'ms', 'Safari:', isSafariWeb());
         try {
           const currentUser = auth.currentUser;
-          logger.debug('[WAKE] 🔐 [TIMEOUT FALLBACK] currentUser:', currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'No user');
+          logger.prod('AUTH TIMEOUT FALLBACK currentUser', currentUser ? currentUser.uid : null);
+          logger.debug(`[WAKE] 🔐 [TIMEOUT FALLBACK] Auth timeout (${fallbackMs}ms) - checking currentUser directly as fallback${isSafariWeb() ? ' [Safari]' : ''}`);
           setUser(currentUser);
           setLoading(false);
           logger.debug('[WAKE] 🔐 [TIMEOUT FALLBACK] ✅ Set user and loading to false');
         } catch (error) {
+          logger.prod('AUTH TIMEOUT FALLBACK ERROR', String(error?.message || error));
           logger.error('[WAKE] 🔐 [TIMEOUT FALLBACK] ❌ Error in timeout fallback:', error);
           setLoading(false);
         }
       } else {
-        logger.debug('[WAKE] 🔐 [TIMEOUT FALLBACK] Skipped - not loading or unmounted');
+        logger.prod('AUTH TIMEOUT FALLBACK skipped', 'isMounted:', isMounted, 'loading:', loading);
       }
-    }, 10000); // 10 seconds timeout
+    }, fallbackMs);
 
     return () => {
       isMounted = false;

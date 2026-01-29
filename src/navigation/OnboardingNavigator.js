@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,8 +34,14 @@ const OnboardingNavigator = ({ onComplete }) => {
   };
 
   const handleComplete = async () => {
+    const uid = user?.uid;
+    if (!uid) {
+      logger.warn('[ONBOARDING_NAV] handleComplete: no uid, skipping save');
+      if (onComplete) onComplete();
+      return;
+    }
+
     try {
-      // Organize all onboarding answers under onboardingData map
       const userData = {
         onboardingData: {
           motivation: onboardingAnswers.motivation || [],
@@ -48,11 +55,11 @@ const OnboardingNavigator = ({ onComplete }) => {
         profileCompleted: true,
       };
 
-      logger.debug('📝 Saving onboarding data:', userData.onboardingData);
+      logger.debug('📝 Saving onboarding data. uid:', uid, userData.onboardingData);
 
       // Cache onboarding status locally for offline access
       try {
-        await AsyncStorage.setItem(`onboarding_status_${user.uid}`, JSON.stringify({
+        await AsyncStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
           onboardingCompleted: true,
           profileCompleted: true,
           cachedAt: Date.now()
@@ -60,21 +67,31 @@ const OnboardingNavigator = ({ onComplete }) => {
         logger.debug('💾 Onboarding status cached locally');
       } catch (cacheError) {
         logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
-        // Continue anyway - Firestore update is more important
       }
 
-      // Update user profile with onboarding data
-      await hybridDataService.updateUserProfile(user.uid, userData);
+      // Web: update the same cache AuthenticatedLayout reads so refetch sees completed status
+      if (Platform.OS === 'web') {
+        try {
+          const webStorageService = require('../services/webStorageService').default;
+          await webStorageService.setItem(`onboarding_status_${uid}`, JSON.stringify({
+            onboardingCompleted: true,
+            profileCompleted: true,
+            cachedAt: Date.now()
+          }));
+          logger.debug('💾 Onboarding status written to web cache for layout');
+        } catch (e) {
+          logger.warn('[ONBOARDING_NAV] Web cache write failed:', e?.message);
+        }
+      }
 
-      logger.debug('✅ Onboarding completed successfully');
-      
-      // Trigger completion callback
+      await hybridDataService.updateUserProfile(uid, userData);
+      logger.debug('✅ Onboarding completed successfully. uid:', uid);
+
       if (onComplete) {
         onComplete();
       }
     } catch (error) {
       logger.error('Error completing onboarding:', error);
-      // Still call onComplete to avoid getting stuck
       if (onComplete) {
         onComplete();
       }
@@ -102,7 +119,7 @@ const OnboardingNavigator = ({ onComplete }) => {
       <Stack.Screen name="OnboardingQuestion3" component={WrappedQuestion3} />
       <Stack.Screen name="OnboardingQuestion4" component={WrappedQuestion4} />
       <Stack.Screen name="OnboardingQuestion5" component={WrappedQuestion5} />
-      <Stack.Screen name="OnboardingComplete" component={WrappedComplete} />
+      <Stack.Screen name="OnboardingComplete" component={WrappedComplete} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
