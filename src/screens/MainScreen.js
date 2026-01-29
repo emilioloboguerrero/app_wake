@@ -57,7 +57,7 @@ const MainScreen = ({ navigation, route }) => {
   // Calculate card dimensions based on current screen size
   const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
   const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
-  const CARD_HEIGHT = Math.max(500, screenHeight * 0.65); // 68% of screen height, min 500
+  const CARD_HEIGHT = Math.max(500, screenHeight * 0.62); // 68% of screen height, min 500
 
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(() => StyleSheet.create({

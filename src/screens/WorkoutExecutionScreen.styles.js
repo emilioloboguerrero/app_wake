@@ -1,18 +1,18 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 
-// Styles function - takes screenWidth and screenHeight as parameters
-// This allows styles to be defined at module level while using dimensions from component
-const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
+// Styles function - takes screenWidth, screenHeight, and optional insets (for safe area in modals)
+const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
+    overflow: 'visible',
   },
   swipeWrapper: {
     flex: 1,
     overflow: 'hidden',
   },
-      scrollContainer: {
-        flex: 1,
+  scrollContainer: {
+    flex: 1,
   },
   swipeContainer: {
     flex: 1,
@@ -30,11 +30,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollContentContainer: {
     flexGrow: 1,
     paddingBottom: 0,
+    overflow: 'visible',
   },
   content: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
     paddingTop: Math.max(10, screenHeight * 0.012),
     paddingBottom: 0,
+    overflow: 'visible',
   },
       exerciseTitleSection: {
         marginBottom: Math.max(10, screenHeight * 0.012),
@@ -61,9 +63,9 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(400, screenHeight * 0.53), // 400px min, 50% of screen
+        height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
-        overflow: 'hidden', // Match videoCard overflow
+        overflow: 'visible',
         position: 'relative', // Match videoCard position
         flexDirection: 'column',
         justifyContent: 'flex-start',
@@ -188,6 +190,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
       topCardsContainer: {
         marginBottom: Math.max(5, screenHeight * 0.006),
         overflow: 'visible',
+        // Break out of content padding so ScrollView is full width; lateral peek like DailyWorkoutScreen
+        marginHorizontal: -Math.max(24, screenWidth * 0.06),
+      },
+      topCardsContent: {
+        gap: 15,
+        overflow: 'visible',
+        paddingHorizontal: Math.max(24, screenWidth * 0.06),
       },
       topCardsIndicator: {
     alignItems: 'center',
@@ -196,11 +205,14 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
       horizontalCardsScrollView: {
         marginBottom: Math.max(15, screenHeight * 0.018),
         overflow: 'visible',
+        // Break out of content padding so objectives cards spill laterally (like top cards)
+        marginHorizontal: -Math.max(24, screenWidth * 0.06),
       },
       horizontalCardsContainer: {
         flexDirection: 'row',
         gap: Math.max(10, screenWidth * 0.025),
         overflow: 'visible',
+        paddingHorizontal: Math.max(24, screenWidth * 0.06),
       },
       horizontalCard: {
         minWidth: Math.max(140, screenWidth * 0.35),
@@ -219,6 +231,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
         alignItems: 'center',
         padding: Math.max(15, screenWidth * 0.04),
         paddingRight: Math.max(25, screenWidth * 0.06), // Extra padding for info icon
+        overflow: 'visible',
       },
       metricTitle: {
         fontSize: Math.min(screenWidth * 0.03, 12),
@@ -640,6 +653,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   addExerciseModalContainer: {
     flex: 1,
     backgroundColor: '#1A1A1A',
+    paddingTop: Platform.OS === 'web' ? 50 : Math.max(50, (insets.top || 0) + 50),
   },
   addExerciseModalHeader: {
     flexDirection: 'row',
@@ -647,6 +661,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     paddingLeft: Math.max(30, screenWidth * 0.12),
+    paddingTop: 20,
   },
   addExerciseModalHeaderActions: {
     flexDirection: 'row',
@@ -789,6 +804,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  addExerciseVideoDimmingLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 1,
+  },
   addExerciseVideoPauseOverlay: {
     position: 'absolute',
     top: 0,
@@ -797,7 +821,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 2,
   },
   addExerciseVideoVolumeOverlay: {
     position: 'absolute',
@@ -809,6 +833,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 3,
   },
   addExerciseVideoPlaceholder: {
     width: '100%',
@@ -820,6 +845,23 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   addExerciseVideoPlaceholderText: {
     color: '#ffffff',
     fontSize: Math.min(screenWidth * 0.025, 10),
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  addExerciseVideoPreviewPlaceholder: {
+    width: '85%',
+    height: 430,
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    marginBottom: Math.max(12, screenHeight * 0.015),
+    overflow: 'hidden',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addExerciseVideoPreviewPlaceholderText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: Math.min(screenWidth * 0.035, 14),
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -905,6 +947,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   filterModalContainer: {
     flex: 1,
     backgroundColor: '#1A1A1A',
+    paddingTop: Platform.OS === 'web' ? 50 : Math.max(50, (insets.top || 0) + 50),
   },
   filterModalHeader: {
     flexDirection: 'row',
@@ -1379,6 +1422,245 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   saveSetButtonTextDisabled: {
     color: '#cccccc',
   },
+  // Timer button — gold when available (matches inputSetButton)
+  timerButton: {
+    width: Math.max(60, screenWidth * 0.15),
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    paddingVertical: Math.max(14, screenHeight * 0.017),
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  // Timer Modal — big lock-screen style time, gold accents
+  timerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  timerModal: {
+    backgroundColor: '#2a2a2a',
+    borderTopLeftRadius: Math.max(20, screenWidth * 0.05),
+    borderTopRightRadius: Math.max(20, screenWidth * 0.05),
+    paddingBottom: Math.max(24, screenHeight * 0.03),
+    maxHeight: '85%',
+  },
+  timerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    paddingVertical: Math.max(14, screenHeight * 0.018),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  timerModalTitle: {
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  timerModalHeaderEnded: {
+    flex: 1,
+    marginRight: Math.max(12, screenWidth * 0.03),
+  },
+  timerModalSerieLabel: {
+    fontSize: Math.min(screenWidth * 0.035, 14),
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: Math.max(2, screenHeight * 0.002),
+  },
+  timerModalHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Math.max(8, screenWidth * 0.02),
+  },
+  timerTotalLabel: {
+    fontSize: Math.min(screenWidth * 0.03, 12),
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  timerTotalValue: {
+    fontSize: Math.min(screenWidth * 0.038, 15),
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  timerModalCloseButton: {
+    padding: Math.max(4, screenWidth * 0.01),
+    marginLeft: Math.max(4, screenWidth * 0.01),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerModalCloseButtonText: {
+    fontSize: Math.min(screenWidth * 0.05, 20),
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '600',
+  },
+  timerModalContent: {
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    paddingTop: Math.max(12, screenHeight * 0.015),
+  },
+  timerRestHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: Math.max(160, screenHeight * 0.22),
+    paddingVertical: Math.max(24, screenHeight * 0.03),
+  },
+  timerRestHeroHollowWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 240,
+  },
+  timerRestHeroSvg: {
+    overflow: 'visible',
+  },
+  timerDurationRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: Math.max(18, screenHeight * 0.022),
+  },
+  timerCustomColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  timerCustomCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: Math.max(12, screenWidth * 0.03),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    paddingVertical: Math.max(12, screenHeight * 0.015),
+    paddingHorizontal: Math.max(12, screenWidth * 0.03),
+  },
+  timerPickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Math.max(20, screenWidth * 0.05),
+  },
+  timerPickerColumn: {
+    alignItems: 'center',
+  },
+  timerPickerScroll: {
+    height: 132,
+    width: Math.max(64, screenWidth * 0.16),
+  },
+  timerPickerContent: {
+    paddingVertical: 44,
+  },
+  timerPickerItem: {
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerPickerItemText: {
+    fontSize: Math.min(screenWidth * 0.048, 19),
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.35)',
+  },
+  timerPickerItemTextSelected: {
+    color: 'rgba(255, 255, 255, 1)',
+    fontWeight: '700',
+    fontSize: Math.min(screenWidth * 0.055, 22),
+  },
+  timerPickerUnit: {
+    fontSize: Math.min(screenWidth * 0.028, 12),
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: Math.max(4, screenHeight * 0.005),
+  },
+  timerPrimaryBtn: {
+    width: '100%',
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    paddingVertical: Math.max(16, screenHeight * 0.02),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 77, 0.5)',
+  },
+  timerPrimaryBtnStop: {
+    backgroundColor: '#3a3a3a',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  timerPrimaryBtnDisabled: {
+    backgroundColor: '#3a3a3a',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    opacity: 0.7,
+  },
+  timerPrimaryBtnText: {
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+    color: 'rgba(191, 168, 77, 1)',
+  },
+  timerPrimaryBtnTextStop: {
+    color: '#ffffff',
+  },
+  timerPausedButtonsRow: {
+    flexDirection: 'row',
+    gap: Math.max(12, screenWidth * 0.03),
+    width: '100%',
+  },
+  timerPrimaryBtnResume: {
+    flex: 1,
+    backgroundColor: 'rgba(191, 168, 77, 0.25)',
+    borderColor: 'rgba(191, 168, 77, 0.6)',
+  },
+  timerPrimaryBtnDiscard: {
+    flex: 1,
+    backgroundColor: '#3a3a3a',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  timerPrimaryBtnTextResume: {
+    color: 'rgba(191, 168, 77, 1)',
+  },
+  timerPrimaryBtnTextDiscard: {
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  timerEndedObjectivesTitle: {
+    fontSize: Math.min(screenWidth * 0.055, 20),
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: Math.max(14, screenHeight * 0.018),
+    textAlign: 'center',
+  },
+  timerEndedObjectivesListScroll: {
+    maxHeight: Math.min(320, screenHeight * 0.4),
+    marginBottom: Math.max(14, screenHeight * 0.018),
+  },
+  timerObjectiveGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  timerObjectiveCard: {
+    width: '48%',
+    minHeight: Math.max(76, screenHeight * 0.095),
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: Math.max(12, screenWidth * 0.03),
+    padding: Math.max(14, screenWidth * 0.035),
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    marginBottom: Math.max(10, screenHeight * 0.012),
+  },
+  timerObjectiveCardFullWidth: {
+    width: '100%',
+  },
+  timerObjectiveCardLabel: {
+    fontSize: Math.min(screenWidth * 0.032, 13),
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.75)',
+    marginBottom: Math.max(4, screenHeight * 0.005),
+  },
+  timerObjectiveCardValue: {
+    fontSize: Math.min(screenWidth * 0.048, 19),
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  timerPrimaryBtnTextDisabled: {
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
   // Video card styles (from WarmupScreen)
   videoCard: {
     backgroundColor: '#2a2a2a',
@@ -1392,8 +1674,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(400, screenHeight * 0.53), // 400px min, 50% of screen (matches muscles card)
-    overflow: 'hidden',
+    height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen (matches muscles card)
+    overflow: 'visible',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),
   },
@@ -1403,11 +1685,21 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
+  // Match WarmupScreen: no position on container so overlays position relative to videoCard
   videoContainer: {
     flex: 1,
-    position: 'relative',
+    width: '100%',
+    height: '100%',
+  },
+  /* Wrapper at zIndex 0; global CSS [data-video-card] video forces <video> element to z-index -1 so overlays paint on top */
+  videoWrapper: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    zIndex: 0,
   },
   video: {
+    flex: 1,
     width: '100%',
     height: '100%',
     borderRadius: Math.max(12, screenWidth * 0.04),
@@ -1423,6 +1715,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontSize: Math.min(screenWidth * 0.04, 16),
     textAlign: 'center',
   },
+  videoDimmingLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 10,
+  },
   pauseOverlay: {
     position: 'absolute',
     top: 0,
@@ -1431,13 +1732,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 10,
   },
   volumeIconContainer: {
     position: 'absolute',
     top: Math.max(12, screenHeight * 0.015),
     right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
+    zIndex: 10,
   },
   volumeIconButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1452,7 +1753,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     position: 'absolute',
     top: Math.max(60, screenHeight * 0.075),
     right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
+    zIndex: 10,
   },
   restartIconButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1783,6 +2084,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  swapModalDimmingLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 1,
+  },
   swapModalPauseOverlay: {
     position: 'absolute',
     top: 0,
@@ -1791,7 +2101,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 2,
   },
   swapModalVolumeOverlay: {
     position: 'absolute',
@@ -1803,6 +2113,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 3,
   },
   currentExerciseContent: {
     width: '100%',

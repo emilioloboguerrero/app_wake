@@ -25,6 +25,7 @@ import {
   Keyboard,
   Platform,
   TouchableWithoutFeedback,
+  Vibration,
 } from 'react-native';
 
 // Essential hooks and utilities - keep as direct imports (lightweight)
@@ -32,10 +33,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { useVideo } from '../contexts/VideoContext';
 import { isWeb } from '../utils/platform';
 import logger from '../utils/logger.js';
+import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
+import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
 
-// Gesture handler and video - keep as direct imports (needed for hooks)
+// Gesture handler and video - expo-video (VideoView + useVideoPlayer) with custom overlay UI on all platforms
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { VideoView, useVideoPlayer } from 'expo-video';
 
@@ -301,6 +305,7 @@ import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
+import SvgTimer from '../components/icons/vectors_fig/Calendar/Timer';
 import SvgArrowLeftRight from '../components/icons/SvgArrowLeftRight';
 import SvgPlus from '../components/icons/SvgPlus';
 import SvgMinus from '../components/icons/SvgMinus';
@@ -311,6 +316,7 @@ import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgFileRemove from '../components/icons/vectors_fig/File/FileRemove';
 import SvgFileUpload from '../components/icons/vectors_fig/File/FileUpload';
+import Svg, { Defs, G, Text as SvgText, Filter, FeGaussianBlur } from 'react-native-svg';
 
 // ============================================================================
 // LAZY LOADERS - Constants (loaded only when needed)
@@ -372,6 +378,88 @@ const createStableInputHandler = (exerciseIndex, setIndex, field, updateSetData)
     updateSetData(exerciseIndex, setIndex, field, value);
   };
 };
+
+// Add-exercise modal card: defined at module level so it keeps a stable identity and does not remount on parent re-renders (fixes video re-render on play/pause tap).
+const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoTap, onAddExercise, isVideoPaused, isMuted, toggleMute, videoPlayer, styles }) => {
+  return (
+    <TouchableOpacity
+      key={`${exercise.libraryId}_${exercise.name}`}
+      style={[
+        isExpanded ? styles.addExerciseExpandedCard : styles.addExerciseCard,
+        isExpanded ? styles.addExerciseExpandedCardBorder : styles.addExerciseCardBorder
+      ]}
+      onPress={() => onCardTap(exercise, index)}
+    >
+      {isExpanded ? (
+        <View style={styles.addExerciseVideoContainer}>
+          {exercise.video_url ? (
+            <VideoCardWebWrapper>
+              <TouchableOpacity
+                style={styles.addExerciseVideoWrapper}
+                onPress={onVideoTap}
+                activeOpacity={1}
+              >
+                <VideoView
+                  player={videoPlayer}
+                  style={styles.addExerciseVideo}
+                  contentFit="cover"
+                  fullscreenOptions={{ allowed: false }}
+                  allowsPictureInPicture={false}
+                  nativeControls={false}
+                  showsTimecodes={false}
+                  playsInline
+                />
+                {isVideoPaused && (
+                  <VideoOverlayWebWrapper pointerEvents="none">
+                    <View style={styles.addExerciseVideoDimmingLayer} pointerEvents="none" />
+                  </VideoOverlayWebWrapper>
+                )}
+                {isVideoPaused && (
+                  <VideoOverlayWebWrapper>
+                    <View style={styles.addExerciseVideoPauseOverlay}>
+                      <SvgPlay width={48} height={48} />
+                    </View>
+                  </VideoOverlayWebWrapper>
+                )}
+                {isVideoPaused && (
+                  <VideoOverlayWebWrapper>
+                    <TouchableOpacity
+                      style={styles.addExerciseVideoVolumeOverlay}
+                      onPress={toggleMute}
+                    >
+                      {isMuted ? (
+                        <SvgVolumeOff width={24} height={24} color="#ffffff" />
+                      ) : (
+                        <SvgVolumeMax width={24} height={24} color="#ffffff" />
+                      )}
+                    </TouchableOpacity>
+                  </VideoOverlayWebWrapper>
+                )}
+              </TouchableOpacity>
+            </VideoCardWebWrapper>
+          ) : (
+            <View style={styles.addExerciseVideoPlaceholder}>
+              <Text style={styles.addExerciseVideoPlaceholderText}>Sin video</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+      <View style={styles.addExerciseCardContent}>
+        <View style={styles.addExerciseContent}>
+          <Text style={isExpanded ? styles.addExerciseExpandedName : styles.addExerciseName}>
+            {exercise.name}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addExerciseButton}
+          onPress={() => onAddExercise(exercise)}
+        >
+          <Text style={styles.addExerciseButtonText}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 // Custom hook for set data management (consolidated state)
 const useSetData = (workout) => {
@@ -492,6 +580,7 @@ const useSetData = (workout) => {
 const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   // Track if component is mounted for setTimeout cleanup
   const isMountedRef = useRef(true);
@@ -514,17 +603,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, []);
   
-  // Create styles with dimensions - memoized to prevent recalculation on every render
+  // Create styles with dimensions and insets - memoized to prevent recalculation on every render
   const styles = useMemo(() => {
     const stylesStartTime = performance.now();
-    const stylesResult = createStyles(screenWidth, screenHeight);
+    const stylesResult = createStyles(screenWidth, screenHeight, insets);
     const stylesDuration = performance.now() - stylesStartTime;
     // Only log if slow (performance issue)
     if (stylesDuration > 200) {
       logger.warn(`[TIMING] ⚠️ SLOW: createStyles took ${stylesDuration.toFixed(2)}ms (threshold: 200ms)`);
     }
     return stylesResult;
-  }, [screenWidth, screenHeight]);
+  }, [screenWidth, screenHeight, insets]);
   
   // Create loading overlay styles - memoized to prevent recalculation on every render
   const loadingOverlayStyles = useMemo(() => {
@@ -749,9 +838,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [isMuted]);
   
-  // Add exercise modal video state
-  const addExerciseModalVideoPlayer = useVideoPlayer('', addExerciseModalVideoPlayerCallback);
+  // Add exercise modal video state: single player, source set via replace() after VideoView mounts (so _mountedVideos is non-empty on web)
   const [addExerciseModalVideoUri, setAddExerciseModalVideoUri] = useState('');
+  const addExerciseModalVideoPlayer = useVideoPlayer('', addExerciseModalVideoPlayerCallback);
   const [expandedAddExerciseIndex, setExpandedAddExerciseIndex] = useState(null);
   const [isAddExerciseModalVideoPaused, setIsAddExerciseModalVideoPaused] = useState(true);
   
@@ -807,90 +896,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return exercises.sort((a, b) => a.name.localeCompare(b.name));
   }, [availableExercises, searchQuery, selectedMuscles, selectedImplements, workout?.exercises, isEditMode, editingExercises]);
   
-  // Memoized exercise card component for better performance
-  const addExerciseCardStartTime = performance.now();
-  logger.debug(`[TIMING] [CHECKPOINT] Before AddExerciseCard memo() - ${addExerciseCardStartTime.toFixed(2)}ms`);
-  const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoTap, onAddExercise, isVideoPaused, isMuted, toggleMute }) => {
-    const renderStartTime = performance.now();
-    logger.debug(`[RENDER] [CHECKPOINT] AddExerciseCard render started - ${renderStartTime.toFixed(2)}ms`);
-    return (
-    <TouchableOpacity
-      key={`${exercise.libraryId}_${exercise.name}`}
-      style={[
-        isExpanded ? styles.addExerciseExpandedCard : styles.addExerciseCard,
-        isExpanded ? styles.addExerciseExpandedCardBorder : styles.addExerciseCardBorder
-      ]}
-      onPress={() => onCardTap(exercise, index)}
-    >
-      {isExpanded ? (
-        <View style={styles.addExerciseVideoContainer}>
-          {exercise.video_url ? (
-            <TouchableOpacity 
-              style={styles.addExerciseVideoWrapper}
-              onPress={onVideoTap}
-              activeOpacity={1}
-            >
-              <VideoView 
-                player={addExerciseModalVideoPlayer}
-                style={[styles.addExerciseVideo, { opacity: 0.7 }]}
-                contentFit="cover"
-                fullscreenOptions={{ allowed: false }}
-                allowsPictureInPicture={false}
-                nativeControls={false}
-                showsTimecodes={false}
-              />
-              
-              {/* Play icon overlay */}
-              {isVideoPaused && (
-                <View style={styles.addExerciseVideoPauseOverlay}>
-                  <SvgPlay width={48} height={48} />
-                </View>
-              )}
-              
-              {/* Volume icon overlay - only show when paused */}
-              {isVideoPaused && (
-                <TouchableOpacity
-                  style={styles.addExerciseVideoVolumeOverlay}
-                  onPress={toggleMute}
-                >
-                  {isMuted ? (
-                    <SvgVolumeOff width={24} height={24} color="#ffffff" />
-                  ) : (
-                    <SvgVolumeMax width={24} height={24} color="#ffffff" />
-                  )}
-                </TouchableOpacity>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.addExerciseVideoPlaceholder}>
-              <Text style={styles.addExerciseVideoPlaceholderText}>Sin video</Text>
-            </View>
-          )}
-        </View>
-      ) : null}
-      
-      <View style={styles.addExerciseCardContent}>
-        <View style={styles.addExerciseContent}>
-          <Text style={isExpanded ? styles.addExerciseExpandedName : styles.addExerciseName}>
-            {exercise.name}
-          </Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.addExerciseButton}
-          onPress={() => onAddExercise(exercise)}
-        >
-          <Text style={styles.addExerciseButtonText}>+</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-    );
-  });
-  const addExerciseCardDuration = performance.now() - addExerciseCardStartTime;
-  logger.debug(`[TIMING] [CHECKPOINT] AddExerciseCard memo completed - took ${addExerciseCardDuration.toFixed(2)}ms`);
-  if (addExerciseCardDuration > 100) {
-    logger.warn(`[TIMING] ⚠️ SLOW: AddExerciseCard memo took ${addExerciseCardDuration.toFixed(2)}ms (threshold: 100ms)`);
-  }
-  
   // Objective info modal state
   const useStateStartTime1 = performance.now();
   logger.debug(`[TIMING] [CHECKPOINT] Before useState(isObjectiveInfoModalVisible) - ${useStateStartTime1.toFixed(2)}ms`);
@@ -914,6 +919,23 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [isSavingWorkout, setIsSavingWorkout] = useState(false);
   const [isExerciseDetailModalVisible, setIsExerciseDetailModalVisible] = useState(false);
   const [modalExerciseData, setModalExerciseData] = useState(null);
+  
+  // Timer modal: visibility, total elapsed, rest countdown, selected duration (not started yet)
+  const [isTimerModalVisible, setIsTimerModalVisible] = useState(false);
+  const [totalElapsedSeconds, setTotalElapsedSeconds] = useState(0);
+  const [restSecondsRemaining, setRestSecondsRemaining] = useState(0);
+  const [isRestPaused, setIsRestPaused] = useState(false);
+  const [selectedRestSeconds, setSelectedRestSeconds] = useState(0);
+  const [customRestMinutes, setCustomRestMinutes] = useState(1);
+  const [customRestSeconds, setCustomRestSeconds] = useState(0);
+  const timerIntervalRef = useRef(null);
+  const isRestPausedRef = useRef(false);
+  const timerJustEndedRef = useRef(false);
+  const [showTimerEndedObjectivesModal, setShowTimerEndedObjectivesModal] = useState(false);
+  const minutesScrollRef = useRef(null);
+  const secondsScrollRef = useRef(null);
+  const TIMER_PICKER_ITEM_HEIGHT = 44;
+  const TIMER_PICKER_VISIBLE_ITEMS = 3;
   
   // TEST VERSION 8: Re-enable useSetData hook
   // Use consolidated set data management
@@ -1033,6 +1055,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const modalOpacity = useRef(new Animated.Value(0)).current;
   const modalTranslateY = useRef(new Animated.Value(300)).current;
   
+  // Timer modal: workout start time (set when screen mounts so total time tracks entire session)
+  const workoutStartTimeRef = useRef(null);
+  // Animation values for timer modal (same pattern as set input modal)
+  const timerModalOpacity = useRef(new Animated.Value(0)).current;
+  const timerModalTranslateY = useRef(new Animated.Value(300)).current;
+  
   // Animation values for swap modal
   const swapModalOpacity = useRef(new Animated.Value(0)).current;
   const swapModalTranslateY = useRef(new Animated.Value(800)).current;
@@ -1139,6 +1167,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     const effectStartTime = performance.now();
     logger.debug(`[EFFECT] [CHECKPOINT] useEffect(initializeWorkout) started - ${effectStartTime.toFixed(2)}ms`);
+    
+    // Start workout timer when user enters the screen (for total time in timer modal)
+    if (workoutStartTimeRef.current == null) {
+      workoutStartTimeRef.current = Date.now();
+    }
     
     // Track screen view and workout start with timing
     const trackStartTime = performance.now();
@@ -2236,6 +2269,154 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
   }, []);
 
+  // Timer modal: open (same animation as set input modal)
+  const handleOpenTimerModal = useCallback(() => {
+    if (workoutStartTimeRef.current == null) {
+      workoutStartTimeRef.current = Date.now();
+    }
+    setTotalElapsedSeconds(Math.floor((Date.now() - workoutStartTimeRef.current) / 1000));
+    setIsTimerModalVisible(true);
+    Animated.parallel([
+      Animated.timing(timerModalOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(timerModalTranslateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [timerModalOpacity, timerModalTranslateY]);
+
+  const handleCloseTimerModal = useCallback(() => {
+    setShowTimerEndedObjectivesModal(false);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    Animated.parallel([
+      Animated.timing(timerModalOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(timerModalTranslateY, {
+        toValue: 300,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsTimerModalVisible(false);
+    });
+  }, [timerModalOpacity, timerModalTranslateY]);
+
+  const updateSelectedFromCustom = useCallback((min, sec) => {
+    const total = Math.max(0, (min || 0) * 60 + (sec || 0));
+    setSelectedRestSeconds(total);
+  }, []);
+
+  const startRestCountdown = useCallback(() => {
+    if (selectedRestSeconds > 0) {
+      setIsRestPaused(false);
+      setRestSecondsRemaining(selectedRestSeconds);
+    }
+  }, [selectedRestSeconds]);
+
+  isRestPausedRef.current = isRestPaused;
+
+  const pauseRestCountdown = useCallback(() => {
+    setIsRestPaused(true);
+  }, []);
+
+  const resumeRestCountdown = useCallback(() => {
+    setIsRestPaused(false);
+  }, []);
+
+  const discardRestCountdown = useCallback(() => {
+    setIsRestPaused(false);
+    setRestSecondsRemaining(0);
+  }, []);
+
+  const handleMinutesScroll = useCallback((e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const index = Math.round(y / TIMER_PICKER_ITEM_HEIGHT);
+    const min = Math.max(0, Math.min(15, index));
+    setCustomRestMinutes(min);
+    updateSelectedFromCustom(min, customRestSeconds);
+  }, [customRestSeconds, updateSelectedFromCustom]);
+
+  const handleSecondsScroll = useCallback((e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const index = Math.round(y / TIMER_PICKER_ITEM_HEIGHT);
+    const sec = Math.max(0, Math.min(59, index));
+    setCustomRestSeconds(sec);
+    updateSelectedFromCustom(customRestMinutes, sec);
+  }, [customRestMinutes, updateSelectedFromCustom]);
+
+  // Reset paused state when rest finishes
+  useEffect(() => {
+    if (restSecondsRemaining === 0) setIsRestPaused(false);
+  }, [restSecondsRemaining]);
+
+  // When timer ends (countdown hit 0), show objectives modal
+  useEffect(() => {
+    if (restSecondsRemaining === 0 && timerJustEndedRef.current) {
+      timerJustEndedRef.current = false;
+      setShowTimerEndedObjectivesModal(true);
+    }
+  }, [restSecondsRemaining]);
+
+  // When timer modal opens, default to 3 minutes selected
+  useEffect(() => {
+    if (!isTimerModalVisible) return;
+    setSelectedRestSeconds(180);
+    setCustomRestMinutes(3);
+    setCustomRestSeconds(0);
+  }, [isTimerModalVisible]);
+
+  // When timer modal opens, scroll custom pickers to current values
+  useEffect(() => {
+    if (!isTimerModalVisible) return;
+    const t = setTimeout(() => {
+      minutesScrollRef.current?.scrollTo({ y: 3 * TIMER_PICKER_ITEM_HEIGHT, animated: false });
+      secondsScrollRef.current?.scrollTo({ y: 0 * TIMER_PICKER_ITEM_HEIGHT, animated: false });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [isTimerModalVisible]);
+
+  // Timer modal: tick total time and rest countdown every second when modal is visible
+  useEffect(() => {
+    if (!isTimerModalVisible) return;
+    const tick = () => {
+      const start = workoutStartTimeRef.current;
+      if (start != null) {
+        setTotalElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+      }
+      setRestSecondsRemaining((prev) => {
+        if (prev <= 0) return 0;
+        if (isRestPausedRef.current) return prev;
+        const next = prev - 1;
+        if (next === 0) {
+          timerJustEndedRef.current = true;
+          if (Platform.OS !== 'web') {
+            try { Vibration.vibrate(200); } catch (_) {}
+          }
+        }
+        return next;
+      });
+    };
+    tick(); // immediate first update
+    timerIntervalRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [isTimerModalVisible]);
+
   // Swap exercise handlers - OPTIMIZED with cache pre-check
   const handleOpenSwapModal = useCallback((exerciseIndex) => {
     setCurrentSwapExerciseIndex(exerciseIndex);
@@ -2459,7 +2640,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [isSwapModalVideoPaused, swapModalVideoPlayer]);
 
-  // Add exercise modal card tap handler
+  // Add exercise modal card tap handler - match swap modal: set URI, expand, then replace() after short delay so VideoView has mounted
   const handleAddExerciseCardTap = useCallback((exercise, index) => {
     // If clicking the same card that's already expanded, collapse it
     if (expandedAddExerciseIndex === index) {
@@ -2469,22 +2650,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return;
     }
     
-    // Expand the clicked card immediately
+    // Expand the clicked card immediately (same as swap modal handleCardTap)
     setExpandedAddExerciseIndex(index);
-    
-    // Load video when card is expanded (lazy loading)
     if (exercise?.video_url) {
       logger.log('🎬 Lazy loading video for expanded add exercise card:', exercise.name);
       setAddExerciseModalVideoUri(exercise.video_url);
-      
-      // Load video completely in background without blocking UI
       const timeoutId = setTimeout(() => {
-        if (isMountedRef.current) {
-          addExerciseModalVideoPlayer.replace(exercise.video_url);
-          setIsAddExerciseModalVideoPaused(true);
+        if (isMountedRef.current && exercise?.video_url) {
+          try {
+            addExerciseModalVideoPlayer.replace(exercise.video_url);
+            addExerciseModalVideoPlayer.play();
+            setIsAddExerciseModalVideoPaused(false);
+          } catch (e) {
+            if (e?.name !== 'AbortError') logger.error('Add exercise modal replace error:', e);
+          }
         }
-      }, 100); // Slightly longer delay to ensure card expansion completes first
+      }, 100); // Same delay as swap modal so VideoView has mounted
       allTimeoutIdsRef.current.push(timeoutId);
+    } else {
+      setAddExerciseModalVideoUri('');
     }
   }, [expandedAddExerciseIndex, addExerciseModalVideoPlayer]);
 
@@ -5011,6 +5195,279 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </TouchableWithoutFeedback>
       </Modal>
       
+      {/* Timer Modal */}
+      <Modal
+        animationType="none"
+        transparent={true}
+        visible={isTimerModalVisible}
+        onRequestClose={handleCloseTimerModal}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseTimerModal} accessible={false}>
+          <Animated.View style={[styles.timerModalOverlay, { opacity: timerModalOpacity }]}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <Animated.View style={[styles.timerModal, { transform: [{ translateY: timerModalTranslateY }] }]}>
+                <View style={styles.timerModalHeader}>
+                  {showTimerEndedObjectivesModal ? (
+                    <>
+                      <View style={styles.timerModalHeaderEnded}>
+                        <Text style={styles.timerModalTitle} numberOfLines={2}>
+                          {workout?.exercises?.[currentExerciseIndex]?.name || 'Ejercicio'}
+                        </Text>
+                        <Text style={styles.timerModalSerieLabel}>
+                          Serie {currentSetIndex + 1} de {workout?.exercises?.[currentExerciseIndex]?.sets?.length || 0}
+                        </Text>
+                      </View>
+                      <TouchableOpacity style={styles.timerModalCloseButton} onPress={handleCloseTimerModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                        <Text style={styles.timerModalCloseButtonText}>✕</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.timerModalTitle}>Descanso</Text>
+                      <View style={styles.timerModalHeaderRight}>
+                        <Text style={styles.timerTotalLabel}>Total</Text>
+                        <Text style={styles.timerTotalValue}>
+                          {String(Math.floor(totalElapsedSeconds / 60)).padStart(2, '0')}:{String(totalElapsedSeconds % 60).padStart(2, '0')}
+                        </Text>
+                        <TouchableOpacity style={styles.timerModalCloseButton} onPress={handleCloseTimerModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                          <Text style={styles.timerModalCloseButtonText}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+                <View style={styles.timerModalContent}>
+                  {showTimerEndedObjectivesModal ? (
+                    <>
+                      <ScrollView style={styles.timerEndedObjectivesListScroll} showsVerticalScrollIndicator={false}>
+                        <View style={styles.timerObjectiveGrid}>
+                          {(() => {
+                            const currentExercise = workout?.exercises?.[currentExerciseIndex];
+                            const objectives = currentExercise?.objectives || [];
+                            const sortedObjectives = [...objectives].sort((a, b) => {
+                              const order = ['reps', 'previous'];
+                              const aIndex = order.indexOf(a.toLowerCase());
+                              const bIndex = order.indexOf(b.toLowerCase());
+                              if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                              if (aIndex !== -1) return -1;
+                              if (bIndex !== -1) return 1;
+                              return 0;
+                            });
+                            const suggestion = getWeightSuggestion();
+                            const hasWeightSuggestion = suggestion !== null;
+                            const items = [];
+                            if (hasWeightSuggestion) {
+                              items.push({ label: 'Peso Sugerido', value: `${suggestion}kg` });
+                            }
+                            sortedObjectives.forEach((objective) => {
+                              items.push({
+                                label: translateMetric(objective) || 'Objetivo',
+                                value: getMetricValueForCard(objective),
+                              });
+                            });
+                            const isOddCount = items.length % 2 === 1;
+                            return items.map((item, index) => {
+                              const isLastAndOdd = isOddCount && index === items.length - 1;
+                              return (
+                                <View key={`obj-card-${index}`} style={[styles.timerObjectiveCard, isLastAndOdd && styles.timerObjectiveCardFullWidth]}>
+                                  <Text style={styles.timerObjectiveCardLabel} numberOfLines={1}>{item.label}</Text>
+                                  <Text style={styles.timerObjectiveCardValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{item.value}</Text>
+                                </View>
+                              );
+                            });
+                          })()}
+                        </View>
+                      </ScrollView>
+                      <TouchableOpacity
+                        style={[styles.timerPrimaryBtn, styles.timerPrimaryBtnResume]}
+                        onPress={handleCloseTimerModal}
+                      >
+                        <Text style={[styles.timerPrimaryBtnText, styles.timerPrimaryBtnTextResume]}>Continuar</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                  <View style={styles.timerRestHero}>
+                    <View style={styles.timerRestHeroHollowWrap}>
+                        {(() => {
+                          const isActive = restSecondsRemaining > 0 || selectedRestSeconds > 0;
+                          const timeStr = restSecondsRemaining > 0
+                            ? `${Math.floor(restSecondsRemaining / 60)}:${String(restSecondsRemaining % 60).padStart(2, '0')}`
+                            : selectedRestSeconds > 0
+                              ? `${Math.floor(selectedRestSeconds / 60)}:${String(selectedRestSeconds % 60).padStart(2, '0')}`
+                              : '0:00';
+                          const timerFontSize = Math.min(screenWidth * 0.5, 120);
+                          const svgW = 320;
+                          const svgH = 240;
+                          const centerX = svgW / 2;
+                          const centerY = svgH / 2;
+                          const baselineY = centerY + timerFontSize * 0.2;
+                          const scaleTransform = `translate(${centerX}, ${centerY}) scale(1, 1.5) translate(${-centerX}, ${-centerY})`;
+                          const outlineStroke = isActive ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.7)';
+                          const glowStroke = isActive ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.95)';
+                          return (
+                            <Svg
+                              width="100%"
+                              height={svgH}
+                              viewBox={`0 0 ${svgW} ${svgH}`}
+                              preserveAspectRatio="xMidYMid meet"
+                              style={styles.timerRestHeroSvg}
+                            >
+                              <Defs>
+                                <Filter id="timerGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                  <FeGaussianBlur in="SourceGraphic" stdDeviation={28} />
+                                </Filter>
+                              </Defs>
+                              <G transform={scaleTransform}>
+                                <SvgText
+                                  x={centerX}
+                                  y={baselineY}
+                                  textAnchor="middle"
+                                  fill="transparent"
+                                  stroke={glowStroke}
+                                  strokeWidth={3.5}
+                                  fontSize={timerFontSize}
+                                  fontWeight={isActive ? '800' : '700'}
+                                  fontFamily="System"
+                                  filter="url(#timerGlow)"
+                                >
+                                  {timeStr}
+                                </SvgText>
+                                <SvgText
+                                  x={centerX}
+                                  y={baselineY}
+                                  textAnchor="middle"
+                                  fill="transparent"
+                                  stroke={outlineStroke}
+                                  strokeWidth={1.2}
+                                  fontSize={timerFontSize}
+                                  fontWeight={isActive ? '800' : '700'}
+                                  fontFamily="System"
+                                >
+                                  {timeStr}
+                                </SvgText>
+                              </G>
+                            </Svg>
+                          );
+                        })()}
+                    </View>
+                  </View>
+                  {restSecondsRemaining === 0 && (
+                    <>
+                      <View style={styles.timerDurationRow}>
+                        <View style={styles.timerCustomColumn}>
+                          <View style={styles.timerCustomCard}>
+                            <View style={styles.timerPickerRow}>
+                          <View style={styles.timerPickerColumn}>
+                            <ScrollView
+                              ref={minutesScrollRef}
+                              style={styles.timerPickerScroll}
+                              contentContainerStyle={styles.timerPickerContent}
+                              showsVerticalScrollIndicator={false}
+                              snapToInterval={TIMER_PICKER_ITEM_HEIGHT}
+                              snapToAlignment="center"
+                              decelerationRate="fast"
+                              onMomentumScrollEnd={handleMinutesScroll}
+                            >
+                              {Array.from({ length: 16 }, (_, i) => (
+                                <TouchableOpacity
+                                  key={`min-${i}`}
+                                  style={styles.timerPickerItem}
+                                  onPress={() => {
+                                    setCustomRestMinutes(i);
+                                    updateSelectedFromCustom(i, customRestSeconds);
+                                    minutesScrollRef.current?.scrollTo({ y: i * TIMER_PICKER_ITEM_HEIGHT, animated: true });
+                                  }}
+                                >
+                                  <Text style={[styles.timerPickerItemText, customRestMinutes === i && styles.timerPickerItemTextSelected]}>{i}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                            <Text style={styles.timerPickerUnit}>min</Text>
+                          </View>
+                          <View style={styles.timerPickerColumn}>
+                            <ScrollView
+                              ref={secondsScrollRef}
+                              style={styles.timerPickerScroll}
+                              contentContainerStyle={styles.timerPickerContent}
+                              showsVerticalScrollIndicator={false}
+                              snapToInterval={TIMER_PICKER_ITEM_HEIGHT}
+                              snapToAlignment="center"
+                              decelerationRate="fast"
+                              onMomentumScrollEnd={handleSecondsScroll}
+                            >
+                              {Array.from({ length: 60 }, (_, i) => (
+                                <TouchableOpacity
+                                  key={`sec-${i}`}
+                                  style={styles.timerPickerItem}
+                                  onPress={() => {
+                                    setCustomRestSeconds(i);
+                                    updateSelectedFromCustom(customRestMinutes, i);
+                                    secondsScrollRef.current?.scrollTo({ y: i * TIMER_PICKER_ITEM_HEIGHT, animated: true });
+                                  }}
+                                >
+                                  <Text style={[styles.timerPickerItemText, customRestSeconds === i && styles.timerPickerItemTextSelected]}>{String(i).padStart(2, '0')}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                            <Text style={styles.timerPickerUnit}>seg</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    </View>
+                    </>
+                  )}
+                  {restSecondsRemaining > 0 && !isRestPaused ? (
+                    <TouchableOpacity
+                      style={[styles.timerPrimaryBtn, styles.timerPrimaryBtnStop]}
+                      onPress={pauseRestCountdown}
+                    >
+                      <Text style={[styles.timerPrimaryBtnText, styles.timerPrimaryBtnTextStop]}>Pausa</Text>
+                    </TouchableOpacity>
+                  ) : restSecondsRemaining > 0 && isRestPaused ? (
+                    <View style={styles.timerPausedButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.timerPrimaryBtn, styles.timerPrimaryBtnResume]}
+                        onPress={resumeRestCountdown}
+                      >
+                        <Text style={[styles.timerPrimaryBtnText, styles.timerPrimaryBtnTextResume]}>Continuar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.timerPrimaryBtn, styles.timerPrimaryBtnDiscard]}
+                        onPress={discardRestCountdown}
+                      >
+                        <Text style={[styles.timerPrimaryBtnText, styles.timerPrimaryBtnTextDiscard]}>Descartar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.timerPrimaryBtn,
+                        selectedRestSeconds === 0 && styles.timerPrimaryBtnDisabled,
+                      ]}
+                      onPress={startRestCountdown}
+                      disabled={selectedRestSeconds === 0}
+                    >
+                      <Text
+                        style={[
+                          styles.timerPrimaryBtnText,
+                          selectedRestSeconds === 0 && styles.timerPrimaryBtnTextDisabled,
+                        ]}
+                      >
+                        Iniciar descanso
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                    </>
+                  )}
+                </View>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </Modal>
+      
       {/* Swipeable Content */}
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
         <ScrollView
@@ -5074,8 +5531,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 onScroll={onTopCardScroll}
                 scrollEventThrottle={16}
                 style={styles.topCardsContainer}
-                contentContainerStyle={{ gap: 15 }}
-                snapToInterval={screenWidth - 33}
+                contentContainerStyle={styles.topCardsContent}
+                snapToInterval={screenWidth - Math.max(48, screenWidth * 0.12) + 15}
                 snapToAlignment="start"
                 decelerationRate="fast"
               >
@@ -5085,32 +5542,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   logger.debug(`[JSX] [CHECKPOINT] Rendering Video Card - ${videoCardStartTime.toFixed(2)}ms`);
                   return null;
                 })()}
-                <View style={[styles.videoCard, videoUri && styles.videoCardNoBorder]}>
+                <View
+                  style={[styles.videoCard, videoUri && styles.videoCardNoBorder]}
+                >
                   {videoUri ? (
+                  <VideoCardWebWrapper>
                   <TouchableOpacity 
                       style={styles.videoContainer}
                       onPress={handleVideoTap}
                       activeOpacity={1}
                     >
-                      {(() => {
-                        const videoViewStartTime = performance.now();
-                        logger.debug(`[JSX] [CHECKPOINT] Rendering VideoView component - ${videoViewStartTime.toFixed(2)}ms`);
-                        logger.debug(`[VIDEO] [CHECKPOINT] VideoView props:`, {
-                          hasPlayer: !!videoPlayer,
-                          videoUri: videoUri?.substring(0, 50) || 'null',
-                          isVideoPaused,
-                          canStartVideo
-                        });
-                        return null;
-                      })()}
-                      <VideoView 
+                      <VideoView
                         player={videoPlayer}
-                        style={[styles.video, { opacity: 0.7 }]}
+                        style={styles.video}
                         contentFit="cover"
                         fullscreenOptions={{ allowed: false }}
                         allowsPictureInPicture={false}
                         nativeControls={false}
                         showsTimecodes={false}
+                        playsInline
                         onLoadStart={() => {
                           const loadStartTime = performance.now();
                           logger.debug(`[VIDEO] [CHECKPOINT] VideoView onLoadStart - ${loadStartTime.toFixed(2)}ms`);
@@ -5124,16 +5574,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                           logger.error(`[VIDEO] [ERROR] VideoView onError at ${errorTime.toFixed(2)}ms:`, error);
                         }}
                       />
-                      
-                      {/* Play icon overlay */}
                       {isVideoPaused && (
-                        <View style={styles.pauseOverlay}>
-                          <SvgPlay width={48} height={48} />
-                        </View>
+                        <VideoOverlayWebWrapper pointerEvents="none">
+                          <View style={styles.videoDimmingLayer} pointerEvents="none" />
+                        </VideoOverlayWebWrapper>
                       )}
-                      
+                      {isVideoPaused && (
+                        <VideoOverlayWebWrapper>
+                          <View style={styles.pauseOverlay}>
+                            <SvgPlay width={48} height={48} />
+                          </View>
+                        </VideoOverlayWebWrapper>
+                      )}
+
                       {/* Volume icon overlay - only show when paused */}
                       {isVideoPaused && (
+                        <VideoOverlayWebWrapper>
                         <View style={styles.volumeIconContainer}>
                   <TouchableOpacity 
                             style={styles.volumeIconButton}
@@ -5147,10 +5603,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             )}
                   </TouchableOpacity>
                         </View>
+                        </VideoOverlayWebWrapper>
                       )}
                   
                       {/* Restart icon overlay - only show when paused */}
                       {isVideoPaused && (
+                        <VideoOverlayWebWrapper>
                         <View style={styles.restartIconContainer}>
                     <TouchableOpacity 
                             style={styles.restartIconButton}
@@ -5160,8 +5618,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             <SvgArrowReload width={24} height={24} color="white" />
                     </TouchableOpacity>
                         </View>
+                        </VideoOverlayWebWrapper>
                       )}
                     </TouchableOpacity>
+                  </VideoCardWebWrapper>
                   ) : (
                     <View style={styles.videoPlaceholder}>
                       <Text style={styles.videoPlaceholderText}>Video no disponible</Text>
@@ -5387,17 +5847,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       </Text>
                     </TouchableOpacity>
                     
-                    {/* List Screen Button */}
+                    {/* Timer Button - opens timer modal */}
                     <TouchableOpacity
-                      style={styles.listScreenButton}
-                      onPress={() => {
-                        // Switch to list view (index 1)
-                        if (scrollViewRef.current) {
-                          scrollViewRef.current.scrollTo({ x: screenWidth, animated: true });
-                        }
-                      }}
+                      style={styles.timerButton}
+                      onPress={handleOpenTimerModal}
+                      accessibilityLabel="Abrir cronómetro de descanso"
                     >
-                      <SvgListChecklist width={24} height={24} color="rgba(191, 168, 77, 1)" />
+                      <SvgTimer width={24} height={24} color="rgba(191, 168, 77, 1)" />
                     </TouchableOpacity>
                   </View>
                 </WakeHeaderContent>
@@ -5469,24 +5925,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                           onPress={handleSwapModalVideoTap}
                           activeOpacity={1}
                         >
-                          <VideoView 
+                          <VideoView
                             player={swapModalVideoPlayer}
-                            style={[styles.swapModalVideo, { opacity: 0.7 }]}
+                            style={styles.swapModalVideo}
                             contentFit="cover"
                             fullscreenOptions={{ allowed: false }}
                             allowsPictureInPicture={false}
                             nativeControls={false}
                             showsTimecodes={false}
+                            playsInline
                           />
-                          
-                          {/* Play icon overlay */}
+                          {isSwapModalVideoPaused && (
+                            <View style={styles.swapModalDimmingLayer} pointerEvents="none" />
+                          )}
                           {isSwapModalVideoPaused && (
                             <View style={styles.swapModalPauseOverlay}>
                               <SvgPlay width={48} height={48} />
                             </View>
                           )}
-                          
-                          {/* Volume icon overlay - only show when paused */}
                           {isSwapModalVideoPaused && (
                             <TouchableOpacity
                               style={styles.swapModalVolumeOverlay}
@@ -5550,24 +6006,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             onPress={handleSwapModalVideoTap}
                             activeOpacity={1}
                           >
-                            <VideoView 
+                            <VideoView
                               player={swapModalVideoPlayer}
-                              style={[styles.swapModalVideo, { opacity: 0.7 }]}
+                              style={styles.swapModalVideo}
                               contentFit="cover"
                               fullscreenOptions={{ allowed: false }}
                               allowsPictureInPicture={false}
                               nativeControls={false}
                               showsTimecodes={false}
+                              playsInline
                             />
-                            
-                            {/* Play icon overlay */}
+                            {isSwapModalVideoPaused && (
+                              <View style={styles.swapModalDimmingLayer} pointerEvents="none" />
+                            )}
                             {isSwapModalVideoPaused && (
                               <View style={styles.swapModalPauseOverlay}>
                                 <SvgPlay width={48} height={48} />
                               </View>
                             )}
-                            
-                            {/* Volume icon overlay - only show when paused */}
                             {isSwapModalVideoPaused && (
                               <TouchableOpacity
                                 style={styles.swapModalVolumeOverlay}
@@ -5710,22 +6166,32 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               overflow: 'hidden',
                               alignSelf: 'center',
                               marginTop: 8,
+                              position: 'relative',
                             }}>
-                              <VideoView 
+                              <VideoView
                                 player={intensityVideoPlayer}
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  opacity: 0.7,
-                                }}
+                                style={{ width: '100%', height: '100%' }}
                                 contentFit="cover"
                                 fullscreenOptions={{ allowed: false }}
                                 allowsPictureInPicture={false}
                                 nativeControls={false}
                                 showsTimecodes={false}
+                                playsInline
                               />
-                              
-                              {/* Play/Pause overlay */}
+                              {isIntensityVideoPaused && (
+                                <View
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                    zIndex: 1,
+                                  }}
+                                  pointerEvents="none"
+                                />
+                              )}
                               {isIntensityVideoPaused && (
                                 <TouchableOpacity
                                   style={{
@@ -5736,7 +6202,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                                     bottom: 0,
                                     justifyContent: 'center',
                                     alignItems: 'center',
-                                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                    zIndex: 2,
                                   }}
                                   onPress={() => toggleIntensityVideo()}
                                 >
@@ -5902,7 +6368,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setWasAddExerciseModalOpen(false);
         }}
       >
-        <View style={styles.addExerciseModalContainer}>
+        <View style={[
+          styles.addExerciseModalContainer,
+          isWeb && { minHeight: '100vh', height: '100%', display: 'flex', flexDirection: 'column' }
+        ]}>
           <View style={styles.addExerciseModalHeader}>
             <Text style={styles.addExerciseModalTitle}>Agregar Ejercicio</Text>
             <View style={styles.addExerciseModalHeaderActions}>
@@ -5992,7 +6461,23 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               />
             </View>
           </View>
-          
+
+          {/* Warm-up VideoView when no card expanded: keeps player attached on web so video works when user expands a card */}
+          {expandedAddExerciseIndex === null && (
+            <View style={[styles.addExerciseVideoContainer, { height: 1, marginBottom: 0, overflow: 'hidden', opacity: 0 }]}>
+              <VideoView
+                player={addExerciseModalVideoPlayer}
+                style={styles.addExerciseVideo}
+                contentFit="cover"
+                fullscreenOptions={{ allowed: false }}
+                allowsPictureInPicture={false}
+                nativeControls={false}
+                showsTimecodes={false}
+                playsInline
+              />
+            </View>
+          )}
+
           <ScrollView style={styles.addExerciseModalContent}>
             {loadingAvailableExercises ? (
               <ActivityIndicator size="large" color="#BFA84D" />
@@ -6009,6 +6494,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   isVideoPaused={isAddExerciseModalVideoPaused}
                   isMuted={isMuted}
                   toggleMute={toggleMute}
+                  videoPlayer={addExerciseModalVideoPlayer}
+                  styles={styles}
                 />
               ))
             ) : (

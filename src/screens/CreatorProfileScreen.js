@@ -180,13 +180,17 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
           >
             <VideoView
               player={videoPlayer}
-              style={[styles.storyMedia, { opacity: 0.7 }]}
+              style={styles.storyMedia}
               contentFit="cover"
               fullscreenOptions={{ allowed: false }}
               allowsPictureInPicture={false}
               nativeControls={false}
               showsTimecodes={false}
+              playsInline
             />
+            {isPaused && (
+              <View style={styles.storyVideoDimmingLayer} pointerEvents="none" />
+            )}
             {isPaused && (
               <View style={styles.storyPauseOverlay}>
                 <SvgPlay width={48} height={48} />
@@ -3127,6 +3131,9 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   },
   storyMediaPressable: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+    position: 'relative',
   },
   storyMedia: {
     flex: 1,
@@ -3136,6 +3143,15 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   storyMediaImage: {
     borderRadius: 16,
   },
+  storyVideoDimmingLayer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 1,
+  },
   storyPauseOverlay: {
     position: 'absolute',
     top: 0,
@@ -3144,16 +3160,19 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     right: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 2,
   },
   storyVolumeContainer: {
     position: 'absolute',
     top: 12,
     right: 12,
+    zIndex: 3,
   },
   storyRestartContainer: {
     position: 'absolute',
     top: 60,
     right: 12,
+    zIndex: 3,
   },
   storyIconButton: {
     width: 40,

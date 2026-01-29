@@ -108,7 +108,7 @@ const AuthenticatedLayout = ({ children }) => {
     setRefreshKey((k) => k + 1);
     return promise;
   }, []);
-  
+
   // Check Firebase user directly - this is the source of truth
   // Use useState to store Firebase user and update it when needed
   const [firebaseUser, setFirebaseUser] = React.useState(() => {
@@ -437,7 +437,6 @@ const AuthenticatedLayout = ({ children }) => {
 
   logger.log('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
   // Render tab bar in a portal to document.body so position:fixed is relative to viewport
-  // (ancestors with flex/transform create a containing block and can put the bar in the middle)
   const tabBarEl =
     typeof document !== 'undefined' && document.body
       ? createPortal(<BottomTabBar />, document.body)

@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Animated,
+  Platform,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useVideo } from '../contexts/VideoContext';
@@ -43,6 +44,17 @@ const TutorialOverlay = ({
   const videoUrl = tutorialData?.[currentTutorialIndex]?.videoUrl ?? '';
   const videoRef = useRef(null);
   
+  // Log when we have a video URL to load (for debugging web/PWA tutorial card stuck gray)
+  useEffect(() => {
+    if (visible && videoUrl) {
+      logger.log('[TutorialOverlay] Video source set, waiting for onLoad', {
+        platform: Platform.OS,
+        videoUrl: videoUrl.slice?.(0, 80),
+        currentTutorialIndex,
+      });
+    }
+  }, [visible, videoUrl, currentTutorialIndex]);
+
   // Sync mute state when context isMuted changes
   useEffect(() => {
     if (videoRef.current) {
@@ -155,8 +167,20 @@ const TutorialOverlay = ({
 
   const onVideoLoad = (status) => {
     const s = status?.nativeEvent ?? status;
-    if (s && !s.isLoaded) return;
-    const duration = s?.durationMillis ?? s?.duration ?? 0;
+    // On web, expo-av passes a DOM Event to onLoad (no isLoaded). Event.target is the video element; .duration (seconds) may be NaN until metadata loads.
+    const isWebEvent = Platform.OS === 'web' && status?.target != null;
+    const durationFromWeb = isWebEvent && typeof status.target.duration === 'number' && !Number.isNaN(status.target.duration)
+      ? Math.round(status.target.duration * 1000)
+      : 0;
+    const isLoaded = s?.isLoaded === true || isWebEvent;
+
+    if (!isLoaded) {
+      logger.log('[TutorialOverlay] onVideoLoad early return: not loaded', { hasIsLoaded: s?.isLoaded, isWebEvent });
+      return;
+    }
+
+    const duration = s?.durationMillis ?? s?.duration ?? durationFromWeb;
+    logger.log('[TutorialOverlay] onVideoLoad proceeding', { duration, platform: Platform.OS, isWebEvent });
     setIsLoading(false);
     setVideoError(false);
     setVideoDuration(duration);
@@ -185,10 +209,12 @@ const TutorialOverlay = ({
 
   const onVideoError = (error) => {
     logger.error('❌ Tutorial video load error:', {
+      platform: Platform.OS,
       tutorialIndex: currentTutorialIndex,
       videoUrl: currentTutorial?.videoUrl,
       error: error?.message || error,
-      errorCode: error?.code
+      errorCode: error?.code,
+      rawError: error,
     });
     
     setIsLoading(false);
@@ -317,19 +343,23 @@ const TutorialOverlay = ({
             </View>
           ) : currentTutorial.videoUrl ? (
             <>
-              <Video
-                key={currentTutorialIndex}
-                ref={videoRef}
-                source={{ uri: currentTutorial.videoUrl }}
-                style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
-                resizeMode={ResizeMode.COVER}
-                useNativeControls={false}
-                isLooping={false}
-                onLoad={onVideoLoad}
-                onError={onVideoError}
-                onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-                progressUpdateIntervalMillis={250}
-              />
+              {/* On web, wrap Video in an absolute container so it gets a definite size; expo-av can collapse otherwise */}
+              <View style={Platform.OS === 'web' ? styles.videoContainerWeb : styles.videoContainer}>
+                <Video
+                  key={currentTutorialIndex}
+                  ref={videoRef}
+                  source={{ uri: currentTutorial.videoUrl }}
+                  style={[styles.video, { opacity: isVideoPlaying ? 1.0 : 0.7 }]}
+                  videoStyle={Platform.OS === 'web' ? styles.videoWeb : undefined}
+                  resizeMode={ResizeMode.COVER}
+                  useNativeControls={false}
+                  isLooping={false}
+                  onLoad={onVideoLoad}
+                  onError={onVideoError}
+                  onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+                  progressUpdateIntervalMillis={250}
+                />
+              </View>
               <TouchableOpacity
                 style={styles.videoTapArea}
                 activeOpacity={1}
@@ -340,20 +370,23 @@ const TutorialOverlay = ({
                   <SvgPlay width={60} height={60} fill="#FFFFFF" />
                 </View>
               )}
-              <TouchableOpacity
-                style={styles.volumeIconContainer}
-                onPress={handleVolumeToggle}
-                activeOpacity={0.8}
-              >
-                <View style={styles.volumeIconButton}>
-                  {isMuted ? (
-                    <SvgVolumeOff width={24} height={24} fill="#FFFFFF" />
-                  ) : (
-                    <SvgVolumeMax width={24} height={24} fill="#FFFFFF" />
-                  )}
+              {/* Volume - same position as Saltar, only when paused */}
+              {!isVideoPlaying && !isLoading && (
+                <View style={styles.volumeIconContainer}>
+                  <TouchableOpacity
+                    style={styles.volumeIconButton}
+                    onPress={handleVolumeToggle}
+                    activeOpacity={0.8}
+                  >
+                    {isMuted ? (
+                      <SvgVolumeOff width={24} height={24} fill="#FFFFFF" />
+                    ) : (
+                      <SvgVolumeMax width={24} height={24} fill="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-              {/* Skip Button - top-left, below indicator, only while playing */}
+              )}
+              {/* Skip Button - same position, only while playing */}
               {isVideoPlaying && !isLoading && (
                 <View style={styles.skipButtonContainer}>
                   <TouchableOpacity
@@ -400,7 +433,26 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+  videoContainer: {
+    width: '100%',
+    height: '100%',
+  },
+  videoContainerWeb: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
   video: {
+    width: '100%',
+    height: '100%',
+  },
+  // expo-av Video on web: position 'relative' needed so the video element displays (absolute breaks display)
+  videoWeb: {
+    position: 'relative',
     width: '100%',
     height: '100%',
   },
@@ -470,7 +522,14 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   skipButtonContainer: {
     position: 'absolute',
     top: 28, // just below the progress indicator (which is at top:15, height:4)
-    right: 12, // align to the right above the volume icon (which is at right:12, top:60)
+    right: 12,
+    zIndex: 10,
+  },
+  // Volume uses same position as skip button (top: 28, right: 12)
+  volumeIconContainer: {
+    position: 'absolute',
+    top: 28,
+    right: 12,
     zIndex: 10,
   },
   skipButton: {
@@ -512,12 +571,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     height: 60,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  volumeIconContainer: {
-    position: 'absolute',
-    top: 60,
-    right: 12,
-    zIndex: 5,
   },
   volumeIconButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',

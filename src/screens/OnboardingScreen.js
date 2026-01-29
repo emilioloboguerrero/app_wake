@@ -878,6 +878,14 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   
   const scrollViewRef = useRef(null);
 
+  // Sync email into form when user/auth becomes available (e.g. web/PWA where AuthContext can lag)
+  const authEmail = user?.email || auth.currentUser?.email || '';
+  useEffect(() => {
+    if (authEmail && !formData.email) {
+      setFormData(prev => ({ ...prev, email: authEmail }));
+    }
+  }, [authEmail, formData.email]);
+
   // Load available disciplines from database
   useEffect(() => {
     const loadDisciplines = async () => {
@@ -1339,8 +1347,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       const finalDisplayName = formData.displayName?.trim() || (hasAppleProvidedData && user?.displayName ? user.displayName : '');
       if (finalDisplayName) userData.displayName = sanitizeInput.text(finalDisplayName);
       if (formData.username?.trim()) userData.username = sanitizeInput.text(formData.username.trim().toLowerCase());
-      // Use email from form, or fall back to Apple-provided email
-      const finalEmail = formData.email || (hasAppleProvidedData && user?.email ? user.email : '');
+      // Use email from form, or fall back to Auth user/currentUser (covers web/PWA when form was empty on mount)
+      const finalEmail = formData.email || user?.email || auth.currentUser?.email || '';
       if (finalEmail) userData.email = sanitizeInput.html(finalEmail).toLowerCase();
       if (birthDateString) userData.birthDate = birthDateString;
       if (age !== undefined && age !== null) userData.age = age;
@@ -2126,7 +2134,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
               <Text style={styles.label}>Email</Text>
               <TextInput
                 style={[styles.input, styles.inputDisabled, styles.inputSuccess]}
-                value={formData.email}
+                value={formData.email || authEmail}
                 editable={false}
                 placeholderTextColor="#777"
               />

@@ -1,8 +1,7 @@
 // Fixed heights + frozen bottom inset (same approach as WakeHeader for top) so bar never pops.
 const TAB_BAR_CONTENT_HEIGHT = 62;
 const TAB_BAR_TOP_PAD = 12;
-// Extra bottom padding only for the tab bar (not spacer or root). Pushes bar content up.
-const TAB_BAR_EXTRA_BOTTOM = 12;
+const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
@@ -14,25 +13,23 @@ const BottomTabBar = () => {
   const { width: screenWidth } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
-  const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM;
+  const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM_PADDING;
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
 
   // Determine if tab bar should be visible based on current route
   const shouldShowTabBar = () => {
     const path = location.pathname;
-    
-    // Hide tab bar for sub-screens (matching MainTabNavigator logic)
-    // Only show on main home (/) and profile (/profile) routes
     const showTabBarRoutes = ['/', '/profile'];
-    
     return showTabBarRoutes.includes(path);
   };
-  
+
+  const show = shouldShowTabBar();
+
   // Determine which tab is active
   const isMainActive = location.pathname === '/';
   const isProfileActive = location.pathname === '/profile';
-  
+
   // Icon styling based on focus state
   const getIconProps = (isActive) => {
     return {
@@ -45,8 +42,6 @@ const BottomTabBar = () => {
     };
   };
 
-  const show = shouldShowTabBar();
-  
   if (!show) {
     return null;
   }

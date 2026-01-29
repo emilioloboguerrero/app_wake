@@ -80,7 +80,7 @@ const WarmupScreen = ({ navigation, route }) => {
       paddingHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
     },
     videoCard: {
-      height: Math.max(420, screenHeight * 0.55), // Slightly taller video card
+      height: Math.max(420, screenHeight * 0.54), // Slightly taller video card
       backgroundColor: '#1a1a1a',
       borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
       overflow: 'hidden',
@@ -120,6 +120,14 @@ const WarmupScreen = ({ navigation, route }) => {
       fontWeight: '700',
       textAlign: 'center',
     },
+    videoDimmingLayer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
     pauseOverlay: {
       position: 'absolute',
       top: 0,
@@ -128,7 +136,6 @@ const WarmupScreen = ({ navigation, route }) => {
       bottom: 0,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.3)',
     },
     exerciseNameContainer: {
       position: 'absolute',
@@ -682,15 +689,19 @@ const WarmupScreen = ({ navigation, route }) => {
                 onPress={togglePause}
                 activeOpacity={1}
               >
-                <VideoView 
+                <VideoView
                   player={videoPlayer}
-                  style={[styles.video, { opacity: 0.7 }]}
+                  style={styles.video}
                   contentFit="cover"
                   fullscreenOptions={{ allowed: false }}
                   allowsPictureInPicture={false}
                   nativeControls={false}
                   showsTimecodes={false}
+                  playsInline
                 />
+                {!isActive && (
+                  <View style={styles.videoDimmingLayer} pointerEvents="none" />
+                )}
                 {!isActive && (
                   <View style={styles.pauseOverlay}>
                     <SvgPlay width={48} height={48} />

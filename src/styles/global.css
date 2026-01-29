@@ -198,6 +198,11 @@ body {
   box-sizing: border-box;
 }
 
+/* Force-hide tab bar when layout says it should be hidden (Daily Workout, Warmup, etc.) */
+body[data-tab-bar-hidden='true'] .wake-tab-bar-root {
+  display: none !important;
+}
+
 .spinner {
   border: 3px solid rgba(255, 255, 255, 0.1);
   border-top-color: var(--color-primary);
@@ -349,5 +354,48 @@ body[data-login-route="true"] #root {
 /* Fix for React Native Text on web */
 .Text {
   display: inline;
+}
+
+/* iOS Safari / PWA: hide WebKit native video controls so only our custom overlay UI shows.
+   Without this, iPhone can show both native controls and custom overlay (double UI).
+   playsInline keeps video inline; these rules hide any residual native chrome. */
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-play-button,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-timeline,
+video::-webkit-media-controls-current-time-display,
+video::-webkit-media-controls-time-remaining-display,
+video::-webkit-media-controls-mute-button,
+video::-webkit-media-controls-volume-slider,
+video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+/* Force <video> behind overlay controls: HTML5 video can ignore parent z-index
+   and paint on top (especially inside ScrollView / with transforms on iOS PWA).
+   Create stacking context on the card so video z-index is relative to it. */
+[data-video-card] {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+[data-video-card] video {
+  position: relative !important;
+  z-index: -1 !important;
+}
+
+/* Safari: promote overlay elements to their own compositing layer so they
+   paint above the native <video> layer (which can ignore z-index on iOS). */
+[data-video-card] [data-video-overlay] {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  z-index: 1;
 }
 

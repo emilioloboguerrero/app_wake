@@ -273,13 +273,20 @@ export default function App() {
       };
 
       const rejectionHandler = (event) => {
-        const reason = String(event.reason || '');
+        const reason = event.reason;
+        const reasonStr = String(reason || '');
         
         // Skip Chrome extension promise rejections
-        if (reason.includes('chrome-extension://') ||
-            reason.includes('ERR_FILE_NOT_FOUND') ||
-            reason.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
-          return; // Don't log extension errors
+        if (reasonStr.includes('chrome-extension://') ||
+            reasonStr.includes('ERR_FILE_NOT_FOUND') ||
+            reasonStr.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
+          event.preventDefault();
+          return;
+        }
+        // AbortError is expected when video load/play is aborted (e.g. switching add-exercise cards, closing modal, changing source)
+        if (reason?.name === 'AbortError' || reasonStr.includes('AbortError') || reasonStr.includes('operation was aborted')) {
+          event.preventDefault();
+          return;
         }
         
         safeLog('error', '❌ Unhandled Promise Rejection:', event.reason);
@@ -293,6 +300,21 @@ export default function App() {
         window.removeEventListener('unhandledrejection', rejectionHandler);
       };
     }
+  }, []);
+
+  // Inject video-card overlay CSS at runtime so it wins over bundled styles (Safari PWA
+  // was showing video with position:static/z-index:auto; our global.css rules were not applied).
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || !document.head) return;
+    if (document.getElementById('wake-video-card-override')) return;
+    const style = document.createElement('style');
+    style.id = 'wake-video-card-override';
+    style.textContent = [
+      '[data-video-card]{position:relative!important;z-index:0!important;isolation:isolate!important}',
+      '[data-video-card] video{position:relative!important;z-index:-1!important}',
+      '[data-video-card] [data-video-overlay]{-webkit-transform:translateZ(0)!important;transform:translateZ(0)!important;z-index:1!important}'
+    ].join('\n');
+    document.head.appendChild(style);
   }, []);
 
   // CRITICAL: This useEffect must always be called (no conditional hook calls)
@@ -443,6 +465,15 @@ export default function App() {
       }
     }
   }, [fontsLoaded, debugMode, isLoginPath]);
+
+  // Safari video overlay debug: run when ?safari_video_debug=1 or __DEV__ + Safari (navigate to a screen with video, pause, then check console or on-screen panel).
+  React.useEffect(() => {
+    if (isLoginPath || !fontsLoaded) return;
+    try {
+      const { runSafariVideoOverlayDebug } = require('./utils/safariVideoOverlayDebug.web');
+      runSafariVideoOverlayDebug();
+    } catch (_) {}
+  }, [fontsLoaded, isLoginPath]);
 
   // Defer safe-area measurement so env() has resolved (avoids 0→34 pop when NativeSafeAreaProvider fires ~50ms later).
   // Use 250ms so more devices have env(safe-area-inset-*) ready; freezing 0 made the bar "too high".

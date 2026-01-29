@@ -855,30 +855,27 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                   index * cardWidth,
                   (index + 1) * cardWidth,
                 ];
-                
                 const opacity = scrollX.interpolate({
                   inputRange,
                   outputRange: [0.3, 1.0, 0.3],
-                    extrapolate: 'clamp',
+                  extrapolate: 'clamp',
                 });
-                
                 const scale = scrollX.interpolate({
                   inputRange,
                   outputRange: [0.8, 1.3, 0.8],
-                    extrapolate: 'clamp',
+                  extrapolate: 'clamp',
                 });
-                
                 return (
-              <Animated.View
+                  <Animated.View
                     key={index}
-                style={{
+                    style={{
                       width: 8,
                       height: 8,
                       backgroundColor: '#ffffff',
                       borderRadius: 4,
                       marginHorizontal: 4,
-                      opacity: opacity,
-                      transform: [{ scale: scale }],
+                      opacity,
+                      transform: [{ scale }],
                     }}
                   />
                 );
@@ -1004,7 +1001,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(700, screenHeight * 0.82), // TALLER: 80% of screen height, min 700px
+    height: Math.max(700, screenHeight * 0.77), // TALLER: 80% of screen height, min 700px
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1076,7 +1073,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   // Combined Programa + Sessions Card (Card 2)
   programAndSessionsContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(700, screenHeight * 0.82),
+    height: Math.max(700, screenHeight * 0.77),
     overflow: 'visible',
   },
   // Programa Card at Bottom - Half height, full width

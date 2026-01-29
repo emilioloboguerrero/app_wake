@@ -40,6 +40,8 @@ import { firestore, auth } from '../config/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
+import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
+import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -1429,32 +1431,44 @@ useEffect(() => {
               decelerationRate="fast"
             >
               {/* Card 1: Video Card */}
-              <View style={[
-                styles.imageCardContainer,
-                (videoUri || course?.image_url) && styles.imageCardNoBorder
-              ]}>
+              <View
+                style={[
+                  styles.imageCardContainer,
+                  (videoUri || course?.image_url) && styles.imageCardNoBorder
+                ]}
+              >
                 {videoUri ? (
+                  <VideoCardWebWrapper>
                   <TouchableOpacity 
                     style={styles.videoContainer}
                     onPress={handleVideoTap}
                     activeOpacity={1}
                   >
-                    <VideoView 
+                    <VideoView
                       player={videoPlayer}
-                      style={[styles.video, { opacity: isVideoPaused ? 0.7 : 1 }]}
+                      style={styles.video}
                       contentFit="cover"
                       fullscreenOptions={{ allowed: false }}
                       allowsPictureInPicture={false}
                       nativeControls={false}
                       showsTimecodes={false}
+                      playsInline
                     />
                     {isVideoPaused && (
-                      <View style={styles.pauseOverlay}>
-                        <SvgPlay width={48} height={48} />
-                      </View>
+                      <VideoOverlayWebWrapper pointerEvents="none">
+                        <View style={styles.videoDimmingLayer} pointerEvents="none" />
+                      </VideoOverlayWebWrapper>
                     )}
                     {isVideoPaused && (
-                      <View style={styles.volumeIconContainer}>
+                      <VideoOverlayWebWrapper>
+                        <View style={styles.pauseOverlay}>
+                          <SvgPlay width={48} height={48} />
+                        </View>
+                      </VideoOverlayWebWrapper>
+                    )}
+                    {isVideoPaused && (
+                      <VideoOverlayWebWrapper>
+                        <View style={styles.volumeIconContainer}>
                         <TouchableOpacity 
                           style={styles.volumeIconButton}
                           onPress={toggleMute}
@@ -1466,10 +1480,12 @@ useEffect(() => {
                             <SvgVolumeMax width={24} height={24} color="white" />
                           )}
                         </TouchableOpacity>
-                      </View>
+                        </View>
+                      </VideoOverlayWebWrapper>
                     )}
                     {isVideoPaused && (
-                      <View style={styles.restartIconContainer}>
+                      <VideoOverlayWebWrapper>
+                        <View style={styles.restartIconContainer}>
                         <TouchableOpacity 
                           style={styles.restartIconButton}
                           onPress={handleVideoRestart}
@@ -1477,9 +1493,11 @@ useEffect(() => {
                         >
                           <SvgArrowReload width={24} height={24} color="white" />
                         </TouchableOpacity>
-                      </View>
+                        </View>
+                      </VideoOverlayWebWrapper>
                     )}
                   </TouchableOpacity>
+                  </VideoCardWebWrapper>
                 ) : course?.image_url && !failedImages.has(`course-${course.id}`) ? (
                   <ImageBackground
                     source={{ uri: course.image_url }}
@@ -1741,7 +1759,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     overflow: 'visible',
   },
   horizontalScrollView: {
-    height: Math.max(550, screenHeight * 0.70), // Match taller image card height
+    height: Math.max(500, screenHeight * 0.63), // Match taller image card height
     overflow: 'visible',
   },
   swipeableCard: {
@@ -1770,7 +1788,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(550, screenHeight * 0.70), // Made taller: 70% of screen height, min 550px
+    height: Math.max(500, screenHeight * 0.63), // Made taller: 70% of screen height, min 550px
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1801,15 +1819,33 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
-  // Video styles
+  // Video styles - match WarmupScreen: no position on container so overlays position relative to imageCardContainer
   videoContainer: {
     flex: 1,
-    position: 'relative',
+    width: '100%',
+    height: '100%',
+  },
+  /* Wrapper at zIndex 0; global CSS [data-video-card] video forces <video> element to z-index -1 so overlays paint on top */
+  videoWrapper: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    zIndex: 0,
   },
   video: {
+    flex: 1,
     width: '100%',
     height: '100%',
     borderRadius: Math.max(12, screenWidth * 0.04),
+  },
+  videoDimmingLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 10,
   },
   pauseOverlay: {
     position: 'absolute',
@@ -1819,13 +1855,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 10,
   },
   volumeIconContainer: {
     position: 'absolute',
     top: Math.max(12, screenHeight * 0.015),
     right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
+    zIndex: 10,
   },
   volumeIconButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1840,7 +1876,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     position: 'absolute',
     top: Math.max(60, screenHeight * 0.075),
     right: Math.max(12, screenWidth * 0.03),
-    zIndex: 5,
+    zIndex: 10,
   },
   restartIconButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
