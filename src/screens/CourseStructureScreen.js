@@ -20,7 +20,7 @@ import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight'
 
 import logger from '../utils/logger.js';
 // Component to handle async exercise resolution
-const ExerciseList = ({ exercises }) => {
+const ExerciseList = ({ exercises, styles }) => {
   const [resolvedExercises, setResolvedExercises] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -338,7 +338,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
           <View style={styles.sessionContent}>
             {session.exercises && session.exercises.length > 0 ? (
               <>
-                <ExerciseList exercises={session.exercises} />
+                <ExerciseList exercises={session.exercises} styles={styles} />
                 {/* Add button to navigate to workout */}
                 <TouchableOpacity
                   style={styles.startSessionButton}
