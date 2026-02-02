@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ASSET_BASE } from '../config/assets';
 import './StickyHeader.css';
 
 const StickyHeader = ({ screenName, showBackButton = false, backPath = null, backgroundImage = null, onEditClick = null, onBack = null, purchaseButton = null, showMenuButton = false, onMenuClick = null, icon = null }) => {
@@ -245,7 +246,7 @@ const StickyHeader = ({ screenName, showBackButton = false, backPath = null, bac
           </button>
         )}
         <img 
-          src="/wake-isotipo.png" 
+          src={`${ASSET_BASE}wake-isotipo.png`}
           alt="Wake Logo" 
           className="sticky-header-logo"
         />

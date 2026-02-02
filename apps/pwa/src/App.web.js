@@ -13,9 +13,11 @@ function FrozenBottomWrapper({ children }) {
   return <View style={{ flex: 1, paddingBottom }}>{children}</View>;
 }
 
-// Helper function to check if we're on login path (called dynamically)
-const getIsLoginPath = () => {
-  return typeof window !== 'undefined' && window.location.pathname === '/login';
+// Helper: login path depends on base path (e.g. /login at root, /app/login when base is /app)
+const getIsLoginPath = (basePath) => {
+  if (typeof window === 'undefined') return false;
+  const loginPath = basePath ? (basePath.replace(/\/$/, '') + '/login') : '/login';
+  return window.location.pathname === loginPath;
 };
 
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
@@ -120,13 +122,15 @@ export default function App() {
     return false;
   });
   
+  // Base path when deployed under /app (set by build:pwa via EXPO_PUBLIC_BASE_PATH)
+  const webBasePath = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BASE_PATH) || '';
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
   logger.debug('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
   
-  // Check login path AFTER all hooks are called
-  const isLoginPath = getIsLoginPath();
+  // Check login path AFTER all hooks are called (basename-aware)
+  const isLoginPath = getIsLoginPath(webBasePath);
   
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
@@ -674,6 +678,7 @@ export default function App() {
   if (!initialMetrics) {
     return (
       <BrowserRouter
+        basename={webBasePath}
         future={{
           v7_startTransition: true,
           v7_relativeSplatPath: true,
@@ -686,6 +691,7 @@ export default function App() {
 
   return (
     <BrowserRouter
+      basename={webBasePath}
       future={{
         v7_startTransition: true,
         v7_relativeSplatPath: true,

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ASSET_BASE } from '../../config/assets';
 import './OnboardingQuestions.css';
 import SvgIcon from '../../components/SvgIcon';
 
@@ -61,7 +62,7 @@ const OnboardingQuestion4 = ({ onAnswer, onNext, onBack, selectedAnswer: initial
     <div className="onboarding-question-container">
       <div className="question-header">
         <img 
-          src="/wake-logo-new.png" 
+          src={`${ASSET_BASE}wake-logo-new.png`} 
           alt="Wake Logo" 
           className="question-logo"
         />

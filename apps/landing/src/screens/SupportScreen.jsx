@@ -52,7 +52,7 @@ const SupportScreen = () => {
         <div className="support-hero">
           <h1 className="support-hero-title">Centro de Soporte Wake</h1>
           <p className="support-hero-subtitle">
-            Estamos aquí para ayudarte. Encuentra respuestas a tus preguntas o contacta directamente 
+            Estamos aquí para ayudarte. Encuentra respuestas a tus preguntas o contacta directamente
             con nuestro equipo de soporte.
           </p>
         </div>
@@ -63,14 +63,14 @@ const SupportScreen = () => {
             <div className="support-main-header">
               <h2 className="support-main-title">Contacto Directo</h2>
               <p className="support-main-description">
-                Para consultas, asistencia técnica, preguntas sobre suscripciones, reembolsos, 
+                Para consultas, asistencia técnica, preguntas sobre suscripciones, reembolsos,
                 problemas con la cuenta o cualquier otra solicitud, puedes contactarnos directamente.
               </p>
             </div>
-            
+
             <div className="support-contact-box">
               <div className="support-contact-label">Correo Electrónico de Soporte</div>
-              <a 
+              <a
                 href={`mailto:${supportEmail}?subject=Soporte Wake - Consulta`}
                 className="support-contact-email"
               >
@@ -108,7 +108,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Asistencia Técnica</h3>
               <p className="support-topic-description">
-                Problemas con la aplicación, errores, fallos, dificultades técnicas, 
+                Problemas con la aplicación, errores, fallos, dificultades técnicas,
                 problemas de sincronización o rendimiento.
               </p>
               <div className="support-topic-examples">
@@ -120,7 +120,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Suscripciones y Pagos</h3>
               <p className="support-topic-description">
-                Consultas sobre planes, facturación, métodos de pago, actualización 
+                Consultas sobre planes, facturación, métodos de pago, actualización
                 de información de pago, reembolsos y cancelaciones.
               </p>
               <div className="support-topic-examples">
@@ -132,7 +132,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Cuenta y Perfil</h3>
               <p className="support-topic-description">
-                Ayuda con la gestión de tu cuenta, recuperación de contraseña, 
+                Ayuda con la gestión de tu cuenta, recuperación de contraseña,
                 actualización de perfil, configuración de privacidad y seguridad.
               </p>
               <div className="support-topic-examples">
@@ -144,7 +144,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Uso de la Aplicación</h3>
               <p className="support-topic-description">
-                Guía sobre funcionalidades, características, cómo usar las herramientas, 
+                Guía sobre funcionalidades, características, cómo usar las herramientas,
                 programas de entrenamiento y seguimiento de progreso.
               </p>
               <div className="support-topic-examples">
@@ -156,7 +156,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Privacidad y Datos</h3>
               <p className="support-topic-description">
-                Consultas sobre privacidad, tratamiento de datos personales, 
+                Consultas sobre privacidad, tratamiento de datos personales,
                 solicitudes de eliminación de datos y políticas de privacidad.
               </p>
               <div className="support-topic-examples">
@@ -168,7 +168,7 @@ const SupportScreen = () => {
             <div className="support-topic-card">
               <h3 className="support-topic-title">Sugerencias y Feedback</h3>
               <p className="support-topic-description">
-                Comparte tus ideas, comentarios, sugerencias para mejorar Wake, 
+                Comparte tus ideas, comentarios, sugerencias para mejorar Wake,
                 reportar bugs o solicitar nuevas funcionalidades.
               </p>
               <div className="support-topic-examples">
@@ -260,20 +260,27 @@ const SupportScreen = () => {
         <div className="support-resources-section">
           <h2 className="support-section-title">Recursos Adicionales</h2>
           <div className="support-resources-grid">
-            <a href="/legal" className="support-resource-card">
+            <Link to="/legal" className="support-resource-card">
               <h3 className="support-resource-title">Documentos Legales</h3>
               <p className="support-resource-description">
                 Términos y condiciones, política de privacidad, política de reembolsos y otros documentos legales importantes.
               </p>
               <span className="support-resource-link">Ver documentos →</span>
-            </a>
-            <Link to="/login" className="support-resource-card">
-              <h3 className="support-resource-title">Acceso a la Aplicación</h3>
+            </Link>
+            <a href="/creators/login" className="support-resource-card">
+              <h3 className="support-resource-title">Panel de Creadores</h3>
               <p className="support-resource-description">
-                Si ya eres usuario de Wake, inicia sesión para acceder a todas las funcionalidades de la aplicación.
+                Si eres creador de contenido, inicia sesión para acceder al panel de Wake Creadores.
               </p>
               <span className="support-resource-link">Iniciar sesión →</span>
-            </Link>
+            </a>
+            <a href="/" className="support-resource-card">
+              <h3 className="support-resource-title">Abrir App (PWA)</h3>
+              <p className="support-resource-description">
+                Si ya eres usuario de Wake, accede a la aplicación para entrenar y seguir tu progreso.
+              </p>
+              <span className="support-resource-link">Abrir app →</span>
+            </a>
           </div>
         </div>
 
@@ -289,8 +296,9 @@ const SupportScreen = () => {
             <div className="support-footer-section">
               <h4 className="support-footer-title">Enlaces Rápidos</h4>
               <div className="support-footer-links">
-                <a href="/legal" className="support-footer-link">Documentos Legales</a>
-                <Link to="/login" className="support-footer-link">Iniciar Sesión</Link>
+                <Link to="/legal" className="support-footer-link">Documentos Legales</Link>
+                <a href="/" className="support-footer-link">Abrir App</a>
+                <a href="/creators/login" className="support-footer-link">Panel de Creadores</a>
                 <a href={`mailto:${supportEmail}`} className="support-footer-link">Contacto</a>
               </div>
             </div>
@@ -312,9 +320,9 @@ const SupportScreen = () => {
               © 2025 Wake. Todos los derechos reservados.
             </p>
             <p className="support-footer-legal">
-              <a href="/legal" className="support-footer-link-small">Términos y Condiciones</a>
+              <Link to="/legal" className="support-footer-link-small">Términos y Condiciones</Link>
               <span className="support-footer-separator">•</span>
-              <a href="/legal" className="support-footer-link-small">Política de Privacidad</a>
+              <Link to="/legal" className="support-footer-link-small">Política de Privacidad</Link>
             </p>
           </div>
         </div>

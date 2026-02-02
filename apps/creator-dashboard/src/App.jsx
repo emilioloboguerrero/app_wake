@@ -11,8 +11,6 @@ import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
 import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
-import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
-import SupportScreen from './screens/SupportScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
 import ContentHubScreen from './screens/ContentHubScreen';
@@ -22,9 +20,11 @@ import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
+const CREATOR_BASE = '/creators';
+
 function AppContent() {
   return (
-    <Router>
+    <Router basename={CREATOR_BASE}>
         <div className="App">
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
@@ -212,9 +212,7 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-            <Route path="/legal" element={<LegalDocumentsScreen />} />
-            <Route path="/support" element={<SupportScreen />} />
-            <Route path="/" element={<SupportScreen />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
       </Router>

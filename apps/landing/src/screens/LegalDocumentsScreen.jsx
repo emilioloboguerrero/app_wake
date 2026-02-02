@@ -30,7 +30,6 @@ const LegalDocumentsScreen = () => {
   const [selectedDocument, setSelectedDocument] = useState(null);
 
   const handleDocumentClick = (url) => {
-    // Open PDF in new tab
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 

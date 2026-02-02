@@ -1,4 +1,5 @@
 import React from 'react';
+import { ASSET_BASE } from '../../config/assets';
 import './OnboardingQuestions.css';
 
 const OnboardingComplete = ({ onComplete }) => {
@@ -7,7 +8,7 @@ const OnboardingComplete = ({ onComplete }) => {
       <div className="complete-content">
         <div className="complete-logo-container">
           <img
-            src="/wake-isotipo-negativo.png"
+            src={`${ASSET_BASE}wake-isotipo-negativo.png`}
             alt="Wake Logo"
             className="complete-logo"
             onError={(e) => {

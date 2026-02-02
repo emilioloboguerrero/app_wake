@@ -7,12 +7,24 @@ import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
 import appleAuthService from '../services/appleAuthService';
 import { handleAutoLoginFromToken } from '../utils/autoLogin';
+import { ASSET_BASE } from '../config/assets';
 import './LoginScreen.css';
 
 const LoginScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isCreator, webOnboardingCompleted, loading, userRole } = useAuth();
+
+  useEffect(() => {
+    console.log('[LoginScreen] mounted', {
+      pathname: location.pathname,
+      windowPath: window.location.pathname,
+      search: location.search,
+      loading,
+      hasUser: !!user,
+      userRole,
+    });
+  }, []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -73,11 +85,14 @@ const LoginScreen = () => {
     // Wait for userRole to be loaded (not null) before redirecting
     if (userRole === null) return;
     
-    // Only redirect if we're on the login page
-    const currentPath = window.location.pathname;
-    if (currentPath !== '/login') return;
+    // Only redirect if we're on the login page (use location.pathname - relative to basename /creators)
+    const currentPath = location.pathname;
+    if (currentPath !== '/login') {
+      console.log('[LoginScreen] Skip redirect: not on login route', { currentPath, windowPath: window.location.pathname });
+      return;
+    }
 
-    console.log('🔍 LoginScreen: Redirecting user', { 
+    console.log('[LoginScreen] Redirecting logged-in user', { 
       userRole, 
       isCreator, 
       webOnboardingCompleted 
@@ -108,10 +123,11 @@ const LoginScreen = () => {
         navigate('/lab', { replace: true });
       }
     } else if (!isCreator) {
-      // Regular users go to user page
-      navigate('/user/biblioteca', { replace: true });
+      // Regular users: creator dashboard is for creators only. Redirect to PWA.
+      console.log('[LoginScreen] User is not creator, redirecting to PWA');
+      window.location.href = '/';
     }
-  }, [user, loading, userRole, isCreator, webOnboardingCompleted, navigate]);
+  }, [user, loading, userRole, isCreator, webOnboardingCompleted, navigate, location.pathname]);
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -164,16 +180,16 @@ const LoginScreen = () => {
     }
 
     setIsLoading(true);
+    console.log('[LoginScreen] signIn: attempting email/password login', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
     try {
       await authService.signInUser(email, password);
-      
+      console.log('[LoginScreen] signIn: success, waiting for AuthContext redirect');
       // AuthContext will automatically fetch user role and handle redirect
-      // Wait a moment for AuthContext to update, then let useEffect handle redirect
-      // This ensures the user state is properly set before navigation
       setTimeout(() => {
         setIsLoading(false);
       }, 100);
     } catch (error) {
+      console.error('[LoginScreen] signIn: error', { code: error?.code, message: error?.message });
       setIsLoading(false);
       
       // Handle specific Firebase errors
@@ -235,16 +251,17 @@ const LoginScreen = () => {
     }
 
     setIsLoading(true);
+    console.log('[LoginScreen] register: attempting account creation', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
     try {
       const initialDisplayName = email.split('@')[0];
       await authService.registerUser(email, password, initialDisplayName);
-      
+      console.log('[LoginScreen] register: success, waiting for AuthContext redirect');
       // AuthContext will automatically fetch user role and handle redirect
-      // Wait a moment for AuthContext to update, then let useEffect handle redirect
       setTimeout(() => {
         setIsLoading(false);
       }, 100);
     } catch (error) {
+      console.error('[LoginScreen] register: error', { code: error?.code, message: error?.message });
       setIsLoading(false);
       
       // Handle specific Firebase errors
@@ -269,9 +286,10 @@ const LoginScreen = () => {
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
+    console.log('[LoginScreen] Google: attempting sign-in');
     try {
       const result = await googleAuthService.signIn();
-      
+      console.log('[LoginScreen] Google: result', { success: result.success, error: result?.error });
       if (result.success) {
         // AuthContext will automatically fetch user role and handle redirect
         // Wait a moment for AuthContext to update, then let useEffect handle redirect
@@ -291,9 +309,10 @@ const LoginScreen = () => {
 
   const handleAppleLogin = async () => {
     setIsLoading(true);
+    console.log('[LoginScreen] Apple: attempting sign-in');
     try {
       const result = await appleAuthService.signIn();
-      
+      console.log('[LoginScreen] Apple: result', { success: result.success, error: result?.error });
       if (result.success) {
         // AuthContext will automatically fetch user role and handle redirect
         // Wait a moment for AuthContext to update, then let useEffect handle redirect
@@ -357,10 +376,11 @@ const LoginScreen = () => {
         {/* WAKE Logo */}
         <div className="logo-container">
           <img 
-            src="/wake-logo-new.png" 
+            src={`${ASSET_BASE}wake-logo-new.png`}
             alt="Wake Logo" 
             className="logo"
           />
+          <p className="login-subtitle">Creadores</p>
         </div>
 
         {/* Welcome Text */}
@@ -466,7 +486,7 @@ const LoginScreen = () => {
           title="Continua con Google"
           onClick={handleGoogleLogin}
           variant="social"
-          icon="/google-icon.png"
+          icon={`${ASSET_BASE}google-icon.png`}
           loading={isLoading}
           disabled={isLoading}
         />
@@ -476,7 +496,7 @@ const LoginScreen = () => {
           title="Continua con Apple"
           onClick={handleAppleLogin}
           variant="social"
-          icon="/apple-icon.png"
+          icon={`${ASSET_BASE}apple-icon.png`}
           loading={isLoading}
           disabled={isLoading}
         />

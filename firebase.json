@@ -18,21 +18,22 @@
   ],
 
   "hosting": {
-    "public": "dist",
+    "public": "hosting",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      { "source": "/creators", "destination": "/creators/index.html" },
+      { "source": "/creators/**", "destination": "/creators/index.html" },
+      { "source": "/landing", "destination": "/landing/index.html" },
+      { "source": "/landing/**", "destination": "/landing/index.html" },
+      { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
       {
-        "source": "sw.js",
+        "source": "/sw.js",
         "headers": [
           {
             "key": "Content-Type",

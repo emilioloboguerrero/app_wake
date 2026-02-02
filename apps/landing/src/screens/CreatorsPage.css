@@ -1,0 +1,20 @@
+.creators-page {
+  padding: 24px;
+  padding-left: 40px;
+}
+
+.creators-page-link {
+  color: #bfa84d;
+  text-decoration: none;
+}
+
+.creators-page-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .creators-page {
+    padding: 24px;
+    padding-left: 24px;
+  }
+}

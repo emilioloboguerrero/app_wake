@@ -1,27 +1,26 @@
 #!/usr/bin/env node
 /**
- * Post-build script: after `expo export --platform web`, replace dist/index.html
- * with our custom PWA template (web/index.html) while injecting the Expo bundle
- * script tags from the generated index. Expo outputs multiple scripts (e.g. runtime,
- * common chunk, main bundle); we must inject all of them in order.
+ * Post-build script: after `expo export --platform web` (from apps/pwa), replace
+ * apps/pwa/dist/index.html with our custom PWA template (apps/pwa/web/index.html)
+ * while injecting the Expo bundle script tags. Paths from scripts/paths.js.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { dirPwaOutput, dirPwaWeb } = require('./paths.js');
 
-const root = path.join(__dirname, '..');
-const distIndexPath = path.join(root, 'dist', 'index.html');
-const webTemplatePath = path.join(root, 'web', 'index.html');
+const distIndexPath = path.join(dirPwaOutput, 'index.html');
+const webTemplatePath = path.join(dirPwaWeb, 'index.html');
 
 const PLACEHOLDER = '  <!-- EXPO_BUNDLE_SCRIPT: replaced by build script with actual bundle script tag -->';
 const EXPO_SCRIPT_REGEX = /<script\s+src="\/_expo\/[^"]+"[^>]*><\/script>/g;
 
 if (!fs.existsSync(distIndexPath)) {
-  console.error('scripts/inject-expo-script.js: dist/index.html not found. Run "npm run build:web" first.');
+  console.error('scripts/inject-expo-script.js: PWA dist/index.html not found. Run "npm run build:pwa" or "npm run build:web" first.');
   process.exit(1);
 }
 if (!fs.existsSync(webTemplatePath)) {
-  console.error('scripts/inject-expo-script.js: web/index.html not found.');
+  console.error('scripts/inject-expo-script.js: PWA web/index.html not found at', webTemplatePath);
   process.exit(1);
 }
 
@@ -42,4 +41,4 @@ if (!customIndex.includes('EXPO_BUNDLE_SCRIPT')) {
 customIndex = customIndex.replace(PLACEHOLDER, scriptTagsBlock);
 
 fs.writeFileSync(distIndexPath, customIndex, 'utf8');
-console.log('Injected', scriptTags.length, 'Expo bundle script(s) into dist/index.html');
+console.log('Injected', scriptTags.length, 'Expo bundle script(s) into', path.relative(process.cwd(), distIndexPath));

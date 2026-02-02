@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { completeWebOnboarding, updateUser, getUser } from '../services/firestoreService';
 import profilePictureService from '../services/profilePictureService';
 import cardService from '../services/cardService';
+import { ASSET_BASE } from '../config/assets';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import './CreatorOnboardingScreen.css';
@@ -207,7 +208,7 @@ const CreatorOnboardingScreen = () => {
         <div className="onboarding-step-content">
           <div className="step-logo">
             <img 
-              src="/wake-isotipo-negativo.png" 
+              src={`${ASSET_BASE}wake-isotipo-negativo.png`} 
               alt="Wake Logo" 
               className="wake-logo-image"
               onError={(e) => {
@@ -332,7 +333,7 @@ const CreatorOnboardingScreen = () => {
         <div className="onboarding-step-content">
           <div className="step-logo">
             <img 
-              src="/wake-isotipo-negativo.png" 
+              src={`${ASSET_BASE}wake-isotipo-negativo.png`} 
               alt="Wake Logo" 
               className="wake-logo-image"
               onError={(e) => {

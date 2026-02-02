@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { ASSET_BASE } from '../config/assets';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import './DashboardLayout.css';
@@ -51,7 +52,7 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
       <aside className={`sidebar ${isSidebarVisible ? 'sidebar-expanded' : 'sidebar-collapsed'} ${isMobile ? (isSidebarVisible ? 'sidebar-open' : '') : ''}`}>
         <div className="sidebar-header">
           <img 
-            src="/wake-logo-new.png" 
+            src={`${ASSET_BASE}wake-logo-new.png`}
             alt="Wake Logo" 
             className="sidebar-logo-image"
           />

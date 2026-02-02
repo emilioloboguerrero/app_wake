@@ -29,6 +29,13 @@
   object-fit: contain;
 }
 
+.login-subtitle {
+  font-size: 14px;
+  color: #cccccc;
+  margin: 8px 0 0 0;
+  font-weight: 400;
+}
+
 .welcome-text {
   font-size: 24px;
   font-weight: 600;

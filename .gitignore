@@ -20,11 +20,12 @@ dist/
 web-build/
 
 # ============================================
-# Build Output
+# Build Output (root + apps/pwa, apps/landing, apps/creator-dashboard)
 # ============================================
 build/
 dist/
 web-build/
+hosting/
 
 # ============================================
 # Config (keep structure, ignore sensitive)

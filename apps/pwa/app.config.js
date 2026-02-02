@@ -17,7 +17,7 @@ export default {
       bundleIdentifier: "com.lab.wake.co",
       buildNumber: "54",
       usesAppleSignIn: true,
-      googleServicesFile: "./GoogleService-Info.plist",
+      googleServicesFile: "../../config/firebase/GoogleService-Info.plist",
       infoPlist: {
         NSPhotoLibraryUsageDescription: "Wake necesita acceso a tu galería para que puedas subir una foto de perfil.",
         NSCameraUsageDescription: "Wake necesita acceso a tu cámara para que puedas tomar una foto de perfil.",
@@ -40,7 +40,7 @@ export default {
       versionCode: 15,
       edgeToEdgeEnabled: true,
       package: "com.lab.wake.co",
-      googleServicesFile: "./google-services.json"
+      googleServicesFile: "../../config/firebase/google-services.json"
     },
     web: {
       favicon: "./assets/favicon.png",
