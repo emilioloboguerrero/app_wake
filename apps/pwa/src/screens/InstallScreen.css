@@ -179,6 +179,277 @@
   position: relative;
 }
 
+/* Google app flow: intro paragraph above steps */
+.install-screen .install-steps-google .install-google-intro {
+  margin: 0 0 1rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  line-height: 1.4;
+  color: #ffffff;
+  opacity: 0.85;
+  text-align: left;
+}
+
+/* Buttons to open current page in Chrome / Safari (Google app flow only) */
+.install-screen .install-open-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  pointer-events: auto;
+}
+
+.install-screen .install-open-btn {
+  display: inline-flex;
+  pointer-events: auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.95rem, 1.8vw, 1.05rem);
+  line-height: 1.2;
+  text-decoration: none;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+  min-height: 44px;
+  box-sizing: border-box;
+  appearance: none;
+}
+
+.install-screen .install-open-btn:focus {
+  outline: none;
+}
+
+.install-screen .install-open-btn:active {
+  transform: scale(0.98);
+}
+
+.install-screen .install-open-btn-chrome {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+  color: #ffffff;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.08);
+}
+
+.install-screen .install-open-btn-chrome:hover {
+  opacity: 0.95;
+}
+
+.install-screen .install-open-btn-safari {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.install-screen .install-open-btn-safari:hover {
+  opacity: 0.95;
+}
+
+/* Android flow: single install button or short fallback */
+.install-screen .install-steps-android {
+  position: relative;
+  pointer-events: auto;
+}
+
+.install-screen .install-android-intro {
+  margin: 0 0 1.25rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  line-height: 1.4;
+  color: #ffffff;
+  opacity: 0.9;
+  text-align: left;
+}
+
+.install-screen .install-open-btn-android {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+  padding: 1rem 1.5rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: clamp(1rem, 2vw, 1.1rem);
+  color: #ffffff;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 0 32px rgba(255, 255, 255, 0.1);
+  appearance: none;
+}
+
+.install-screen .install-open-btn-android:focus {
+  outline: none;
+}
+
+.install-screen .install-open-btn-android:active {
+  transform: scale(0.98);
+}
+
+.install-screen .install-open-btn-android-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: #ffffff;
+  opacity: 0.95;
+}
+
+.install-screen .install-android-done {
+  margin-top: 0.5rem;
+  padding: 1.25rem;
+  text-align: center;
+  pointer-events: auto;
+}
+
+.install-screen .install-android-done-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 0.75rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.install-screen .install-android-done-title {
+  margin: 0 0 0.35rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 1.35rem;
+  color: #ffffff;
+}
+
+.install-screen .install-android-done-text {
+  margin: 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1rem, 2vw, 1.1rem);
+  line-height: 1.4;
+  color: #ffffff;
+  opacity: 0.8;
+}
+
+.install-screen .install-android-fallback {
+  margin-top: 0.5rem;
+  pointer-events: auto;
+}
+
+.install-screen .install-android-fallback-intro {
+  margin: 0 0 1rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  line-height: 1.4;
+  color: #ffffff;
+  opacity: 0.9;
+  text-align: left;
+}
+
+.install-screen .install-android-fallback-card {
+  margin-top: 0;
+}
+
+.install-screen .install-android-fallback-card .install-card-body {
+  gap: 0.5rem;
+}
+
+/* Safari modal: link copied, go to Safari */
+.install-screen .install-safari-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #000;
+  pointer-events: auto;
+}
+
+.install-screen .install-safari-modal {
+  width: 100%;
+  max-width: 360px;
+  padding: 1.5rem 1.75rem;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 0 48px rgba(0, 0, 0, 0.4);
+}
+
+.install-screen .install-safari-modal-title {
+  margin: 0 0 0.75rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  color: #ffffff;
+}
+
+.install-screen .install-safari-modal-text {
+  margin: 0 0 1.25rem 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.45;
+  color: #ffffff;
+  opacity: 0.9;
+}
+
+.install-screen .install-safari-modal-btn {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #ffffff;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.install-screen .install-safari-modal-btn:focus {
+  outline: none;
+}
+
+.install-screen .install-safari-modal-btn:active {
+  opacity: 0.9;
+}
+
+/* Share icon when used alone in a step (e.g. Google app step 3) */
+.install-screen .install-card-share-icon-inline {
+  display: inline-block;
+  margin-top: 0.25rem;
+  vertical-align: middle;
+}
+
 /* Card below subtitle – gradient panel, not button-like; softer white, gradient inside */
 .install-screen .install-card {
   position: relative;

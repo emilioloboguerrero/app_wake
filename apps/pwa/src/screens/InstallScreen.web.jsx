@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import './InstallScreen.css';
 
 const LANDING_URL = 'https://wakelab.co/';
@@ -92,10 +92,151 @@ const WakeLogoInline = ({ className }) => (
   </svg>
 );
 
+/** Chrome on iOS: share sheet often hides "Add to Home Screen" until user taps "More" / "More options". */
+function isChromeOnIOS() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return navigator.userAgent.includes('CriOS');
+}
+
+/** Google Search app in-app browser (GSA in user agent). Add to Home Screen not available; user must open in Chrome/Safari first. */
+function isGoogleApp() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return navigator.userAgent.includes('GSA');
+}
+
+function isGoogleAppAndroid() {
+  if (!isGoogleApp()) return false;
+  const ua = navigator.userAgent;
+  return /Android|wv\)/.test(ua);
+}
+
+function isGoogleAppIOS() {
+  return isGoogleApp() && !isGoogleAppAndroid();
+}
+
+/** Android device (not in Google app – used for install flow). */
+function isAndroidStandalone() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return /Android/i.test(navigator.userAgent) && !isGoogleApp();
+}
+
+/** Three-dots (More) menu icon – for Google app Android step */
+const MoreVertIcon = ({ className }) => (
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    width={18}
+    height={18}
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden
+  >
+    <path
+      d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+/** Build URL to open current page in Chrome. iOS: googlechromes:// ; Android: intent with package=com.android.chrome */
+function getOpenInChromeUrl() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const url = window.location.href;
+  const isHttps = url.startsWith('https://');
+  const isHttp = url.startsWith('http://');
+  if (!isHttps && !isHttp) return null;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  if (isIOS) {
+    const path = url.slice(isHttps ? 8 : 7);
+    return (isHttps ? 'googlechromes://' : 'googlechrome://') + path;
+  }
+  if (/Android/.test(ua)) {
+    try {
+      const fallback = encodeURIComponent(url);
+      const path = url.replace(/^https?:\/\//, '');
+      return `intent://${path}#Intent;scheme=${isHttps ? 'https' : 'http'};package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+    } catch (_) {
+      return url;
+    }
+  }
+  return null;
+}
+
 /**
  * PWA Install screen – shown when user visits the PWA in browser mode (not installed).
  */
 export default function InstallScreen() {
+  const showChromeIOSMoreStep = isChromeOnIOS();
+  const isGoogleAppBrowser = isGoogleApp();
+  const googleAppAndroid = isGoogleAppAndroid();
+  const googleAppIOS = isGoogleAppIOS();
+  const openInChromeUrl = isGoogleAppBrowser ? getOpenInChromeUrl() : null;
+  const isAndroid = isAndroidStandalone();
+
+  const [showSafariModal, setShowSafariModal] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installOutcome, setInstallOutcome] = useState(null);
+  const deferredPromptRef = useRef(null);
+
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      deferredPromptRef.current = e;
+      setDeferredPrompt(e);
+    };
+    const onInstalled = () => {
+      setInstallOutcome('accepted');
+      deferredPromptRef.current = null;
+      setDeferredPrompt(null);
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const handleAndroidInstall = useCallback(async () => {
+    const e = deferredPromptRef.current || deferredPrompt;
+    if (!e || typeof e.prompt !== 'function') return;
+    e.prompt();
+    try {
+      const { outcome } = await e.userChoice;
+      setDeferredPrompt(null);
+      deferredPromptRef.current = null;
+      if (outcome === 'accepted') setInstallOutcome('accepted');
+    } catch (_) {
+      setDeferredPrompt(null);
+      deferredPromptRef.current = null;
+    }
+  }, [deferredPrompt]);
+
+  const handleOpenInSafari = useCallback(() => {
+    const url = typeof window !== 'undefined' && window.location ? window.location.href : '';
+    if (!url) return;
+    const copy = () => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(url);
+      }
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(ta);
+      }
+      return Promise.resolve();
+    };
+    copy().then(() => setShowSafariModal(true)).catch(() => setShowSafariModal(true));
+  }, []);
+
   return (
     <div className="install-screen">
       <a
@@ -115,49 +256,141 @@ export default function InstallScreen() {
           </span>
           <WakeLogoInline className="install-hero-logo" />
         </h1>
-        <p className="install-hero-subtitle">No se descarga nada.</p>
-        <div className="install-steps">
-          <div className="install-card">
-            <div className="install-card-number" aria-hidden="true">
-              1
+        {isGoogleAppBrowser ? (
+          <div className="install-steps install-steps-google">
+            <p className="install-google-intro">
+              Estás en la <strong>app de Google</strong>. Para añadir Wake a la pantalla de inicio, ábrela primero en Chrome o Safari.
+            </p>
+            <div className="install-open-buttons">
+              {openInChromeUrl && (
+                <a
+                  href={openInChromeUrl}
+                  className="install-open-btn install-open-btn-chrome"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Abrir en Chrome
+                </a>
+              )}
+              {googleAppIOS && (
+                <button
+                  type="button"
+                  className="install-open-btn install-open-btn-safari"
+                  onClick={handleOpenInSafari}
+                >
+                  Abrir en Safari
+                </button>
+              )}
             </div>
-            <div className="install-card-body">
-              <p className="install-card-line1">Abajo, en la <strong>barra del navegador</strong></p>
-              <div className="install-card-line2">
-                <span className="install-card-line2-text">Busca y toca <strong>compartir</strong></span>
-                <ShareIcon className="install-card-share-icon" />
+          </div>
+        ) : isAndroid ? (
+          <div className="install-steps install-steps-android">
+            {installOutcome === 'accepted' ? (
+              <div className="install-android-done">
+                <CheckIcon className="install-android-done-icon" />
+                <p className="install-android-done-title">Listo</p>
+                <p className="install-android-done-text">Abre Wake desde el icono en tu pantalla de inicio.</p>
+              </div>
+            ) : deferredPrompt ? (
+              <>
+                <p className="install-android-intro">Toca el botón para instalar la app en tu pantalla de inicio.</p>
+                <button
+                  type="button"
+                  className="install-open-btn install-open-btn-android"
+                  onClick={handleAndroidInstall}
+                >
+                  <AñadirIcon className="install-open-btn-android-icon" />
+                  Añadir a la pantalla de inicio
+                </button>
+              </>
+            ) : (
+              <div className="install-android-fallback">
+                <p className="install-android-fallback-intro">Abre el menú del navegador y elige instalar.</p>
+                <div className="install-card install-android-fallback-card">
+                  <div className="install-card-body">
+                    <p className="install-card-line1">Toca los <strong>tres puntos</strong> <MoreVertIcon className="install-card-share-icon install-card-share-icon-inline" /> en la barra</p>
+                    <p className="install-card-note">Luego <strong>&quot;Instalar aplicación&quot;</strong> o <strong>&quot;Añadir a la pantalla de inicio&quot;</strong>.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="install-steps">
+            <div className="install-card">
+              <div className="install-card-number" aria-hidden="true">1</div>
+              <div className="install-card-body">
+                <p className="install-card-line1">Abajo, en la <strong>barra del navegador</strong></p>
+                <div className="install-card-line2">
+                  <span className="install-card-line2-text">Busca y toca <strong>compartir</strong></span>
+                  <ShareIcon className="install-card-share-icon" />
+                </div>
+              </div>
+            </div>
+            {showChromeIOSMoreStep && (
+              <div className="install-step">
+                <div className="install-card-number" aria-hidden="true">2</div>
+                <div className="install-card-body">
+                  <p className="install-card-line1">Toca <strong>&quot;Más&quot;</strong> o <strong>&quot;Más opciones&quot;</strong></p>
+                  <p className="install-card-note">Para ver todas las acciones del menú de compartir.</p>
+                </div>
+              </div>
+            )}
+            <div className="install-step">
+              <div className="install-card-number" aria-hidden="true">{showChromeIOSMoreStep ? 3 : 2}</div>
+              <div className="install-card-body">
+                <p className="install-card-line1"><strong>Desliza</strong> en el menú y busca</p>
+                <div className="install-card-pill">
+                  <span className="install-card-pill-icon">
+                    <AñadirIcon className="install-card-pill-plus" />
+                  </span>
+                  <span className="install-card-pill-text">Añadir a pantalla de inicio</span>
+                </div>
+                <p className="install-card-note">¿No la ves? Toca «Editar acciones» y actívala.</p>
+              </div>
+            </div>
+            <div className="install-step">
+              <div className="install-card-number" aria-hidden="true">{showChromeIOSMoreStep ? 4 : 3}</div>
+              <div className="install-card-body">
+                <p className="install-card-line1">Toca <strong>Añadir</strong></p>
+                <div className="install-card-listo">
+                  <CheckIcon className="install-card-check-icon" />
+                  <span className="install-card-note">Listo</span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="install-step">
-            <div className="install-card-number" aria-hidden="true">
-              2
-            </div>
-            <div className="install-card-body">
-              <p className="install-card-line1"><strong>Desliza</strong> en el menú y busca</p>
-              <div className="install-card-pill">
-                <span className="install-card-pill-icon">
-                  <AñadirIcon className="install-card-pill-plus" />
-                </span>
-                <span className="install-card-pill-text">Añadir a pantalla de inicio</span>
-              </div>
-              <p className="install-card-note">¿No la ves? Toca «Editar acciones» y actívala.</p>
-            </div>
-          </div>
-          <div className="install-step">
-            <div className="install-card-number" aria-hidden="true">
-              3
-            </div>
-            <div className="install-card-body">
-              <p className="install-card-line1">Toca <strong>Añadir</strong></p>
-              <div className="install-card-listo">
-                <CheckIcon className="install-card-check-icon" />
-                <span className="install-card-note">Listo</span>
-              </div>
-            </div>
+        )}
+      </div>
+
+      {showSafariModal && (
+        <div
+          className="install-safari-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="install-safari-modal-title"
+          onClick={() => setShowSafariModal(false)}
+        >
+          <div
+            className="install-safari-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="install-safari-modal-title" className="install-safari-modal-title">
+              Enlace copiado
+            </h2>
+            <p className="install-safari-modal-text">
+              El enlace se ha copiado al portapapeles. Abre <strong>Safari</strong> y pégalo en la barra de direcciones para continuar.
+            </p>
+            <button
+              type="button"
+              className="install-safari-modal-btn"
+              onClick={() => setShowSafariModal(false)}
+            >
+              Entendido
+            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

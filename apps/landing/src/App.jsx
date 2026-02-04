@@ -157,7 +157,7 @@ function Home() {
             <span className="hero-title-bold">quienes te inspiran</span>
           </h1>
           <p className="hero-subtitle">
-            Sigue sus planes y mide tu
+            Sigue sus programas y mide tu
             <br />
             <span className="hero-subtitle-bold">progreso</span> en un solo lugar
           </p>
