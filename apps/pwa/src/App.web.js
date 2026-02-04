@@ -1,11 +1,13 @@
 // Web-specific App entry point
 import React from 'react';
 import { View } from 'react-native';
+import './styles/global.css'; // Load Montserrat + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen.web';
+import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
-import { isPWA } from './utils/platform';
+import { isPWA, shouldShowAppFlow } from './utils/platform';
 
 // Applies frozen bottom inset (like WakeHeader freezes top) so bottom never pops after mount.
 function FrozenBottomWrapper({ children }) {
@@ -57,6 +59,34 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
   logger.warn('[APP] WARNING: useMontserratFonts is being used in non-web environment!');
 }
 
+// Inject Montserrat font link at runtime – ensures font loads in dev (Expo dev server
+// doesn't use web/index.html) and production (backup if index.html link is missing)
+const MONSERRAT_URL =
+  'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap';
+const FONT_LINK_ID = 'wake-montserrat-font';
+
+function ensureMontserratLoaded() {
+  if (typeof document === 'undefined' || !document.head) return;
+  if (document.getElementById(FONT_LINK_ID)) return;
+  const existing = document.querySelector(`link[href*="Montserrat"]`);
+  if (existing) return;
+  const preconnect1 = document.createElement('link');
+  preconnect1.rel = 'preconnect';
+  preconnect1.href = 'https://fonts.googleapis.com';
+  document.head.appendChild(preconnect1);
+  const preconnect2 = document.createElement('link');
+  preconnect2.rel = 'preconnect';
+  preconnect2.href = 'https://fonts.gstatic.com';
+  preconnect2.crossOrigin = 'anonymous';
+  document.head.appendChild(preconnect2);
+  const link = document.createElement('link');
+  link.id = FONT_LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = MONSERRAT_URL;
+  document.head.appendChild(link);
+}
+ensureMontserratLoaded();
+
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
 let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
@@ -82,8 +112,6 @@ const loadHeavyComponents = async () => {
           logger.debug('[APP] Loading auth, webStorageService...');
           auth = require('./config/firebase').auth;
           webStorageService = require('./services/webStorageService').default;
-          logger.debug('[APP] Loading global.css...');
-          require('./styles/global.css');
           logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
           logger.error('[APP] ❌ Error loading heavy components:', error);
@@ -122,8 +150,11 @@ export default function App() {
     return false;
   });
   
-  // Base path when deployed under /app (set by build:pwa via EXPO_PUBLIC_BASE_PATH)
-  const webBasePath = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BASE_PATH) || '';
+  // Base path: derive from URL first (reload at /app stays in PWA), then fall back to build env
+  const webBasePath =
+    typeof window !== 'undefined' && (window.location.pathname === '/app' || window.location.pathname.startsWith('/app/'))
+      ? '/app'
+      : ((typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BASE_PATH) || '');
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
@@ -164,18 +195,32 @@ export default function App() {
         logger.debug('[APP] Heavy components loaded, setting componentsLoaded to true');
         setComponentsLoaded(true);
         
-        // Initialize Service Worker AFTER components are loaded
-        // Only register if /sw.js is served as JS (not as index.html - fixes "unsupported MIME type text/html")
+        // Initialize Service Worker AFTER components are loaded (path respects base path e.g. /app/sw.js)
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-          fetch('/sw.js', { method: 'HEAD' })
-            .then((res) => {
-              const ct = res.headers.get('content-type') || '';
-              if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
-                safeLog('log', '[WAKE] Skipping SW registration: /sw.js not served as JavaScript');
-                return null;
-              }
-              return navigator.serviceWorker.register('/sw.js');
-            })
+          const swPath = webBasePath + '/sw.js';
+          const rootScope = new URL('/', window.location.origin).href;
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            return Promise.all(
+              registrations.map((reg) => {
+                if (reg.scope === rootScope && webBasePath === '/app') {
+                  return reg.unregister().then(() => {
+                    logger.debug('[APP] Unregistered old root-scoped service worker');
+                  });
+                }
+                return Promise.resolve();
+              })
+            );
+          }).then(() =>
+            fetch(swPath, { method: 'HEAD' })
+          ).then((res) => {
+            if (!res) return null;
+            const ct = res && res.headers ? res.headers.get('content-type') || '' : '';
+            if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
+              safeLog('log', '[WAKE] Skipping SW registration: ' + swPath + ' not served as JavaScript');
+              return null;
+            }
+            return navigator.serviceWorker.register(swPath);
+          })
             .then((registration) => {
               if (registration) safeLog('log', '✅ Service Worker registered:', registration);
             })
@@ -201,7 +246,7 @@ export default function App() {
         clearTimeout(timeoutId);
       };
     }
-  }, [isLoginPath]);
+  }, [isLoginPath, webBasePath]);
 
   // Suppress React Native chart-kit warnings on web (development only)
   React.useEffect(() => {
@@ -266,7 +311,11 @@ export default function App() {
             source.includes('pejdijmoenmkgeppbflobdenhhabjlaj')) {
           return; // Don't log extension errors
         }
-        
+        // Resource load errors (e.g. img 404) often have undefined message/filename/error in some browsers
+        if (event.message == null && event.filename == null && event.error == null) {
+          safeLog('error', '❌ Unhandled Error: (resource load error, e.g. image)');
+          return;
+        }
         safeLog('error', '❌ Unhandled Error:', {
           message: event.message,
           filename: event.filename,
@@ -640,7 +689,10 @@ export default function App() {
   // Single AuthProvider for entire app so auth state persists when navigating from /login to /
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
-  if (isLoginPath) {
+  if (!shouldShowAppFlow()) {
+    logger.debug('[APP] Not in standalone mode (no bypass) - rendering InstallScreen');
+    content = <InstallScreen />;
+  } else if (isLoginPath) {
     logger.debug('[APP] Login route - rendering LoginScreen');
     content = <LoginScreen />;
   } else if (!componentsLoaded || !fontsLoaded) {

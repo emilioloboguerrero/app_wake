@@ -9,12 +9,19 @@ import logger from '../utils/logger';
 const LoginScreenModule = require('./LoginScreen.js');
 const LoginScreenBase = LoginScreenModule.LoginScreenBase || LoginScreenModule.default;
 
+// Derive from URL first (same as App.web.js) so reload at /app works without build env
+const webBasePath =
+  typeof window !== 'undefined' && (window.location.pathname === '/app' || window.location.pathname.startsWith('/app/'))
+    ? '/app'
+    : ((typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BASE_PATH) || '');
+const appHomePath = webBasePath ? webBasePath.replace(/\/$/, '') + '/' : '/';
+
 const LoginScreen = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const hasRedirectedRef = useRef(false); // Prevent multiple redirects
 
-  // Redirect to home if already logged in
+  // Redirect to home if already logged in (home = /app when deployed under /app)
   useEffect(() => {
     // Always log current state for debugging
     logger.log('[LOGIN SCREEN WEB] BREAKPOINT: useEffect triggered. uid:', user?.uid || auth.currentUser?.uid, {
@@ -35,24 +42,21 @@ const LoginScreen = () => {
     
     if (!loading && currentUser) {
       const uid = currentUser?.uid;
-      logger.log('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget: / (AuthLayout will send to /onboarding if new user)');
+      logger.log('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget:', appHomePath);
       hasRedirectedRef.current = true; // Mark as redirected
-      // Force full reload to / so App.web.js re-renders with main app (reliable fix for "sometimes doesn't navigate")
       setTimeout(() => {
-        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace("/"). uid:', uid);
-        window.location.replace('/');
+        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace(appHomePath). uid:', uid);
+        window.location.replace(appHomePath);
       }, 100); // Small delay to ensure state is stable
     } else if (!loading && !currentUser) {
-      // If loading is false but no user, check Firebase directly as fallback
-      // This handles the case where AuthContext hasn't updated yet but Firebase has
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
         const uid = firebaseUser.uid;
         logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Firebase user but AuthContext not updated, redirecting. uid:', uid);
         hasRedirectedRef.current = true;
         setTimeout(() => {
-          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace("/") from Firebase fallback. uid:', uid);
-          window.location.replace('/');
+          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace from Firebase fallback. uid:', uid);
+          window.location.replace(appHomePath);
         }, 100);
       } else {
         logger.debug('[LOGIN SCREEN WEB] No user found, waiting...', {
@@ -71,7 +75,6 @@ const LoginScreen = () => {
     if (hasRedirectedRef.current) return;
     if (loading) return; // Still loading, wait
     
-    // If we don't have user from AuthContext but Firebase has one, wait a bit then redirect
     if (!user && auth.currentUser) {
       logger.debug('[LOGIN SCREEN WEB] Firebase user exists but AuthContext not updated, polling...');
       const pollInterval = setInterval(() => {
@@ -85,11 +88,10 @@ const LoginScreen = () => {
           logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Polling found user, redirecting. uid:', firebaseUser.uid);
           hasRedirectedRef.current = true;
           clearInterval(pollInterval);
-          window.location.replace('/');
+          window.location.replace(appHomePath);
         }
       }, 100); // Check every 100ms
       
-      // Stop polling after 3 seconds (AuthContext should have updated by then)
       setTimeout(() => {
         clearInterval(pollInterval);
       }, 3000);
@@ -99,10 +101,8 @@ const LoginScreen = () => {
   }, [user, loading, navigate]);
 
   // Create MEMOIZED navigation adapter that matches React Navigation API
-  // This prevents recreation on every render which was causing the infinite loop
   const navigation = useMemo(() => ({
     replace: (routeName) => {
-      // Get fresh values at call time, not from closure
       const currentUser = user || auth.currentUser;
       logger.debug('[LOGIN SCREEN WEB] Navigation adapter replace called:', routeName, {
         hasRedirected: hasRedirectedRef.current,
@@ -112,13 +112,11 @@ const LoginScreen = () => {
         currentUserId: currentUser?.uid
       });
       
-      // Map React Navigation routes to React Router paths
       const routeMap = {
-        'MainApp': '/',
-        'Home': '/',
+        'MainApp': appHomePath,
+        'Home': appHomePath,
       };
 
-      // Always try to navigate if route is mapped. Use full reload so App.web.js switches to main app reliably.
       const performNavigation = () => {
         if (routeMap[routeName]) {
           const path = routeMap[routeName];
@@ -126,16 +124,13 @@ const LoginScreen = () => {
           hasRedirectedRef.current = true;
           window.location.replace(path);
         } else {
-          // Fallback: try to construct path from route name
-          const path = `/${routeName.toLowerCase()}`;
+          const path = webBasePath ? webBasePath.replace(/\/$/, '') + '/' + routeName.toLowerCase() : '/' + routeName.toLowerCase();
           logger.debug('[LOGIN SCREEN WEB] Reloading to fallback path:', path);
           hasRedirectedRef.current = true;
           window.location.replace(path);
         }
       };
       
-      // Always try to navigate if we have a user (from AuthContext or Firebase)
-      // Don't wait for loading to be false - if we have a user, navigate
       if (currentUser) {
         logger.debug('[LOGIN SCREEN WEB] ✅ User available, performing navigation immediately');
         performNavigation();
@@ -144,6 +139,7 @@ const LoginScreen = () => {
       }
     },
     navigate: (routeName, params) => {
+      // Router has basename=/app, so navigate('/') goes to /app; use '/' for in-app nav
       const routeMap = {
         'MainApp': '/',
         'Home': '/',
@@ -152,7 +148,7 @@ const LoginScreen = () => {
       if (routeMap[routeName]) {
         navigate(routeMap[routeName]);
       } else {
-        const path = `/${routeName.toLowerCase()}`;
+        const path = '/' + routeName.toLowerCase();
         navigate(path, { state: params });
       }
     }

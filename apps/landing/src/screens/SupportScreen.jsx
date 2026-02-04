@@ -274,7 +274,7 @@ const SupportScreen = () => {
               </p>
               <span className="support-resource-link">Iniciar sesión →</span>
             </a>
-            <a href="/" className="support-resource-card">
+            <a href="/app" className="support-resource-card">
               <h3 className="support-resource-title">Abrir App (PWA)</h3>
               <p className="support-resource-description">
                 Si ya eres usuario de Wake, accede a la aplicación para entrenar y seguir tu progreso.
@@ -297,7 +297,7 @@ const SupportScreen = () => {
               <h4 className="support-footer-title">Enlaces Rápidos</h4>
               <div className="support-footer-links">
                 <Link to="/legal" className="support-footer-link">Documentos Legales</Link>
-                <a href="/" className="support-footer-link">Abrir App</a>
+                <a href="/app" className="support-footer-link">Abrir App</a>
                 <a href="/creators/login" className="support-footer-link">Panel de Creadores</a>
                 <a href={`mailto:${supportEmail}`} className="support-footer-link">Contacto</a>
               </div>

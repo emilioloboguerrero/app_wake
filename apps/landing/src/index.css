@@ -4,6 +4,7 @@
 
 html {
   scrollbar-gutter: stable;
+  background-color: #1a1a1a;
 }
 
 :root {
@@ -14,9 +15,22 @@ html {
 body {
   margin: 0;
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #1a1a1a;
+  background-color: #1a1a1a;
   color: #fff;
   min-height: 100vh;
+  overscroll-behavior-y: none;
+}
+
+/* Safari iOS in-browser: reserve space for tab bar so it doesn't cover content */
+@media (max-width: 768px) {
+  html.safari-ios body {
+    padding-bottom: 110px;
+  }
+
+  html.safari-ios .app-cta-fixed {
+    bottom: auto;
+    top: var(--safari-cta-top, calc(100vh - 60px));
+  }
 }
 
 #root {
@@ -37,7 +51,7 @@ body {
 
 .app-cta-fixed {
   position: fixed;
-  bottom: 24px;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;
@@ -130,7 +144,7 @@ body {
   }
 
   .app-cta-fixed {
-    bottom: 20px;
+    bottom: max(20px, env(safe-area-inset-bottom, 0px));
     padding: 14px 24px;
     font-size: clamp(1.2rem, 2.5vw, 1.4rem);
   }

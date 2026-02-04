@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   TextInput,
   useWindowDimensions,
+  Dimensions,
   Animated,
   Modal,
   Pressable,
@@ -31,7 +32,7 @@ import {
 // Essential hooks and utilities - keep as direct imports (lightweight)
 import { useAuth } from '../contexts/AuthContext';
 import { useVideo } from '../contexts/VideoContext';
-import { isWeb } from '../utils/platform';
+import { isWeb, isPWA } from '../utils/platform';
 import logger from '../utils/logger.js';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
@@ -379,6 +380,135 @@ const createStableInputHandler = (exerciseIndex, setIndex, field, updateSetData)
   };
 };
 
+const listInputWrapperStyle = { flex: 1, minWidth: 0 };
+// List view set input: keeps value in local state while focused and flushes to parent on blur.
+// Prevents parent setData updates on every keystroke, which was causing full re-renders and input blur.
+// Freeze on touch/pointer down (before focus) so viewport resize from keyboard doesn't trigger
+// dimension-driven re-renders that dismiss the keyboard on iOS PWA.
+const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue, updateSetData, style, placeholderText, listViewInputJustFocusedRef, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput }) => {
+  const [localValue, setLocalValue] = useState(null);
+  const isEditing = localValue !== null;
+  const displayValue = isEditing ? localValue : savedValue;
+  const onPointerDown = useCallback(() => {
+    if (freezeDimsForListInput) freezeDimsForListInput();
+  }, [freezeDimsForListInput]);
+  const onFocus = useCallback(() => {
+    if (freezeDimsForListInput) freezeDimsForListInput();
+    setLocalValue(savedValue);
+    if (listViewInputJustFocusedRef) listViewInputJustFocusedRef.current = true;
+    if (restoreListViewModelScroll && !isPWA()) {
+      [100, 300, 600].forEach((delayMs) => setTimeout(restoreListViewModelScroll, delayMs));
+    }
+    setTimeout(() => { if (listViewInputJustFocusedRef) listViewInputJustFocusedRef.current = false; }, 800);
+  }, [freezeDimsForListInput, savedValue, listViewInputJustFocusedRef, restoreListViewModelScroll]);
+  const onBlur = useCallback(() => {
+    if (unfreezeDimsForListInput) unfreezeDimsForListInput();
+    const final = localValue !== null ? localValue : savedValue;
+    if (final !== savedValue) updateSetData(exerciseIndex, setIndex, field, final);
+    setLocalValue(null);
+  }, [unfreezeDimsForListInput, localValue, savedValue, exerciseIndex, setIndex, field, updateSetData]);
+  return (
+    <View style={listInputWrapperStyle} onPointerDown={onPointerDown} onTouchStart={onPointerDown}>
+      <TextInput
+        style={style}
+        value={displayValue}
+        onChangeText={(value) => setLocalValue(value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        keyboardType="numeric"
+        placeholder={placeholderText}
+        placeholderTextColor="rgba(255, 255, 255, 0.5)"
+        numberOfLines={1}
+        returnKeyType="done"
+        onSubmitEditing={Keyboard.dismiss}
+        blurOnSubmit={true}
+      />
+    </View>
+  );
+});
+
+// List view exercise card: at module level so re-renders (e.g. from useWindowDimensions when keyboard opens) do not remount rows and dismiss the focused input.
+const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, renderSetHeaders, renderSetInputFields, styles }) => {
+  return (
+    <View key={`exercise-${exerciseIndex}-${exercise.id}`} style={styles.exerciseListItem}>
+      <TouchableOpacity
+        style={styles.exerciseCard}
+        onPress={() => onToggleExpansion(exerciseIndex)}
+      >
+        <Text style={styles.exerciseNumber}>{exerciseIndex + 1}</Text>
+        <View style={styles.exerciseContent}>
+          <Text style={styles.exerciseItemTitle}>
+            {exercise.name}
+          </Text>
+        </View>
+        <SvgChevronLeft
+          width={20}
+          height={20}
+          stroke="#007AFF"
+          style={[styles.exerciseItemArrow, !isExpanded && styles.arrowRight, isExpanded && styles.arrowDown]}
+        />
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.setsContainer}>
+          <View style={styles.exerciseControlsRow}>
+            <TouchableOpacity
+              style={styles.swapExerciseButton}
+              onPress={() => onOpenSwapModal(exerciseIndex)}
+            >
+              <Text style={styles.swapExerciseButtonText}>Reemplazar</Text>
+              <SvgArrowLeftRight width={16} height={16} color="#ffffff" />
+            </TouchableOpacity>
+            <View style={styles.setControlButtons}>
+              <TouchableOpacity
+                style={styles.setControlButton}
+                onPress={() => onAddSet(exerciseIndex)}
+              >
+                <SvgPlus width={16} height={16} color="#ffffff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.setControlButton,
+                  exercise.sets.length <= 1 && styles.setControlButtonDisabled
+                ]}
+                onPress={() => onRemoveSet(exerciseIndex)}
+                disabled={exercise.sets.length <= 1}
+              >
+                <SvgMinus width={16} height={16} color={exercise.sets.length <= 1 ? "#666666" : "#ffffff"} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.setTrackingRow}>
+            <View style={styles.setNumberSpace} />
+            <View style={styles.setInputsContainer}>
+              {exercise.sets?.[0] && renderSetHeaders(exercise.sets[0])}
+            </View>
+          </View>
+          {exercise.sets?.map((set, setIndex) => {
+            const key = `${exerciseIndex}_${setIndex}`;
+            const currentSetData = setData[key] || {};
+            const isCurrentSet = exerciseIndex === currentExerciseIndex && setIndex === currentSetIndex;
+            return (
+              <View key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`} style={styles.setTrackingRow}>
+                {isCurrentSet && <View style={styles.currentSetOverlay} />}
+                <TouchableOpacity
+                  style={styles.setNumberContainer}
+                  onPress={() => onSelectSet(exerciseIndex, setIndex)}
+                >
+                  <Text style={styles.setNumber}>{setIndex + 1}</Text>
+                </TouchableOpacity>
+                <View style={styles.setInputsContainer}>
+                  {renderSetInputFields(exerciseIndex, setIndex, set, currentSetData)}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+});
+
 // Add-exercise modal card: defined at module level so it keeps a stable identity and does not remount on parent re-renders (fixes video re-render on play/pause tap).
 const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoTap, onAddExercise, isVideoPaused, isMuted, toggleMute, videoPlayer, styles }) => {
   return (
@@ -578,8 +708,22 @@ const useSetData = (workout) => {
 };
 
 const WorkoutExecutionScreen = ({ navigation, route }) => {
-  // Use hook for reactive dimensions that update on orientation change
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const windowDims = useWindowDimensions();
+  const listInputFocusedRef = useRef(false);
+  const frozenDimsRef = useRef(null);
+  const effectiveDims = (isPWA() && listInputFocusedRef.current && frozenDimsRef.current)
+    ? frozenDimsRef.current
+    : windowDims;
+  const screenWidth = effectiveDims.width;
+  const screenHeight = effectiveDims.height;
+  const freezeDimsForListInput = useCallback(() => {
+    listInputFocusedRef.current = true;
+    if (isPWA()) frozenDimsRef.current = Dimensions.get('window');
+  }, []);
+  const unfreezeDimsForListInput = useCallback(() => {
+    listInputFocusedRef.current = false;
+    if (isPWA()) frozenDimsRef.current = null;
+  }, []);
   const insets = useSafeAreaInsets();
 
   // Track if component is mounted for setTimeout cleanup
@@ -668,97 +812,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
   
-  // TEST VERSION 13: Restore ExerciseItem component from git history
-  const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, renderSetHeaders, renderSetInputFields }) => {
-    return (
-      <View key={`exercise-${exerciseIndex}-${exercise.id}`} style={styles.exerciseListItem}>
-        <TouchableOpacity 
-          style={styles.exerciseCard}
-          onPress={() => onToggleExpansion(exerciseIndex)}
-        >
-          <Text style={styles.exerciseNumber}>{exerciseIndex + 1}</Text>
-          <View style={styles.exerciseContent}>
-            <Text style={styles.exerciseItemTitle}>
-              {exercise.name}
-            </Text>
-          </View>
-          <SvgChevronLeft 
-            width={20} 
-            height={20} 
-            stroke="#007AFF" 
-            style={[styles.exerciseItemArrow, !isExpanded && styles.arrowRight, isExpanded && styles.arrowDown]}
-          />
-        </TouchableOpacity>
-        
-        {/* Set tracking for this exercise - only show if expanded */}
-        {isExpanded && (
-          <View style={styles.setsContainer}>
-            {/* Control Buttons Row */}
-            <View style={styles.exerciseControlsRow}>
-              {/* Swap Exercise Button */}
-              <TouchableOpacity 
-                style={styles.swapExerciseButton}
-                onPress={() => onOpenSwapModal(exerciseIndex)}
-              >
-                <Text style={styles.swapExerciseButtonText}>Reemplazar</Text>
-                <SvgArrowLeftRight width={16} height={16} color="#ffffff" />
-              </TouchableOpacity>
-              
-              {/* Add/Remove Set Buttons */}
-              <View style={styles.setControlButtons}>
-                <TouchableOpacity 
-                  style={styles.setControlButton}
-                  onPress={() => onAddSet(exerciseIndex)}
-                >
-                  <SvgPlus width={16} height={16} color="#ffffff" />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[
-                    styles.setControlButton,
-                    exercise.sets.length <= 1 && styles.setControlButtonDisabled
-                  ]}
-                  onPress={() => onRemoveSet(exerciseIndex)}
-                  disabled={exercise.sets.length <= 1}
-                >
-                  <SvgMinus width={16} height={16} color={exercise.sets.length <= 1 ? "#666666" : "#ffffff"} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            {/* Headers row */}
-            <View style={styles.setTrackingRow}>
-              <View style={styles.setNumberSpace} />
-              <View style={styles.setInputsContainer}>
-                {exercise.sets?.[0] && renderSetHeaders(exercise.sets[0])}
-              </View>
-            </View>
-            
-            {/* Data rows */}
-            {exercise.sets?.map((set, setIndex) => {
-              const key = `${exerciseIndex}_${setIndex}`;
-              const currentSetData = setData[key] || {};
-              const isCurrentSet = exerciseIndex === currentExerciseIndex && setIndex === currentSetIndex;
-              
-              return (
-                <View key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`} style={styles.setTrackingRow}>
-                  {isCurrentSet && <View style={styles.currentSetOverlay} />}
-                  <TouchableOpacity 
-                    style={styles.setNumberContainer}
-                    onPress={() => onSelectSet(exerciseIndex, setIndex)}
-                  >
-                    <Text style={styles.setNumber}>{setIndex + 1}</Text>
-                  </TouchableOpacity>
-                  <View style={styles.setInputsContainer}>
-                    {renderSetInputFields(exerciseIndex, setIndex, set, currentSetData)}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
-    );
-  });
   // Debug: Log the workout object received
   logger.log('🔍 WorkoutExecutionScreen: Received workout object:', {
     hasWorkout: !!initialWorkout,
@@ -1050,7 +1103,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const memoizedVideoUri = useDeferredValue(videoUri);
   const videoPlayer = useVideoPlayer(memoizedVideoUri, videoPlayerCallback);
   const scrollViewRef = useRef(null); // Main ScrollView reference for view switching
-  
+  const lastScrollXRef = useRef(0); // [LIST-INPUT-DEBUG] track horizontal scroll to detect reset on re-render
+  const listViewInputJustFocusedRef = useRef(false); // [LIST-INPUT-DEBUG] set when input in list view focuses (to restore scroll after re-render)
+  // [LIST-INPUT-DEBUG] Log render when on list view or right after list input focus (to see scroll state after focus-triggered re-render)
+  if (currentView === 1 || listViewInputJustFocusedRef.current) {
+    const lx = lastScrollXRef.current;
+    const expectedListX = screenWidth;
+    const isAtList = Math.abs(lx - expectedListX) < 20;
+    logger.log('[LIST-INPUT-DEBUG] 📊 RENDER', { currentView, lastScrollX: lx, screenWidth, expectedListX, isAtList, listViewInputJustFocused: listViewInputJustFocusedRef.current });
+  }
   // Animation values for set input modal
   const modalOpacity = useRef(new Animated.Value(0)).current;
   const modalTranslateY = useRef(new Animated.Value(300)).current;
@@ -1758,9 +1819,19 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [isVideoPaused, videoPlayer, canStartVideo, videoUri]);
 
   // Simple scroll handler for pagination
+  const onScrollListener = useCallback((e) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const prev = lastScrollXRef.current;
+    lastScrollXRef.current = x;
+    const viewIndex = screenWidth > 0 ? Math.round(x / screenWidth) : -1;
+    const isListVisible = viewIndex === 1;
+    if (Math.abs(x - prev) > 5 || listViewInputJustFocusedRef.current) {
+      logger.log('[LIST-INPUT-DEBUG] 📐 onScroll (horizontal)', { x, prev, screenWidth, viewIndex, isListVisible });
+    }
+  }, [screenWidth]);
   const onScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-    { useNativeDriver: false }
+    { useNativeDriver: false, listener: onScrollListener }
   );
 
   // Scroll handler for top cards
@@ -1772,6 +1843,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const onMomentumScrollEnd = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const newView = Math.round(offsetX / screenWidth);
+    logger.log('[LIST-INPUT-DEBUG] 📜 onMomentumScrollEnd', { offsetX, screenWidth, newView, viewLabel: newView === 0 ? 'DETAIL' : 'LIST', timestamp: Date.now() });
     setCurrentView(newView);
   };
 
@@ -1984,6 +2056,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   const toggleExerciseExpansion = useCallback((exerciseIndex) => {
+    logger.log('[LIST-INPUT-DEBUG] 🟡 toggleExerciseExpansion CALLED', { exerciseIndex, timestamp: Date.now() });
     setExpandedExercises(prev => ({
       ...prev,
       [exerciseIndex]: !prev[exerciseIndex]
@@ -1991,6 +2064,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   const handleSelectSet = useCallback((exerciseIndex, setIndex) => {
+    logger.log('[LIST-INPUT-DEBUG] 🟢 handleSelectSet CALLED (will scroll to detail view)', { exerciseIndex, setIndex, timestamp: Date.now(), stack: new Error().stack?.split('\n').slice(1, 6).join(' <- ') });
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(setIndex);
     // Switch back to exercise detail view
@@ -1998,6 +2072,27 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       scrollViewRef.current.scrollTo({ x: 0, animated: true });
     }
   }, []);
+
+  // Restore horizontal scroll to list view (page 1). Only scroll; never call setCurrentView(1) here so we avoid re-renders that unmount the focused input (fixes keyboard closing on mobile PWA).
+  const restoreListViewModelScroll = useCallback(() => {
+    const ref = scrollViewRef.current;
+    if (!ref) return;
+    if (isWeb && typeof ref.getScrollableNode === 'function') {
+      const node = ref.getScrollableNode?.();
+      if (node && typeof node.scrollLeft !== 'undefined') {
+        const before = node.scrollLeft;
+        const scrollWasWrong = Math.abs(before - screenWidth) > 20;
+        if (scrollWasWrong) {
+          ref.scrollTo({ x: screenWidth, animated: false });
+          node.scrollLeft = screenWidth;
+        }
+      } else {
+        ref.scrollTo({ x: screenWidth, animated: false });
+      }
+    } else {
+      ref.scrollTo({ x: screenWidth, animated: false });
+    }
+  }, [screenWidth]);
 
   const getFieldDisplayName = useCallback((field) => {
     const fieldNames = {
@@ -4073,25 +4168,26 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           marginLeft: fieldIndex === 0 ? evenGap : 0,
           marginRight: fieldIndex < fieldsToShow.length - 1 ? evenGap : 0 
         }]}>
-          <TextInput
+          <ListViewSetInputField
+            exerciseIndex={exerciseIndex}
+            setIndex={setIndex}
+            field={field}
+            savedValue={savedValue}
+            updateSetData={updateSetData}
             style={[
               styles.setInput,
               setValidationErrors[`${exerciseIndex}_${setIndex}_${field}`] && styles.setInputError
             ]}
-            value={savedValue}
-            onChangeText={(value) => updateSetData(exerciseIndex, setIndex, field, value)}
-            keyboardType="numeric"
-            placeholder={placeholderText}
-            placeholderTextColor="rgba(255, 255, 255, 0.5)"
-            numberOfLines={1}
-            returnKeyType="done"
-            onSubmitEditing={Keyboard.dismiss}
-            blurOnSubmit={true}
+            placeholderText={placeholderText}
+            listViewInputJustFocusedRef={listViewInputJustFocusedRef}
+            restoreListViewModelScroll={restoreListViewModelScroll}
+            freezeDimsForListInput={freezeDimsForListInput}
+            unfreezeDimsForListInput={unfreezeDimsForListInput}
           />
         </View>
       );
     });
-  }, [workout, setValidationErrors, updateSetData]);
+  }, [workout, setValidationErrors, updateSetData, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput]);
 
   // Render function for FlatList exercise items
   const renderExerciseItem = useCallback(({ item: exercise, index: exerciseIndex }) => {
@@ -4111,6 +4207,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         currentSetIndex={currentSetIndex}
         renderSetHeaders={renderSetHeaders}
         renderSetInputFields={renderSetInputFields}
+        styles={styles}
       />
     );
   }, [
@@ -4125,6 +4222,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     currentSetIndex,
     renderSetHeaders,
     renderSetInputFields,
+    styles,
   ]);
 
   // Key extractor for FlatList
@@ -5477,6 +5575,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           showsHorizontalScrollIndicator={false}
           onScroll={onScroll}
           onMomentumScrollEnd={onMomentumScrollEnd}
+          onLayout={() => {
+            if (listViewInputJustFocusedRef.current && !isPWA()) {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  restoreListViewModelScroll();
+                });
+              });
+            }
+          }}
           scrollEventThrottle={16}
           style={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"

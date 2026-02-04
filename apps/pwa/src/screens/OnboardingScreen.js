@@ -1460,8 +1460,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
               logger.debug('✅ User signed out successfully');
               // On web/PWA, force full reload to /login (same as ProfileScreen sign-out flow)
               if (typeof window !== 'undefined') {
+                const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
                 logger.log('[ONBOARDING] Web: reloading to /login after cancel');
-                window.location.replace('/login');
+                window.location.replace(loginPath);
                 return;
               }
               // On native, auth state change will navigate to login

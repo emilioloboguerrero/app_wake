@@ -12,7 +12,7 @@
     "web": "npm run web --prefix apps/pwa",
     "build:web": "npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js",
     "build:landing": "npm run build --prefix apps/landing",
-    "build:pwa": "npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js && node scripts/rewrite-pwa-paths.js && node scripts/copy-pwa-public.js",
+    "build:pwa": "cross-env EXPO_PUBLIC_BASE_PATH=/app npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js && node scripts/rewrite-pwa-paths.js && node scripts/copy-pwa-public.js",
     "build:creator": "npm run build --prefix apps/creator-dashboard",
     "build:all": "npm run build:landing && npm run build:pwa && npm run build:creator && node scripts/assemble-hosting.js",
     "assemble-hosting": "node scripts/assemble-hosting.js",

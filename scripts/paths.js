@@ -24,10 +24,11 @@ module.exports = {
 
   // Assembled hosting directory (firebase.json "public" points here)
   dirHosting: path.join(root, 'hosting'),
+  dirHostingApp: path.join(root, 'hosting', 'app'),
   dirHostingLanding: path.join(root, 'hosting', 'landing'),
   dirHostingCreators: path.join(root, 'hosting', 'creators'),
 
-  // Base paths for deployed apps (PWA at root = no path rewrites; landing at /landing; creators at /creators)
-  basePathPwa: '',
+  // Base paths for deployed apps (PWA at /app; landing at / and /landing; creators at /creators)
+  basePathPwa: '/app',
   basePathCreators: '/creators',
 };

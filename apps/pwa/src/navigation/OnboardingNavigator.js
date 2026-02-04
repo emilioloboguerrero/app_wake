@@ -16,15 +16,29 @@ import logger from '../utils/logger';
 
 const Stack = createStackNavigator();
 
+// On web, AuthContext can be null in Safari after reload; auth.currentUser is the fallback.
+const getEffectiveUid = (user) => {
+  if (user?.uid) return user.uid;
+  if (Platform.OS === 'web') {
+    try {
+      const { auth } = require('../config/firebase');
+      return auth?.currentUser?.uid ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
 const OnboardingNavigator = ({ onComplete }) => {
   const { user } = useAuth();
   const [onboardingAnswers, setOnboardingAnswers] = useState({});
+  const effectiveUid = getEffectiveUid(user);
 
   useEffect(() => {
-    const uid = user?.uid;
-    logger.log('[ONBOARDING_NAV] BREAKPOINT: OnboardingNavigator mounted. uid:', uid);
-    if (!uid) logger.warn('[ONBOARDING_NAV] BREAKPOINT: No uid in OnboardingNavigator');
-  }, [user?.uid]);
+    logger.log('[ONBOARDING_NAV] BREAKPOINT: OnboardingNavigator mounted. uid:', effectiveUid);
+    if (!effectiveUid) logger.warn('[ONBOARDING_NAV] BREAKPOINT: No uid in OnboardingNavigator');
+  }, [effectiveUid]);
 
   const handleAnswer = (questionKey, answer) => {
     setOnboardingAnswers(prev => ({
@@ -34,7 +48,7 @@ const OnboardingNavigator = ({ onComplete }) => {
   };
 
   const handleComplete = async () => {
-    const uid = user?.uid;
+    const uid = effectiveUid;
     if (!uid) {
       logger.warn('[ONBOARDING_NAV] handleComplete: no uid, skipping save');
       if (onComplete) onComplete();

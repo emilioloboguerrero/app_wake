@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import SupportScreen from './screens/SupportScreen';
@@ -96,15 +96,22 @@ function Home() {
     return () => observer.disconnect();
   }, [dosFormasImage]);
 
+  const heroHeightRef = useRef(null);
   useEffect(() => {
     let ticking = false;
     const update = () => {
       if (!ticking) {
         requestAnimationFrame(() => {
           const h = window.innerWidth <= 768 ? HEADER_HEIGHT_MOBILE : HEADER_HEIGHT;
-          const heroHeight = window.innerHeight - h;
+          const currentHeight = (document.documentElement.clientHeight || window.innerHeight) - h;
+          const prev = heroHeightRef.current;
+          const widthChanged = prev && prev._width !== window.innerWidth;
+          if (!prev || widthChanged || currentHeight < prev.height) {
+            heroHeightRef.current = { height: currentHeight, _width: window.innerWidth };
+          }
+          const heroHeight = heroHeightRef.current.height;
           const y = window.scrollY || window.pageYOffset;
-          const progress = Math.min(Math.max(y / heroHeight, 0), 1);
+          const progress = heroHeight > 0 ? Math.min(Math.max(y / heroHeight, 0), 1) : 1;
           setHeroOpacity(1 - progress);
           ticking = false;
         });
@@ -113,18 +120,14 @@ function Home() {
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-    };
+    return () => window.removeEventListener('scroll', update);
   }, []);
 
   return (
     <div className="home">
       <div
         className={`hero-background ${heroReady ? 'hero-ready' : ''}`}
-        style={{ opacity: heroOpacity }}
+        style={{ opacity: heroOpacity, visibility: heroOpacity < 0.01 ? 'hidden' : 'visible' }}
       >
         <div className="hero-background-overlay" aria-hidden="true" />
         <div
@@ -264,6 +267,7 @@ function AppContent() {
           if (!white) {
             setCtaOverWhite(false);
             setCtaOverHero(overHero);
+            updateThemeColor('#1a1a1a');
             ticking = false;
             return;
           }
@@ -274,26 +278,32 @@ function AppContent() {
 
           setCtaOverWhite(!!overWhite);
           setCtaOverHero(overHero && !overWhite);
+          // Match Safari tab bar / overscroll background to content behind it
+          updateThemeColor(overWhite ? '#ffffff' : '#1a1a1a');
           ticking = false;
         });
         ticking = true;
       }
     };
+    function updateThemeColor(color) {
+      const meta = document.getElementById('theme-color-meta');
+      if (meta && meta.getAttribute('content') !== color) {
+        meta.setAttribute('content', color);
+      }
+    }
     check();
     const t = setTimeout(check, 100);
     window.addEventListener('scroll', check, { passive: true });
-    window.addEventListener('resize', check);
     return () => {
       clearTimeout(t);
       window.removeEventListener('scroll', check);
-      window.removeEventListener('resize', check);
     };
   }, [location.pathname]);
 
   return (
     <div className="app-layout">
       <Header />
-      <a href="/" className={`app-cta-fixed ${ctaOverHero ? 'app-cta-fixed-hero' : ''} ${ctaOverWhite ? 'app-cta-fixed-invert' : ''}`} aria-label="Ir a la app">
+      <a href="/app" className={`app-cta-fixed ${ctaOverHero ? 'app-cta-fixed-hero' : ''} ${ctaOverWhite ? 'app-cta-fixed-invert' : ''}`} aria-label="Ir a la app">
         <span className="app-cta-fixed-text">Ir a la app</span>
         <img src={heroLogo} alt="" className="app-cta-fixed-logo" />
       </a>
@@ -303,6 +313,8 @@ function AppContent() {
           <Route path="/creators" element={<CreatorsPage />} />
           <Route path="/support" element={<SupportScreen />} />
           <Route path="/legal" element={<LegalDocumentsScreen />} />
+          <Route path="/landing" element={<Navigate to="/" replace />} />
+          <Route path="/landing/*" element={<LandingPathRedirect />} />
         </Routes>
       </main>
       <Footer />
@@ -310,9 +322,14 @@ function AppContent() {
   );
 }
 
+function LandingPathRedirect() {
+  const { '*': splat } = useParams();
+  return <Navigate to={splat ? `/${splat}` : '/'} replace />;
+}
+
 export default function App() {
   return (
-    <BrowserRouter basename="/landing">
+    <BrowserRouter basename="/">
       <AppContent />
     </BrowserRouter>
   );

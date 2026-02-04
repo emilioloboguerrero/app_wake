@@ -127,9 +127,9 @@ export const FixedWakeHeader = ({
         </button>
       )}
 
-      {/* Logo - centered */}
+      {/* Logo - same path as loading screen (/app/assets/...) so one canonical location */}
       <img 
-        src="/wake-logo-new.png"
+        src={typeof window !== 'undefined' && window.location.pathname.startsWith('/app') ? '/app/assets/wake-logo-new.png' : '/assets/wake-logo-new.png'}
         alt="WAKE"
         style={{
           width: logoWidth,

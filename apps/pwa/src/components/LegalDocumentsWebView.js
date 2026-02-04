@@ -1,22 +1,24 @@
 // Legal Documents WebView Component
 // Opens https://wakelab.co/legal for legal documents (Terms, Privacy, Refund)
-// On web browsers, opens externally instead of WebView
+// On web/PWA: open link immediately (new tab, or same tab if popup blocked) — no modal. On native: modal with WebView.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Modal,
   TouchableOpacity,
   Text,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import logger from '../utils/logger';
-import { isWeb, isPWA } from '../utils/platform';
+import { isWeb } from '../utils/platform';
 
 const LEGAL_URL = 'https://wakelab.co/legal';
+
+// Top padding inside the modal so content starts further down (native only)
+const MODAL_CONTENT_TOP_PADDING = 32;
 
 const LegalDocumentsWebView = ({
   visible,
@@ -24,111 +26,63 @@ const LegalDocumentsWebView = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [useRedirect, setUseRedirect] = useState(false);
+  const hasOpenedRef = useRef(false);
 
-  // Handle redirect for web browsers
-  const handleWebRedirect = () => {
-    if (!isWeb) return;
-    
-    logger.log('🌐 [LegalDocumentsWebView] Using redirect for web browser');
-    setUseRedirect(true);
-    setLoading(false);
-    
-    // Open legal documents in new window/tab
-    try {
-      const newWindow = window.open(
-        LEGAL_URL,
-        '_blank',
-        'noopener,noreferrer'
-      );
-      
-      if (!newWindow) {
-        // Popup blocked - show alert with manual link
-        Alert.alert(
-          'Ventana bloqueada',
-          'Por favor permite ventanas emergentes para ver los documentos legales, o haz clic en el botón para abrir manualmente.',
-          [
-            {
-              text: 'Abrir manualmente',
-              onPress: () => {
-                window.open(LEGAL_URL, '_blank');
-              }
-            },
-            {
-              text: 'Cerrar',
-              style: 'cancel',
-              onPress: () => {
-                onClose?.();
-              }
-            }
-          ]
-        );
-        return;
-      }
-      
-      // Focus the new window
-      newWindow.focus();
-      
-      // Close modal after opening external window
-      setTimeout(() => {
-        onClose?.();
-      }, 500);
-    } catch (err) {
-      logger.error('❌ [LegalDocumentsWebView] Error opening redirect window:', err);
-      setError('Error al abrir los documentos legales');
-      setLoading(false);
-    }
-  };
-
-  // Auto-redirect on web when modal opens
+  // On web: open legal URL immediately when "modal" would open — no modal, same as payment redirect
   useEffect(() => {
-    if (visible && isWeb && !isPWA()) {
-      // For regular web browsers, use redirect immediately
-      logger.log('🌐 [LegalDocumentsWebView] Web browser detected - using redirect instead of WebView');
-      handleWebRedirect();
-    } else if (visible) {
-      // For PWA or native, reset state
-      setUseRedirect(false);
-      setLoading(true);
-      setError(null);
+    if (!visible || !isWeb) return;
+    if (hasOpenedRef.current) return;
+    hasOpenedRef.current = true;
+    logger.log('🌐 [LegalDocumentsWebView] Opening legal page immediately');
+    try {
+      const w = window.open(LEGAL_URL, '_blank', 'noopener,noreferrer');
+      if (w) {
+        w.focus();
+      } else {
+        // Popup blocked: open in same tab (like payment full-page redirect)
+        window.location.href = LEGAL_URL;
+      }
+      onClose?.();
+    } catch (err) {
+      logger.error('❌ [LegalDocumentsWebView] Error opening legal URL:', err);
+      window.location.href = LEGAL_URL;
+      onClose?.();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, isWeb, onClose]);
+
+  useEffect(() => {
+    if (!visible) hasOpenedRef.current = false;
   }, [visible]);
 
-  // Handle WebView navigation
+  // Handle WebView navigation (native only)
   const handleNavigationStateChange = (navState) => {
     logger.debug('📍 Legal WebView Navigation:', navState.url);
   };
 
-  // Handle WebView load
   const handleWebViewLoad = () => {
-    logger.debug('✅ Legal documents loaded');
     setLoading(false);
     setError(null);
   };
 
-  // Handle WebView error
   const handleWebViewError = (syntheticEvent) => {
     const { nativeEvent } = syntheticEvent;
     logger.error('❌ Legal WebView error:', nativeEvent);
-    
-    // On web, if error occurs, redirect
-    if (isWeb && !isPWA()) {
-      logger.warn('⚠️ [LegalDocumentsWebView] WebView error on web - redirecting');
-      handleWebRedirect();
-    } else {
-      setError('Error al cargar los documentos legales');
-      setLoading(false);
-    }
+    setError('Error al cargar los documentos legales');
+    setLoading(false);
   };
 
-  // Handle close
   const handleClose = () => {
     setLoading(true);
     setError(null);
-    setUseRedirect(false);
     onClose?.();
   };
+
+  // On web we open the link immediately in useEffect; don't show the modal
+  if (isWeb && visible) {
+    return null;
+  }
+
+  if (!visible) return null;
 
   return (
     <Modal
@@ -138,106 +92,55 @@ const LegalDocumentsWebView = ({
       onRequestClose={handleClose}
     >
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Documentos Legales</Text>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleClose}
-          >
+          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        <View style={styles.content}>
-          {useRedirect ? (
-            // Redirect mode for web browsers
-            <View style={styles.redirectContainer}>
-              <View style={styles.redirectContent}>
-                <Text style={styles.redirectTitle}>Abriendo documentos legales...</Text>
-                <Text style={styles.redirectText}>
-                  Se abrirá una nueva ventana con los términos y condiciones, política de privacidad y política de reembolsos.
-                </Text>
-                {error && (
-                  <Text style={styles.redirectErrorText}>{error}</Text>
-                )}
-                <TouchableOpacity
-                  style={styles.redirectButton}
-                  onPress={() => {
-                    window.open(LEGAL_URL, '_blank');
-                  }}
-                >
-                  <Text style={styles.redirectButtonText}>Abrir documentos legales</Text>
-                </TouchableOpacity>
-                <Text style={styles.redirectSubtext}>
-                  Si la ventana no se abrió automáticamente, haz clic en el botón arriba.
-                </Text>
+        <View style={[styles.content, { paddingTop: MODAL_CONTENT_TOP_PADDING }]}>
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <View style={styles.loadingContent}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={styles.loadingText}>Cargando documentos...</Text>
+                <Text style={styles.loadingSubtext}>Conectando con nuestros términos y políticas</Text>
               </View>
             </View>
-          ) : (
-            <>
-              {loading && (
-                <View style={styles.loadingContainer}>
-                  <View style={styles.loadingContent}>
-                    <ActivityIndicator size="large" color="#FFFFFF" />
-                    <Text style={styles.loadingText}>Cargando documentos...</Text>
-                    <Text style={styles.loadingSubtext}>Conectando con nuestros términos y políticas</Text>
-                  </View>
-                </View>
-              )}
-
-              {error && !useRedirect && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  {isWeb && !isPWA() ? (
-                    <TouchableOpacity
-                      style={styles.retryButton}
-                      onPress={handleWebRedirect}
-                    >
-                      <Text style={styles.retryButtonText}>Abrir en nueva ventana</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.retryButton}
-                      onPress={() => {
-                        setError(null);
-                        setLoading(true);
-                      }}
-                    >
-                      <Text style={styles.retryButtonText}>Reintentar</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              <WebView
-                source={{ uri: LEGAL_URL }}
-                style={styles.webview}
-                onNavigationStateChange={handleNavigationStateChange}
-                onLoad={handleWebViewLoad}
-                onError={handleWebViewError}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                startInLoadingState={true}
-                scalesPageToFit={true}
-                allowsInlineMediaPlayback={true}
-                mediaPlaybackRequiresUserAction={false}
-                mixedContentMode="compatibility"
-                onShouldStartLoadWithRequest={(request) => {
-                  // Allow all navigation within the WebView
-                  return true;
-                }}
-              />
-            </>
           )}
+
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setError(null); setLoading(true); }}
+              >
+                <Text style={styles.retryButtonText}>Reintentar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <WebView
+            source={{ uri: LEGAL_URL }}
+            style={styles.webview}
+            onNavigationStateChange={handleNavigationStateChange}
+            onLoad={handleWebViewLoad}
+            onError={handleWebViewError}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            startInLoadingState={true}
+            scalesPageToFit={true}
+            allowsInlineMediaPlayback={true}
+            mediaPlaybackRequiresUserAction={false}
+            mixedContentMode="compatibility"
+            onShouldStartLoadWithRequest={() => true}
+          />
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Documentos legales de Wake
-          </Text>
+          <Text style={styles.footerText}>Documentos legales de Wake</Text>
         </View>
       </View>
     </Modal>
@@ -356,56 +259,6 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     textAlign: 'center',
     opacity: 0.7,
-  },
-  redirectContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  redirectContent: {
-    alignItems: 'center',
-    maxWidth: 400,
-  },
-  redirectTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  redirectText: {
-    fontSize: 16,
-    color: '#CCCCCC',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  redirectErrorText: {
-    fontSize: 14,
-    color: '#ff4444',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  redirectButton: {
-    backgroundColor: '#BFB84D',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  redirectButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  redirectSubtext: {
-    fontSize: 14,
-    color: '#999999',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 8,
   },
 });
 

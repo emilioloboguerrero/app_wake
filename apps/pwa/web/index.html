@@ -11,6 +11,10 @@
   <!-- Content Security Policy to help prevent extension injection issues -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss: ws:; media-src 'self' blob: https:;">
   <link rel="manifest" href="/manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- EXPO_CSS_LINKS: replaced by build script with Expo bundle CSS (global, InstallScreen, etc.) -->
   <link rel="icon" href="/app_icon.png" />
   <link rel="apple-touch-icon" href="/app_icon.png" />
   <title>Wake lab</title>
@@ -45,7 +49,7 @@
       flex-direction: column;
     }
 
-    /* Loading screen */
+    /* Loading screen – pointer-events: none so taps pass through if still visible */
     #loading-screen {
       position: fixed;
       top: 0;
@@ -58,6 +62,7 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
+      pointer-events: none;
     }
 
     #loading-screen.hidden {
@@ -101,7 +106,7 @@
   <script>
     // Register Service Worker - SKIP FOR LOGIN ROUTE
     // Only register if /sw.js is served as JS (not as index.html fallback - fixes "unsupported MIME type text/html")
-    if ('serviceWorker' in navigator && window.location.pathname !== '/login') {
+    if ('serviceWorker' in navigator && window.location.pathname !== '__LOGIN_PATH__') {
       window.addEventListener('load', () => {
         fetch('/sw.js', { method: 'HEAD' })
           .then(function (res) {
@@ -114,7 +119,7 @@
           .then(function () {})
           .catch(function () {});
       });
-    } else if (window.location.pathname === '/login') {
+    } else if (window.location.pathname === '__LOGIN_PATH__') {
       // Unregister service worker for login route
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         registrations.forEach((registration) => {
@@ -133,14 +138,17 @@
       }, 500);
     });
 
-    // Prevent zoom on double tap (iOS)
+    // Prevent zoom on double tap (iOS) – only prevent when same target, so button/link taps work
     let lastTouchEnd = 0;
+    let lastTouchTarget = null;
     document.addEventListener('touchend', (event) => {
       const now = Date.now();
-      if (now - lastTouchEnd <= 300) {
+      const sameTarget = event.target === lastTouchTarget;
+      if (sameTarget && now - lastTouchEnd <= 300) {
         event.preventDefault();
       }
       lastTouchEnd = now;
+      lastTouchTarget = event.target;
     }, false);
 
     // Pull-to-refresh: left to browser default (no document-level prevention)

@@ -98,6 +98,7 @@ const AuthenticatedLayout = ({ children }) => {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const checkedUserIdRef = React.useRef(null);
   const refreshResolveRef = React.useRef(null);
+  const skipCacheNextRef = React.useRef(false);
 
   const refreshUserProfile = React.useCallback(() => {
     logger.log('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
@@ -105,6 +106,7 @@ const AuthenticatedLayout = ({ children }) => {
       refreshResolveRef.current = resolve;
     });
     checkedUserIdRef.current = null;
+    skipCacheNextRef.current = true; // Prefer Firestore on this run (Safari cache can be stale)
     setRefreshKey((k) => k + 1);
     return promise;
   }, []);
@@ -210,24 +212,29 @@ const AuthenticatedLayout = ({ children }) => {
         }, 10000);
         
         try {
-          const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
-          if (cached) {
-            const status = JSON.parse(cached);
-            const cacheAge = Date.now() - (status.cachedAt || 0);
-            if (cacheAge < 5 * 60 * 1000) {
-              logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
-              if (mounted) {
-                setUserProfile({
-                  profileCompleted: status.profileCompleted ?? false,
-                  onboardingCompleted: status.onboardingCompleted ?? false
-                });
-                setProfileLoading(false);
+          const skipCache = skipCacheNextRef.current;
+          if (skipCache) skipCacheNextRef.current = false;
+
+          if (!skipCache) {
+            const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
+            if (cached) {
+              const status = JSON.parse(cached);
+              const cacheAge = Date.now() - (status.cachedAt || 0);
+              if (cacheAge < 5 * 60 * 1000) {
+                logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
+                if (mounted) {
+                  setUserProfile({
+                    profileCompleted: status.profileCompleted ?? false,
+                    onboardingCompleted: status.onboardingCompleted ?? false
+                  });
+                  setProfileLoading(false);
+                }
+                if (timeoutId) clearTimeout(timeoutId);
+                return;
               }
-              if (timeoutId) clearTimeout(timeoutId);
-              return;
             }
           }
-          
+
           const profilePromise = firestoreService.getUser(effectiveUidForFetch);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Firestore timeout')), 5000)

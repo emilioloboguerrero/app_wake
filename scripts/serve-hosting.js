@@ -35,11 +35,14 @@ const mimeTypes = {
 };
 
 function getRewriteDestination(pathname) {
+  if (pathname === '/app' || pathname.startsWith('/app/')) {
+    return '/app/index.html';
+  }
   if (pathname === '/creators' || pathname.startsWith('/creators/')) {
     return '/creators/index.html';
   }
   if (pathname === '/landing' || pathname.startsWith('/landing/')) {
-    return '/landing/index.html';
+    return '/index.html';
   }
   return '/index.html';
 }
@@ -101,7 +104,7 @@ if (!fs.existsSync(hostingDir)) {
 
 server.listen(port, () => {
   console.log(`Serving hosting/ at http://localhost:${port}`);
-  console.log('  / → PWA');
-  console.log('  /landing, /landing/* → Landing (support, legal)');
+  console.log('  /, /landing, /landing/* → Landing');
+  console.log('  /app, /app/* → PWA');
   console.log('  /creators, /creators/* → Creator dashboard');
 });

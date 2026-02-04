@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Assembles the hosting directory from build outputs:
- *   apps/pwa/dist      → hosting/ (PWA at root = no path rewrites)
- *   apps/landing/dist  → hosting/landing/
+ *   apps/landing/dist  → hosting/ (root; landing at / and /landing)
+ *   apps/pwa/dist      → hosting/app/
  *   apps/creator-dashboard/build → hosting/creators/
  * Copies only directories that exist. Run after build:landing, build:pwa, and/or build:creator.
  * Full deploy: npm run build:all (builds all three then runs this).
@@ -14,7 +14,7 @@ const {
   dirPwaOutput,
   dirCreatorOutput,
   dirHosting,
-  dirHostingLanding,
+  dirHostingApp,
   dirHostingCreators,
 } = require('./paths.js');
 
@@ -46,12 +46,12 @@ rmDir(dirHosting);
 fs.mkdirSync(dirHosting, { recursive: true });
 
 let copied = 0;
-if (copyDirContents(dirPwaOutput, dirHosting)) {
-  console.log('assemble-hosting: copied PWA dist → hosting/ (root)');
+if (copyDirContents(dirLandingOutput, dirHosting)) {
+  console.log('assemble-hosting: copied landing → hosting/ (root)');
   copied++;
 }
-if (copyDirContents(dirLandingOutput, dirHostingLanding)) {
-  console.log('assemble-hosting: copied landing → hosting/landing/');
+if (copyDirContents(dirPwaOutput, dirHostingApp)) {
+  console.log('assemble-hosting: copied PWA dist → hosting/app/');
   copied++;
 }
 if (copyDir(dirCreatorOutput, dirHostingCreators)) {

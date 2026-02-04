@@ -1,6 +1,6 @@
 .footer {
   background: #1a1a1a;
-  padding: 40px 24px 32px;
+  padding: 40px 24px max(32px, env(safe-area-inset-bottom, 0px));
   margin-top: auto;
 }
 

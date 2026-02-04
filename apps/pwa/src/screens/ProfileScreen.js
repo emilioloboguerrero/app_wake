@@ -540,8 +540,9 @@ const ProfileScreen = ({ navigation }) => {
       
       // On web/PWA, force full reload to /login so the app always shows the login screen
       if (typeof window !== 'undefined') {
+        const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
         logger.log('🌐 Web: reloading to /login');
-        window.location.replace('/login');
+        window.location.replace(loginPath);
         return;
       }
       // On native, AppNavigator handles navigation to Auth screen via auth state
