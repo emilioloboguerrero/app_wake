@@ -9,6 +9,9 @@ import logger from './utils/logger';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 
+// Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
+const CONTENT_TOP_PADDING_NON_IOS = 0;
+
 // Applies frozen bottom inset (like WakeHeader freezes top) so bottom never pops after mount.
 function FrozenBottomWrapper({ children }) {
   const paddingBottom = useFrozenBottomInset();
@@ -86,6 +89,74 @@ function ensureMontserratLoaded() {
   document.head.appendChild(link);
 }
 ensureMontserratLoaded();
+
+// Apply viewport height once as soon as the bundle loads (dev server doesn't use web/index.html).
+// This ensures the fix runs in Expo dev and in production before React mounts.
+const VIEWPORT_LOG = '[VIEWPORT]';
+function applyViewportHeightOnce() {
+  if (typeof window === 'undefined' || !window.document) {
+    console.log(VIEWPORT_LOG, 'once: skip (no window/document)');
+    return;
+  }
+  const root = document.getElementById('root');
+  if (!root) {
+    console.log(VIEWPORT_LOG, 'once: skip (no #root)');
+    return;
+  }
+  const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  const isAndroid = () => /Android/.test(navigator.userAgent || '');
+  const isPWAHere = () => {
+    if (!window.matchMedia) return false;
+    if (window.matchMedia('(display-mode: browser)').matches) return false;
+    if (window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.navigator && window.navigator.standalone === true) return true;
+    if (window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+    return false;
+  };
+  const getCurrentHeight = () =>
+    Math.max(
+      (window.visualViewport && window.visualViewport.height) || 0,
+      window.innerHeight || 0
+    );
+  const getHeight = () => {
+    let h = getCurrentHeight();
+    const useAvail = (isPWAHere() && (isIOS() || isAndroid())) || (isIOS() && window.screen && window.screen.availHeight && getCurrentHeight() >= window.screen.availHeight - 2);
+    if (useAvail && window.screen && window.screen.availHeight) {
+      h = Math.max(h, window.screen.availHeight);
+    }
+    return Math.round(h);
+  };
+  const getWidth = () => {
+    if (window.visualViewport) {
+      return Math.round(window.visualViewport.width * window.visualViewport.scale);
+    }
+    return window.document.documentElement.clientWidth || window.innerWidth || 0;
+  };
+  const pwa = isPWAHere();
+  const ios = isIOS();
+  const android = isAndroid();
+  const curH = getCurrentHeight();
+  const w = getWidth();
+  const h = getHeight();
+  console.log(VIEWPORT_LOG, 'once: run', { pwa, ios, android, innerHeight: window.innerHeight, visualViewportH: window.visualViewport?.height, screenAvailH: window.screen?.availHeight, curH, getHeight: h, width: w });
+  if (w > 0 && h > 0 && window.document.documentElement) {
+    window.document.documentElement.style.setProperty('--layout-width-px', `${w}px`);
+    window.document.documentElement.style.setProperty('--layout-height-px', `${h}px`);
+    window.document.documentElement.style.setProperty('height', `${h}px`, 'important');
+    window.document.documentElement.style.setProperty('min-height', `${h}px`, 'important');
+    if (document.body) {
+      document.body.style.setProperty('height', `${h}px`, 'important');
+      document.body.style.setProperty('min-height', `${h}px`, 'important');
+    }
+    root.style.setProperty('height', `${h}px`, 'important');
+    root.style.setProperty('min-height', `${h}px`, 'important');
+    root.style.setProperty('max-height', `${h}px`, 'important');
+    console.log(VIEWPORT_LOG, 'once: applied', { height: h, rootComputed: root ? getComputedStyle(root).height : null });
+  } else {
+    console.log(VIEWPORT_LOG, 'once: not applied (w or h invalid)', { w, h });
+  }
+}
+applyViewportHeightOnce();
 
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
@@ -562,10 +633,17 @@ export default function App() {
   // and on iOS PWA use screen.availHeight. If standalone isn't detected, still apply on iOS when viewport
   // is already near full height (innerHeight >= screen.availHeight - 2).
   React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.document) return;
+    if (typeof window === 'undefined' || !window.document) {
+      console.log(VIEWPORT_LOG, 'effect: skip (no window/document)');
+      return;
+    }
     const root = document.getElementById('root');
-    if (!root) return;
+    if (!root) {
+      console.log(VIEWPORT_LOG, 'effect: skip (no #root)');
+      return;
+    }
     const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+    const isAndroid = () => /Android/.test(navigator.userAgent || '');
     const getCurrentHeight = () =>
       Math.max(
         (window.visualViewport && window.visualViewport.height) || 0,
@@ -573,12 +651,13 @@ export default function App() {
       );
     const shouldApply = () => {
       if (isPWA()) return true;
-      if (!isIOS() || !window.screen || !window.screen.availHeight) return false;
-      return getCurrentHeight() >= window.screen.availHeight - 2;
+      if (isIOS() && window.screen && window.screen.availHeight && getCurrentHeight() >= window.screen.availHeight - 2) return true;
+      return true;
     };
     const getHeight = () => {
       let h = getCurrentHeight();
-      if ((isPWA() || shouldApply()) && isIOS() && window.screen && window.screen.availHeight) {
+      const useAvail = (isPWA() && (isIOS() || isAndroid())) || (isIOS() && window.screen && window.screen.availHeight && getCurrentHeight() >= window.screen.availHeight - 2);
+      if (useAvail && window.screen && window.screen.availHeight) {
         h = Math.max(h, window.screen.availHeight);
       }
       return Math.round(h);
@@ -599,16 +678,24 @@ export default function App() {
     };
     const setHeight = () => {
       setLayoutViewportCSSVars();
-      if (!shouldApply()) return;
+      const apply = shouldApply();
       const h = getHeight();
-      document.documentElement.style.setProperty('height', `${h}px`);
-      document.documentElement.style.setProperty('min-height', `${h}px`);
-      document.body.style.setProperty('height', `${h}px`);
-      document.body.style.setProperty('min-height', `${h}px`);
-      root.style.setProperty('height', `${h}px`);
-      root.style.setProperty('min-height', `${h}px`);
-      root.style.setProperty('max-height', `${h}px`);
+      if (!apply) {
+        console.log(VIEWPORT_LOG, 'effect setHeight: shouldApply=false, skip');
+        return;
+      }
+      document.documentElement.style.setProperty('height', `${h}px`, 'important');
+      document.documentElement.style.setProperty('min-height', `${h}px`, 'important');
+      document.body.style.setProperty('height', `${h}px`, 'important');
+      document.body.style.setProperty('min-height', `${h}px`, 'important');
+      root.style.setProperty('height', `${h}px`, 'important');
+      root.style.setProperty('min-height', `${h}px`, 'important');
+      root.style.setProperty('max-height', `${h}px`, 'important');
+      console.log(VIEWPORT_LOG, 'effect setHeight: applied', { h, rootComputed: getComputedStyle(root).height });
     };
+    const h0 = getHeight();
+    const apply0 = shouldApply();
+    console.log(VIEWPORT_LOG, 'effect: mount', { shouldApply: apply0, getHeight: h0, innerHeight: window.innerHeight, rootComputed: getComputedStyle(root).height });
     setHeight();
     const t1 = setTimeout(setHeight, 100);
     const t2 = setTimeout(setHeight, 300);
@@ -741,6 +828,15 @@ export default function App() {
     );
   }
 
+  const isIOSDevice = /iPhone|iPad|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent || '' : '');
+  const contentWrapperStyle = {
+    flex: 1,
+    minHeight: 0,
+    paddingTop: isIOSDevice ? 0 : CONTENT_TOP_PADDING_NON_IOS,
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
   return (
     <BrowserRouter
       basename={webBasePath}
@@ -752,7 +848,9 @@ export default function App() {
       <SafeAreaProvider initialMetrics={initialMetrics}>
         <AuthProvider>
           <FrozenBottomWrapper>
-            {content}
+            <View style={contentWrapperStyle}>
+              {content}
+            </View>
           </FrozenBottomWrapper>
           <WakeDebugPanel />
         </AuthProvider>

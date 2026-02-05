@@ -3,6 +3,14 @@ import './InstallScreen.css';
 
 const LANDING_URL = 'https://wakelab.co/';
 
+/** Base URL for install-guide screenshots (stored in apps/pwa/public/install-guide/). */
+function getInstallGuideImage(filename) {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/app')) {
+    return `/app/install-guide/${filename}`;
+  }
+  return `/install-guide/${filename}`;
+}
+
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="m15 19-7-7 7-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -98,6 +106,13 @@ function isChromeOnIOS() {
   return navigator.userAgent.includes('CriOS');
 }
 
+/** Chrome (iOS or desktop). Used to show "Arriba" vs "Abajo" in the first install card. */
+function isChrome() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  const ua = navigator.userAgent;
+  return ua.includes('CriOS') || (ua.includes('Chrome') && !ua.includes('Edg'));
+}
+
 /** Google Search app in-app browser (GSA in user agent). Add to Home Screen not available; user must open in Chrome/Safari first. */
 function isGoogleApp() {
   if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
@@ -118,6 +133,154 @@ function isGoogleAppIOS() {
 function isAndroidStandalone() {
   if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
   return /Android/i.test(navigator.userAgent) && !isGoogleApp();
+}
+
+/** Safari on iOS (not Chrome, not Google app). */
+function isSafariIOS() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/i.test(ua) && !ua.includes('CriOS') && !ua.includes('GSA');
+}
+
+/** Samsung Internet on Android. */
+function isSamsungBrowser() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return /SamsungBrowser|Samsung/i.test(navigator.userAgent);
+}
+
+/** Chrome on Android (standalone, not Google app). */
+function isChromeAndroid() {
+  if (!isAndroidStandalone()) return false;
+  const ua = navigator.userAgent;
+  return /Chrome/i.test(ua) && !ua.includes('GSA');
+}
+
+/** Safari (iOS) – two Paso 1 (abajo = botones + Compartir; arriba = solo Compartir), then Paso 2 and 3 same for both. */
+function getIosSafariSteps() {
+  return [
+    {
+      stepNum: 1,
+      label: 'Barra de búsqueda abajo',
+      text: 'Toca los botones en la barra y luego Compartir en el menú.',
+      images: [getInstallGuideImage('IMG_1363.jpg'), getInstallGuideImage('IMG_1364.jpg')],
+    },
+    {
+      stepNum: 1,
+      label: 'Barra de búsqueda arriba',
+      text: 'Toca Compartir en la barra (solo eso).',
+      image: getInstallGuideImage('IMG_1360.jpg'),
+    },
+    {
+      stepNum: 2,
+      text: 'Toca "Añadir a pantalla de inicio". Si no la ves, desliza hacia abajo o toca "Editar acciones".',
+      image: getInstallGuideImage('IMG_1359.jpg'),
+    },
+    {
+      stepNum: 3,
+      text: 'Toca "Añadir".',
+      image: getInstallGuideImage('IMG_1361.jpg'),
+    },
+  ];
+}
+
+/** Chrome (iOS) – barra arriba: Compartir → Más → Añadir a pantalla de inicio → Añadir. */
+function getIosChromeSteps() {
+  return [
+    { text: 'Toca el botón Compartir en la barra de búsqueda (arriba).', image: getInstallGuideImage('IMG_1365.jpg') },
+    { text: 'En el menú que se abre, toca "Más" o "Más opciones".', image: getInstallGuideImage('IMG_1367.jpg') },
+    { text: 'Toca "Añadir a pantalla de inicio".', image: getInstallGuideImage('IMG_1368.jpg') },
+    { text: 'Toca "Añadir".', image: getInstallGuideImage('IMG_1361.jpg') },
+  ];
+}
+
+function getIosGoogleAppSteps() {
+  return [
+    { text: 'Toca Compartir en la barra.' },
+    { text: 'Toca "Abrir en Safari" o "Abrir en Chrome".' },
+    { text: 'Cuando se abra la página en el navegador, sigue la guía de Safari o Chrome (barra abajo o arriba).' },
+  ];
+}
+
+/** Unified Chrome (Android) steps: first step = use in-page button if available; then manual. */
+function getAndroidChromeSteps() {
+  return [
+    {
+      text: 'Si en esta página ves el botón "Añadir a inicio", tócalo primero. No descarga nada, solo añade un acceso directo. Si no ves el botón, sigue los pasos siguientes.',
+      tryButtonFirst: true,
+    },
+    {
+      text: 'Toca los tres puntos en la barra (arriba o abajo, según tu Chrome).',
+      imageMenuArriba: undefined,
+      imageMenuAbajo: undefined,
+    },
+    { text: 'Toca "Instalar aplicación" o "Añadir a la pantalla de inicio".' },
+    { text: 'Toca "Instalar" o "Añadir".' },
+  ];
+}
+
+function getAndroidSamsungSteps() {
+  return [
+    {
+      text: 'Si en esta página ves el botón "Añadir a inicio", tócalo primero. No descarga nada, solo un acceso directo. Si no lo ves, sigue los pasos siguientes.',
+      tryButtonFirst: true,
+    },
+    { text: 'Toca el menú (tres líneas o tres puntos) en la barra.' },
+    { text: 'Toca "Añadir página a" o "Add page to".' },
+    { text: 'Toca "Pantalla de inicio" o "Home screen".' },
+    { text: 'Confirma si aparece el diálogo.' },
+  ];
+}
+
+function getAndroidGoogleAppSteps() {
+  return [
+    { text: 'Toca los tres puntos en la barra.' },
+    { text: 'Toca "Abrir en Chrome" o "Abrir en el navegador".' },
+    { text: 'Cuando se abra en Chrome, sigue la guía de Chrome (menú arriba o abajo).' },
+  ];
+}
+
+/** All install guide variants: one entry per browser. Barra arriba/abajo covered in steps + optional images. */
+const INSTALL_GUIDES = {
+  ios: {
+    label: 'iPhone / iPad',
+    browsers: [
+      { id: 'ios_safari', label: 'Safari', steps: getIosSafariSteps() },
+      { id: 'ios_chrome', label: 'Chrome', steps: getIosChromeSteps() },
+      { id: 'ios_google_app', label: 'App de Google', steps: getIosGoogleAppSteps() },
+    ],
+  },
+  android: {
+    label: 'Android',
+    browsers: [
+      { id: 'android_chrome', label: 'Chrome', steps: getAndroidChromeSteps() },
+      { id: 'android_samsung', label: 'Samsung Internet', steps: getAndroidSamsungSteps() },
+      { id: 'android_google_app', label: 'App de Google', steps: getAndroidGoogleAppSteps() },
+    ],
+  },
+};
+
+/** Current device is iOS (iPhone/iPad). For OS picker "Actual" badge. */
+function isIOSDevice() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/** Current device is Android. For OS picker "Actual" badge. */
+function isAndroidDevice() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+/** True if this guide id matches the current device/browser (for "Actual" badge). */
+function isGuideCurrent(guideId) {
+  if (!guideId) return false;
+  if (isGoogleAppIOS() && guideId === 'ios_google_app') return true;
+  if (isGoogleAppAndroid() && guideId === 'android_google_app') return true;
+  if (isSafariIOS() && guideId === 'ios_safari') return true;
+  if (isChromeOnIOS() && guideId === 'ios_chrome') return true;
+  if (isChromeAndroid() && guideId === 'android_chrome') return true;
+  if (isSamsungBrowser() && guideId === 'android_samsung') return true;
+  return false;
 }
 
 /** Three-dots (More) menu icon – for Google app Android step */
@@ -178,6 +341,10 @@ export default function InstallScreen() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installOutcome, setInstallOutcome] = useState(null);
   const deferredPromptRef = useRef(null);
+  const [showGuidePicker, setShowGuidePicker] = useState(false);
+  const [selectedGuide, setSelectedGuide] = useState(null);
+  const [guidePickerOs, setGuidePickerOs] = useState(null);
+  const [expandedMainStep, setExpandedMainStep] = useState(null);
 
   useEffect(() => {
     const onBeforeInstall = (e) => {
@@ -293,15 +460,18 @@ export default function InstallScreen() {
               </div>
             ) : deferredPrompt ? (
               <>
-                <p className="install-android-intro">Toca el botón para instalar la app en tu pantalla de inicio.</p>
+                <p className="install-android-intro install-android-intro-first">
+                  <strong>Primero prueba esto:</strong> toca el botón de abajo. No se descarga nada, solo se añade un acceso directo en tu pantalla de inicio.
+                </p>
                 <button
                   type="button"
                   className="install-open-btn install-open-btn-android"
                   onClick={handleAndroidInstall}
                 >
                   <AñadirIcon className="install-open-btn-android-icon" />
-                  Añadir a la pantalla de inicio
+                  Añadir a inicio
                 </button>
+                <p className="install-android-reassurance">Solo un acceso directo. No descarga archivos.</p>
               </>
             ) : (
               <div className="install-android-fallback">
@@ -317,26 +487,57 @@ export default function InstallScreen() {
           </div>
         ) : (
           <div className="install-steps">
-            <div className="install-card">
+            {/* Step 1: Share */}
+            <div className="install-card install-card-with-image">
               <div className="install-card-number" aria-hidden="true">1</div>
               <div className="install-card-body">
-                <p className="install-card-line1">Abajo, en la <strong>barra del navegador</strong></p>
+                <p className="install-card-line1">{isChrome() ? 'Arriba' : 'Abajo'}, en la <strong>barra del navegador</strong></p>
                 <div className="install-card-line2">
                   <span className="install-card-line2-text">Busca y toca <strong>compartir</strong></span>
                   <ShareIcon className="install-card-share-icon" />
                 </div>
+                <button type="button" className="install-ver-imagen" onClick={() => setExpandedMainStep((s) => (s === 1 ? null : 1))} aria-expanded={expandedMainStep === 1}>
+                  {expandedMainStep === 1 ? 'Ocultar imagen' : 'Ver imagen'}
+                </button>
+                {expandedMainStep === 1 && (
+                  <div className="install-step-image-expanded">
+                    {isSafariIOS() ? (
+                      <>
+                        <div className="install-step-image-variant">
+                          <span className="install-step-image-variant-label">Barra de búsqueda abajo</span>
+                          <img src={getInstallGuideImage('IMG_1364.jpg')} alt="" className="install-step-image-thumb" />
+                          <img src={getInstallGuideImage('IMG_1363.jpg')} alt="" className="install-step-image-thumb" />
+                        </div>
+                        <div className="install-step-image-variant">
+                          <span className="install-step-image-variant-label">Barra de búsqueda arriba</span>
+                          <img src={getInstallGuideImage('IMG_1360.jpg')} alt="" className="install-step-image-thumb" />
+                        </div>
+                      </>
+                    ) : (
+                      <img src={getInstallGuideImage('IMG_1365.jpg')} alt="" className="install-step-image-thumb" />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             {showChromeIOSMoreStep && (
-              <div className="install-step">
+              <div className="install-step install-step-with-image">
                 <div className="install-card-number" aria-hidden="true">2</div>
                 <div className="install-card-body">
                   <p className="install-card-line1">Toca <strong>&quot;Más&quot;</strong> o <strong>&quot;Más opciones&quot;</strong></p>
                   <p className="install-card-note">Para ver todas las acciones del menú de compartir.</p>
+                  <button type="button" className="install-ver-imagen" onClick={() => setExpandedMainStep((s) => (s === 2 ? null : 2))} aria-expanded={expandedMainStep === 2}>
+                    {expandedMainStep === 2 ? 'Ocultar imagen' : 'Ver imagen'}
+                  </button>
+                  {expandedMainStep === 2 && (
+                    <div className="install-step-image-expanded">
+                      <img src={getInstallGuideImage('IMG_1367.jpg')} alt="" className="install-step-image-thumb" />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
-            <div className="install-step">
+            <div className="install-step install-step-with-image">
               <div className="install-card-number" aria-hidden="true">{showChromeIOSMoreStep ? 3 : 2}</div>
               <div className="install-card-body">
                 <p className="install-card-line1"><strong>Desliza</strong> en el menú y busca</p>
@@ -347,9 +548,17 @@ export default function InstallScreen() {
                   <span className="install-card-pill-text">Añadir a pantalla de inicio</span>
                 </div>
                 <p className="install-card-note">¿No la ves? Toca «Editar acciones» y actívala.</p>
+                <button type="button" className="install-ver-imagen" onClick={() => setExpandedMainStep((s) => (s === 3 ? null : 3))} aria-expanded={expandedMainStep === 3}>
+                  {expandedMainStep === 3 ? 'Ocultar imagen' : 'Ver imagen'}
+                </button>
+                {expandedMainStep === 3 && (
+                  <div className="install-step-image-expanded">
+                    <img src={getInstallGuideImage(isSafariIOS() ? 'IMG_1359.jpg' : 'IMG_1368.jpg')} alt="" className="install-step-image-thumb" />
+                  </div>
+                )}
               </div>
             </div>
-            <div className="install-step">
+            <div className="install-step install-step-with-image">
               <div className="install-card-number" aria-hidden="true">{showChromeIOSMoreStep ? 4 : 3}</div>
               <div className="install-card-body">
                 <p className="install-card-line1">Toca <strong>Añadir</strong></p>
@@ -357,11 +566,184 @@ export default function InstallScreen() {
                   <CheckIcon className="install-card-check-icon" />
                   <span className="install-card-note">Listo</span>
                 </div>
+                <button type="button" className="install-ver-imagen" onClick={() => setExpandedMainStep((s) => (s === 4 ? null : 4))} aria-expanded={expandedMainStep === 4}>
+                  {expandedMainStep === 4 ? 'Ocultar imagen' : 'Ver imagen'}
+                </button>
+                {expandedMainStep === 4 && (
+                  <div className="install-step-image-expanded">
+                    <img src={getInstallGuideImage('IMG_1361.jpg')} alt="" className="install-step-image-thumb" />
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
+        <div className="install-guide-link-wrap">
+          <button
+            type="button"
+            className="install-guide-link"
+            onClick={() => { setGuidePickerOs(null); setSelectedGuide(null); setShowGuidePicker(true); }}
+          >
+            Pasos detallados con imágenes
+          </button>
+        </div>
       </div>
+
+      {showGuidePicker && !selectedGuide && (
+        <div
+          className="install-guide-picker-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="install-guide-picker-title"
+          onClick={() => setShowGuidePicker(false)}
+        >
+          <div className="install-guide-picker" onClick={(e) => e.stopPropagation()}>
+            <h2 id="install-guide-picker-title" className="install-guide-picker-title">
+              Guía paso a paso
+            </h2>
+            <p className="install-guide-picker-subtitle">Elige tu dispositivo y navegador para ver los pasos exactos.</p>
+            {guidePickerOs === null ? (
+              <div className="install-guide-picker-os">
+                <button
+                  type="button"
+                  className="install-guide-picker-option"
+                  onClick={() => setGuidePickerOs('ios')}
+                >
+                  <span className="install-guide-picker-option-label">iPhone / iPad</span>
+                  {isIOSDevice() && <span className="install-guide-picker-actual">Actual</span>}
+                </button>
+                <button
+                  type="button"
+                  className="install-guide-picker-option"
+                  onClick={() => setGuidePickerOs('android')}
+                >
+                  <span className="install-guide-picker-option-label">Android</span>
+                  {isAndroidDevice() && <span className="install-guide-picker-actual">Actual</span>}
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="install-guide-picker-back"
+                  onClick={() => setGuidePickerOs(null)}
+                >
+                  ← Cambiar dispositivo
+                </button>
+                <div className="install-guide-picker-browsers">
+                  {INSTALL_GUIDES[guidePickerOs].browsers.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      className="install-guide-picker-option install-guide-picker-browser"
+                      onClick={() => {
+                        setSelectedGuide({ os: guidePickerOs, browserId: b.id, label: b.label, steps: b.steps });
+                        setShowGuidePicker(false);
+                      }}
+                    >
+                      <span className="install-guide-picker-option-label">{b.label}</span>
+                      {isGuideCurrent(b.id) && <span className="install-guide-picker-actual">Actual</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              className="install-guide-picker-close"
+              onClick={() => setShowGuidePicker(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedGuide && (
+        <div className="install-guide-fullpage" role="document" aria-label={`Guía: ${selectedGuide.label}`}>
+          <div className="install-guide-fullpage-inner">
+            <div className="install-guide-fullpage-header">
+              <button
+                type="button"
+                className="install-guide-fullpage-back"
+                onClick={() => setSelectedGuide(null)}
+                aria-label="Volver"
+              >
+                <ChevronLeftIcon size={24} color="#ffffff" />
+                <span className="install-guide-fullpage-back-text">Volver</span>
+              </button>
+              <button
+                type="button"
+                className="install-guide-fullpage-close"
+                onClick={() => setSelectedGuide(null)}
+                aria-label="Cerrar guía"
+              >
+                Cerrar
+              </button>
+            </div>
+            <h2 className="install-guide-fullpage-title">{selectedGuide.label}</h2>
+            <div className="install-guide-fullpage-steps">
+              {selectedGuide.steps.map((step, i) => (
+                <div key={i} className={`install-guide-step${step.tryButtonFirst ? ' install-guide-step--try-first' : ''}`}>
+                  <span className="install-guide-step-num">
+                    Paso {step.stepNum != null ? step.stepNum : i + 1}
+                    {step.label && <span className="install-guide-step-sublabel"> — {step.label}</span>}
+                  </span>
+                  <p className="install-guide-step-text">{step.text}</p>
+                  {Array.isArray(step.images) && step.images.length > 0 && (
+                    <div className="install-guide-step-images">
+                      {step.images.map((src, j) => (
+                        <div key={j} className="install-guide-step-image-wrap">
+                          {step.images.length > 1 && <span className="install-guide-step-image-label">{j + 1}</span>}
+                          <img src={src} alt="" className="install-guide-step-img" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(step.imageBarraAbajo || step.imageBarraArriba) && (
+                    <div className="install-guide-step-images">
+                      {step.imageBarraAbajo && (
+                        <div className="install-guide-step-image-wrap">
+                          <span className="install-guide-step-image-label">{step.labelBarraAbajo || 'Barra abajo'}</span>
+                          <img src={step.imageBarraAbajo} alt="" className="install-guide-step-img" />
+                        </div>
+                      )}
+                      {step.imageBarraArriba && (
+                        <div className="install-guide-step-image-wrap">
+                          <span className="install-guide-step-image-label">{step.labelBarraArriba || 'Barra arriba'}</span>
+                          <img src={step.imageBarraArriba} alt="" className="install-guide-step-img" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(step.imageMenuArriba || step.imageMenuAbajo) && (
+                    <div className="install-guide-step-images">
+                      {step.imageMenuArriba && (
+                        <div className="install-guide-step-image-wrap">
+                          <span className="install-guide-step-image-label">Menú arriba</span>
+                          <img src={step.imageMenuArriba} alt="" className="install-guide-step-img" />
+                        </div>
+                      )}
+                      {step.imageMenuAbajo && (
+                        <div className="install-guide-step-image-wrap">
+                          <span className="install-guide-step-image-label">Menú abajo</span>
+                          <img src={step.imageMenuAbajo} alt="" className="install-guide-step-img" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {step.image && !Array.isArray(step.images) && !step.imageBarraAbajo && !step.imageBarraArriba && !step.imageMenuArriba && !step.imageMenuAbajo && (
+                    <div className="install-guide-step-image-wrap install-guide-step-image-wrap-single">
+                      <img src={step.image} alt="" className="install-guide-step-img" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="install-guide-fullpage-done">Listo. Abre Wake desde el icono en tu pantalla de inicio.</p>
+          </div>
+        </div>
+      )}
 
       {showSafariModal && (
         <div

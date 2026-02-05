@@ -57,77 +57,78 @@ const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <WakeHeaderContent>
-          <WakeHeaderSpacer />
-        {/* Large centered question */}
+      <WakeHeaderContent style={styles.contentColumn}>
+        <WakeHeaderSpacer />
+        {/* Question fixed at top – not scrollable */}
         <View style={styles.questionContainer}>
           <Text style={styles.question}>
             ¿Qué tipo de entrenamientos prefieres?
           </Text>
         </View>
 
-        {/* Cube-style options grid - 2x2 for 4 options */}
-        <View style={styles.optionsGrid}>
-          {options.map((option) => (
-            <TouchableOpacity
-              key={option.id}
-              style={[
-                styles.optionCube,
-                selectedAnswer === option.id && styles.optionCubeSelected
-              ]}
-              onPress={() => setSelectedAnswer(option.id)}
-            >
-              <View style={styles.optionIcon}>
-                <SvgXml 
-                  xml={option.icon} 
-                  width={32} 
-                  height={32} 
-                  color={selectedAnswer === option.id ? '#BFA84D' : '#ffffff'}
-                />
-              </View>
-              <Text style={[
-                styles.optionText,
-                selectedAnswer === option.id && styles.optionTextSelected
-              ]}>
-                {option.text}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Only the options list scrolls */}
+        <ScrollView
+          style={styles.optionsScrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled
+        >
+          <View style={styles.optionsGrid}>
+            {options.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.optionCube,
+                  selectedAnswer === option.id && styles.optionCubeSelected
+                ]}
+                onPress={() => setSelectedAnswer(option.id)}
+              >
+                <View style={styles.optionIcon}>
+                  <SvgXml 
+                    xml={option.icon} 
+                    width={32} 
+                    height={32} 
+                    color={selectedAnswer === option.id ? '#BFA84D' : '#ffffff'}
+                  />
+                </View>
+                <Text style={[
+                  styles.optionText,
+                  selectedAnswer === option.id && styles.optionTextSelected
+                ]}>
+                  {option.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </WakeHeaderContent>
 
-        {/* Continue button */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
+      {/* Fixed bottom bar: button + progress */}
+      <View style={styles.bottomButtonContainer}>
+        <TouchableOpacity
+          style={[
+            styles.nextButton,
+            !selectedAnswer && styles.nextButtonDisabled
+          ]}
+          onPress={handleNext}
+          disabled={!selectedAnswer}
+        >
+          <Text style={[
+            styles.nextButtonText,
+            !selectedAnswer && styles.nextButtonTextDisabled
+          ]}>
+            Continuar
+          </Text>
+          <Text
             style={[
-              styles.nextButton,
-              !selectedAnswer && styles.nextButtonDisabled
+              styles.progress,
+              !selectedAnswer && styles.progressDisabled
             ]}
-            onPress={handleNext}
-            disabled={!selectedAnswer}
           >
-            <Text style={[
-              styles.nextButtonText,
-              !selectedAnswer && styles.nextButtonTextDisabled
-            ]}>
-              Continuar
-            </Text>
-            <Text
-              style={[
-                styles.progress,
-                !selectedAnswer && styles.progressDisabled
-              ]}
-            >
-              4 de 5
-            </Text>
-          </TouchableOpacity>
-        </View>
-        </WakeHeaderContent>
-      </ScrollView>
+            4 de 5
+          </Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -137,12 +138,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  scrollView: {
+  contentColumn: {
     flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  optionsScrollView: {
+    flex: 1,
+    minHeight: 0,
+    ...(Platform.OS === 'web' ? { maxHeight: Math.max(220, screenHeight - 300) } : {}),
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40, // Add bottom padding for safe scrolling
+    // Reserve space for fixed bar (button + progress + padding) so last options aren't covered
+    paddingBottom: 140,
   },
   progress: {
     marginTop: 6,
@@ -218,11 +227,17 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#BFA84D',
     fontWeight: '600',
   },
-  buttonContainer: {
-    justifyContent: 'center',
+  bottomButtonContainer: {
+    position: Platform.OS === 'web' ? 'fixed' : 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: Math.max(20, screenHeight * 0.025),
+    backgroundColor: '#1a1a1a',
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 20,
+    justifyContent: 'center',
   },
   nextButton: {
     backgroundColor: 'rgba(191, 168, 77, 0.2)', // Match OnboardingScreen.js

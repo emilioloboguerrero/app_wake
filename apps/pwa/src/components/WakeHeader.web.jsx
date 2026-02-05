@@ -7,6 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import logger from '../utils/logger';
 import { isPWA } from '../utils/platform';
 
+// Push header bar down on non-iPhone (Mac/Android) where safe area is 0.
+const HEADER_TOP_OFFSET_NON_IOS = 24;
+
 // Simple SVG icons for web
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -37,10 +40,13 @@ export const FixedWakeHeader = ({
     initialSafeTopRef.current = Math.max(0, insets.top);
   }
   const safeAreaTop = initialSafeTopRef.current;
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  const extraTop = isIOS ? 0 : HEADER_TOP_OFFSET_NON_IOS;
+  const totalTop = safeAreaTop + extraTop;
   const logoWidth = Math.min(screenWidth * 0.35, 120);
   const logoHeight = logoWidth * 0.57;
   const iconSize = 20;
-  const barCenterTop = safeAreaTop + headerHeight / 2;
+  const barCenterTop = totalTop + headerHeight / 2;
   
   const shouldShowProfileButton = profileImageUrl !== null || onProfilePress;
   
@@ -71,14 +77,14 @@ export const FixedWakeHeader = ({
       top: 0,
       left: 0,
       right: 0,
-      minHeight: headerHeight + safeAreaTop,
-      height: headerHeight + safeAreaTop,
+      minHeight: headerHeight + totalTop,
+      height: headerHeight + totalTop,
       flexShrink: 0,
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingTop: safeAreaTop,
+      paddingTop: totalTop,
       paddingLeft: screenWidth * 0.06,
       paddingRight: screenWidth * 0.06,
       paddingBottom: 0,
@@ -239,12 +245,18 @@ export const FixedWakeHeader = ({
     : headerEl;
 };
 
-// Header spacer: matches FixedWakeHeader (32px + safe area top). Freeze height on first layout so it doesn't change on scroll.
+// Extra top space for content area when not iPhone (Mac/Android) so content doesn't sit right under the header.
+const CONTENT_TOP_PADDING_NON_IOS = 100;
+
+// Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding. Does not include HEADER_TOP_OFFSET_NON_IOS so content stays in place when only the bar is pushed down.
 export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
   const ref = React.useRef(null);
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
   if (ref.current === null) {
-    ref.current = 32 + Math.max(0, insets.top);
+    const headerHeight = 32 + Math.max(0, insets.top);
+    const extra = isIOS ? 0 : CONTENT_TOP_PADDING_NON_IOS;
+    ref.current = headerHeight + extra;
   }
   const totalHeight = ref.current;
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;

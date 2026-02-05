@@ -168,23 +168,29 @@
       function isIOS() {
         return /iPhone|iPad|iPod/.test(navigator.userAgent || '');
       }
+      function isAndroid() {
+        return /Android/.test(navigator.userAgent || '');
+      }
       function shouldApplyPWAViewportFix() {
         if (isStandalone()) return true;
-        if (!isIOS() || !window.screen || !window.screen.availHeight) return false;
-        var ih = window.innerHeight || 0;
-        if (window.visualViewport && window.visualViewport.height) {
-          ih = Math.max(ih, window.visualViewport.height);
+        if (isIOS() && window.screen && window.screen.availHeight) {
+          var ih = window.innerHeight || 0;
+          if (window.visualViewport && window.visualViewport.height) {
+            ih = Math.max(ih, window.visualViewport.height);
+          }
+          if (ih >= window.screen.availHeight - 2) return true;
         }
-        return ih >= window.screen.availHeight - 2;
+        return true;
       }
       function getCanonicalHeight() {
         var h = window.innerHeight || 0;
         if (window.visualViewport && window.visualViewport.height) {
           h = Math.max(h, window.visualViewport.height);
         }
-        if (isIOS() && window.screen && window.screen.availHeight) {
+        if (window.screen && window.screen.availHeight) {
           var nearFull = h >= window.screen.availHeight - 2;
-          if (isStandalone() || nearFull) {
+          var useAvail = (isIOS() && (isStandalone() || nearFull)) || (isStandalone() && isAndroid());
+          if (useAvail) {
             h = Math.max(h, window.screen.availHeight);
           }
         }

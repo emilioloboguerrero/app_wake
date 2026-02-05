@@ -16,9 +16,15 @@ const dimensions = {
 };
 const listeners = {};
 let shouldInit = canUseDOM;
+const VIEWPORT_LOG = '[VIEWPORT]';
+let dimensionsLogOnce = false;
 
 function isIOS() {
   return canUseDOM && /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+}
+
+function isAndroid() {
+  return canUseDOM && /Android/.test(navigator.userAgent || '');
 }
 
 function isPWA() {
@@ -34,13 +40,17 @@ function getCanonicalWindowHeight() {
   if (win.visualViewport && win.visualViewport.height) {
     h = Math.max(h, win.visualViewport.height);
   }
-  if (isIOS() && win.screen && win.screen.availHeight) {
-    const nearFull = h >= win.screen.availHeight - 2;
-    if (isPWA() || nearFull) {
-      h = Math.max(h, win.screen.availHeight);
-    }
+  const nearFull = win.screen && win.screen.availHeight && h >= win.screen.availHeight - 2;
+  const useAvail = (isIOS() && (isPWA() || nearFull)) || (isPWA() && isAndroid());
+  if (useAvail && win.screen && win.screen.availHeight) {
+    h = Math.max(h, win.screen.availHeight);
   }
-  return Math.round(h);
+  const out = Math.round(h);
+  if (!dimensionsLogOnce && canUseDOM) {
+    dimensionsLogOnce = true;
+    console.log(VIEWPORT_LOG, 'Dimensions (useWindowDimensions)', { innerHeight: win.innerHeight, visualViewportH: win.visualViewport?.height, screenAvailH: win.screen?.availHeight, useAvail, canonicalHeight: out, isPWA: isPWA(), isIOS: isIOS(), isAndroid: isAndroid() });
+  }
+  return out;
 }
 
 function getCanonicalWindowWidth() {

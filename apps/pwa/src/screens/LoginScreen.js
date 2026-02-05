@@ -403,6 +403,8 @@ const LoginScreen = ({ navigation }) => {
 
             {/* Main Action Button */}
             <TouchableOpacity
+              testID="login-primary-button"
+              aria-disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
               style={[
                 styles.button,
                 (isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)) && styles.buttonDisabled
@@ -459,6 +461,8 @@ const LoginScreen = ({ navigation }) => {
 
             {/* Google Sign-In Button */}
             <TouchableOpacity
+              testID="login-google-button"
+              aria-disabled={isLoading}
               style={[styles.googleButton, isLoading && styles.buttonDisabled]}
               onPress={handleGoogleLogin}
               disabled={isLoading}

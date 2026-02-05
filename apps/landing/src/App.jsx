@@ -7,12 +7,13 @@ import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreatorsPage from './screens/CreatorsPage';
 import { getMainHeroLandingImages, getLandingCards, getDosFormasImage } from './services/heroImagesService';
 import heroLogo from './assets/hero-logo.svg';
+import heroFallback from './assets/hero-fallback.png';
 import './Home.css';
 
 const HEADER_HEIGHT = 80;
 const HEADER_HEIGHT_MOBILE = 88;
 
-const HERO_PLACEHOLDER = `${import.meta.env.BASE_URL}Screenshot%202026-02-01%20at%203.00.05%20PM.png`;
+const HERO_PLACEHOLDER = heroFallback;
 
 function Home() {
   const [heroImages, setHeroImages] = useState([]);
@@ -26,6 +27,7 @@ function Home() {
   const [dosFormasLoaded, setDosFormasLoaded] = useState(false);
   const [cardsVisible, setCardsVisible] = useState(false);
   const [dosFormasVisible, setDosFormasVisible] = useState(false);
+  const [flippedCard, setFlippedCard] = useState(null);
   const cardsRef = useRef(null);
   const dosFormasRef = useRef(null);
 
@@ -36,25 +38,16 @@ function Home() {
   const [dbImagesReady, setDbImagesReady] = useState(false);
 
   useEffect(() => {
-    setHeroImagesLoaded(new Set());
+    setHeroReady(true);
+    setCurrentIndex(0);
     if (heroImages.length === 0) {
-      setHeroReady(true);
       setDbImagesReady(false);
-      setCurrentIndex(0);
       return;
     }
     setDbImagesReady(false);
     const img = new Image();
-    img.onload = () => {
-      setHeroReady(true);
-      setDbImagesReady(true);
-      setCurrentIndex(0);
-    };
-    img.onerror = () => {
-      setHeroReady(true);
-      setDbImagesReady(true);
-      setCurrentIndex(0);
-    };
+    img.onload = () => setDbImagesReady(true);
+    img.onerror = () => setDbImagesReady(true);
     img.src = heroImages[0];
   }, [heroImages]);
 
@@ -66,7 +59,7 @@ function Home() {
     getDosFormasImage().then(setDosFormasImage);
   }, []);
 
-  const allHeroImages = heroImages.length > 0 && dbImagesReady ? heroImages : [HERO_PLACEHOLDER];
+  const allHeroImages = [HERO_PLACEHOLDER, ...heroImages];
 
   useEffect(() => {
     if (allHeroImages.length <= 1) return;
@@ -126,28 +119,33 @@ function Home() {
   return (
     <div className="home">
       <div
-        className={`hero-background ${heroReady ? 'hero-ready' : ''}`}
+        className={`hero-background ${heroReady ? 'hero-ready' : ''} ${!dbImagesReady ? 'hero-loading' : ''}`}
         style={{ opacity: heroOpacity, visibility: heroOpacity < 0.01 ? 'hidden' : 'visible' }}
       >
-        <div className="hero-background-overlay" aria-hidden="true" />
+        <div
+          className="hero-background-fallback"
+          style={{
+            backgroundImage: `url(${HERO_PLACEHOLDER})`,
+            backgroundColor: '#2a2a2a',
+          }}
+          aria-hidden="true"
+        />
         <div
           className={`hero-images-wrap ${heroReady ? 'hero-images-ready' : ''}`}
           aria-hidden="true"
         >
-          {allHeroImages.map((url, i) => {
-            const loadedKey = heroImages.length > 0 ? i : 'placeholder';
-            return (
+          {allHeroImages.map((url, i) => (
               <img
-                key={loadedKey}
+                key={i}
                 src={url}
                 alt=""
                 width={16}
                 height={9}
-                onLoad={() => setHeroImagesLoaded((prev) => new Set([...prev, loadedKey]))}
-                className={`hero-background-img ${i === currentIndex ? 'hero-background-img-active' : ''} ${heroImagesLoaded.has(loadedKey) ? 'hero-background-img-loaded' : ''}`}
+                onLoad={() => setHeroImagesLoaded((prev) => new Set([...prev, i]))}
+                className={`hero-background-img ${i === 0 ? 'hero-background-img-placeholder' : ''} ${i === currentIndex ? 'hero-background-img-active' : ''} ${heroImagesLoaded.has(i) ? 'hero-background-img-loaded' : ''}`}
               />
-            );
-          })}
+          ))}
+          <div className="hero-background-overlay" aria-hidden="true" />
         </div>
         <img src={heroLogo} alt="" className="hero-logo" />
         <div className="hero-content">
@@ -175,36 +173,134 @@ function Home() {
             Una plataforma con programas estructurados de quienes admiras, adaptados a ti. Sigue las rutinas, registra tu evolución y usa insights personalizados para progresar.
           </p>
           <div ref={cardsRef} className={`section-cards ${cardsVisible ? 'section-cards-visible' : ''}`}>
-            {cards[0] && (
-              <div className="section-card">
-                <div className="section-card-image-wrap">
-                  <img src={cards[0]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 0]))} className={`section-card-image ${cardImagesLoaded.has(0) ? 'section-card-image-loaded' : ''}`} />
-                  <h3 className="section-card-title">
-                    <span className="section-card-title-bold">Insights</span> personalizados
-                  </h3>
+            <div
+              className={`section-card section-card-flip ${flippedCard === 0 ? 'section-card-flipped' : ''}`}
+              onClick={() => setFlippedCard((c) => (c === 0 ? null : 0))}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFlippedCard((c) => (c === 0 ? null : 0)); } }}
+              aria-label="Insights personalizados. Pulsa para más información"
+            >
+              <div className="section-card-aspect" aria-hidden="true" />
+              <div className="section-card-inner">
+                <div className="section-card-front">
+                  <div className="section-card-image-wrap">
+                    {cards[0] && (
+                      <img src={cards[0]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 0]))} className={`section-card-image ${cardImagesLoaded.has(0) ? 'section-card-image-loaded' : ''}`} />
+                    )}
+                    <h3 className="section-card-title">
+                      <span className="section-card-title-bold">Insights</span> personalizados
+                    </h3>
+                  </div>
+                </div>
+                <div className="section-card-back">
+                  {cards[0] && (
+                    <>
+                      <div className="section-card-back-bg" style={{ backgroundImage: `url(${cards[0]})` }} aria-hidden="true" />
+                      <div className="section-card-back-overlay" aria-hidden="true" />
+                    </>
+                  )}
+                  <div className="section-card-back-content">
+                    <h3 className="section-card-back-title">
+                      <span className="section-card-title-bold">Insights</span> personalizados
+                    </h3>
+                    <p className="section-card-back-text">
+                      Seguimos tu <strong>volumen semanal</strong> de entrenamiento para sugerirte cargas adecuadas y usamos el historial de tus sesiones para <strong>recomendarte el peso en cada serie</strong>. Así <strong>ves tu progreso</strong> y <strong>sabes en qué enfocarte</strong>.
+                    </p>
+                  </div>
                 </div>
               </div>
-            )}
-            {cards[1] && (
-              <div className="section-card">
-                <div className="section-card-image-wrap">
-                  <img src={cards[1]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 1]))} className={`section-card-image ${cardImagesLoaded.has(1) ? 'section-card-image-loaded' : ''}`} />
-                  <h3 className="section-card-title">
-                    Tus <span className="section-card-title-bold">datos</span> en un solo lugar
-                  </h3>
+            </div>
+            <div
+              className={`section-card section-card-flip ${flippedCard === 1 ? 'section-card-flipped' : ''}`}
+              onClick={() => setFlippedCard((c) => (c === 1 ? null : 1))}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFlippedCard((c) => (c === 1 ? null : 1)); } }}
+              aria-label="Tus datos en un solo lugar. Pulsa para más información"
+            >
+              <div className="section-card-aspect" aria-hidden="true" />
+              <div className="section-card-inner">
+                <div className="section-card-front">
+                  <div className="section-card-image-wrap">
+                    {cards[1] && (
+                      <img src={cards[1]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 1]))} className={`section-card-image ${cardImagesLoaded.has(1) ? 'section-card-image-loaded' : ''}`} />
+                    )}
+                    <h3 className="section-card-title">
+                      Tus <span className="section-card-title-bold">datos</span> en un solo lugar
+                    </h3>
+                  </div>
+                </div>
+                <div className="section-card-back">
+                  {cards[1] && (
+                    <>
+                      <div className="section-card-back-bg" style={{ backgroundImage: `url(${cards[1]})` }} aria-hidden="true" />
+                      <div className="section-card-back-overlay" aria-hidden="true" />
+                    </>
+                  )}
+                  <div className="section-card-back-content">
+                    <h3 className="section-card-back-title">
+                      Tus <span className="section-card-title-bold">datos</span> en un solo lugar
+                    </h3>
+                    <p className="section-card-back-text">
+                      Tus rutinas activas, el historial de sesiones, las métricas de progreso y los programas que sigues están en <strong>una sola app</strong>. <strong>Sigue, registra y revisa</strong> tu evolución cuando quieras, <strong>sin cambiar de sitio</strong>.
+                    </p>
+                  </div>
                 </div>
               </div>
-            )}
-            {cards[2] && (
-              <div className="section-card">
-                <div className="section-card-image-wrap">
-                  <img src={cards[2]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 2]))} className={`section-card-image ${cardImagesLoaded.has(2) ? 'section-card-image-loaded' : ''}`} />
-                  <h3 className="section-card-title">
-                    Programas de quienes <span className="section-card-title-bold">admiras</span>
-                  </h3>
+            </div>
+            <div
+              className={`section-card section-card-flip ${flippedCard === 2 ? 'section-card-flipped' : ''}`}
+              onClick={(e) => {
+                if (e.target.closest('.section-card-back-cta')) return;
+                setFlippedCard((c) => (c === 2 ? null : 2));
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.target.closest('.section-card-back-cta')) return;
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFlippedCard((c) => (c === 2 ? null : 2)); }
+              }}
+              aria-label="Programas de quienes admiras. Pulsa para más información"
+            >
+              <div className="section-card-aspect" aria-hidden="true" />
+              <div className="section-card-inner">
+                <div className="section-card-front">
+                  <div className="section-card-image-wrap">
+                    {cards[2] && (
+                      <img src={cards[2]} alt="" width={3} height={4} onLoad={() => setCardImagesLoaded((p) => new Set([...p, 2]))} className={`section-card-image ${cardImagesLoaded.has(2) ? 'section-card-image-loaded' : ''}`} />
+                    )}
+                    <h3 className="section-card-title">
+                      Programas de quienes <span className="section-card-title-bold">admiras</span>
+                    </h3>
+                  </div>
+                </div>
+                <div className="section-card-back">
+                  {cards[2] && (
+                    <>
+                      <div className="section-card-back-bg" style={{ backgroundImage: `url(${cards[2]})` }} aria-hidden="true" />
+                      <div className="section-card-back-overlay" aria-hidden="true" />
+                    </>
+                  )}
+                  <div className="section-card-back-content">
+                    <h3 className="section-card-back-title">
+                      Programas de quienes <span className="section-card-title-bold">admiras</span>
+                    </h3>
+                    <p className="section-card-back-text">
+                      Programas diseñados por entrenadores y referentes <strong>en los que confías</strong>. Rutinas <strong>estructuradas y adaptables</strong> a tu nivel para que entrenes con quien <strong>te inspira</strong>.
+                    </p>
+                    <button
+                      type="button"
+                      className="section-card-back-cta"
+                      onClick={(e) => { e.stopPropagation(); /* TODO: navegar a página de creadores */ }}
+                      aria-label="Ver entrenadores en la plataforma"
+                    >
+                      Ver entrenadores
+                    </button>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>

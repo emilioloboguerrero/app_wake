@@ -12,6 +12,7 @@ const path = require('path');
 const {
   dirLandingOutput,
   dirPwaOutput,
+  dirPwaPublic,
   dirCreatorOutput,
   dirHosting,
   dirHostingApp,
@@ -49,6 +50,12 @@ let copied = 0;
 if (copyDirContents(dirLandingOutput, dirHosting)) {
   console.log('assemble-hosting: copied landing → hosting/ (root)');
   copied++;
+}
+// Favicon at root so landing and creators (which use href="/app_icon.png") can load it
+const appIconSrc = path.join(dirPwaPublic, 'app_icon.png');
+if (fs.existsSync(appIconSrc)) {
+  fs.copyFileSync(appIconSrc, path.join(dirHosting, 'app_icon.png'));
+  console.log('assemble-hosting: copied app_icon.png to hosting root');
 }
 if (copyDirContents(dirPwaOutput, dirHostingApp)) {
   console.log('assemble-hosting: copied PWA dist → hosting/app/');

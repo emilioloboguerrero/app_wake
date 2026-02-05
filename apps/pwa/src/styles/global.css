@@ -77,40 +77,57 @@ body {
   overscroll-behavior: none;
 }
 
-/* Mobile: full width, fixed positioning; use dvh so height tracks visible area */
+/* Full-height chain: root is flex column; single direct child fills (dev + prod, so layout works when index.html is not our template) */
+#root {
+  display: flex;
+  flex-direction: column;
+}
+#root > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mobile: full width, fixed positioning; use layout height when set */
 @media (max-width: 480px) {
   body {
     position: fixed;
     width: 100%;
   }
-  
+
   #root {
     height: 100vh;
     height: 100svh;
+    height: var(--layout-height-px, 100svh);
     width: 100%;
     overflow: hidden;
     background-color: var(--color-background);
   }
 }
 
-/* Desktop: center the app container - BUT full screen for login */
+/* Desktop: full screen; use layout height when set so main app matches viewport fix */
 @media (min-width: 481px) {
-  /* Default: full screen (for login) */
   body {
     padding: 0;
     background: #1a1a1a;
     display: block;
     min-height: 100vh;
     min-height: 100svh;
+    min-height: var(--layout-height-px, 100svh);
+    height: var(--layout-height-px, 100svh);
   }
-  
+
   #root {
     max-width: 100%;
     width: 100%;
     height: 100vh;
     height: 100svh;
+    height: var(--layout-height-px, 100svh);
+    min-height: var(--layout-height-px, 100svh);
     max-height: 100vh;
     max-height: 100svh;
+    max-height: var(--layout-height-px, 100svh);
     border-radius: 0;
     box-shadow: none;
     margin: 0;
@@ -118,9 +135,23 @@ body {
     overflow: hidden;
     position: relative;
   }
-  
-  /* Full screen for all routes - no card container */
-  /* Removed card styles - PWA should be full screen */
+
+  /* Main app (not login): phone-width column so layout matches mobile */
+  .app-viewport {
+    width: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .app-viewport > * {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 /* Prevent text selection on UI elements */
@@ -319,6 +350,39 @@ body[data-login-route="true"] #root {
   height: 100vh !important;
   height: 100svh !important;
   z-index: 1 !important;
+}
+
+/* Login screen buttons: original flat style (rounded corners, no border, no gradient/shadow) */
+[data-testid="login-primary-button"] {
+  border-radius: 12px !important;
+  border: none !important;
+  background: rgba(191, 168, 77, 0.2) !important;
+  box-shadow: none !important;
+}
+[data-testid="login-primary-button"]:hover:not([aria-disabled="true"]) {
+  background: rgba(191, 168, 77, 0.28) !important;
+  box-shadow: none !important;
+}
+[data-testid="login-primary-button"][aria-disabled="true"] {
+  background: #666666 !important;
+  box-shadow: none !important;
+  opacity: 0.7;
+}
+
+[data-testid="login-google-button"] {
+  border-radius: 12px !important;
+  border: none !important;
+  background: #333333 !important;
+  box-shadow: none !important;
+}
+[data-testid="login-google-button"]:hover:not([aria-disabled="true"]) {
+  background: #3a3a3a !important;
+  box-shadow: none !important;
+}
+[data-testid="login-google-button"][aria-disabled="true"] {
+  background: #666666 !important;
+  box-shadow: none !important;
+  opacity: 0.7;
 }
 
 /* SafeAreaView replacement for web */

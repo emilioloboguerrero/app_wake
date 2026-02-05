@@ -502,12 +502,13 @@ const WebAppNavigator = () => {
 
   // For all other routes, use auth
   // Loading state is handled by AuthenticatedLayout
-
+  // .app-viewport constrains width on desktop so main app layout matches phone (see global.css)
   return (
-    <Routes>
-      <Route path="/login" element={React.createElement(withErrorBoundary(LoginScreen, 'Login'))} />
+    <div className="app-viewport" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <Routes>
+          <Route path="/login" element={React.createElement(withErrorBoundary(LoginScreen, 'Login'))} />
 
-      {/* Onboarding Routes */}
+        {/* Onboarding Routes */}
       <Route
         path="/onboarding"
         element={
@@ -700,9 +701,10 @@ const WebAppNavigator = () => {
         }
       />
 
-      {/* Catch all - redirect to home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
   );
 };
 

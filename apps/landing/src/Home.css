@@ -42,6 +42,24 @@
   }
 }
 
+.hero-background-fallback {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: opacity 0.5s ease-out;
+}
+
+/* During load: soft gradient so fallback is visible, not black */
+.hero-background.hero-loading .hero-background-fallback {
+  background-image: linear-gradient(180deg, #2d2d2d 0%, #1f1f1f 50%, #1a1a1a 100%);
+}
+
 .hero-background-overlay {
   position: absolute;
   top: 0;
@@ -50,6 +68,13 @@
   height: 100%;
   background: rgba(0, 0, 0, 0.6);
   z-index: 1;
+  transition: background 0.4s ease-out;
+  pointer-events: none;
+}
+
+/* Lighter overlay while loading so fallback gradient shows through */
+.hero-background.hero-loading .hero-background-overlay {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .hero-images-wrap {
@@ -141,7 +166,7 @@
   right: 0;
   width: 100%;
   height: 25%;
-  z-index: 2;
+  z-index: 11;
   pointer-events: none;
 }
 
@@ -173,6 +198,11 @@
   opacity: 1;
 }
 
+/* Placeholder (first slide) visible as soon as active, don't wait for onLoad */
+.hero-background-img.hero-background-img-placeholder.hero-background-img-active {
+  opacity: 1;
+}
+
 .hero-content {
   position: absolute;
   top: 50%;
@@ -180,7 +210,7 @@
   left: 0;
   right: 0;
   padding: 0 24px;
-  z-index: 3;
+  z-index: 12;
 }
 
 .hero-logo {
@@ -192,7 +222,7 @@
   width: clamp(130px, 22vw, 140px);
   height: auto;
   opacity: 0.8;
-  z-index: 3;
+  z-index: 12;
 }
 
 .hero-title {
@@ -313,17 +343,162 @@
   .section-cards {
     flex-direction: row;
     gap: 24px;
+    align-items: flex-start;
   }
 
   .section-card {
-    flex: 1;
+    flex: 1 0 0;
+    min-width: 0;
   }
 }
 
+/* Card: flex column so height = only in-flow child (aspect box). Flip inner is absolute. */
 .section-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 20px;
+  width: 100%;
+}
+
+/* Only in-flow child: fixes card height to 4/3 of card width. Cannot be changed by flip. */
+.section-card-aspect {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 0;
+  padding-bottom: 133.33%;
+  line-height: 0;
+  font-size: 0;
+}
+
+.section-card-flip {
+  cursor: pointer;
+  perspective: 1000px;
+}
+
+.section-card-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s ease;
+  transform-style: preserve-3d;
+}
+
+.section-card-flipped .section-card-inner {
+  transform: rotateY(180deg);
+}
+
+.section-card-front,
+.section-card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.section-card-front {
+  transform: rotateY(0deg);
+}
+
+.section-card-back {
+  transform: rotateY(180deg);
+  background: #1a1a1a;
+  color: #fff;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.section-card-back-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transform: scaleX(-1);
+}
+
+.section-card-back-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.section-card-back-content {
+  position: relative;
+  z-index: 1;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1rem;
+  width: 100%;
+  overflow-y: auto;
+}
+
+.section-card-back-title {
+  margin: 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1.35rem, 2.4vw, 1.6rem);
+  line-height: 1.2;
+  color: #fff;
+  text-align: left;
+}
+
+.section-card-back-text {
+  margin: 0;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.95rem, 1.8vw, 1.05rem);
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.section-card-back-cta {
+  margin-top: auto;
+  padding: 12px 24px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(
+    135deg,
+    rgba(225, 210, 150, 0.4) 0%,
+    rgba(191, 168, 77, 0.28) 50%,
+    rgba(170, 150, 65, 0.25) 100%
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  align-self: center;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.section-card-back-cta:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(230, 215, 155, 0.48) 0%,
+    rgba(191, 168, 77, 0.35) 50%,
+    rgba(170, 150, 65, 0.32) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.section-card-back-cta:focus-visible {
+  outline: 2px solid rgba(191, 168, 77, 0.6);
+  outline-offset: 2px;
 }
 
 .section-card-image-wrap {
@@ -366,11 +541,11 @@
 
 .section-card-title {
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
   margin: 0;
-  padding: 50px 30px 0;
+  padding: 0 30px 36px;
   font-family: 'Montserrat', sans-serif;
   font-weight: 400;
   font-size: clamp(1.6rem, 2.8vw, 1.9rem);
