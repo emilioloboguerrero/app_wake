@@ -61,6 +61,13 @@ if (copyDirContents(dirPwaOutput, dirHostingApp)) {
   console.log('assemble-hosting: copied PWA dist → hosting/app/');
   copied++;
 }
+// City JSONs at hosting root /data/cities/ so /data/** is not rewritten by /app/** → index.html
+const pwaDataDir = path.join(dirPwaPublic, 'data');
+if (fs.existsSync(pwaDataDir)) {
+  const hostingDataDir = path.join(dirHosting, 'data');
+  copyDirContents(pwaDataDir, hostingDataDir);
+  console.log('assemble-hosting: copied PWA public/data → hosting/data/ (for /data/cities/*.json)');
+}
 if (copyDir(dirCreatorOutput, dirHostingCreators)) {
   console.log('assemble-hosting: copied creator build → hosting/creators/');
   copied++;

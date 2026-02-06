@@ -21,7 +21,9 @@
     "build:dev:android:local": "npx eas-cli build --local --platform android --profile development",
     "eject": "expo eject",
     "test": "jest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "generate-cities": "node scripts/generate-cities.js",
+    "bundle-cities": "node scripts/bundle-cities.js"
   },
   "dependencies": {
     "@expo-google-fonts/montserrat": "^0.4.2",
@@ -74,6 +76,7 @@
     "webidl-conversions": "^5.0.0"
   },
   "devDependencies": {
-    "@svgr/cli": "^8.1.0"
+    "@svgr/cli": "^8.1.0",
+    "adm-zip": "^0.5.16"
   }
 }

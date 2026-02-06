@@ -36,7 +36,8 @@ import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
-import citiesData from '../../assets/data/cities_data.json';
+import countriesList from '../../assets/data/countries.json';
+import citiesBundle from '../../assets/data/cities.json';
 
 import { validateForm, validateInput, sanitizeInput } from '../utils/validation.js';
 import { trackUserRegistration } from '../services/monitoringService';
@@ -48,8 +49,6 @@ import {
   validateGender
 } from '../utils/inputValidation';
 const firestore = getFirestore();
-// Cities data structure: { countryCode: [city1, city2, ...] }
-const CITIES_DATA = citiesData;
 
 // Gender options for modal
 const GENDER_OPTIONS = [
@@ -869,13 +868,20 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const [citySearchQuery, setCitySearchQuery] = useState('');
   const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  // Cities from bundled JSON (no fetch — works in production regardless of hosting rewrites)
+  const citiesList = useMemo(() => {
+    const iso2 = formData.country?.trim();
+    if (!iso2 || !citiesBundle || typeof citiesBundle !== 'object') return [];
+    const list = citiesBundle[iso2];
+    return Array.isArray(list) ? list : [];
+  }, [formData.country]);
   // Removed: objectives/interests state
-  
+
   // Username validation state
   const [usernameValidating, setUsernameValidating] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(null);
   const usernameCheckTimeout = useRef(null);
-  
+
   const scrollViewRef = useRef(null);
 
   // Sync email into form when user/auth becomes available (e.g. web/PWA where AuthContext can lag)
@@ -1034,16 +1040,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   // Removed: objectives/interests handlers
 
-  const COUNTRY_OPTIONS = [
-    { label: 'Colombia', value: 'colombia' },
-    // Future countries can be added here:
-    // { label: 'México', value: 'mexico' },
-    // { label: 'Argentina', value: 'argentina' },
-  ];
-
-  const getCitiesForCountry = (countryValue) => {
-    return CITIES_DATA[countryValue] || [];
-  };
+  const COUNTRY_OPTIONS = useMemo(() => (countriesList || []).map(c => ({ label: c.name, value: c.iso2 })), []);
 
   const handleCountrySelect = (countryValue) => {
     setFormData(prev => ({
@@ -1058,7 +1055,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   };
 
   const getCountryLabel = (value) => {
-    const c = COUNTRY_OPTIONS.find(c => c.value === value);
+    const c = COUNTRY_OPTIONS.find(o => o.value === value);
     return c ? c.label : 'Selecciona tu país...';
   };
 
@@ -1175,13 +1172,12 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
   };
 
-  // Filter cities based on search query
+  // Filter cities based on search query (citiesList is set by useEffect when country changes)
   const getFilteredCities = () => {
-    const list = getCitiesForCountry(formData.country);
-    if (!citySearchQuery) return list;
-    return list.filter(city => 
-      city.toLowerCase().includes(citySearchQuery.toLowerCase())
-    );
+    const list = citiesList || [];
+    if (!citySearchQuery.trim()) return list;
+    const q = citySearchQuery.toLowerCase();
+    return list.filter(city => String(city).toLowerCase().includes(q));
   };
 
   // Filter countries based on search query
@@ -2085,22 +2081,22 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                     showsVerticalScrollIndicator={true}
                   >
                     {getFilteredCities().map((city, index) => (
-                      <TouchableOpacity
-                        key={city}
-                        style={[
-                          styles.dropdownOption,
-                          formData.city === city && styles.dropdownOptionSelected,
-                          index === getFilteredCities().length - 1 && styles.dropdownOptionLast
-                        ]}
-                        onPress={() => handleCitySelect(city)}
-                      >
-                        <Text style={[
-                          styles.dropdownOptionText,
-                          formData.city === city && styles.dropdownOptionTextSelected
-                        ]}>
-                          {city}
-                        </Text>
-                      </TouchableOpacity>
+                          <TouchableOpacity
+                            key={city}
+                            style={[
+                              styles.dropdownOption,
+                              formData.city === city && styles.dropdownOptionSelected,
+                              index === getFilteredCities().length - 1 && styles.dropdownOptionLast
+                            ]}
+                            onPress={() => handleCitySelect(city)}
+                          >
+                            <Text style={[
+                              styles.dropdownOptionText,
+                              formData.city === city && styles.dropdownOptionTextSelected
+                            ]}>
+                              {city}
+                            </Text>
+                          </TouchableOpacity>
                     ))}
                     {getFilteredCities().length === 0 && (
                       <View style={styles.dropdownOption}>
