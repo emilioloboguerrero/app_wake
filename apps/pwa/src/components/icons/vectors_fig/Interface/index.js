@@ -24,6 +24,8 @@ export { default as DummySquare } from "./DummySquare";
 export { default as DummySquareSmall } from "./DummySquareSmall";
 export { default as Exit } from "./Exit";
 export { default as ExternalLink } from "./ExternalLink";
+export { default as Eye } from "./Eye";
+export { default as EyeSlash } from "./EyeSlash";
 export { default as Filter } from "./Filter";
 export { default as FilterOff } from "./FilterOff";
 export { default as Gift } from "./Gift";

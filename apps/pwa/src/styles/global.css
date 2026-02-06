@@ -190,13 +190,17 @@ img {
   display: block;
 }
 
-/* Focus styles for accessibility */
+/* Focus styles for accessibility (buttons and links only; inputs use their own border state) */
 button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
+a:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* No extra focus outline on inputs – border is controlled by app (neutral / error red / success gold) */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 /* Disable pull-to-refresh on mobile */

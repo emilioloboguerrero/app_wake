@@ -20,6 +20,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
 import logger from '../utils/logger';
+import SvgEye from '../components/icons/vectors_fig/Interface/Eye';
+import SvgEyeSlash from '../components/icons/vectors_fig/Interface/EyeSlash';
 
 const LoginScreen = ({ navigation }) => {
   const { user, loading } = useAuth();
@@ -32,6 +34,17 @@ const LoginScreen = ({ navigation }) => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // When in sign-up mode, show password min-length error if field has 1–5 chars
+  useEffect(() => {
+    if (!isSignUp) return;
+    if (password.length > 0 && password.length < 6) {
+      setPasswordError('La contraseña debe tener al menos 6 caracteres');
+    } else if (password.length >= 6) {
+      setPasswordError(null);
+    }
+  }, [isSignUp, password]);
 
   // Redirect if already logged in
   // Note: On web, this is handled by LoginScreen.web.js to prevent infinite loops
@@ -71,8 +84,17 @@ const LoginScreen = ({ navigation }) => {
 
   const handlePasswordChange = (text) => {
     setPassword(text);
-    if (passwordError) setPasswordError(null);
     if (authError) setAuthError(null);
+    // Upfront validation when creating account: show error as they type if < 6 chars
+    if (isSignUp) {
+      if (text.length > 0 && text.length < 6) {
+        setPasswordError('La contraseña debe tener al menos 6 caracteres');
+      } else {
+        setPasswordError(null);
+      }
+    } else {
+      if (passwordError) setPasswordError(null);
+    }
   };
 
   // Sign In handler
@@ -362,16 +384,30 @@ const LoginScreen = ({ navigation }) => {
 
             {/* Password Input */}
             <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.input, passwordError && styles.inputError]}
-                placeholder="Contraseña"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={handlePasswordChange}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <View style={styles.passwordInputRow}>
+                <TextInput
+                  style={[styles.input, styles.inputWithToggle, passwordError && styles.inputError]}
+                  placeholder="Contraseña"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={handlePasswordChange}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  accessibilityRole="button"
+                >
+                  {showPassword ? (
+                    <SvgEye width={22} height={22} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={2} />
+                  ) : (
+                    <SvgEyeSlash width={22} height={22} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={2} />
+                  )}
+                </TouchableOpacity>
+              </View>
               {passwordError && (
                 <Text style={styles.errorText}>{passwordError}</Text>
               )}
@@ -518,6 +554,22 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 16,
   },
+  passwordInputRow: {
+    position: 'relative',
+    width: '100%',
+  },
+  inputWithToggle: {
+    paddingRight: 80,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 44,
+  },
   input: {
     width: '100%',
     height: 56,
@@ -531,6 +583,11 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#FF6B6B',
+    borderWidth: 1,
+  },
+  inputSuccess: {
+    borderColor: 'rgba(191, 168, 77, 0.7)',
+    borderWidth: 1,
   },
   errorText: {
     color: '#FF6B6B',

@@ -299,20 +299,18 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     inputError: {
       borderColor: '#ff4444',
       borderWidth: 1,
-      shadowColor: 'rgba(255, 68, 68, 0.4)',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 1,
-      shadowRadius: 2,
-      elevation: 2,
+      shadowColor: 'transparent',
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
     },
     inputSuccess: {
       borderColor: 'rgba(191, 168, 77, 0.7)',
       borderWidth: 1,
-      shadowColor: 'rgba(191, 168, 77, 0.8)',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 1,
-      shadowRadius: 2,
-      elevation: 2,
+      shadowColor: 'transparent',
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
     },
     errorText: {
       color: '#ff4444',
@@ -958,9 +956,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
   const handleInputChange = (field, value) => {
     let processedValue = value;
     
-    // Convert username to lowercase
+    // Username: lowercase only, no spaces or invalid characters (enforced upfront)
     if (field === 'username') {
-      processedValue = value.toLowerCase();
+      processedValue = value.toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '');
     }
     
     // Format phone number input
@@ -999,12 +997,25 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       [field]: processedValue
     }));
     
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: null
-      }));
+    // Clear error when user starts typing (except username: set below from length/format)
+    if (field !== 'username') {
+      if (errors[field]) {
+        setErrors(prev => ({ ...prev, [field]: null }));
+      }
+    }
+    
+    // Real-time username validation: show error when typing if min length not met
+    if (field === 'username') {
+      if (processedValue.length > 0 && processedValue.length < 3) {
+        setErrors(prev => ({
+          ...prev,
+          username: 'El usuario debe tener al menos 3 caracteres'
+        }));
+      } else if (processedValue.length >= 3) {
+        setErrors(prev => ({ ...prev, username: null }));
+      } else {
+        setErrors(prev => ({ ...prev, username: null }));
+      }
     }
     
     // Real-time phone number validation
@@ -1033,7 +1044,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       }
       
       usernameCheckTimeout.current = setTimeout(() => {
-        validateUsername(value);
+        validateUsername(processedValue);
       }, 500);
     }
   };
@@ -1226,6 +1237,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       newErrors.username = 'El usuario es requerido';
     } else if (formData.username.trim().length < 3) {
       newErrors.username = 'El usuario debe tener al menos 3 caracteres';
+    } else if (!/^[a-zA-Z0-9_-]+$/.test(formData.username.trim())) {
+      newErrors.username = 'El nombre de usuario solo puede contener letras, números, guiones y guiones bajos (sin espacios)';
     } else if (!usernameAvailable) {
       newErrors.username = 'Este usuario no está disponible';
     }
