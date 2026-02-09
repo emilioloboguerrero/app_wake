@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
@@ -8,14 +8,16 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
 import programService from '../services/programService';
+import plansService from '../services/plansService';
 import { getUser } from '../services/firestoreService';
 import './ContentHubScreen.css';
 
 const ContentHubScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('libraries'); // 'libraries' | 'sessions' | 'modules' | 'programs'
+  const [activeTab, setActiveTab] = useState('libraries'); // 'libraries' | 'sessions' | 'contenido' | 'programs'
   
   // Library management state
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
@@ -41,17 +43,6 @@ const ContentHubScreen = () => {
   const [isSessionDeleteModalOpen, setIsSessionDeleteModalOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [sessionDeleteConfirmation, setSessionDeleteConfirmation] = useState('');
-
-  // Modules management state
-  const [libraryModules, setLibraryModules] = useState([]);
-  const [isLoadingModules, setIsLoadingModules] = useState(false);
-  const [isModuleEditMode, setIsModuleEditMode] = useState(false);
-  const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
-  const [moduleName, setModuleName] = useState('');
-  const [isCreatingModule, setIsCreatingModule] = useState(false);
-  const [isModuleDeleteModalOpen, setIsModuleDeleteModalOpen] = useState(false);
-  const [moduleToDelete, setModuleToDelete] = useState(null);
-  const [moduleDeleteConfirmation, setModuleDeleteConfirmation] = useState('');
 
   // Programs management state
   const [programs, setPrograms] = useState([]);
@@ -81,6 +72,10 @@ const ContentHubScreen = () => {
   const [oneOnOneWeightSuggestions, setOneOnOneWeightSuggestions] = useState(false);
   const [oneOnOneAvailableLibraries, setOneOnOneAvailableLibraries] = useState([]);
   const [oneOnOneSelectedLibraryIds, setOneOnOneSelectedLibraryIds] = useState(new Set());
+
+  // Plans (Contenido) state
+  const [plans, setPlans] = useState([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
   // Fetch libraries with React Query
   const { data: libraries = [], isLoading: librariesLoading } = useQuery({
@@ -119,6 +114,12 @@ const ContentHubScreen = () => {
   });
 
 
+  // Map: librarySessionId -> plan titles (for showing which plan(s) a session belongs to)
+  const [sessionIdToPlanNames, setSessionIdToPlanNames] = useState({});
+  const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [librarySearchQuery, setLibrarySearchQuery] = useState('');
+  const [planSearchQuery, setPlanSearchQuery] = useState('');
+
   // Load library sessions when sessions tab is active
   useEffect(() => {
     const loadSessions = async () => {
@@ -130,6 +131,24 @@ const ContentHubScreen = () => {
         setIsLoadingSessions(true);
         const sessions = await libraryService.getSessionLibrary(user.uid);
         setLibrarySessions(sessions);
+
+        const plansData = await plansService.getPlansByCreator(user.uid);
+        const map = {};
+        for (const plan of plansData) {
+          const modules = await plansService.getModulesByPlan(plan.id);
+          for (const mod of modules) {
+            const planSessions = await plansService.getSessionsByModule(plan.id, mod.id);
+            for (const ps of planSessions) {
+              if (ps.librarySessionRef) {
+                if (!map[ps.librarySessionRef]) map[ps.librarySessionRef] = [];
+                if (!map[ps.librarySessionRef].includes(plan.title)) {
+                  map[ps.librarySessionRef].push(plan.title || 'Plan sin nombre');
+                }
+              }
+            }
+          }
+        }
+        setSessionIdToPlanNames(map);
       } catch (err) {
         console.error('Error loading library sessions:', err);
       } finally {
@@ -140,26 +159,14 @@ const ContentHubScreen = () => {
     loadSessions();
   }, [user, activeTab]);
 
-  // Load library modules when modules tab is active
+  // When arriving from Programas y clientes (1-on-1 choice), open programs tab and one-on-one modal
   useEffect(() => {
-    const loadModules = async () => {
-      if (!user || activeTab !== 'modules') {
-        return;
-      }
-
-      try {
-        setIsLoadingModules(true);
-        const modules = await libraryService.getModuleLibrary(user.uid);
-        setLibraryModules(modules);
-      } catch (err) {
-        console.error('Error loading library modules:', err);
-      } finally {
-        setIsLoadingModules(false);
-      }
-    };
-
-    loadModules();
-  }, [user, activeTab]);
+    if (location.state?.openOneOnOneModal && user) {
+      setActiveTab('programs');
+      setIsOneOnOneModalOpen(true);
+      navigate('/content', { replace: true, state: {} });
+    }
+  }, [location.state?.openOneOnOneModal, user, navigate]);
 
   // Load programs when programs tab is active
   useEffect(() => {
@@ -180,6 +187,27 @@ const ContentHubScreen = () => {
     };
 
     loadPrograms();
+  }, [user, activeTab]);
+
+  // Load plans when contenido tab is active
+  useEffect(() => {
+    const loadPlans = async () => {
+      if (!user || activeTab !== 'contenido') {
+        return;
+      }
+
+      try {
+        setIsLoadingPlans(true);
+        const plansData = await plansService.getPlansByCreator(user.uid);
+        setPlans(plansData);
+      } catch (err) {
+        console.error('Error loading plans:', err);
+      } finally {
+        setIsLoadingPlans(false);
+      }
+    };
+
+    loadPlans();
   }, [user, activeTab]);
 
   // Load libraries when one-on-one modal opens
@@ -219,13 +247,11 @@ const ContentHubScreen = () => {
       )
     },
     { 
-      id: 'modules', 
-      label: 'Módulos', 
+      id: 'contenido', 
+      label: 'Contenido', 
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M20 7H4C2.89543 7 2 7.89543 2 9V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M16 21V13C16 12.4477 15.5523 12 15 12H9C8.44772 12 8 12.4477 8 13V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M2 7L12 2L22 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M9 12H15M9 16H15M17 21H7C5.89543 21 5 20.1046 5 19V5C5 3.89543 5.89543 3 7 3H12.5858C12.851 3 13.1054 3.10536 13.2929 3.29289L18.7071 8.70711C18.8946 8.89464 19 9.149 19 9.41421V19C19 20.1046 18.1046 21 17 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       )
     },
@@ -442,80 +468,6 @@ const ContentHubScreen = () => {
     }
   };
 
-  // Module management handlers
-  const handleOpenModuleModal = () => {
-    setIsModuleModalOpen(true);
-    setModuleName('');
-  };
-
-  const handleCloseModuleModal = () => {
-    setIsModuleModalOpen(false);
-    setModuleName('');
-  };
-
-  const handleCreateModule = async () => {
-    if (!moduleName.trim() || !user) return;
-
-    try {
-      setIsCreatingModule(true);
-      await libraryService.createLibraryModule(user.uid, {
-        title: moduleName.trim(),
-        sessionRefs: []
-      });
-      
-      const modules = await libraryService.getModuleLibrary(user.uid);
-      setLibraryModules(modules);
-      handleCloseModuleModal();
-    } catch (err) {
-      console.error('Error creating module:', err);
-      alert('Error al crear el módulo. Por favor, intenta de nuevo.');
-    } finally {
-      setIsCreatingModule(false);
-    }
-  };
-
-  const handleDeleteModule = (module) => {
-    setModuleToDelete(module);
-    setIsModuleDeleteModalOpen(true);
-    setModuleDeleteConfirmation('');
-  };
-
-  const handleCloseModuleDeleteModal = () => {
-    setIsModuleDeleteModalOpen(false);
-    setModuleToDelete(null);
-    setModuleDeleteConfirmation('');
-  };
-
-  const handleConfirmDeleteModule = async () => {
-    if (!moduleToDelete || !moduleDeleteConfirmation.trim() || !user) return;
-
-    if (moduleDeleteConfirmation.trim() !== moduleToDelete.title) return;
-
-    try {
-      const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, moduleToDelete.id);
-      
-      if (usageCheck.inUse) {
-        alert(
-          `No se puede eliminar este módulo.\n\nEstá siendo usada en ${usageCheck.count} programa(s).\n\nPrimero debes eliminar o reemplazar todas las referencias en los programas.`
-        );
-        handleCloseModuleDeleteModal();
-        return;
-      }
-
-      await libraryService.deleteLibraryModule(user.uid, moduleToDelete.id);
-      const modules = await libraryService.getModuleLibrary(user.uid);
-      setLibraryModules(modules);
-      handleCloseModuleDeleteModal();
-      
-      if (modules.length === 0) {
-        setIsModuleEditMode(false);
-      }
-    } catch (err) {
-      console.error('Error deleting module:', err);
-      alert(`Error al eliminar el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
-    }
-  };
-
   const handleLibraryClick = (libraryId) => {
     if (!isEditMode) {
       navigate(`/libraries/${libraryId}`);
@@ -729,8 +681,29 @@ const ContentHubScreen = () => {
                 </button>
               </div>
             ) : (
-              <div className="content-hub-grid">
-                {libraries.map((library) => {
+              <>
+                <div className="content-hub-search-bar" style={{ marginBottom: 24, display: 'flex', gap: 12, alignItems: 'center', width: '100%' }}>
+                  <Input
+                    placeholder="Buscar bibliotecas..."
+                    value={librarySearchQuery}
+                    onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                    type="text"
+                    light={true}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <button type="button" className="content-hub-create-button" onClick={() => {}}>
+                    Filtrar
+                  </button>
+                </div>
+                <div className="content-hub-grid">
+                {libraries
+                  .filter((library) => {
+                    const q = librarySearchQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    const title = (library.title || '').toLowerCase();
+                    return title.includes(q);
+                  })
+                  .map((library) => {
                   const exerciseCount = libraryService.getExerciseCount(library);
                   return (
                     <div
@@ -771,6 +744,98 @@ const ContentHubScreen = () => {
                   );
                 })}
               </div>
+              </>
+            )}
+          </div>
+        );
+
+      case 'contenido':
+        return (
+          <div className="content-hub-section">
+            <div className="content-hub-header">
+              <h2 className="content-hub-title">Contenido (Planes)</h2>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button
+                  className="content-hub-create-button"
+                  onClick={() => navigate('/plans/new')}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  Nuevo plan
+                </button>
+              </div>
+            </div>
+
+            {isLoadingPlans ? (
+              <div className="content-hub-loading">Cargando planes...</div>
+            ) : plans.length === 0 ? (
+              <div className="content-hub-empty">
+                <svg className="content-hub-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
+                  <path d="M9 12H15M9 16H15M17 21H7C5.89543 21 5 20.1046 5 19V5C5 3.89543 5.89543 3 7 3H12.5858C12.851 3 13.1054 3.10536 13.2929 3.29289L18.7071 8.70711C18.8946 8.89464 19 9.149 19 9.41421V19C19 20.1046 18.1046 21 17 21Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <h3>No hay planes</h3>
+                <p className="content-hub-empty-description" style={{ marginTop: 8, marginBottom: 16, opacity: 0.7, fontSize: 14 }}>
+                  Crea planes de contenido (semanas, sesiones, ejercicios) para asignar a programas 1-on-1 y low-ticket.
+                </p>
+                <button className="content-hub-empty-button" onClick={() => navigate('/plans/new')}>
+                  Crear plan
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="content-hub-search-bar" style={{ marginBottom: 24, display: 'flex', gap: 12, alignItems: 'center', width: '100%' }}>
+                  <Input
+                    placeholder="Buscar planes..."
+                    value={planSearchQuery}
+                    onChange={(e) => setPlanSearchQuery(e.target.value)}
+                    type="text"
+                    light={true}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <button type="button" className="content-hub-create-button" onClick={() => {}}>
+                    Filtrar
+                  </button>
+                </div>
+                <div className="content-hub-grid">
+                {plans
+                  .filter((plan) => {
+                    const q = planSearchQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    const title = (plan.title || '').toLowerCase();
+                    const desc = (plan.description || '').toLowerCase();
+                    const discipline = (plan.discipline || '').toLowerCase();
+                    return title.includes(q) || desc.includes(q) || discipline.includes(q);
+                  })
+                  .map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="content-hub-card"
+                    onClick={() => handlePlanClick(plan.id)}
+                  >
+                    <div className="content-hub-card-header">
+                      <div className="content-hub-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M9 12H15M9 16H15M17 21H7C5.89543 21 5 20.1046 5 19V5C5 3.89543 5.89543 3 7 3H12.5858C12.851 3 13.1054 3.10536 13.2929 3.29289L18.7071 8.70711C18.8946 8.89464 19 9.149 19 9.41421V19C19 20.1046 18.1046 21 17 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="content-hub-card-info">
+                        <h3 className="content-hub-card-title">{plan.title || 'Plan sin nombre'}</h3>
+                        {plan.description && (
+                          <p className="content-hub-card-description">{plan.description}</p>
+                        )}
+                        {plan.discipline && (
+                          <p className="content-hub-card-meta">{plan.discipline}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="content-hub-card-footer">
+                      <span className="content-hub-card-action">Gestionar</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
             )}
           </div>
         );
@@ -929,11 +994,37 @@ const ContentHubScreen = () => {
                 </button>
               </div>
             ) : (
-              <div className="content-hub-grid">
-                {librarySessions.map((session) => (
+              <>
+                <div className="content-hub-sessions-search" style={{ marginBottom: 24, display: 'flex', gap: 12, alignItems: 'center', width: '100%' }}>
+                  <Input
+                    placeholder="Buscar sesiones..."
+                    value={sessionSearchQuery}
+                    onChange={(e) => setSessionSearchQuery(e.target.value)}
+                    type="text"
+                    light={true}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <button
+                    type="button"
+                    className="content-hub-create-button"
+                    onClick={() => {}}
+                  >
+                    Filtrar
+                  </button>
+                </div>
+                <div className="content-hub-grid content-hub-grid--sessions">
+                {librarySessions
+                  .filter((session) => {
+                    const q = sessionSearchQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    const title = (session.title || '').toLowerCase();
+                    const planNames = (sessionIdToPlanNames[session.id] || []).join(' ').toLowerCase();
+                    return title.includes(q) || planNames.includes(q);
+                  })
+                  .map((session) => (
                   <div
                     key={session.id}
-                    className={`content-hub-card ${isSessionEditMode ? 'content-hub-card-edit-mode' : ''}`}
+                    className={`content-hub-card content-hub-card--session ${isSessionEditMode ? 'content-hub-card-edit-mode' : ''}`}
                     onClick={() => {
                       if (!isSessionEditMode) {
                         navigate(`/content/sessions/${session.id}`);
@@ -960,6 +1051,11 @@ const ContentHubScreen = () => {
                       </div>
                       <div className="content-hub-card-info">
                         <h3 className="content-hub-card-title">{session.title || 'Sesión sin nombre'}</h3>
+                        {sessionIdToPlanNames[session.id]?.length > 0 && (
+                          <p className="content-hub-card-meta" style={{ opacity:1, marginTop: 4, marginBottom: 0 }}>
+                            ({sessionIdToPlanNames[session.id].join(', ')})
+                          </p>
+                        )}
                         {session.image_url && (
                           <div style={{ marginTop: '12px', borderRadius: '8px', overflow: 'hidden', maxWidth: '200px' }}>
                             <img src={session.image_url} alt={session.title} style={{ width: '100%', height: 'auto', display: 'block' }} />
@@ -967,102 +1063,10 @@ const ContentHubScreen = () => {
                         )}
                       </div>
                     </div>
-                    <div className="content-hub-card-footer">
-                      <span className="content-hub-card-action">Gestionar</span>
-                    </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        );
-
-      case 'modules':
-        return (
-          <div className="content-hub-section">
-            <div className="content-hub-header">
-              <h2 className="content-hub-title">Módulos</h2>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                {libraryModules.length > 0 && (
-                  <button
-                    className="content-hub-create-button"
-                    onClick={() => setIsModuleEditMode(!isModuleEditMode)}
-                  >
-                    {isModuleEditMode ? 'Guardar' : 'Editar'}
-                  </button>
-                )}
-                <button 
-                  className={`content-hub-create-button ${isModuleEditMode ? 'content-hub-create-button-disabled' : ''}`}
-                  onClick={handleOpenModuleModal}
-                  disabled={isModuleEditMode}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  Nuevo Módulo
-                </button>
-              </div>
-            </div>
-
-            {isLoadingModules ? (
-              <div className="content-hub-loading">Cargando módulos...</div>
-            ) : libraryModules.length === 0 ? (
-              <div className="content-hub-empty">
-                <svg className="content-hub-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 7H4C2.89543 7 2 7.89543 2 9V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
-                  <path d="M16 21V13C16 12.4477 15.5523 12 15 12H9C8.44772 12 8 12.4477 8 13V21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
-                  <path d="M2 7L12 2L22 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
-                </svg>
-                <h3>No hay módulos</h3>
-                <button className="content-hub-empty-button" onClick={handleOpenModuleModal}>
-                  Crear Módulo
-                </button>
-              </div>
-            ) : (
-              <div className="content-hub-grid">
-                {libraryModules.map((module) => {
-                  const sessionCount = (module.sessionRefs || []).length;
-                  return (
-                    <div
-                      key={module.id}
-                      className={`content-hub-card ${isModuleEditMode ? 'content-hub-card-edit-mode' : ''}`}
-                      onClick={() => {
-                        if (!isModuleEditMode) {
-                          navigate(`/content/modules/${module.id}`);
-                        }
-                      }}
-                    >
-                      {isModuleEditMode && (
-                        <button
-                          className="content-hub-card-delete-button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteModule(module);
-                          }}
-                        >
-                          <span className="content-hub-card-delete-icon">−</span>
-                        </button>
-                      )}
-                      <div className="content-hub-card-header">
-                        <div className="content-hub-card-icon">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M20 7H4C2.89543 7 2 7.89543 2 9V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M16 21V13C16 12.4477 15.5523 12 15 12H9C8.44772 12 8 12.4477 8 13V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M2 7L12 2L22 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        <div className="content-hub-card-info">
-                          <h3 className="content-hub-card-title">{module.title || 'Módulo sin nombre'}</h3>
-                          <p className="content-hub-card-meta">{sessionCount} sesión{sessionCount !== 1 ? 'es' : ''}</p>
-                        </div>
-                      </div>
-                      <div className="content-hub-card-footer">
-                        <span className="content-hub-card-action">Gestionar</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              </>
             )}
           </div>
         );
@@ -1288,75 +1292,6 @@ const ContentHubScreen = () => {
         </div>
       </Modal>
 
-      {/* Create Module Modal */}
-      <Modal
-        isOpen={isModuleModalOpen}
-        onClose={handleCloseModuleModal}
-        title="Nuevo Módulo"
-      >
-        <div className="content-hub-modal-content">
-          <div className="content-hub-modal-input-group">
-            <label className="content-hub-modal-label">
-              Nombre del Módulo <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
-            </label>
-            <Input
-              placeholder="Ej: Semana 1"
-              value={moduleName}
-              onChange={(e) => setModuleName(e.target.value)}
-              type="text"
-              light={true}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && moduleName.trim() && !isCreatingModule) {
-                  handleCreateModule();
-                }
-              }}
-            />
-          </div>
-          <div className="content-hub-modal-actions">
-            <Button
-              title={isCreatingModule ? 'Creando...' : 'Crear Módulo'}
-              onClick={handleCreateModule}
-              disabled={!moduleName.trim() || isCreatingModule}
-              loading={isCreatingModule}
-            />
-          </div>
-        </div>
-      </Modal>
-
-      {/* Delete Module Modal */}
-      <Modal
-        isOpen={isModuleDeleteModalOpen}
-        onClose={handleCloseModuleDeleteModal}
-        title={moduleToDelete?.title || 'Eliminar módulo'}
-      >
-        <div className="content-hub-modal-content">
-          <p className="content-hub-modal-text">
-            Para confirmar, escribe el nombre del módulo:
-          </p>
-          <div className="content-hub-modal-input-group">
-            <Input
-              placeholder={moduleToDelete?.title || 'Nombre del módulo'}
-              value={moduleDeleteConfirmation}
-              onChange={(e) => setModuleDeleteConfirmation(e.target.value)}
-              type="text"
-              light={true}
-            />
-          </div>
-          <div className="content-hub-modal-actions">
-            <button
-              className={`content-hub-delete-button ${moduleDeleteConfirmation.trim() !== moduleToDelete?.title ? 'content-hub-delete-button-disabled' : ''}`}
-              onClick={handleConfirmDeleteModule}
-              disabled={moduleDeleteConfirmation.trim() !== moduleToDelete?.title}
-            >
-              Eliminar
-            </button>
-          </div>
-          <p className="content-hub-modal-warning">
-            Esta acción es irreversible. El módulo se eliminará permanentemente.
-          </p>
-        </div>
-      </Modal>
-
       {/* Program Type Selection Modal */}
       <Modal
         isOpen={isProgramTypeSelectionModalOpen}
@@ -1380,7 +1315,7 @@ const ContentHubScreen = () => {
                 <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1 }}>
-                <span style={{ fontWeight: 600, fontSize: '15px' }}>Low Ticket</span>
+                <span style={{ fontWeight: 600, fontSize: '15px' }}>Low-ticket</span>
                 <span style={{ fontSize: '13px', opacity: 0.7, marginTop: '4px' }}>Programas generales y escalables para múltiples usuarios</span>
               </div>
             </button>
@@ -1396,7 +1331,7 @@ const ContentHubScreen = () => {
                 <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88M13 7C13 9.20914 11.2091 11 9 11C6.79086 11 5 9.20914 5 7C5 4.79086 6.79086 3 9 3C11.2091 3 13 4.79086 13 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1 }}>
-                <span style={{ fontWeight: 600, fontSize: '15px' }}>1 on 1</span>
+                <span style={{ fontWeight: 600, fontSize: '15px' }}>1-on-1</span>
                 <span style={{ fontSize: '13px', opacity: 0.7, marginTop: '4px' }}>Programas personalizados para clientes individuales</span>
               </div>
             </button>
@@ -1442,7 +1377,7 @@ const ContentHubScreen = () => {
       <Modal
         isOpen={isOneOnOneModalOpen}
         onClose={handleCloseOneOnOneModal}
-        title="Nuevo programa 1 on 1"
+        title="Nuevo programa 1-on-1"
       >
         <div className="content-hub-modal-content" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
           <div className="content-hub-modal-input-group">

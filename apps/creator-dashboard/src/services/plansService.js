@@ -32,8 +32,7 @@ class PlansService {
       const plansRef = collection(firestore, 'plans');
       const q = query(
         plansRef, 
-        where('creator_id', '==', creatorId),
-        orderBy('created_at', 'desc')
+        where('creator_id', '==', creatorId)
       );
       const querySnapshot = await getDocs(q);
       
@@ -43,6 +42,12 @@ class PlansService {
           id: doc.id,
           ...doc.data()
         });
+      });
+      // Sort by created_at desc in memory (avoids composite index requirement)
+      plans.sort((a, b) => {
+        const aTime = a.created_at?.toMillis?.() ?? a.created_at ?? 0;
+        const bTime = b.created_at?.toMillis?.() ?? b.created_at ?? 0;
+        return bTime - aTime;
       });
       
       return plans;
@@ -90,7 +95,7 @@ class PlansService {
         creatorName: creatorName,
         title: planData.title || '',
         description: planData.description || '',
-        discipline: planData.discipline || 'General',
+        discipline: planData.discipline || 'Fuerza',
         created_at: timestamp,
         updated_at: timestamp
       };
@@ -284,6 +289,25 @@ class PlansService {
   }
 
   /**
+   * Delete a session from a module (and all its exercises/sets)
+   */
+  async deleteSession(planId, moduleId, sessionId) {
+    try {
+      const exercisesRef = collection(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises'
+      );
+      const exercisesSnapshot = await getDocs(exercisesRef);
+      for (const exerciseDoc of exercisesSnapshot.docs) {
+        await this.deleteExercise(planId, moduleId, sessionId, exerciseDoc.id);
+      }
+      await deleteDoc(doc(firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId));
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all sessions for a module
    * @param {string} planId - Plan ID
    * @param {string} moduleId - Module ID
@@ -311,9 +335,11 @@ class PlansService {
    * @param {string} sessionName - Session name
    * @param {number} order - Order index (optional)
    * @param {string} imageUrl - Optional image URL
+   * @param {string} librarySessionRef - Optional reference to library session
+   * @param {number} dayIndex - Optional 0-6 to pin session to a specific day of week
    * @returns {Promise<Object>} Created session document
    */
-  async createSession(planId, moduleId, sessionName, order = null, imageUrl = null) {
+  async createSession(planId, moduleId, sessionName, order = null, imageUrl = null, librarySessionRef = null, dayIndex = null) {
     try {
       const sessionsRef = collection(firestore, 'plans', planId, 'modules', moduleId, 'sessions');
       
@@ -327,6 +353,8 @@ class PlansService {
         title: sessionName,
         order: order,
         image_url: imageUrl || null,
+        librarySessionRef: librarySessionRef || null,
+        dayIndex: dayIndex !== null && dayIndex !== undefined ? dayIndex : null,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
@@ -365,6 +393,178 @@ class PlansService {
       }));
     } catch (error) {
       console.error('Error fetching exercises:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an exercise in a session
+   * @param {string} planId - Plan ID
+   * @param {string} moduleId - Module ID
+   * @param {string} sessionId - Session ID
+   * @param {string} exerciseName - Exercise title/name
+   * @param {number} order - Order index (optional)
+   * @returns {Promise<Object>} Created exercise document
+   */
+  async createExercise(planId, moduleId, sessionId, exerciseName, order = null) {
+    try {
+      const exercisesRef = collection(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises'
+      );
+      
+      if (order === null) {
+        const existing = await this.getExercisesBySession(planId, moduleId, sessionId);
+        order = existing.length;
+      }
+      
+      const newExercise = {
+        title: exerciseName?.trim() || 'Ejercicio',
+        name: exerciseName?.trim() || 'Ejercicio',
+        order,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(exercisesRef, newExercise);
+      return { id: docRef.id, ...newExercise };
+    } catch (error) {
+      console.error('Error creating exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an exercise
+   */
+  async updateExercise(planId, moduleId, sessionId, exerciseId, updates) {
+    try {
+      const exerciseRef = doc(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId
+      );
+      await updateDoc(exerciseRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an exercise and its sets
+   */
+  async deleteExercise(planId, moduleId, sessionId, exerciseId) {
+    try {
+      const setsRef = collection(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets'
+      );
+      const setsSnapshot = await getDocs(setsRef);
+      for (const setDoc of setsSnapshot.docs) {
+        await deleteDoc(doc(firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets', setDoc.id));
+      }
+      await deleteDoc(doc(firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId));
+    } catch (error) {
+      console.error('Error deleting exercise:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get sets for an exercise
+   */
+  async getSetsByExercise(planId, moduleId, sessionId, exerciseId) {
+    try {
+      const setsRef = collection(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets'
+      );
+      const querySnapshot = await getDocs(query(setsRef, orderBy('order', 'asc')));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error('Error fetching sets:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a set for an exercise
+   */
+  async createSet(planId, moduleId, sessionId, exerciseId, order = null) {
+    try {
+      const setsRef = collection(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets'
+      );
+      if (order === null) {
+        const existing = await this.getSetsByExercise(planId, moduleId, sessionId, exerciseId);
+        order = existing.length;
+      }
+      const newSet = {
+        title: `Serie ${order + 1}`,
+        order,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      const docRef = await addDoc(setsRef, newSet);
+      return { id: docRef.id, ...newSet };
+    } catch (error) {
+      console.error('Error creating set:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a set
+   */
+  async updateSet(planId, moduleId, sessionId, exerciseId, setId, updates) {
+    try {
+      const setRef = doc(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets', setId
+      );
+      await updateDoc(setRef, { ...updates, updated_at: serverTimestamp() });
+    } catch (error) {
+      console.error('Error updating set:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a set
+   */
+  async deleteSet(planId, moduleId, sessionId, exerciseId, setId) {
+    try {
+      await deleteDoc(doc(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets', setId
+      ));
+    } catch (error) {
+      console.error('Error deleting set:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a module
+   */
+  async updateModule(planId, moduleId, updates) {
+    try {
+      const moduleRef = doc(firestore, 'plans', planId, 'modules', moduleId);
+      await updateDoc(moduleRef, { ...updates, updated_at: serverTimestamp() });
+    } catch (error) {
+      console.error('Error updating module:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a session
+   */
+  async updateSession(planId, moduleId, sessionId, updates) {
+    try {
+      const sessionRef = doc(
+        firestore, 'plans', planId, 'modules', moduleId, 'sessions', sessionId
+      );
+      await updateDoc(sessionRef, { ...updates, updated_at: serverTimestamp() });
+    } catch (error) {
+      console.error('Error updating session:', error);
       throw error;
     }
   }

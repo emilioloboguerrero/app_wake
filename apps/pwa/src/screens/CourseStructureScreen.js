@@ -252,8 +252,8 @@ const CourseStructureScreen = ({ navigation, route }) => {
       setLoading(true);
       setError(null);
       
-      const data = await workoutProgressService.getCourseDataForWorkout(course.courseId);
-      setCourseData(data.courseData);
+      const data = await workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid);
+      setCourseData(data?.courseData);
       
     } catch (error) {
       logger.error('❌ Error fetching course data:', error);

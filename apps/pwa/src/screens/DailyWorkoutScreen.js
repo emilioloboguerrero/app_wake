@@ -14,6 +14,8 @@ import {
   Animated,
   FlatList,
 } from 'react-native';
+
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 import { Image as ExpoImage } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,7 +48,7 @@ const useStreakData = (userId, courseId) => {
         // Load streak data and course settings in parallel
         const [progressResult, courseDataResult] = await Promise.all([
           sessionService.getCourseProgress(userId, courseId),
-          workoutProgressService.getCourseDataForWorkout(courseId)
+          workoutProgressService.getCourseDataForWorkout(courseId, userId)
         ]);
 
         // Update streak data
@@ -179,6 +181,31 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   // Scroll tracking for pagination indicator
   const scrollX = new Animated.Value(0);
   const mainSwipeRef = useRef(null);
+
+  // Subtle pulse on entire session image card once, 1.5s after load (affordance: card is tappable)
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const shouldPulse = sessionState.workout && !sessionState.isLoading && !sessionState.error;
+    if (!shouldPulse) {
+      pulseScale.setValue(1);
+      return;
+    }
+    const animation = Animated.sequence([
+      Animated.delay(1500),
+      Animated.timing(pulseScale, {
+        toValue: 1.02,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(pulseScale, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [sessionState.workout, sessionState.isLoading, sessionState.error]);
 
   // Reset scroll position to show correct pagination indicator
   const resetScrollPosition = () => {
@@ -700,11 +727,12 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
               onScroll={onMainScroll}
               scrollEventThrottle={16}
             >
-              {/* CARD 1: Session Image Card with Streak Overlay */}
-            <TouchableOpacity 
+              {/* CARD 1: Session Image Card with Streak Overlay (pulse when ready = tappable) */}
+            <AnimatedTouchableOpacity 
               style={[
                   styles.sessionImageCard, 
-                  sessionState.workout?.image_url && styles.sessionImageCardNoBorder
+                  sessionState.workout?.image_url && styles.sessionImageCardNoBorder,
+                  { transform: [{ scale: pulseScale }] },
               ]} 
               onPress={sessionState.workout ? handleViewExercises : undefined}
               disabled={!sessionState.workout}
@@ -805,7 +833,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                     </TouchableOpacity>
                   </View>
                 )}
-            </TouchableOpacity>
+            </AnimatedTouchableOpacity>
             
               {/* CARD 2: All Sessions + Programa Combined */}
               <View style={styles.programAndSessionsContainer}>
@@ -1523,9 +1551,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
   },
   cardErrorContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingHorizontal: 24,
   },
   cardErrorText: {
     color: '#ff6b6b',

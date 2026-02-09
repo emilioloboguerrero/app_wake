@@ -120,88 +120,83 @@ class CourseDownloadService {
   async downloadCourseInternal(courseId, userId) {
     try {
       logger.debug('📥 Starting course download (internal):', courseId);
-      
-      // Skip week check to prevent recursion
-      // Try to get course data from hybrid system first (cached)
-      logger.debug('🔍 Checking hybrid cache for course data...');
       let courseData = null;
-      let modules = [];
-      
       try {
-        // Get course metadata from hybrid cache
         const courses = await hybridDataService.loadCourses();
         courseData = courses.find(c => c.id === courseId);
-        
-        if (courseData) {
-          logger.debug('✅ Course metadata found in hybrid cache');
-          modules = await firestoreService.getCourseModules(courseId, userId);
-          logger.debug('📚 Course modules loaded from DB:', modules.length);
-        } else {
-          logger.debug('⚠️ Course not found in hybrid cache, fetching from DB...');
+        if (!courseData) {
           courseData = await firestoreService.getCourse(courseId);
-          if (!courseData) {
-            throw new Error(`Course ${courseId} not found in Firestore`);
-          }
-          logger.debug('📖 Course data retrieved from DB:', Object.keys(courseData));
-          modules = await firestoreService.getCourseModules(courseId, userId);
-          logger.debug('📚 Course modules loaded from DB:', modules.length);
+          if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
         }
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
-      
-      // Store image URL for direct use
-      let imageUrl = null;
-      if (courseData.image_url) {
-        imageUrl = courseData.image_url;
-        logger.debug(`📥 Course ${courseId} has image URL:`, imageUrl);
+      const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
+      let isOneOnOne = false;
+      if (userId) {
+        try {
+          const userDoc = await firestoreService.getUser(userId);
+          isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
+        } catch (e) {
+          logger.warn('⚠️ Could not check deliveryType:', e);
+        }
       }
-      
-      // Store current week for weekly programs
-      let currentWeek = null;
-      if (courseData?.weekly === true) {
-        currentWeek = getMondayWeek();
-        logger.debug('📅 Weekly program - current week:', currentWeek);
+      if (isOneOnOne) {
+        const minimalCourseData = {
+          courseId,
+          downloadedAt: new Date().toISOString(),
+          expiresAt: this.calculateCourseExpiration(courseData),
+          version: courseData.version || '1.0',
+          publishedVersion,
+          libraryVersions: {},
+          courseData: { ...courseData, modules: [], isOneOnOne: true },
+          clientProgramVersion: null,
+          clientProgram: null
+        };
+        await this.storeCourseLocally(courseId, { ...minimalCourseData, size_mb: 0, compressed: false });
+        if (userId) {
+          await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+            downloaded_version: publishedVersion,
+            update_status: 'ready',
+            lastUpdated: Date.now()
+          });
+        }
+        return true;
       }
-
-      // ✅ NEW: Extract library versions from resolved modules
+      let modules = [];
+      modules = await firestoreService.getCourseModules(courseId, userId);
+      const currentWeek = courseData?.weekly === true ? getMondayWeek() : null;
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
-      
       const basicCourseData = {
         courseId,
         downloadedAt: new Date().toISOString(),
         expiresAt: this.calculateCourseExpiration(courseData),
-        version: courseData.version || "1.0",
+        version: courseData.version || '1.0',
+        publishedVersion,
         imageUrl: courseData.image_url || courseData.imageUrl,
-        currentWeek: currentWeek,
-        libraryVersions: libraryVersions, // ✅ NEW: Store library versions
-        courseData: {
-          ...courseData,
-          modules: modules || []
-        }
+        currentWeek,
+        libraryVersions,
+        courseData: { ...courseData, modules: modules || [] }
       };
-      
-      try {
-        await this.storeCourseLocally(courseId, {
-          ...basicCourseData,
-          size_mb: this.estimateDataSize({ ...courseData, modules }),
-          compressed: false
+      await this.storeCourseLocally(courseId, {
+        ...basicCourseData,
+        size_mb: this.estimateDataSize({ ...courseData, modules }),
+        compressed: false
+      });
+      if (userId) {
+        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+          downloaded_version: publishedVersion,
+          update_status: 'ready',
+          lastUpdated: Date.now()
         });
-        logger.debug('✅ Basic course data stored locally');
-      } catch (storeError) {
-        logger.error('❌ Failed to store basic course data:', storeError);
       }
-      
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
         logger.warn('⚠️ Course data validation warning:', validationError);
       }
-      
-      logger.debug('✅ Course downloaded successfully (internal):', courseId);
       return true;
-      
     } catch (error) {
       logger.error('❌ Course download failed (internal):', error);
       throw error;
@@ -243,86 +238,82 @@ class CourseDownloadService {
         }
       }
       
-      // Try to get course data from hybrid system first (cached)
-      logger.debug('🔍 Checking hybrid cache for course data...');
       let courseData = null;
-      let modules = [];
-      
       try {
-        // Get course metadata from hybrid cache
         const courses = await hybridDataService.loadCourses();
         courseData = courses.find(c => c.id === courseId);
-        
-        if (courseData) {
-          logger.debug('✅ Course metadata found in hybrid cache');
-          
-          // Try to get modules from hybrid cache if available
-          // Note: Modules might not be in hybrid cache yet, so we'll fallback to DB
-          logger.debug('🔍 Checking if modules are available in cache...');
-          
-          // For now, we still need to get modules from DB as they're not cached in hybrid system
-          // This is a temporary solution - we could extend hybrid system to cache modules too
-          logger.debug('⚠️ Modules not in hybrid cache, fetching from DB...');
-          modules = await firestoreService.getCourseModules(courseId, userId);
-          logger.debug('📚 Course modules loaded from DB:', modules.length);
-        } else {
-          logger.debug('⚠️ Course not found in hybrid cache, fetching from DB...');
-          // Fallback to direct Firestore calls
+        if (!courseData) {
           courseData = await firestoreService.getCourse(courseId);
-          if (!courseData) {
-            throw new Error(`Course ${courseId} not found in Firestore`);
-          }
-          logger.debug('📖 Course data retrieved from DB:', Object.keys(courseData));
-          
-          modules = await firestoreService.getCourseModules(courseId, userId);
-          logger.debug('📚 Course modules loaded from DB:', modules.length);
-        }
-        
-        // Log structure for debugging
-        if (modules.length > 0) {
-          logger.debug('📋 First module structure:', Object.keys(modules[0]));
-          if (modules[0].sessions && modules[0].sessions.length > 0) {
-            logger.debug('📋 First session structure:', Object.keys(modules[0].sessions[0]));
-            if (modules[0].sessions[0].exercises && modules[0].sessions[0].exercises.length > 0) {
-              logger.debug('📋 First exercise structure:', Object.keys(modules[0].sessions[0].exercises[0]));
-            }
-          }
+          if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
         }
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
       
-      // Store image URL for direct use
-      let imageUrl = null;
-      if (courseData.image_url) {
-        imageUrl = courseData.image_url;
-        logger.debug(`📥 Course ${courseId} has image URL:`, imageUrl);
-      } else {
-        logger.debug(`⚠️ No image_url found for course ${courseId}`);
+      const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
+      let isOneOnOne = false;
+      if (userId) {
+        try {
+          const userDoc = await firestoreService.getUser(userId);
+          isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
+        } catch (e) {
+          logger.warn('⚠️ Could not check deliveryType:', e);
+        }
       }
       
-      // ✅ NEW: Store current week for weekly programs
+      if (isOneOnOne) {
+        logger.debug('📱 One-on-one program: storing minimal (no modules), per-session fetch will load content');
+        const minimalCourseData = {
+          courseId,
+          downloadedAt: new Date().toISOString(),
+          expiresAt: this.calculateCourseExpiration(courseData),
+          version: courseData.version || '1.0',
+          publishedVersion,
+          libraryVersions: {},
+          courseData: {
+            ...courseData,
+            modules: [],
+            isOneOnOne: true
+          },
+          clientProgramVersion: null,
+          clientProgram: null
+        };
+        try {
+          await this.storeCourseLocally(courseId, { ...minimalCourseData, size_mb: 0, compressed: false });
+          if (userId) {
+            await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+              downloaded_version: publishedVersion,
+              update_status: 'ready',
+              lastUpdated: Date.now()
+            });
+          }
+        } catch (storeError) {
+          logger.error('❌ Failed to store one-on-one minimal:', storeError);
+        }
+        logger.debug('✅ One-on-one minimal stored:', courseId);
+        return true;
+      }
+      
+      let modules = [];
+      try {
+        modules = await firestoreService.getCourseModules(courseId, userId);
+        logger.debug('📚 Course modules loaded from DB:', modules.length);
+      } catch (error) {
+        logger.warn('⚠️ Error getting modules:', error.message);
+        throw error;
+      }
+      
+      let imageUrl = courseData.image_url || null;
       let currentWeek = null;
-      if (courseData?.weekly === true) {
-        currentWeek = getMondayWeek();
-        logger.debug('📅 Weekly program - current week:', currentWeek);
-      }
-
-      // FIX: Store basic course data immediately, even if full download fails
-      // ✅ NEW: Extract library versions from resolved modules
+      if (courseData?.weekly === true) currentWeek = getMondayWeek();
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
-      
-      // ✅ NEW: Load client program if userId provided
       let clientProgram = null;
       let clientProgramVersion = null;
       if (userId) {
         try {
           clientProgram = await firestoreService.getClientProgram(userId, courseId);
-          if (clientProgram) {
-            clientProgramVersion = clientProgram.version_snapshot || null;
-            logger.debug('✅ Client program loaded:', clientProgram.id);
-          }
+          if (clientProgram) clientProgramVersion = clientProgram.version_snapshot || null;
         } catch (error) {
           logger.warn('⚠️ Could not load client program:', error);
         }
@@ -332,41 +323,38 @@ class CourseDownloadService {
         courseId,
         downloadedAt: new Date().toISOString(),
         expiresAt: this.calculateCourseExpiration(courseData),
-        version: courseData.version || "1.0",
+        version: courseData.version || '1.0',
+        publishedVersion,
         imageUrl: courseData.image_url || courseData.imageUrl,
-        currentWeek: currentWeek, // Store current week for next check
-        libraryVersions: libraryVersions, // ✅ NEW: Store library versions
-        clientProgramVersion: clientProgramVersion, // ✅ NEW: Store client program version snapshot
-        courseData: {
-          ...courseData,
-          modules: modules || []
-        },
-        clientProgram: clientProgram || null // ✅ NEW: Store client program data
+        currentWeek,
+        libraryVersions,
+        clientProgramVersion,
+        courseData: { ...courseData, modules: modules || [] },
+        clientProgram: clientProgram || null
       };
       
-      // FIX: Try to store immediately with basic data
       try {
         await this.storeCourseLocally(courseId, {
           ...basicCourseData,
           size_mb: this.estimateDataSize({ ...courseData, modules }),
           compressed: false
         });
+        if (userId) {
+          await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+            downloaded_version: publishedVersion,
+            update_status: 'ready',
+            lastUpdated: Date.now()
+          });
+        }
         logger.debug('✅ Basic course data stored locally');
       } catch (storeError) {
         logger.error('❌ Failed to store basic course data:', storeError);
-        // Continue anyway - we'll retry
       }
-      
-      // Validate course data structure (non-blocking)
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
         logger.warn('⚠️ Course data validation warning:', validationError);
-        // Continue even if validation fails - basic data is already stored
       }
-      
-      // Program media downloads disabled
-      
       logger.debug('✅ Course downloaded successfully:', courseId);
       return true;
       
@@ -474,7 +462,13 @@ class CourseDownloadService {
         };
       }
       
-      // NEW: Version check (only if not already updating)
+      const decompressedDataForCheck = await this.decompressCourseData(courseData);
+      if (decompressedDataForCheck.courseData?.isOneOnOne === true) {
+        logger.debug('📱 One-on-one program: skipping version check, using cached minimal');
+        return { ...decompressedDataForCheck, status: 'ready' };
+      }
+      
+      // Version check for low-ticket (only if not already updating)
       if (this.currentUserId) {
         logger.debug('🔍 VERSION CHECK: Starting for course:', courseId, 'userId:', this.currentUserId);
         
@@ -1060,32 +1054,26 @@ class CourseDownloadService {
     try {
       logger.debug('🔍 Checking version mismatch for course:', courseId);
       
-      // Get latest course data from DB
       const latestCourseData = await firestoreService.getCourse(courseId);
       if (!latestCourseData) {
         logger.debug('❌ Course not found in database:', courseId);
         return { needsUpdate: false };
       }
-      
-      // Get user's downloaded version
+      const publishedVersion = latestCourseData.published_version ?? latestCourseData.version;
       const userCourse = await firestoreService.getUserCourseVersion(userId, courseId);
-      const downloadedVersion = userCourse?.downloaded_version || localCourseData.version || 'unknown';
+      const downloadedVersion = userCourse?.downloaded_version || localCourseData.publishedVersion || localCourseData.version || 'unknown';
       
-      logger.debug('📊 Version comparison:', {
+      logger.debug('📊 Version comparison (published_version):', {
         courseId,
-        latestVersion: latestCourseData.version,
-        downloadedVersion: downloadedVersion
+        publishedVersion,
+        downloadedVersion
       });
       
-      // Compare versions
-      if (latestCourseData.version !== downloadedVersion) {
-        logger.debug('🔄 Version mismatch detected:', {
-          latest: latestCourseData.version,
-          downloaded: downloadedVersion
-        });
+      if (publishedVersion !== downloadedVersion) {
+        logger.debug('🔄 Version mismatch detected:', { publishedVersion, downloadedVersion });
         return {
           needsUpdate: true,
-          newVersion: latestCourseData.version,
+          newVersion: publishedVersion,
           currentVersion: downloadedVersion
         };
       }

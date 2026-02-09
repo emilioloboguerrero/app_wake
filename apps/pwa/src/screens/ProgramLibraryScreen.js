@@ -453,7 +453,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   const renderCourseCard = useCallback((course, index) => {
     const isSwipedRight = state.swipedCourses[course.id];
-    
+    const isOneOnOne = course?.userCourseData?.deliveryType === 'one_on_one';
+
     return (
       <View key={course.id || index} style={styles.courseCardWrapper}>
         <View style={styles.courseCardContainer}>
@@ -465,6 +466,11 @@ const ProgramLibraryScreen = ({ navigation }) => {
               onPress={() => handleCoursePress(course)}
             >
               <View style={styles.courseImagePlaceholder}>
+                {isOneOnOne && (
+                  <View style={styles.oneOnOneBadge}>
+                    <Text style={styles.oneOnOneBadgeText}>Asignado</Text>
+                  </View>
+                )}
                 {course.image_url ? (
                   <Image
                     key={`img-${course.id}`}
@@ -818,6 +824,25 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     elevation: 2,
     marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
   },
+  oneOnOneBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 199, 89, 0.4)',
+    backgroundColor: 'rgba(52, 199, 89, 0.2)',
+    zIndex: 5,
+  },
+  oneOnOneBadgeText: {
+    color: 'rgba(52, 199, 89, 1)',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   courseCard: {
     flexDirection: 'row',
     paddingVertical: 6, // Reduced padding to bring image closer to border
@@ -832,6 +857,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderRadius: 8, // Fixed border radius
     marginRight: 12, // Fixed margin to match original
     overflow: 'hidden',
+    position: 'relative',
   },
   courseImage: {
     width: '100%',

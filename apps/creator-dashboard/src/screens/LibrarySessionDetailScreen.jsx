@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
+import clientSessionContentService from '../services/clientSessionContentService';
+import clientPlanContentService from '../services/clientPlanContentService';
 import { collection, addDoc, doc, deleteDoc, query, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import {
@@ -204,7 +206,19 @@ const DraggableExercise = ({ exercise, libraryTitle, libraryIcon, isInSession = 
 const LibrarySessionDetailScreen = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  const backPath = location.state?.returnTo || '/content';
+  const editScope = location.state?.editScope;
+  const clientSessionId = location.state?.clientSessionId;
+  const clientId = location.state?.clientId;
+  const clientName = location.state?.clientName || 'Cliente';
+  const programId = location.state?.programId;
+  const weekKey = location.state?.weekKey;
+  const isClientEdit = editScope === 'client' && clientSessionId;
+  const isClientPlanEdit = editScope === 'client_plan' && clientId && programId && weekKey;
+  const hasClientCopyRef = useRef(false);
+  const [hasClientCopy, setHasClientCopy] = useState(false);
   const [session, setSession] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [availableLibraries, setAvailableLibraries] = useState([]);
@@ -284,6 +298,21 @@ const LibrarySessionDetailScreen = () => {
     })
   );
 
+  const ensureClientCopy = useCallback(async () => {
+    if (!isClientEdit || hasClientCopyRef.current || !user || !sessionId) return;
+    try {
+      const lib = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      if (lib) {
+        await clientSessionContentService.copyFromLibrary(user.uid, clientSessionId, sessionId, lib);
+        hasClientCopyRef.current = true;
+        setHasClientCopy(true);
+      }
+    } catch (err) {
+      console.error('Error ensuring client copy:', err);
+      throw err;
+    }
+  }, [isClientEdit, clientSessionId, user, sessionId]);
+
   useEffect(() => {
     const loadData = async () => {
       if (!user || !sessionId) {
@@ -294,17 +323,29 @@ const LibrarySessionDetailScreen = () => {
       try {
         setLoading(true);
         setError(null);
-        
-        // Load session
-        const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+
+        let sessionData = null;
+        if (isClientPlanEdit) {
+          const planContent = await clientPlanContentService.getClientPlanSessionContent(clientId, programId, weekKey, sessionId);
+          if (planContent?.session) {
+            sessionData = { ...planContent.session, exercises: planContent.exercises || [] };
+          }
+        } else if (isClientEdit) {
+          sessionData = await clientSessionContentService.getClientSessionContent(clientSessionId);
+          const hasCopy = !!sessionData;
+          hasClientCopyRef.current = hasCopy;
+          setHasClientCopy(hasCopy);
+        }
+        if (!sessionData) {
+          sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+        }
         if (!sessionData) {
           setError('Sesión no encontrada');
           return;
         }
 
         setSession(sessionData);
-        
-        // Prepare exercises with drag IDs
+
         const sessionExercises = (sessionData.exercises || []).map(ex => ({
           ...ex,
           dragId: `session-${ex.id}`,
@@ -312,17 +353,15 @@ const LibrarySessionDetailScreen = () => {
         }));
         setExercises(sessionExercises);
 
-        // Load libraries
         const libraries = await libraryService.getLibrariesByCreator(user.uid);
         setAvailableLibraries(libraries);
-        
-        // Store library icons
+
         const iconsMap = {};
         libraries.forEach(lib => {
           iconsMap[lib.id] = lib.icon_url || lib.icon || null;
         });
         setLibraryIcons(iconsMap);
-        
+
         if (libraries.length > 0) {
           setSelectedLibraryId(libraries[0].id);
           loadExercisesFromLibrary(libraries[0].id, libraries);
@@ -336,7 +375,7 @@ const LibrarySessionDetailScreen = () => {
     };
 
     loadData();
-  }, [user, sessionId]);
+  }, [user, sessionId, isClientEdit, clientSessionId, isClientPlanEdit, clientId, programId, weekKey]);
 
   const loadExercisesFromLibrary = useCallback(async (libraryId, libraries = null) => {
     if (!libraryId) return;
@@ -384,6 +423,75 @@ const LibrarySessionDetailScreen = () => {
       loadExercisesFromLibrary(selectedLibraryId);
     }
   }, [selectedLibraryId, loadExercisesFromLibrary]);
+
+  const contentApi = useMemo(() => {
+    const effectiveSessionId = isClientEdit ? clientSessionId : sessionId;
+    return {
+      async ensureCopy() {
+        if (isClientEdit) await ensureClientCopy();
+      },
+      async updateSetInLibraryExercise(uid, sessId, exId, setId, data) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.updateSet(clientId, programId, weekKey, sessId, exId, setId, data);
+        if (isClientEdit) return clientSessionContentService.updateSetInExercise(effectiveSessionId, exId, setId, data);
+        return libraryService.updateSetInLibraryExercise(uid, sessId, exId, setId, data);
+      },
+      async createSetInLibraryExercise(uid, sessId, exId, order = null) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.addSetToExercise(clientId, programId, weekKey, sessId, exId, order ?? undefined);
+        if (isClientEdit) return clientSessionContentService.addSetToExercise(effectiveSessionId, exId, { order: order ?? 0, title: `Serie ${(order ?? 0) + 1}` });
+        return libraryService.createSetInLibraryExercise(uid, sessId, exId, order);
+      },
+      async deleteSetFromLibraryExercise(uid, sessId, exId, setId) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.deleteSet(clientId, programId, weekKey, sessId, exId, setId);
+        if (isClientEdit) return clientSessionContentService.deleteSet(effectiveSessionId, exId, setId);
+        return libraryService.deleteSetFromLibraryExercise(uid, sessId, exId, setId);
+      },
+      async getSetsByLibraryExercise(uid, sessId, exId) {
+        if (isClientPlanEdit) return clientPlanContentService.getSetsByExercise(clientId, programId, weekKey, sessId, exId);
+        if (isClientEdit) return clientSessionContentService.getSetsForExercise(effectiveSessionId, exId);
+        return libraryService.getSetsByLibraryExercise(uid, sessId, exId);
+      },
+      async updateLibrarySession(uid, sessId, updates) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.updateSession(clientId, programId, weekKey, sessId, updates);
+        if (isClientEdit) return clientSessionContentService.updateSession(effectiveSessionId, updates);
+        return libraryService.updateLibrarySession(uid, sessId, updates);
+      },
+      async updateExerciseInLibrarySession(uid, sessId, exId, updates) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.updateExercise(clientId, programId, weekKey, sessId, exId, updates);
+        if (isClientEdit) return clientSessionContentService.updateExercise(effectiveSessionId, exId, updates);
+        return libraryService.updateExerciseInLibrarySession(uid, sessId, exId, updates);
+      },
+      async createExerciseInLibrarySession(uid, sessId, exerciseName, order) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) return clientPlanContentService.createExercise(clientId, programId, weekKey, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order ?? undefined);
+        if (isClientEdit) return clientSessionContentService.createExercise(effectiveSessionId, { title: exerciseName?.trim?.() || exerciseName, name: exerciseName?.trim?.() || exerciseName }, order ?? 0);
+        return libraryService.createExerciseInLibrarySession(uid, sessId, exerciseName, order);
+      },
+      async getLibrarySessionById(uid, sessId) {
+        if (isClientPlanEdit) {
+          const planContent = await clientPlanContentService.getClientPlanSessionContent(clientId, programId, weekKey, sessId);
+          return planContent ? { ...planContent.session, exercises: planContent.exercises || [] } : null;
+        }
+        if (isClientEdit) return clientSessionContentService.getClientSessionContent(effectiveSessionId);
+        return libraryService.getLibrarySessionById(uid, sessId);
+      },
+      async updateLibrarySessionExerciseOrder(uid, sessId, orders) {
+        await this.ensureCopy();
+        if (isClientPlanEdit) {
+          for (const { exerciseId, order } of orders) {
+            await clientPlanContentService.updateExercise(clientId, programId, weekKey, sessId, exerciseId, { order });
+          }
+          return;
+        }
+        if (isClientEdit) return clientSessionContentService.updateExerciseOrder(effectiveSessionId, orders.map(({ exerciseId, order }) => ({ exerciseId, order })));
+        return libraryService.updateLibrarySessionExerciseOrder(uid, sessId, orders.map((o) => ({ exerciseId: o.exerciseId, order: o.order })));
+      }
+    };
+  }, [isClientEdit, isClientPlanEdit, clientSessionId, sessionId, ensureClientCopy, clientId, programId, weekKey]);
 
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
@@ -444,35 +552,41 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       const nextOrder = exercises.length;
-
-      const exercisesRef = collection(
-        firestore,
-        'creator_libraries',
-        user.uid,
-        'sessions',
-        sessionId,
-        'exercises'
-      );
-
       const library = availableLibraries.find(l => l.id === exerciseData.libraryId);
       const exerciseFromLib = library && library[exerciseData.name];
 
-      const newExercise = {
-        primary: {
-          [exerciseData.libraryId]: exerciseData.name
-        },
-        alternatives: {},
-        measures: exerciseFromLib?.measures || [],
-        objectives: exerciseFromLib?.objectives || [],
-        order: nextOrder,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
-      };
-
-      await addDoc(exercisesRef, newExercise);
+      if (isClientEdit) {
+        await ensureClientCopy();
+        const payload = {
+          primary: { [exerciseData.libraryId]: exerciseData.name },
+          alternatives: {},
+          measures: exerciseFromLib?.measures || [],
+          objectives: exerciseFromLib?.objectives || []
+        };
+        await clientSessionContentService.createExercise(clientSessionId, payload, nextOrder);
+      } else {
+        const exercisesRef = collection(
+          firestore,
+          'creator_libraries',
+          user.uid,
+          'sessions',
+          sessionId,
+          'exercises'
+        );
+        const newExercise = {
+          primary: { [exerciseData.libraryId]: exerciseData.name },
+          alternatives: {},
+          measures: exerciseFromLib?.measures || [],
+          objectives: exerciseFromLib?.objectives || [],
+          order: nextOrder,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        };
+        await addDoc(exercisesRef, newExercise);
+      }
 
       // Reload session
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const sessionExercises = (sessionData.exercises || []).map(ex => ({
         ...ex,
         dragId: `session-${ex.id}`,
@@ -504,21 +618,26 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       setIsDeleting(true);
-      
-      const exerciseRef = doc(
-        firestore,
-        'creator_libraries',
-        user.uid,
-        'sessions',
-        sessionId,
-        'exercises',
-        exerciseToDelete.id
-      );
-      
-      await deleteDoc(exerciseRef);
+
+      if (isClientPlanEdit && clientId && programId && weekKey) {
+        await clientPlanContentService.deleteExercise(clientId, programId, weekKey, sessionId, exerciseToDelete.id);
+      } else if (isClientEdit) {
+        await clientSessionContentService.deleteExercise(clientSessionId, exerciseToDelete.id);
+      } else {
+        const exerciseRef = doc(
+          firestore,
+          'creator_libraries',
+          user.uid,
+          'sessions',
+          sessionId,
+          'exercises',
+          exerciseToDelete.id
+        );
+        await deleteDoc(exerciseRef);
+      }
 
       // Reload
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const sessionExercises = (sessionData.exercises || []).map(ex => ({
         ...ex,
         dragId: `session-${ex.id}`,
@@ -722,7 +841,7 @@ const LibrarySessionDetailScreen = () => {
       // Load sets/series
       if (user && sessionId && exercise.id) {
         try {
-          const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
+          const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
           setExerciseSets(setsData);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
           setUnsavedSetChanges({});
@@ -904,9 +1023,9 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       setIsSavingSetChanges(true);
-      await libraryService.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, updateData);
+      await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, updateData);
       
-      const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges(prev => {
@@ -942,9 +1061,9 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       setIsCreatingSet(true);
-      const newSet = await libraryService.createSetInLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const newSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, currentExerciseId);
       
-      const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
@@ -971,9 +1090,9 @@ const LibrarySessionDetailScreen = () => {
         intensity: setToDuplicate.intensity || null,
       };
 
-      await libraryService.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, newSet.id, updateData);
+      await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, newSet.id, updateData);
 
-      const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
@@ -1002,9 +1121,9 @@ const LibrarySessionDetailScreen = () => {
     if (!currentExerciseId) return;
 
     try {
-      await libraryService.deleteSetFromLibraryExercise(user.uid, sessionId, currentExerciseId, set.id);
+      await contentApi.deleteSetFromLibraryExercise(user.uid, sessionId, currentExerciseId, set.id);
       
-      const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
@@ -1036,11 +1155,11 @@ const LibrarySessionDetailScreen = () => {
       // Update each set's order
       await Promise.all(
         updates.map(({ setId, order }) =>
-          libraryService.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, { order })
+          contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, { order })
         )
       );
       
-      const setsData = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setIsSeriesEditMode(false);
@@ -1085,7 +1204,7 @@ const LibrarySessionDetailScreen = () => {
       const primaryExerciseName = primaryValues[0];
       const nextOrder = exercises.length;
 
-      const newExercise = await libraryService.createExerciseInLibrarySession(
+      const newExercise = await contentApi.createExerciseInLibrarySession(
         user.uid,
         sessionId,
         primaryExerciseName,
@@ -1101,11 +1220,11 @@ const LibrarySessionDetailScreen = () => {
         title: deleteField()
       };
       
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, newExercise.id, updateData);
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, newExercise.id, updateData);
 
       for (let i = 0; i < exerciseSets.length; i++) {
         const set = exerciseSets[i];
-        await libraryService.createSetInLibraryExercise(user.uid, sessionId, newExercise.id, i);
+        await contentApi.createSetInLibraryExercise(user.uid, sessionId, newExercise.id, i);
         
         const updateSetData = {};
         if (set.reps !== null && set.reps !== undefined && set.reps !== '') {
@@ -1116,16 +1235,16 @@ const LibrarySessionDetailScreen = () => {
         }
         
         if (Object.keys(updateSetData).length > 0) {
-          const createdSets = await libraryService.getSetsByLibraryExercise(user.uid, sessionId, newExercise.id);
+          const createdSets = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, newExercise.id);
           const createdSet = createdSets[createdSets.length - 1];
           if (createdSet) {
-            await libraryService.updateSetInLibraryExercise(user.uid, sessionId, newExercise.id, createdSet.id, updateSetData);
+            await contentApi.updateSetInLibraryExercise(user.uid, sessionId, newExercise.id, createdSet.id, updateSetData);
           }
         }
       }
 
       // Reload exercises
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const sessionExercises = (sessionData.exercises || []).map(ex => ({
         ...ex,
         dragId: `session-${ex.id}`,
@@ -1248,10 +1367,10 @@ const LibrarySessionDetailScreen = () => {
           updateData.alternatives = exerciseDraft.alternatives;
         }
         
-        await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updateData);
+        await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updateData);
         
         // Reload exercise
-        const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+        const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
         const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
         if (updatedEx) {
           setSelectedExercise(updatedEx);
@@ -1323,11 +1442,11 @@ const LibrarySessionDetailScreen = () => {
 
         if (!currentExerciseId) return;
 
-        await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+        await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
           alternatives: currentAlternatives
         });
 
-        const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+        const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
         const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
         if (updatedEx) {
           setSelectedExercise(updatedEx);
@@ -1401,11 +1520,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId || !user || !sessionId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         measures: updatedMeasures
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1456,11 +1575,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId || !user || !sessionId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         measures: updatedMeasures
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1495,11 +1614,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         measures: updatedMeasures
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1572,11 +1691,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId || !user || !sessionId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         objectives: updatedObjectives
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1627,11 +1746,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId || !user || !sessionId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         objectives: updatedObjectives
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1666,11 +1785,11 @@ const LibrarySessionDetailScreen = () => {
 
       if (!currentExerciseId) return;
 
-      await libraryService.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
         objectives: updatedObjectives
       });
 
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
       const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
       if (updatedEx) {
         setSelectedExercise(updatedEx);
@@ -1963,7 +2082,7 @@ const LibrarySessionDetailScreen = () => {
       <DashboardLayout 
         screenName={session?.title || 'Sesión'}
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
       >
         <div className="library-session-detail-container">
           <div className="library-session-detail-loading">Cargando...</div>
@@ -1977,12 +2096,12 @@ const LibrarySessionDetailScreen = () => {
       <DashboardLayout 
         screenName="Sesión"
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
       >
         <div className="library-session-detail-container">
           <div className="library-session-detail-error">
             <p>{error || 'Sesión no encontrada'}</p>
-            <button onClick={() => navigate('/content')} className="back-button">
+            <button onClick={() => navigate(backPath)} className="back-button">
               Volver a Contenido
             </button>
           </div>
@@ -1995,7 +2114,7 @@ const LibrarySessionDetailScreen = () => {
     <DashboardLayout 
       screenName={session.title}
       showBackButton={true}
-      backPath="/content"
+      backPath={backPath}
     >
       <DndContext
         sensors={sensors}
@@ -2004,6 +2123,87 @@ const LibrarySessionDetailScreen = () => {
         onDragEnd={handleDragEnd}
       >
         <div className="library-session-detail-container">
+          {(isClientEdit || isClientPlanEdit) && (
+            <div className="library-session-client-edit-banner">
+              <span className="library-session-client-edit-banner-text">
+                {isClientPlanEdit ? (
+                  <>Editando sesión de la semana solo para <strong>{clientName}</strong>. Los cambios solo afectan a esta semana para este cliente.</>
+                ) : (
+                  <>Editando sesión solo para <strong>{clientName}</strong>. Los cambios no afectan la biblioteca ni otros clientes.</>
+                )}
+              </span>
+              {isClientPlanEdit && clientId && programId && weekKey && session && (
+                <div className="library-session-client-plan-actions">
+                  <label className="library-session-client-plan-day-label">
+                    Día de la semana:
+                    <select
+                      value={session.dayIndex != null ? session.dayIndex : 0}
+                      onChange={async (e) => {
+                        const dayIndex = parseInt(e.target.value, 10);
+                        try {
+                          await clientPlanContentService.updateSession(clientId, programId, weekKey, sessionId, { dayIndex });
+                          setSession((prev) => (prev ? { ...prev, dayIndex } : null));
+                        } catch (err) {
+                          console.error('Error updating day:', err);
+                          alert('Error al cambiar el día.');
+                        }
+                      }}
+                      className="library-session-client-plan-day-select"
+                    >
+                      <option value={0}>Lunes</option>
+                      <option value={1}>Martes</option>
+                      <option value={2}>Miércoles</option>
+                      <option value={3}>Jueves</option>
+                      <option value={4}>Viernes</option>
+                      <option value={5}>Sábado</option>
+                      <option value={6}>Domingo</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="library-session-client-edit-revert library-session-client-plan-delete"
+                    onClick={async () => {
+                      if (!window.confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.')) return;
+                      try {
+                        await clientPlanContentService.deleteSession(clientId, programId, weekKey, sessionId);
+                        navigate(backPath);
+                      } catch (err) {
+                        console.error('Error deleting from week:', err);
+                        alert('Error al quitar la sesión.');
+                      }
+                    }}
+                  >
+                    Eliminar de esta semana
+                  </button>
+                </div>
+              )}
+              {isClientEdit && hasClientCopy && (
+                <button
+                  type="button"
+                  className="library-session-client-edit-revert"
+                  onClick={async () => {
+                    if (!window.confirm('¿Restablecer esta sesión al contenido de la biblioteca? Se perderán los cambios personalizados para este cliente.')) return;
+                    try {
+                      await clientSessionContentService.deleteClientSessionContent(clientSessionId);
+                      hasClientCopyRef.current = false;
+                      setHasClientCopy(false);
+                      const lib = await libraryService.getLibrarySessionById(user.uid, sessionId);
+                      if (lib) {
+                        setSession(lib);
+                        setExercises((lib.exercises || []).map(ex => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true })));
+                      }
+                    } catch (err) {
+                      console.error('Error reverting to library:', err);
+                      alert('Error al restablecer. Intenta de nuevo.');
+                    }
+                  }}
+                >
+                  Restablecer a la biblioteca
+                </button>
+              )}
+            </div>
+          )}
+          <div className="library-session-detail-body">
           {/* Sidebar - Available Exercises */}
           <div className="library-session-sidebar">
             <div className="library-session-sidebar-header">
@@ -2162,6 +2362,7 @@ const LibrarySessionDetailScreen = () => {
                 </SortableContext>
               )}
             </DropZone>
+          </div>
           </div>
         </div>
 

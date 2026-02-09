@@ -81,7 +81,91 @@
 .session-assignment-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+}
+
+.session-assignment-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-assignment-create-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.02em;
+}
+
+.session-assignment-required {
+  color: rgba(255, 68, 68, 0.9);
+}
+
+.session-assignment-save-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 420px) {
+  .session-assignment-save-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.session-assignment-save-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.session-assignment-save-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.session-assignment-save-option--selected {
+  background: rgba(191, 168, 77, 0.12);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.session-assignment-save-option--selected:hover {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.6);
+}
+
+.session-assignment-save-option-icon {
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+}
+
+.session-assignment-save-option--selected .session-assignment-save-option-icon {
+  color: rgba(191, 168, 77, 0.9);
+}
+
+.session-assignment-save-option-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.session-assignment-save-option-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.4;
+}
+
+.session-assignment-save-option--selected .session-assignment-save-option-desc {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .session-assignment-checkbox {

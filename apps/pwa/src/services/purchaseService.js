@@ -392,7 +392,7 @@ class PurchaseService {
   async getUserPurchasedCourses(userId, includeInactive = false) {
     try {
       if (!includeInactive) {
-        // For MainScreen, use the efficient active-only method
+        // For MainScreen, use the efficient active-only method (includes orphan fallback)
         return await this.getUserActiveCourses(userId);
       }
       
@@ -410,38 +410,48 @@ class PurchaseService {
         courseIds: Object.keys(userCourses)
       });
       
-      if (Object.keys(userCourses).length === 0) {
-        logger.debug('⚠️ getUserPurchasedCourses: No courses found in user document');
-        return [];
-      }
-      
       const now = new Date();
       
       // Get all courses with status information
-      const coursesWithDetails = await Promise.all(
-        Object.entries(userCourses).map(async ([courseId, courseData]) => {
-          logger.debug('🔍 Processing course:', courseId, courseData);
-          const courseDetails = await firestoreService.getCourse(courseId);
-          
-          // Determine status
-          const isActive = courseData.status === 'active';
-          const isNotExpired = new Date(courseData.expires_at) > now;
-          const isCancelled = courseData.status === 'cancelled';
-          
-          return {
-            id: `${userId}-${courseId}`, // Create a unique ID
-            courseId,
-            courseData,
-            courseDetails: courseDetails || { title: 'Curso no encontrado', id: courseId },
-            isActive: isActive && isNotExpired,
-            isExpired: !isNotExpired && !isCancelled,
-            isCompleted: false, // We can add completion logic later
-            status: courseData.status,
-            paid_at: { toDate: () => new Date(courseData.purchased_at) }, // Mock the old format
-            expires_at: courseData.expires_at
-          };
-        })
-      );
+      let coursesWithDetails = [];
+      if (Object.keys(userCourses).length > 0) {
+        coursesWithDetails = await Promise.all(
+          Object.entries(userCourses).map(async ([courseId, courseData]) => {
+            logger.debug('🔍 Processing course:', courseId, courseData);
+            const courseDetails = await firestoreService.getCourse(courseId);
+            
+            // Determine status
+            const isActive = courseData.status === 'active';
+            const isNotExpired = new Date(courseData.expires_at) > now;
+            const isCancelled = courseData.status === 'cancelled';
+            
+            return {
+              id: `${userId}-${courseId}`, // Create a unique ID
+              courseId,
+              courseData,
+              courseDetails: courseDetails || { title: 'Curso no encontrado', id: courseId },
+              isActive: isActive && isNotExpired,
+              isExpired: !isNotExpired && !isCancelled,
+              isCompleted: false, // We can add completion logic later
+              status: courseData.status,
+              paid_at: { toDate: () => new Date(courseData.purchased_at) }, // Mock the old format
+              expires_at: courseData.expires_at
+            };
+          })
+        );
+      }
+
+      // Merge orphaned one-on-one programs from client_programs (same fallback as getUserActiveCourses)
+      const courseIdsFromUser = new Set(Object.keys(userCourses));
+      try {
+        const orphaned = await firestoreService.getOrphanedOneOnOnePrograms(userId, courseIdsFromUser);
+        if (orphaned.length > 0) {
+          coursesWithDetails = [...coursesWithDetails, ...orphaned];
+          logger.debug('📱 getUserPurchasedCourses: merged', orphaned.length, 'orphaned one-on-one programs');
+        }
+      } catch (err) {
+        logger.warn('⚠️ getUserPurchasedCourses: orphan fallback failed:', err?.message);
+      }
       
       logger.debug('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
       return coursesWithDetails;

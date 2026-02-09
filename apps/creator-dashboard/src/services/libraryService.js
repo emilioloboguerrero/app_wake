@@ -393,10 +393,11 @@ class LibraryService {
       
       const sessions = [];
       querySnapshot.forEach((doc) => {
-        sessions.push({
-          id: doc.id,
-          ...doc.data()
-        });
+        const data = { id: doc.id, ...doc.data() };
+        // Exclude one-time sessions (showInLibrary: false) from library listing
+        if (data.showInLibrary !== false) {
+          sessions.push(data);
+        }
       });
       
       return sessions.sort((a, b) => {
@@ -471,6 +472,7 @@ class LibraryService {
 
   /**
    * Create a library session directly (without needing a program session first)
+   * @param {Object} sessionData - Session data. showInLibrary: false = one-time session, hidden from library lists
    */
   async createLibrarySession(creatorId, sessionData) {
     try {
@@ -480,6 +482,7 @@ class LibraryService {
         image_url: sessionData.image_url || null,
         creator_id: creatorId,
         version: 1,
+        showInLibrary: sessionData.showInLibrary !== false,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };

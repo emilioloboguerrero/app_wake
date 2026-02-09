@@ -10,10 +10,12 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
+  arrayUnion,
   serverTimestamp,
   orderBy
 } from 'firebase/firestore';
 import { getUser } from './firestoreService';
+import clientProgramService from './clientProgramService';
 
 class OneOnOneService {
   /**
@@ -114,6 +116,86 @@ class OneOnOneService {
       };
     } catch (error) {
       console.error('Error adding client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a client and assign them to an existing one-on-one program in one operation.
+   * Creates: one_on_one_clients, client_programs, users.courses; updates one_on_one_clients.courseId.
+   * @param {string} creatorId - Creator user ID
+   * @param {string} clientUserId - Client user ID
+   * @param {string} programId - Existing one-on-one program ID to assign
+   * @returns {Promise<Object>} Created client document
+   */
+  async addClientToProgram(creatorId, clientUserId, programId) {
+    try {
+      // 1. Create client document (same as addClient)
+      const client = await this.addClient(creatorId, clientUserId);
+
+      // 2. Assign existing program to client (creates client_programs, adds to users.courses, updates one_on_one_clients.courseId)
+      await clientProgramService.assignProgramToClient(programId, clientUserId);
+
+      return client;
+    } catch (error) {
+      console.error('Error adding client to program:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a program ID to a client's courseId array
+   * @param {string} creatorId - Creator user ID
+   * @param {string} clientUserId - Client user ID
+   * @param {string} programId - Program ID to add
+   */
+  async addCourseToClient(creatorId, clientUserId, programId) {
+    try {
+      const q = query(
+        collection(firestore, 'one_on_one_clients'),
+        where('creatorId', '==', creatorId),
+        where('clientUserId', '==', clientUserId)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const clientDocRef = doc(firestore, 'one_on_one_clients', snapshot.docs[0].id);
+        await updateDoc(clientDocRef, {
+          courseId: arrayUnion(programId),
+          updatedAt: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error('Error adding course to client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a program ID from a client's courseId array
+   * @param {string} creatorId - Creator user ID
+   * @param {string} clientUserId - Client user ID
+   * @param {string} programId - Program ID to remove
+   */
+  async removeCourseFromClient(creatorId, clientUserId, programId) {
+    try {
+      const q = query(
+        collection(firestore, 'one_on_one_clients'),
+        where('creatorId', '==', creatorId),
+        where('clientUserId', '==', clientUserId)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const clientData = snapshot.docs[0].data();
+        const courseIds = clientData.courseId || [];
+        const newCourseIds = courseIds.filter(id => id !== programId);
+        const clientDocRef = doc(firestore, 'one_on_one_clients', snapshot.docs[0].id);
+        await updateDoc(clientDocRef, {
+          courseId: newCourseIds,
+          updatedAt: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error('Error removing course from client:', error);
       throw error;
     }
   }

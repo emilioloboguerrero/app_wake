@@ -53,9 +53,11 @@ class ProgramService {
         return null;
       }
       
+      const data = programDoc.data();
       return {
         id: programDoc.id,
-        ...programDoc.data()
+        ...data,
+        published_version: data.published_version ?? data.version
       };
     } catch (error) {
       console.error('Error fetching program:', error);
@@ -76,7 +78,7 @@ class ProgramService {
       const version = `${currentYear}-01`;
       
       const timestamp = serverTimestamp();
-      
+      // Canonical fields for versioning/PWA: version, published_version, deliveryType; plus metadata and settings.
       const newProgram = {
         creator_id: creatorId,
         creatorName: creatorName,
@@ -84,22 +86,24 @@ class ProgramService {
         description: programData.description || '',
         discipline: programData.discipline || '',
         access_duration: access_duration,
-        deliveryType: programData.deliveryType || 'low_ticket', // Support one_on_one programs
+        deliveryType: programData.deliveryType || 'low_ticket', // one_on_one | low_ticket; required for PWA version/load path
         status: programData.status || 'draft',
         price: programData.price ? parseInt(programData.price, 10) : null,
         free_trial: programData.freeTrialActive ? {
           active: true,
           duration_days: parseInt(programData.freeTrialDurationDays || '0', 10)
         } : { active: false, duration_days: 0 },
-        duration: programData.duration || null, // Duration: "X semanas" for one-time, "Mensual" for subscription, or null
+        duration: programData.duration || null,
         programSettings: programData.streakEnabled ? {
           streakEnabled: true,
           minimumSessionsPerWeek: parseInt(programData.minimumSessionsPerWeek || '0', 10)
         } : { streakEnabled: false, minimumSessionsPerWeek: 0 },
         weight_suggestions: programData.weightSuggestions || false,
         availableLibraries: programData.availableLibraries || [],
+        content_plan_id: programData.contentPlanId || null, // Pre-created content from plans (for low-ticket)
         tutorials: programData.tutorials || {},
-        version: version,
+        version,
+        published_version: version, // Only updated on Release; PWA compares to this
         created_at: timestamp,
         last_update: timestamp,
         updated_at: timestamp
@@ -121,14 +125,20 @@ class ProgramService {
     }
   }
 
-  // Update a program
+  // Update a program (draft). Does not change published_version; use releaseProgram to publish.
   async updateProgram(programId, updates) {
     try {
       const programDocRef = doc(firestore, 'courses', programId);
-      console.log('[updateProgram] Updating program:', { programId, updates });
+      const { published_version: _pv, ...rest } = updates;
+      if (_pv !== undefined) {
+        console.warn('[updateProgram] published_version is ignored; use releaseProgram to publish');
+      }
+      // Strip undefined so Firestore does not receive invalid values
+      const clean = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+      console.log('[updateProgram] Updating program:', { programId, updates: clean });
       const timestamp = serverTimestamp();
       await updateDoc(programDocRef, {
-        ...updates,
+        ...clean,
         last_update: timestamp,
         updated_at: timestamp
       });
@@ -141,6 +151,30 @@ class ProgramService {
         programId,
         updates
       });
+      throw error;
+    }
+  }
+
+  /**
+   * Release current program state as the version users see (low-ticket).
+   * Sets published_version = version so PWA version check sees the new release.
+   */
+  async releaseProgram(programId) {
+    try {
+      const program = await this.getProgramById(programId);
+      if (!program) {
+        throw new Error('Program not found');
+      }
+      const version = program.version || `${new Date().getFullYear()}-01`;
+      const programDocRef = doc(firestore, 'courses', programId);
+      await updateDoc(programDocRef, {
+        published_version: version,
+        last_update: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+      return { published_version: version };
+    } catch (error) {
+      console.error('Error releasing program:', error);
       throw error;
     }
   }
@@ -496,13 +530,39 @@ class ProgramService {
     }
   }
 
-  // Get modules for a program (with library resolution)
+  // Get modules for a program (with library resolution, or from plan when content_plan_id set)
   async getModulesByProgram(programId) {
     try {
-      // Get program to get creator_id
+      // Get program to get creator_id and content_plan_id
       const program = await this.getProgramById(programId);
       const creatorId = program?.creator_id;
-      
+      const contentPlanId = program?.content_plan_id;
+
+      // If program references a plan for content, load from plans
+      if (contentPlanId && contentPlanId !== '') {
+        const { default: plansService } = await import('./plansService');
+        const planModules = await plansService.getModulesByPlan(contentPlanId);
+        // Resolve sessions for each plan module (plan modules don't have sessions nested)
+        const modulesWithSessions = await Promise.all(
+          planModules.map(async (mod, index) => {
+            const sessions = await plansService.getSessionsByModule(contentPlanId, mod.id);
+            const sessionsWithExercises = await Promise.all(
+              sessions.map(async (sess) => {
+                const exercises = await plansService.getExercisesBySession(contentPlanId, mod.id, sess.id);
+                return { ...sess, exercises };
+              })
+            );
+            return {
+              ...mod,
+              title: mod.title || `Semana ${index + 1}`,
+              order: mod.order !== undefined ? mod.order : index,
+              sessions: sessionsWithExercises,
+            };
+          })
+        );
+        return modulesWithSessions;
+      }
+
       const modulesRef = collection(firestore, 'courses', programId, 'modules');
       const querySnapshot = await getDocs(modulesRef);
       
@@ -817,9 +877,16 @@ class ProgramService {
   // Get sessions for a module (with library resolution)
   async getSessionsByModule(programId, moduleId) {
     try {
-      // Get program to get creator_id
+      // Get program to get creator_id and content_plan_id
       const program = await this.getProgramById(programId);
       const creatorId = program?.creator_id;
+      const contentPlanId = program?.content_plan_id;
+
+      // If program uses plan-based content, load sessions from plan
+      if (contentPlanId) {
+        const { default: plansService } = await import('./plansService');
+        return plansService.getSessionsByModule(contentPlanId, moduleId);
+      }
       
       // ✅ NEW: Check if this module is a library reference
       const moduleRef = doc(firestore, 'courses', programId, 'modules', moduleId);
@@ -1386,9 +1453,16 @@ class ProgramService {
   // Get exercises for a session
   async getExercisesBySession(programId, moduleId, sessionId) {
     try {
-      // Get program to get creator_id for library resolution
+      // Get program to get creator_id and content_plan_id for library resolution
       const program = await this.getProgramById(programId);
       const creatorId = program?.creator_id;
+      const contentPlanId = program?.content_plan_id;
+
+      // If program uses plan-based content, load exercises from plan
+      if (contentPlanId) {
+        const { default: plansService } = await import('./plansService');
+        return plansService.getExercisesBySession(contentPlanId, moduleId, sessionId);
+      }
       
       // Check if this session is a library reference
       const sessionRef = doc(firestore, 'courses', programId, 'modules', moduleId, 'sessions', sessionId);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import debounce from 'lodash/debounce';
@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import programService from '../services/programService';
+import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import programAnalyticsService from '../services/programAnalyticsService';
 import { deleteField } from 'firebase/firestore';
@@ -56,36 +57,22 @@ import { CSS } from '@dnd-kit/utilities';
 import './ProgramDetailScreen.css';
 
 const TAB_CONFIG = [
-  { 
-    key: 'lab', 
-    title: 'Lab',
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M19.5 3.5L18 2L4.5 15.5L2 22L8.5 19.5L19.5 3.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M13 6L18 11M8 11L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    )
-  },
-  { 
-    key: 'configuracion', 
-    title: 'Configuración',
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7842 19.4468 14.532 19.6572 14.3543 19.9255C14.1766 20.1938 14.0813 20.5082 14.08 20.83V21C14.08 21.5304 13.8693 22.0391 13.4942 22.4142C13.1191 22.7893 12.6104 23 12.08 23C11.5496 23 11.0409 22.7893 10.6658 22.4142C10.2907 22.0391 10.08 21.5304 10.08 21V20.91C10.0723 20.579 9.96512 20.258 9.77251 19.9887C9.5799 19.7194 9.31074 19.5143 9 19.4C8.69838 19.2669 8.36381 19.2272 8.03941 19.286C7.71502 19.3448 7.41568 19.4995 7.18 19.73L7.12 19.79C6.93425 19.976 6.71368 20.1235 6.47088 20.2241C6.22808 20.3248 5.96783 20.3766 5.705 20.3766C5.44217 20.3766 5.18192 20.3248 4.93912 20.2241C4.69632 20.1235 4.47575 19.976 4.29 19.79C4.10405 19.6043 3.95653 19.3837 3.85588 19.1409C3.75523 18.8981 3.70343 18.6378 3.70343 18.375C3.70343 18.1122 3.75523 17.8519 3.85588 17.6091C3.95653 17.3663 4.10405 17.1457 4.29 16.96L4.35 16.9C4.58054 16.6643 4.73519 16.365 4.794 16.0406C4.85282 15.7162 4.81312 15.3816 4.68 15.08C4.55324 14.7842 4.34276 14.532 4.07447 14.3543C3.80618 14.1766 3.49179 14.0813 3.17 14.08H3C2.46957 14.08 1.96086 13.8693 1.58579 13.4942C1.21071 13.1191 1 12.6104 1 12.08C1 11.5496 1.21071 11.0409 1.58579 10.6658C1.96086 10.2907 2.46957 10.08 3 10.08H3.09C3.42099 10.0723 3.742 9.96512 4.0113 9.77251C4.28059 9.5799 4.48571 9.31074 4.6 9C4.73312 8.69838 4.77282 8.36381 4.714 8.03941C4.65519 7.71502 4.50054 7.41568 4.27 7.18L4.21 7.12C4.02405 6.93425 3.87653 6.71368 3.77588 6.47088C3.67523 6.22808 3.62343 5.96783 3.62343 5.705C3.62343 5.44217 3.67523 5.18192 3.77588 4.93912C3.87653 4.69632 4.02405 4.47575 4.21 4.29C4.39575 4.10405 4.61632 3.95653 4.85912 3.85588C5.10192 3.75523 5.36217 3.70343 5.625 3.70343C5.88783 3.70343 6.14808 3.75523 6.39088 3.85588C6.63368 3.95653 6.85425 4.10405 7.04 4.29L7.1 4.35C7.33568 4.58054 7.63502 4.73519 7.95941 4.794C8.28381 4.85282 8.61838 4.81312 8.92 4.68H9C9.29577 4.55324 9.54802 4.34276 9.72569 4.07447C9.90337 3.80618 9.99872 3.49179 10 3.17V3C10 2.46957 10.2107 1.96086 10.5858 1.58579C10.9609 1.21071 11.4696 1 12 1C12.5304 1 13.0391 1.21071 13.4142 1.58579C13.7893 1.96086 14 2.46957 14 3V3.09C14.0013 3.41179 14.0966 3.72618 14.2743 3.99447C14.452 4.26276 14.7042 4.47324 15 4.6C15.3016 4.73312 15.6362 4.77282 15.9606 4.714C16.285 4.65519 16.5843 4.50054 16.82 4.27L16.88 4.21C17.0657 4.02405 17.2863 3.87653 17.5291 3.77588C17.7719 3.67523 18.0322 3.62343 18.295 3.62343C18.5578 3.62343 18.8181 3.67523 19.0609 3.77588C19.3037 3.87653 19.5243 4.02405 19.71 4.21C19.896 4.39575 20.0435 4.61632 20.1441 4.85912C20.2448 5.10192 20.2966 5.36217 20.2966 5.625C20.2966 5.88783 20.2448 6.14808 20.1441 6.39088C20.0435 6.63368 19.896 6.85425 19.71 7.04L19.65 7.1C19.4195 7.33568 19.2648 7.63502 19.206 7.95941C19.1472 8.28381 19.1869 8.61838 19.32 8.92V9C19.4468 9.29577 19.6572 9.54802 19.9255 9.72569C20.1938 9.90337 20.5082 9.99872 20.83 10H21C21.5304 10 22.0391 10.2107 22.4142 10.5858C22.7893 10.9609 23 11.4696 23 12C23 12.5304 22.7893 13.0391 22.4142 13.4142C22.0391 13.7893 21.5304 14 21 14H20.91C20.5882 14.0013 20.2738 14.0966 20.0055 14.2743C19.7372 14.452 19.5268 14.7042 19.4 15H19.4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    )
-  },
-  { 
-    key: 'contenido', 
-    title: 'Contenido',
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14.7519 11.1679L11.5547 9.03647C10.8901 8.59343 10 9.06982 10 9.86852V14.1315C10 14.9302 10.8901 15.4066 11.5547 14.9635L14.7519 12.8321C15.3457 12.4362 15.3457 11.5638 14.7519 11.1679Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    )
-  },
+  { key: 'lab', title: 'Lab', navLabel: 'Resumen', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.5 3.5L18 2L4.5 15.5L2 22L8.5 19.5L19.5 3.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M13 6L18 11M8 11L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  )},
+  { key: 'configuracion', title: 'Configuración', navLabel: 'Ajustes', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7842 19.4468 14.532 19.6572 14.3543 19.9255C14.1766 20.1938 14.0813 20.5082 14.08 20.83V21C14.08 21.5304 13.8693 22.0391 13.4942 22.4142C13.1191 22.7893 12.6104 23 12.08 23C11.5496 23 11.0409 22.7893 10.6658 22.4142C10.2907 22.0391 10.08 21.5304 10.08 21V20.91C10.0723 20.579 9.96512 20.258 9.77251 19.9887C9.5799 19.7194 9.31074 19.5143 9 19.4C8.69838 19.2669 8.36381 19.2272 8.03941 19.286C7.71502 19.3448 7.41568 19.4995 7.18 19.73L7.12 19.79C6.93425 19.976 6.71368 20.1235 6.47088 20.2241C6.22808 20.3248 5.96783 20.3766 5.705 20.3766C5.44217 20.3766 5.18192 20.3248 4.93912 20.2241C4.69632 20.1235 4.47575 19.976 4.29 19.79C4.10405 19.6043 3.95653 19.3837 3.85588 19.1409C3.75523 18.8981 3.70343 18.6378 3.70343 18.375C3.70343 18.1122 3.75523 17.8519 3.85588 17.6091C3.95653 17.3663 4.10405 17.1457 4.29 16.96L4.35 16.9C4.58054 16.6643 4.73519 16.365 4.794 16.0406C4.85282 15.7162 4.81312 15.3816 4.68 15.08C4.55324 14.7842 4.34276 14.532 4.07447 14.3543C3.80618 14.1766 3.49179 14.0813 3.17 14.08H3C2.46957 14.08 1.96086 13.8693 1.58579 13.4942C1.21071 13.1191 1 12.6104 1 12.08C1 11.5496 1.21071 11.0409 1.58579 10.6658C1.96086 10.2907 2.46957 10.08 3 10.08H3.09C3.42099 10.0723 3.742 9.96512 4.0113 9.77251C4.28059 9.5799 4.48571 9.31074 4.6 9C4.73312 8.69838 4.77282 8.36381 4.714 8.03941C4.65519 7.71502 4.50054 7.41568 4.27 7.18L4.21 7.12C4.02405 6.93425 3.87653 6.71368 3.77588 6.47088C3.67523 6.22808 3.62343 5.96783 3.62343 5.705C3.62343 5.44217 3.67523 5.18192 3.77588 4.93912C3.87653 4.69632 4.02405 4.47575 4.21 4.29C4.39575 4.10405 4.61632 3.95653 4.85912 3.85588C5.10192 3.75523 5.36217 3.70343 5.625 3.70343C5.88783 3.70343 6.14808 3.75523 6.39088 3.85588C6.63368 3.95653 6.85425 4.10405 7.04 4.29L7.1 4.35C7.33568 4.58054 7.63502 4.73519 7.95941 4.794C8.28381 4.85282 8.61838 4.81312 8.92 4.68H9C9.29577 4.55324 9.54802 4.34276 9.72569 4.07447C9.90337 3.80618 9.99872 3.49179 10 3.17V3C10 2.46957 10.2107 1.96086 10.5858 1.58579C10.9609 1.21071 11.4696 1 12 1C12.5304 1 13.0391 1.21071 13.4142 1.58579C13.7893 1.96086 14 2.46957 14 3V3.09C14.0013 3.41179 14.0966 3.72618 14.2743 3.99447C14.452 4.26276 14.7042 4.47324 15 4.6C15.3016 4.73312 15.6362 4.77282 15.9606 4.714C16.285 4.65519 16.5843 4.50054 16.82 4.27L16.88 4.21C17.0657 4.02405 17.2863 3.87653 17.5291 3.77588C17.7719 3.67523 18.0322 3.62343 18.295 3.62343C18.5578 3.62343 18.8181 3.67523 19.0609 3.77588C19.3037 3.87653 19.5243 4.02405 19.71 4.21C19.896 4.39575 20.0435 4.61632 20.1441 4.85912C20.2448 5.10192 20.2966 5.36217 20.2966 5.625C20.2966 5.88783 20.2448 6.14808 20.1441 6.39088C20.0435 6.63368 19.896 6.85425 19.71 7.04L19.65 7.1C19.4195 7.33568 19.2648 7.63502 19.206 7.95941C19.1472 8.28381 19.1869 8.61838 19.32 8.92V9C19.4468 9.29577 19.6572 9.54802 19.9255 9.72569C20.1938 9.90337 20.5082 9.99872 20.83 10H21C21.5304 10 22.0391 10.2107 22.4142 10.5858C22.7893 10.9609 23 11.4696 23 12C23 12.5304 22.7893 13.0391 22.4142 13.4142C22.0391 13.7893 21.5304 14 21 14H20.91C20.5882 14.0013 20.2738 14.0966 20.0055 14.2743C19.7372 14.452 19.5268 14.7042 19.4 15H19.4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  )},
+  { key: 'contenido', title: 'Contenido', navLabel: 'Contenido', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.7519 11.1679L11.5547 9.03647C10.8901 8.59343 10 9.06982 10 9.86852V14.1315C10 14.9302 10.8901 15.4066 11.5547 14.9635L14.7519 12.8321C15.3457 12.4362 15.3457 11.5638 14.7519 11.1679Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  )},
+];
+
+const TUTORIAL_SCREENS = [
+  { key: 'dailyWorkout', label: 'Entrenamiento diario' },
+  { key: 'workoutExecution', label: 'Ejecución del entrenamiento' },
+  { key: 'workoutCompletion', label: 'Completar entrenamiento' },
+  { key: 'warmup', label: 'Calentamiento' },
 ];
 
 // Stat explanations for Lab page
@@ -663,28 +650,11 @@ const SortableSessionCard = ({ session, isSessionEditMode, onSessionClick, onDel
 const ProgramDetailScreen = () => {
   const { programId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  const tabsScrollRef = useRef(null);
-  const isScrollingProgrammatically = useRef(false);
   
-  // Load analytics with React Query (cached for 15 minutes)
-  // Only fetch when Lab tab is active
-  const currentTab = TAB_CONFIG[currentTabIndex];
-  const isLabTabActive = currentTab?.key === 'lab';
-  const { data: analytics, isLoading: isLoadingAnalytics, error: analyticsQueryError } = useQuery({
-    queryKey: queryKeys.analytics.program(programId),
-    queryFn: async () => {
-      if (!programId) return null;
-      return await programAnalyticsService.getProgramAnalytics(programId);
-    },
-    enabled: !!programId && isLabTabActive, // Only fetch when Lab tab is active
-    ...cacheConfig.analytics, // 15 minute cache
-  });
-  
-  // Convert error object to string for display
-  const analyticsError = analyticsQueryError ? 'Error al cargar las estadísticas' : null;
   const [selectedUserInfo, setSelectedUserInfo] = useState(null);
   const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
   const [statExplanation, setStatExplanation] = useState(null);
@@ -838,7 +808,89 @@ const ProgramDetailScreen = () => {
   const { data: program, isLoading: programLoading, error: programError } = useProgram(programId, {
     isActive: isActivelyEditing,
   });
-  
+
+  // For 1-on-1 general programs, hide Contenido tab (content is assigned per client)
+  const effectiveTabConfig = useMemo(() =>
+    program?.deliveryType === 'one_on_one'
+      ? TAB_CONFIG.filter((t) => t.key !== 'contenido')
+      : TAB_CONFIG,
+    [program?.deliveryType]
+  );
+  const currentTab = effectiveTabConfig[Math.min(currentTabIndex, effectiveTabConfig.length - 1)] ?? effectiveTabConfig[0];
+
+  // Clamp tab index when switching to 1-on-1 (Contenido tab removed)
+  useEffect(() => {
+    if (currentTabIndex >= effectiveTabConfig.length) {
+      setCurrentTabIndex(Math.max(0, effectiveTabConfig.length - 1));
+    }
+  }, [effectiveTabConfig.length, currentTabIndex]);
+
+  const isConfigTabActive = effectiveTabConfig[currentTabIndex]?.key === 'configuracion';
+  // Sync inline config form from program when on Ajustes tab
+  useEffect(() => {
+    if (!isConfigTabActive || !program) return;
+    setProgramNameValue(program.title || '');
+    setPriceValue(program.price != null ? String(program.price) : '');
+    let dur = 1;
+    if (program.duration) {
+      const m = typeof program.duration === 'string' ? program.duration.match(/^(\d+)/) : null;
+      dur = m ? parseInt(m[1], 10) : (typeof program.duration === 'number' ? program.duration : 1);
+    }
+    setDurationValue(dur);
+    setFreeTrialActive(!!program.free_trial?.active);
+    setFreeTrialDurationDays(String(program.free_trial?.duration_days ?? 0));
+    setStreakEnabled(!!program.programSettings?.streakEnabled);
+    setMinimumSessionsPerWeek(program.programSettings?.minimumSessionsPerWeek ?? 0);
+    setWeightSuggestionsEnabled(!!program.weight_suggestions);
+    setSelectedLibraryIds(new Set(program.availableLibraries || []));
+  }, [isConfigTabActive, program?.id, program?.title, program?.price, program?.duration, program?.free_trial, program?.programSettings, program?.weight_suggestions, program?.availableLibraries]);
+
+  // Load libraries list when on Ajustes tab (for inline libraries section)
+  useEffect(() => {
+    if (!isConfigTabActive || !program || !user) return;
+    libraryService.getLibrariesByCreator(user.uid).then((libs) => setAvailableLibraries(libs || [])).catch((err) => console.error(err));
+  }, [isConfigTabActive, program?.id, user?.uid]);
+
+  const isLabTabActive = currentTab?.key === 'lab';
+  const { data: analytics, isLoading: isLoadingAnalytics, error: analyticsQueryError } = useQuery({
+    queryKey: queryKeys.analytics.program(programId),
+    queryFn: async () => {
+      if (!programId) return null;
+      return await programAnalyticsService.getProgramAnalytics(programId);
+    },
+    enabled: !!programId && isLabTabActive,
+    ...cacheConfig.analytics,
+  });
+  const analyticsError = analyticsQueryError ? 'Error al cargar las estadísticas' : null;
+
+  // Load plans for content source selector (low-ticket only)
+  const isLowTicket = program?.deliveryType !== 'one_on_one';
+  const { data: plans = [] } = useQuery({
+    queryKey: ['plans', user?.uid],
+    queryFn: async () => (user ? plansService.getPlansByCreator(user.uid) : []),
+    enabled: !!user && !!programId && !!isLowTicket,
+  });
+  const [contentPlanId, setContentPlanId] = useState(null);
+  const [isSavingContentPlan, setIsSavingContentPlan] = useState(false);
+  useEffect(() => {
+    setContentPlanId(program?.content_plan_id ?? null);
+  }, [program?.content_plan_id]);
+  const handleContentPlanChange = async (planId) => {
+    if (!program?.id) return;
+    setIsSavingContentPlan(true);
+    try {
+      await programService.updateProgram(program.id, { content_plan_id: planId || null });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, content_plan_id: planId || null }));
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+      setContentPlanId(planId || null);
+    } catch (err) {
+      alert(err.message || 'Error al actualizar');
+    } finally {
+      setIsSavingContentPlan(false);
+    }
+  };
+
   // Load modules with React Query (use counts for initial load)
   const { data: modulesData = [], isLoading: isLoadingModules } = useModules(programId, {
     isActive: isActivelyEditing,
@@ -1263,8 +1315,8 @@ const ProgramDetailScreen = () => {
     if (index === currentTabIndex) return;
     
     // Clear selections when switching away from contenido tab
-    const newTab = TAB_CONFIG[index];
-    const currentTab = TAB_CONFIG[currentTabIndex];
+    const newTab = effectiveTabConfig[index];
+    const currentTab = effectiveTabConfig[currentTabIndex];
     if (currentTab?.key === 'contenido' && newTab?.key !== 'contenido') {
       setSelectedModule(null);
       setSelectedSession(null);
@@ -1273,89 +1325,8 @@ const ProgramDetailScreen = () => {
       setIsSessionEditMode(false);
     }
     
-    // Update state immediately for instant indicator movement
     setCurrentTabIndex(index);
-    
-    // Scroll the content
-    if (tabsScrollRef.current) {
-      isScrollingProgrammatically.current = true;
-      const containerWidth = tabsScrollRef.current.offsetWidth;
-      tabsScrollRef.current.scrollTo({ 
-        left: index * containerWidth, 
-        behavior: 'smooth' 
-      });
-      // Reset flag after scroll completes
-      setTimeout(() => {
-        isScrollingProgrammatically.current = false;
-      }, 300);
-    }
   }, [isModuleEditMode, isSessionEditMode, isExerciseEditMode, currentTabIndex]);
-
-  // Throttled scroll handler using requestAnimationFrame for smooth performance
-  const handleTabScroll = useCallback((e) => {
-    // Prevent tab switching when in edit mode
-    if (isModuleEditMode || isSessionEditMode || isExerciseEditMode) {
-      // Reset scroll position to prevent scrolling
-      if (tabsScrollRef.current) {
-        const containerWidth = tabsScrollRef.current.offsetWidth;
-        tabsScrollRef.current.scrollTo({
-          left: currentTabIndex * containerWidth,
-          behavior: 'auto'
-        });
-      }
-      return;
-    }
-    
-    // Ignore scroll events during programmatic scrolling
-    if (isScrollingProgrammatically.current) {
-      return;
-    }
-    
-    // Use requestAnimationFrame to throttle scroll handling
-    requestAnimationFrame(() => {
-      const containerWidth = e.target.offsetWidth;
-      const scrollLeft = e.target.scrollLeft;
-      const newIndex = Math.round(scrollLeft / containerWidth);
-      
-      if (newIndex !== currentTabIndex && newIndex >= 0 && newIndex < TAB_CONFIG.length) {
-        // Use startTransition to batch non-urgent state updates
-        startTransition(() => {
-          // Clear selections when switching away from contenido tab
-          const newTab = TAB_CONFIG[newIndex];
-          const currentTab = TAB_CONFIG[currentTabIndex];
-          if (currentTab?.key === 'contenido' && newTab?.key !== 'contenido') {
-            setSelectedModule(null);
-            setSelectedSession(null);
-            setSessions([]);
-            setExercises([]);
-            setIsSessionEditMode(false);
-          }
-          setCurrentTabIndex(newIndex);
-        });
-      }
-    });
-  }, [isModuleEditMode, isSessionEditMode, isExerciseEditMode, currentTabIndex]);
-
-  const handleTabWheel = (e) => {
-    // Prevent scrolling via mouse wheel when in edit mode
-    if (isModuleEditMode || isSessionEditMode || isExerciseEditMode) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  };
-
-  // Set up passive scroll listener for better performance (after handleTabScroll is defined)
-  useEffect(() => {
-    const element = tabsScrollRef.current;
-    if (!element) return;
-    
-    // Use passive listener for better scroll performance
-    element.addEventListener('scroll', handleTabScroll, { passive: true });
-    
-    return () => {
-      element.removeEventListener('scroll', handleTabScroll);
-    };
-  }, [handleTabScroll]);
 
   const handleStatusPillClick = () => {
     setSelectedStatus(program.status);
@@ -1901,6 +1872,130 @@ const ProgramDetailScreen = () => {
     }
   };
 
+  /* Inline save helpers (no modals) */
+  const saveStatus = async (status) => {
+    if (!program || status === program.status) return;
+    try {
+      setIsUpdatingStatus(true);
+      await programService.updateProgram(program.id, { status });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, status }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar el estado');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const saveTitle = async (title) => {
+    if (!program || title.trim() === (program.title || '')) return;
+    try {
+      setIsUpdatingProgram(true);
+      const t = title.trim();
+      await programService.updateProgram(program.id, { title: t });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, title: t }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar el nombre');
+    } finally {
+      setIsUpdatingProgram(false);
+    }
+  };
+
+  const savePrice = async (value) => {
+    if (!program) return;
+    const numericPrice = value === '' ? null : parseInt(String(value).replace(/\D/g, ''), 10);
+    if (numericPrice !== null && numericPrice < 2000) return;
+    if (numericPrice === program.price) return;
+    try {
+      setIsUpdatingPrice(true);
+      await programService.updateProgram(program.id, { price: numericPrice });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, price: numericPrice }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar el precio');
+    } finally {
+      setIsUpdatingPrice(false);
+    }
+  };
+
+  const saveDuration = async (weeks) => {
+    if (!program || !isOneTimePayment()) return;
+    const w = Math.max(1, parseInt(weeks, 10) || 1);
+    const durationString = `${w} semanas`;
+    if (durationString === (typeof program.duration === 'string' ? program.duration : program.duration ? `${program.duration} semanas` : null)) return;
+    try {
+      setIsUpdatingDuration(true);
+      await programService.updateProgram(program.id, { duration: durationString });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, duration: durationString }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar la duración');
+    } finally {
+      setIsUpdatingDuration(false);
+    }
+  };
+
+  const saveFreeTrial = async (active, durationDays) => {
+    if (!program) return;
+    const days = Math.max(0, parseInt(durationDays, 10) || 0);
+    const free_trial = { active: !!active, duration_days: days };
+    try {
+      setIsUpdatingFreeTrial(true);
+      await programService.updateProgram(program.id, { free_trial });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, free_trial }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar la prueba gratis');
+    } finally {
+      setIsUpdatingFreeTrial(false);
+    }
+  };
+
+  const saveStreak = async (enabled, minSessionsPerWeek) => {
+    if (!program) return;
+    const programSettings = { ...(program.programSettings || {}), streakEnabled: !!enabled, minimumSessionsPerWeek: Math.max(0, parseInt(minSessionsPerWeek, 10) || 0) };
+    try {
+      setIsUpdatingStreak(true);
+      await programService.updateProgram(program.id, { programSettings });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, programSettings }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar la racha');
+    } finally {
+      setIsUpdatingStreak(false);
+    }
+  };
+
+  const saveWeightSuggestions = async (enabled) => {
+    if (!program) return;
+    try {
+      setIsUpdatingWeightSuggestions(true);
+      await programService.updateProgram(program.id, { weight_suggestions: !!enabled });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, weight_suggestions: !!enabled }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar sugerencias de peso');
+    } finally {
+      setIsUpdatingWeightSuggestions(false);
+    }
+  };
+
+  const saveAuxiliaryLibraries = async (libraryIds) => {
+    if (!program) return;
+    const ids = Array.from(libraryIds || []).filter(Boolean);
+    try {
+      setIsUpdatingAuxiliaryLibraries(true);
+      await programService.updateProgram(program.id, { availableLibraries: ids });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, availableLibraries: ids }));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar bibliotecas');
+    } finally {
+      setIsUpdatingAuxiliaryLibraries(false);
+    }
+  };
+
   const handleAnunciosPillClick = () => {
     if (!program) return;
     const tutorials = program.tutorials || {};
@@ -2050,6 +2145,58 @@ const ProgramDetailScreen = () => {
     } catch (err) {
       console.error('Error deleting video:', err);
       alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const handleAnuncioVideoUploadForScreen = async (event, screenKey, isReplacing = false, videoIndex = 0) => {
+    const file = event.target.files[0];
+    if (!file || !program) return;
+    if (!file.type.startsWith('video/')) {
+      alert('Por favor, selecciona un archivo de video válido');
+      return;
+    }
+    try {
+      setIsUploadingAnuncioVideo(true);
+      setAnuncioVideoUploadProgress(0);
+      const videoURL = await programService.uploadTutorialVideo(program.id, screenKey, file, (p) => setAnuncioVideoUploadProgress(Math.round(p)));
+      const tutorials = { ...(program.tutorials || {}) };
+      if (!tutorials[screenKey]) tutorials[screenKey] = [];
+      if (isReplacing && tutorials[screenKey][videoIndex]) {
+        try {
+          await programService.deleteTutorialVideo(program.id, screenKey, tutorials[screenKey][videoIndex]);
+        } catch (e) { /* ignore */ }
+        tutorials[screenKey][videoIndex] = videoURL;
+      } else {
+        tutorials[screenKey].push(videoURL);
+      }
+      await programService.updateProgram(program.id, { tutorials });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
+      setAnuncioVideoUploadProgress(100);
+    } catch (err) {
+      console.error('Error uploading video:', err);
+      alert(err?.message || 'Error al subir el video');
+    } finally {
+      setIsUploadingAnuncioVideo(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleAnuncioVideoDeleteForScreen = async (screenKey, videoIndex) => {
+    if (!program) return;
+    const videos = program.tutorials?.[screenKey] || [];
+    if (videoIndex >= videos.length) return;
+    if (!window.confirm('¿Eliminar este video?')) return;
+    try {
+      const videoURL = videos[videoIndex];
+      await programService.deleteTutorialVideo(program.id, screenKey, videoURL);
+      const tutorials = { ...(program.tutorials || {}) };
+      tutorials[screenKey] = tutorials[screenKey].filter((_, i) => i !== videoIndex);
+      if (tutorials[screenKey].length === 0) delete tutorials[screenKey];
+      await programService.updateProgram(program.id, { tutorials });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
+    } catch (err) {
+      console.error('Error deleting video:', err);
+      alert('Error al eliminar el video');
     }
   };
 
@@ -5635,12 +5782,13 @@ const ProgramDetailScreen = () => {
       return null;
     }
 
-    const currentTab = TAB_CONFIG[currentTabIndex];
+    const currentTab = effectiveTabConfig[currentTabIndex];
 
     switch (currentTab.key) {
       case 'lab':
         return (
           <div className="program-tab-content">
+            <h1 className="program-page-title">Resumen</h1>
             <div className="lab-content">
               {isLoadingAnalytics ? (
                 <div className="lab-loading">
@@ -5652,10 +5800,9 @@ const ProgramDetailScreen = () => {
                 </div>
               ) : analytics ? (
                 <>
-                  {/* Overview Section */}
-                  <div className="lab-section lab-section-overview">
-                    <div className="lab-section-header">
-                      <h2 className="lab-section-title">Resumen General</h2>
+                  <div className="program-section lab-section lab-section-overview">
+                    <div className="program-section__header">
+                      <h2 className="program-section__title">Resumen general</h2>
                     </div>
                     <div className="lab-metrics-grid lab-metrics-grid-overview">
                       <MetricCard 
@@ -5685,10 +5832,9 @@ const ProgramDetailScreen = () => {
                     </div>
                   </div>
 
-                  {/* Enrollment Details */}
-                  <div className="lab-section">
-                    <div className="lab-section-header">
-                      <h2 className="lab-section-title">Inscripciones</h2>
+                  <div className="program-section lab-section">
+                    <div className="program-section__header">
+                      <h2 className="program-section__title">Inscripciones</h2>
                     </div>
                     <div className="lab-metrics-grid">
                       <MetricCard 
@@ -5725,10 +5871,9 @@ const ProgramDetailScreen = () => {
                     </div>
                   </div>
 
-                  {/* Engagement Details */}
-                  <div className="lab-section">
-                    <div className="lab-section-header">
-                      <h2 className="lab-section-title">Compromiso</h2>
+                  <div className="program-section lab-section">
+                    <div className="program-section__header">
+                      <h2 className="program-section__title">Compromiso</h2>
                     </div>
                     <div className="lab-metrics-grid">
                       <MetricCard 
@@ -5760,10 +5905,9 @@ const ProgramDetailScreen = () => {
                     </div>
                   </div>
 
-                  {/* User Progression */}
-                  <div className="lab-section">
-                    <div className="lab-section-header">
-                      <h2 className="lab-section-title">Progresión de Usuarios</h2>
+                  <div className="program-section lab-section">
+                    <div className="program-section__header">
+                      <h2 className="program-section__title">Progresión de usuarios</h2>
                     </div>
                     <div className="lab-metrics-grid">
                       <MetricCard 
@@ -5809,245 +5953,269 @@ const ProgramDetailScreen = () => {
             </div>
           </div>
         );
-      case 'configuracion':
+      case 'configuracion': {
+        const tutorialsCount = !program.tutorials ? 0 : Object.values(program.tutorials).reduce((sum, videos) => sum + (Array.isArray(videos) ? videos.length : 0), 0);
         return (
           <div className="program-tab-content">
-            <div className="program-config-section">
-              <div className="program-config-section-header">
-                <h2 className="program-config-section-title">General</h2>
+            <h1 className="program-page-title">Ajustes</h1>
+            {program.deliveryType === 'one_on_one' && (
+              <div className="program-section" style={{ marginBottom: 24 }}>
+                <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
+                  Este programa es un contenedor general (1-on-1). Los cambios aquí se aplican por referencia a todos los clientes. El contenido (semanas y sesiones) se asigna en la ficha de cada cliente.
+                </p>
               </div>
-              <div className="program-config-grid">
-                  <div 
-                    className="program-config-item program-config-item-clickable"
-                    onClick={handleIntroVideoCardClick}
-                  >
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Video Intro</span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="program-config-item-value">
-                      {program.video_intro_url ? 'Sí' : 'No'}
-                    </span>
-                  </div>
-                  <div 
-                    className="program-config-item program-config-item-clickable"
-                    onClick={handlePricePillClick}
-                  >
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Precio</span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="program-config-item-value">
-                      {program.price ? `$${program.price}` : 'Gratis'}
-                    </span>
-                  </div>
-                  <div 
-                    className="program-config-item program-config-item-clickable"
-                    onClick={handleFreeTrialPillClick}
-                  >
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Prueba Gratis</span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="program-config-item-value">
-                      {program.free_trial?.active ? 'Activa' : 'Inactiva'}
-                    </span>
-                  </div>
-                  <div className="program-config-item">
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Disciplina</span>
-                    </div>
-                    <span className="program-config-item-value">
-                      {program.discipline || 'No especificada'}
-                    </span>
-                  </div>
-                  <div className="program-config-item">
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Tipo</span>
-                    </div>
-                    <span className="program-config-item-value">
-                      {getAccessTypeLabel(program.access_duration)}
-                    </span>
-                  </div>
-                  <div 
-                    className={`program-config-item ${isOneTimePayment() ? 'program-config-item-clickable' : ''}`}
-                    onClick={isOneTimePayment() ? handleDurationPillClick : undefined}
-                  >
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Duración</span>
-                      {isOneTimePayment() && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                    <span className="program-config-item-value">
-                      {isOneTimePayment() ? getDurationLabel(program.duration) : 'Mensual'}
-                    </span>
-                  </div>
-                  <div 
-                    className={`program-config-item program-config-item-clickable ${program.status === 'draft' ? 'program-config-item-draft' : program.status === 'published' ? 'program-config-item-published' : ''}`}
-                    onClick={handleStatusPillClick}
-                  >
-                    <div className="program-config-item-header">
-                      <span className="program-config-item-label">Estado</span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="program-config-item-value">
-                      {getStatusLabel(program.status)}
-                    </span>
-                  </div>
+            )}
 
-                {/* Description Card */}
-                <div 
-                  className={`program-config-item program-config-item-full ${!isEditingDescription ? 'program-config-item-clickable' : ''}`}
-                  onClick={!isEditingDescription ? () => {
-                    setIsEditingDescription(true);
-                    setDescriptionValue(program.description || '');
-                  } : undefined}
-                >
-                  <div className="program-config-item-header">
-                    <span className="program-config-item-label">Descripción</span>
-                    {!isEditingDescription && (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+            {/* Contenido visual: image, video, tutorials cards */}
+            <div className="program-section">
+              <div className="program-section__header">
+                <h2 className="program-section__title">Contenido visual</h2>
+              </div>
+              <div className="program-visual-cards">
+                {/* Image card – edit inline */}
+                <div className="program-visual-card program-visual-card--editable" onClick={(e) => e.stopPropagation()}>
+                  <div className="program-visual-card__label">Imagen del programa</div>
+                  <div className="program-visual-card__media">
+                    {program.image_url ? (
+                      <>
+                        <img src={program.image_url} alt="Programa" />
+                        <div className="program-visual-card__overlay">
+                          <label className="program-visual-card__btn program-visual-card__btn--change">
+                            <input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploadingImage} style={{ display: 'none' }} />
+                            {isUploadingImage ? `Subiendo ${imageUploadProgress}%` : 'Cambiar'}
+                          </label>
+                          {isUploadingImage && (
+                            <div className="program-visual-card__progress">
+                              <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div>
+                            </div>
+                          )}
+                          <button type="button" className="program-visual-card__btn program-visual-card__btn--delete" onClick={handleImageDelete} disabled={isUploadingImage}>Eliminar</button>
+                        </div>
+                      </>
+                    ) : (
+                      <label className="program-visual-card__placeholder program-visual-card__placeholder--clickable">
+                        <input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploadingImage} style={{ display: 'none' }} />
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span>{isUploadingImage ? `Subiendo ${imageUploadProgress}%` : 'Subir imagen'}</span>
+                        {isUploadingImage && <div className="program-visual-card__progress"><div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div></div>}
+                      </label>
                     )}
                   </div>
-                  <div className="program-config-item-content">
-                    {isEditingDescription ? (
-                      <div className="program-config-description-edit">
-                        <textarea
-                          className="program-config-description-textarea"
-                          value={descriptionValue}
-                          onChange={(e) => setDescriptionValue(e.target.value)}
-                          placeholder="Escribe la descripción del programa..."
-                          rows={6}
-                        />
-                        <div className="program-config-description-actions">
-                          <Button
-                            title={isUpdatingDescription ? 'Guardando...' : 'Guardar'}
-                            onClick={async () => {
-                              if (!program) return;
-                              
-                              try {
-                                setIsUpdatingDescription(true);
-                                await programService.updateProgram(program.id, { description: descriptionValue });
-                                
-                                // Update React Query cache
-                                queryClient.setQueryData(
-                                  queryKeys.programs.detail(program.id),
-                                  (oldData) => ({
-                                    ...oldData,
-                                    description: descriptionValue
-                                  })
-                                );
-                                
-                                setIsEditingDescription(false);
-                              } catch (err) {
-                                console.error('Error updating description:', err);
-                                alert('Error al actualizar la descripción');
-                              } finally {
-                                setIsUpdatingDescription(false);
-                              }
-                            }}
-                            disabled={isUpdatingDescription}
-                            loading={isUpdatingDescription}
-                          />
+                </div>
+
+                {/* Video intro card – edit inline */}
+                <div className="program-visual-card program-visual-card--editable" onClick={(e) => e.stopPropagation()}>
+                  <div className="program-visual-card__label">Video intro</div>
+                  <div className="program-visual-card__media">
+                    {program.video_intro_url ? (
+                      <>
+                        <video src={program.video_intro_url} muted playsInline />
+                        <div className="program-visual-card__overlay">
+                          <label className="program-visual-card__btn program-visual-card__btn--change">
+                            <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} style={{ display: 'none' }} />
+                            {isUploadingIntroVideo ? `Subiendo ${introVideoUploadProgress}%` : 'Cambiar'}
+                          </label>
+                          {isUploadingIntroVideo && (
+                            <div className="program-visual-card__progress">
+                              <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${introVideoUploadProgress}%` }} /></div>
+                            </div>
+                          )}
+                          <button type="button" className="program-visual-card__btn program-visual-card__btn--delete" onClick={handleIntroVideoDelete} disabled={isUploadingIntroVideo}>Eliminar</button>
                         </div>
-                      </div>
+                      </>
                     ) : (
-                      <p className="program-config-description">
-                        {program.description || 'Sin descripción'}
-                      </p>
+                      <label className="program-visual-card__placeholder program-visual-card__placeholder--clickable">
+                        <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} style={{ display: 'none' }} />
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 10l4.553-2.724c.281-.169.628-.169.909 0 .281.169.538.52.538.842v7.764c0 .322-.257.673-.538.842-.281.169-.628.169-.909 0L15 14M5 18h8c.53 0 1.039-.211 1.414-.586C14.789 17.039 15 16.53 15 16V8c0-.53-.211-1.039-.586-1.414C14.039 6.211 13.53 6 13 6H5c-.53 0-1.039.211-1.414.586C3.211 6.961 3 7.47 3 8v8c0 .53.211 1.039.586 1.414C3.961 17.789 4.47 18 5 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span>{isUploadingIntroVideo ? `Subiendo ${introVideoUploadProgress}%` : 'Subir video'}</span>
+                        {isUploadingIntroVideo && <div className="program-visual-card__progress"><div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${introVideoUploadProgress}%` }} /></div></div>}
+                      </label>
                     )}
+                  </div>
+                </div>
+
+                {/* Tutorials card – edit inline */}
+                <div className="program-visual-card program-visual-card--editable program-visual-card--tutorials" onClick={(e) => e.stopPropagation()}>
+                  <div className="program-visual-card__label">Tutoriales</div>
+                  <div className="program-visual-card__tutorials-body">
+                    {TUTORIAL_SCREENS.map(({ key: screenKey, label }) => {
+                      const videos = program.tutorials?.[screenKey] || [];
+                      return (
+                        <div key={screenKey} className="program-visual-card__tutorial-row">
+                          <span className="program-visual-card__tutorial-label">{label}</span>
+                          <div className="program-visual-card__tutorial-actions">
+                            <label className="program-visual-card__btn program-visual-card__btn--small">
+                              <input type="file" accept="video/*" onChange={(e) => handleAnuncioVideoUploadForScreen(e, screenKey, false)} disabled={isUploadingAnuncioVideo} style={{ display: 'none' }} />
+                              {isUploadingAnuncioVideo ? 'Subiendo...' : '+'}
+                            </label>
+                            {videos.map((url, idx) => (
+                              <span key={idx} className="program-visual-card__tutorial-video-pill">
+                                <span>Video {idx + 1}</span>
+                                <button type="button" className="program-visual-card__btn program-visual-card__btn--small program-visual-card__btn--delete" onClick={() => handleAnuncioVideoDeleteForScreen(screenKey, idx)} disabled={isUploadingAnuncioVideo}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Ejecución Section */}
-            <div className="program-config-section">
-              <div className="program-config-section-header">
-                <h2 className="program-config-section-title">Ejecución</h2>
+            {/* Información básica – edit inline */}
+            <div className="program-section">
+              <div className="program-section__header">
+                <h2 className="program-section__title">Información básica</h2>
               </div>
-              <div className="program-config-grid">
-                <div 
-                  className="program-config-item program-config-item-clickable"
-                  onClick={handleStreakPillClick}
-                >
-                  <div className="program-config-item-header">
-                    <span className="program-config-item-label">Racha</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+              <div className="program-section__content program-config-inline">
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Nombre</span>
+                  <div className="program-config-inline-field">
+                    <input type="text" className="program-config-inline-input" value={programNameValue} onChange={(e) => setProgramNameValue(e.target.value)} placeholder="Nombre del programa" style={{ minWidth: 200 }} />
+                    <button type="button" className="program-config-inline-btn" onClick={() => saveTitle(programNameValue)} disabled={isUpdatingProgram || !programNameValue.trim() || programNameValue.trim() === (program?.title || '')}>
+                      {isUpdatingProgram ? 'Guardando...' : 'Guardar'}
+                    </button>
                   </div>
-                  <span className="program-config-item-value">
-                    {program.programSettings?.streakEnabled ? 'Activa' : 'Inactiva'}
-                  </span>
                 </div>
-                <div 
-                  className="program-config-item program-config-item-clickable"
-                  onClick={handleWeightSuggestionsPillClick}
-                >
-                  <div className="program-config-item-header">
-                    <span className="program-config-item-label">Sugerencias de Peso</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <span className="program-config-item-value">
-                    {program.weight_suggestions ? 'Activa' : 'Inactiva'}
-                  </span>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Disciplina</span>
+                  <span className="program-config-item-value">{program.discipline || 'No especificada'}</span>
                 </div>
-                <div 
-                  className="program-config-item program-config-item-clickable"
-                  onClick={handleAuxiliaryLibrariesPillClick}
-                >
-                  <div className="program-config-item-header">
-                    <span className="program-config-item-label">Bibliotecas Auxiliares</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <span className="program-config-item-value">
-                    {program.availableLibraries && program.availableLibraries.length > 0 
-                      ? `${program.availableLibraries.length}` 
-                      : '0'}
-                  </span>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Tipo</span>
+                  <span className="program-config-item-value">{getAccessTypeLabel(program.access_duration)}</span>
                 </div>
-                <div 
-                  className="program-config-item program-config-item-clickable"
-                  onClick={handleAnunciosPillClick}
-                >
-                  <div className="program-config-item-header">
-                    <span className="program-config-item-label">Anuncios</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Estado</span>
+                  <div className="program-config-inline-field program-config-status-btns">
+                    <button type="button" className={`program-config-status-btn ${program.status === 'draft' ? 'program-config-status-btn--active' : ''} program-config-status-btn--draft`} onClick={() => saveStatus('draft')} disabled={isUpdatingStatus || program.status === 'draft'}>Borrador</button>
+                    <button type="button" className={`program-config-status-btn ${program.status === 'published' ? 'program-config-status-btn--active' : ''} program-config-status-btn--published`} onClick={() => saveStatus('published')} disabled={isUpdatingStatus || program.status === 'published'}>Publicado</button>
                   </div>
-                  <span className="program-config-item-value">
-                    {(() => {
-                      if (!program.tutorials) return '0';
-                      const totalVideos = Object.values(program.tutorials).reduce((sum, videos) => {
-                        return sum + (Array.isArray(videos) ? videos.length : 0);
-                      }, 0);
-                      return totalVideos > 0 ? `${totalVideos}` : '0';
-                    })()}
-                  </span>
+                </div>
+                <div className="program-config-inline-row program-config-inline-row--full">
+                  <span className="program-config-item-label">Descripción</span>
+                  {isEditingDescription ? (
+                    <div className="program-config-description-edit">
+                      <textarea className="program-config-description-textarea" value={descriptionValue} onChange={(e) => setDescriptionValue(e.target.value)} placeholder="Escribe la descripción del programa..." rows={5} />
+                      <div className="program-config-description-actions">
+                        <Button title={isUpdatingDescription ? 'Guardando...' : 'Guardar'} onClick={async () => { if (!program) return; try { setIsUpdatingDescription(true); await programService.updateProgram(program.id, { description: descriptionValue }); queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, description: descriptionValue })); setIsEditingDescription(false); } catch (err) { console.error(err); alert('Error al actualizar la descripción'); } finally { setIsUpdatingDescription(false); } }} disabled={isUpdatingDescription} loading={isUpdatingDescription} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="program-config-inline-field">
+                      <p className="program-config-description">{program.description || 'Sin descripción'}</p>
+                      <button type="button" className="program-config-inline-btn" onClick={() => { setIsEditingDescription(true); setDescriptionValue(program.description || ''); }}>Editar</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Precio y duración – edit inline */}
+            <div className="program-section">
+              <div className="program-section__header">
+                <h2 className="program-section__title">Precio y duración</h2>
+              </div>
+              <div className="program-section__content program-config-inline">
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Precio</span>
+                  <div className="program-config-inline-field">
+                    <input type="text" className="program-config-inline-input" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Gratis o monto" style={{ maxWidth: 140 }} />
+                    <span className="program-config-inline-hint">$ (mín. 2000)</span>
+                    <button type="button" className="program-config-inline-btn" onClick={() => savePrice(priceValue)} disabled={isUpdatingPrice || (priceValue !== '' && parseInt(priceValue, 10) < 2000)}>{isUpdatingPrice ? 'Guardando...' : 'Guardar'}</button>
+                  </div>
+                </div>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Prueba gratis</span>
+                  <div className="program-config-inline-field program-config-inline-toggle-row">
+                    <label className="program-config-toggle-wrap">
+                      <input type="checkbox" checked={freeTrialActive} onChange={(e) => setFreeTrialActive(e.target.checked)} />
+                      <span className="program-config-toggle-slider" />
+                    </label>
+                    {freeTrialActive && (
+                      <>
+                        <input type="number" min={0} className="program-config-inline-input" value={freeTrialDurationDays} onChange={(e) => setFreeTrialDurationDays(e.target.value.replace(/\D/g, ''))} style={{ width: 56 }} />
+                        <span className="program-config-inline-hint">días</span>
+                      </>
+                    )}
+                    <button type="button" className="program-config-inline-btn" onClick={() => saveFreeTrial(freeTrialActive, freeTrialDurationDays)} disabled={isUpdatingFreeTrial}>{isUpdatingFreeTrial ? 'Guardando...' : 'Guardar'}</button>
+                  </div>
+                </div>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Duración</span>
+                  {isOneTimePayment() ? (
+                    <div className="program-config-inline-field">
+                      <input type="number" min={1} className="program-config-inline-input" value={durationValue} onChange={(e) => setDurationValue(Math.max(1, parseInt(e.target.value, 10) || 1))} style={{ width: 64 }} />
+                      <span className="program-config-inline-hint">semanas</span>
+                      <button type="button" className="program-config-inline-btn" onClick={() => saveDuration(durationValue)} disabled={isUpdatingDuration}>{isUpdatingDuration ? 'Guardando...' : 'Guardar'}</button>
+                    </div>
+                  ) : (
+                    <span className="program-config-item-value">Mensual</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Ejecución – edit inline */}
+            <div className="program-section">
+              <div className="program-section__header">
+                <h2 className="program-section__title">Ejecución</h2>
+              </div>
+              <div className="program-section__content program-config-inline">
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Racha</span>
+                  <div className="program-config-inline-field program-config-inline-toggle-row">
+                    <label className="program-config-toggle-wrap">
+                      <input type="checkbox" checked={streakEnabled} onChange={(e) => setStreakEnabled(e.target.checked)} />
+                      <span className="program-config-toggle-slider" />
+                    </label>
+                    {streakEnabled && (
+                      <>
+                        <input type="number" min={0} className="program-config-inline-input" value={minimumSessionsPerWeek} onChange={(e) => setMinimumSessionsPerWeek(Math.max(0, parseInt(e.target.value, 10) || 0))} style={{ width: 56 }} />
+                        <span className="program-config-inline-hint">sesiones/semana</span>
+                      </>
+                    )}
+                    <button type="button" className="program-config-inline-btn" onClick={() => saveStreak(streakEnabled, minimumSessionsPerWeek)} disabled={isUpdatingStreak}>{isUpdatingStreak ? 'Guardando...' : 'Guardar'}</button>
+                  </div>
+                </div>
+                <div className="program-config-inline-row">
+                  <span className="program-config-item-label">Sugerencias de peso</span>
+                  <div className="program-config-inline-field program-config-inline-toggle-row">
+                    <label className="program-config-toggle-wrap">
+                      <input type="checkbox" checked={weightSuggestionsEnabled} onChange={(e) => setWeightSuggestionsEnabled(e.target.checked)} />
+                      <span className="program-config-toggle-slider" />
+                    </label>
+                    <button type="button" className="program-config-inline-btn" onClick={() => saveWeightSuggestions(weightSuggestionsEnabled)} disabled={isUpdatingWeightSuggestions}>{isUpdatingWeightSuggestions ? 'Guardando...' : 'Guardar'}</button>
+                  </div>
+                </div>
+                <div className="program-config-inline-row program-config-inline-row--full">
+                  <span className="program-config-item-label">Bibliotecas auxiliares</span>
+                  <div className="program-config-inline-field program-config-libraries-inline">
+                    {isLoadingLibraries ? (
+                      <p className="program-config-inline-hint">Cargando bibliotecas...</p>
+                    ) : availableLibraries.length === 0 ? (
+                      <p className="program-config-inline-hint">No tienes bibliotecas. Crea una desde Ejercicios.</p>
+                    ) : (
+                      <>
+                        <div className="program-config-libraries-checkboxes">
+                          {availableLibraries.map((lib) => (
+                            <label key={lib.id} className="program-config-library-chip">
+                              <input type="checkbox" checked={selectedLibraryIds.has(lib.id)} onChange={() => handleToggleLibrary(lib.id)} />
+                              <span>{lib.title || `Biblioteca ${lib.id?.slice(0, 8)}`}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <button type="button" className="program-config-inline-btn" onClick={() => saveAuxiliaryLibraries(selectedLibraryIds)} disabled={isUpdatingAuxiliaryLibraries}>{isUpdatingAuxiliaryLibraries ? 'Guardando...' : 'Guardar'}</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         );
+      }
       case 'contenido':
         // If a session is selected, show exercises view
         if (selectedSession && selectedModule) {
@@ -6056,6 +6224,7 @@ const ProgramDetailScreen = () => {
               <div className="exercises-content">
                 <div className="exercises-header">
                   <h2 className="page-section-title">Ejercicios</h2>
+                  {!contentPlanId && (
                   <div className="exercises-actions">
                   <button 
                     className={`exercise-action-pill ${isExerciseEditMode ? 'exercise-action-pill-disabled' : ''}`}
@@ -6090,6 +6259,7 @@ const ProgramDetailScreen = () => {
                     <span className="exercise-action-text">{isExerciseEditMode ? 'Guardar' : 'Editar'}</span>
                   </button>
                   </div>
+                  )}
                 </div>
                 
                 {/* Exercises List */}
@@ -6200,6 +6370,7 @@ const ProgramDetailScreen = () => {
               <div className="sessions-content">
                 <div className="sessions-header">
                   <h2 className="page-section-title">Sesiones</h2>
+                  {!contentPlanId && (
                   <div className="sessions-actions">
                   <button 
                     className={`session-action-pill ${isSessionEditMode ? 'session-action-pill-disabled' : ''}`}
@@ -6215,6 +6386,7 @@ const ProgramDetailScreen = () => {
                     <span className="session-action-text">{isSessionEditMode ? 'Guardar' : 'Editar'}</span>
                   </button>
                 </div>
+                  )}
               </div>
                 
                 {/* Sessions List */}
@@ -6300,26 +6472,55 @@ const ProgramDetailScreen = () => {
         // Otherwise, show modules list
         return (
           <div className="program-tab-content">
-            <div className="modules-content">
-              <div className="modules-header">
-                <h2 className="page-section-title">Módulos</h2>
+            <h1 className="program-page-title">Contenido</h1>
+            {isLowTicket && (
+              <div className="program-content-source-bar" style={{ marginBottom: 24, padding: '12px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 12 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, marginRight: 12 }}>Fuente del contenido:</span>
+                <select
+                  value={contentPlanId ?? ''}
+                  onChange={(e) => handleContentPlanChange(e.target.value || null)}
+                  disabled={isSavingContentPlan}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.9)',
+                    fontSize: 14,
+                    minWidth: 220,
+                    marginRight: 12,
+                  }}
+                >
+                  <option value="">Crear contenido aquí (inline)</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.title || `Plan ${p.id?.slice(0, 8)}`}</option>
+                  ))}
+                </select>
+                {isSavingContentPlan && <span style={{ fontSize: 13, opacity: 0.7 }}>Guardando...</span>}
+                <span style={{ display: 'block', fontSize: 12, opacity: 0.6, marginTop: 8 }}>
+                  {contentPlanId ? 'El contenido viene del plan seleccionado.' : 'Crea módulos, sesiones y ejercicios directamente en este programa.'}
+                </span>
+              </div>
+            )}
+            <div className="program-section">
+              <div className="program-section__header program-section__header--row">
+                <h2 className="program-section__title">Módulos</h2>
+                {!contentPlanId && (
                 <div className="modules-actions">
-                  <button 
+                  <button
                     className={`module-action-pill ${isModuleEditMode ? 'module-action-pill-disabled' : ''}`}
                     onClick={handleAddModule}
                     disabled={isModuleEditMode}
                   >
                     <span className="module-action-icon">+</span>
                   </button>
-                  <button 
-                    className="module-action-pill"
-                    onClick={handleEditModules}
-                  >
+                  <button className="module-action-pill" onClick={handleEditModules}>
                     <span className="module-action-text">{isModuleEditMode ? 'Guardar' : 'Editar'}</span>
                   </button>
                 </div>
+                )}
               </div>
-              
+              <div className="modules-content">
               {/* Modules List */}
               {isLoadingModules ? (
                 <div className="modules-loading">
@@ -6392,6 +6593,7 @@ const ProgramDetailScreen = () => {
                   )}
                 </>
               )}
+              </div>
             </div>
           </div>
         );
@@ -6401,10 +6603,10 @@ const ProgramDetailScreen = () => {
   }, [loading, error, program, currentTabIndex, isLoadingAnalytics, analyticsError, analytics, selectedModule, selectedSession, modules, sessions, exercises, isModuleEditMode, isSessionEditMode, isExerciseEditMode, moduleIncompleteMap, sessionIncompleteMap, handleModuleClick, handleSessionClick, handleExerciseClick, handleCreateModule, handleCreateSession, handleCreateNewExercise, handleDeleteModule, handleDeleteSession, handleDeleteExercise, handleSaveModuleOrder, handleSaveSessionOrder, handleSaveExerciseOrder, isExerciseIncomplete]);
 
   const getScreenName = () => {
-    if (selectedSession && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
+    if (selectedSession && currentTabIndex === effectiveTabConfig.findIndex(tab => tab.key === 'contenido')) {
       return selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8) || ''}`;
     }
-    if (selectedModule && currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido')) {
+    if (selectedModule && currentTabIndex === effectiveTabConfig.findIndex(tab => tab.key === 'contenido')) {
       const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
       return `Sesiones - ${moduleName}`;
     }
@@ -6416,8 +6618,11 @@ const ProgramDetailScreen = () => {
   const getBackPath = () => {
     if (selectedSession) return null;
     if (selectedModule) return null;
-    return '/programs';
+    return '/products';
   };
+
+  const isContenidoTab = effectiveTabConfig[currentTabIndex]?.key === 'contenido';
+  const showBreadcrumb = isContenidoTab && (selectedModule || selectedSession);
 
   return (
     <DashboardLayout 
@@ -6428,87 +6633,61 @@ const ProgramDetailScreen = () => {
       showBackButton={shouldShowBackButton}
       backPath={getBackPath()}
     >
-      <div className="program-detail-container">
-        {/* Tab Bar */}
-        <div className="program-tab-bar">
-          <div className="program-tab-header-container">
-            <div className="program-tabs">
-              {TAB_CONFIG.map((tab, index) => (
-                <button
-                  key={tab.key}
-                  className={`program-tab ${currentTabIndex === index ? 'active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-disabled' : ''}`}
-                  onClick={() => handleTabClick(index)}
-                  disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
-                >
-                  <div className="program-tab-icon">{tab.icon}</div>
-                  <span className="program-tab-label">{tab.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Breadcrumb Navigation - Always render to reserve space */}
-        <div className={`program-breadcrumb ${currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido') ? 'program-breadcrumb-visible' : 'program-breadcrumb-hidden'}`}>
-          {currentTabIndex === TAB_CONFIG.findIndex(tab => tab.key === 'contenido') && (
-            <>
+      <div className="program-page">
+        <main className="program-page__main">
+          {/* Top menu */}
+          <nav className="program-page__top-nav" aria-label="Secciones del programa">
+            {effectiveTabConfig.map((tab, index) => (
               <button
-                className="program-breadcrumb-item program-breadcrumb-item-clickable"
-                onClick={() => navigate('/programs')}
+                key={tab.key}
+                type="button"
+                className={`program-page__tab ${currentTabIndex === index ? 'program-page__tab--active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-page__tab--disabled' : ''}`}
+                onClick={() => handleTabClick(index)}
+                disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
               >
+                <span className="program-page__tab-icon">{tab.icon}</span>
+                <span className="program-page__tab-label">{tab.navLabel || tab.title}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Breadcrumb when in Contenido and drilled in */}
+          {showBreadcrumb && (
+            <div className="program-page__breadcrumb">
+              <button type="button" className="program-page__breadcrumb-link" onClick={() => navigate('/products')}>
                 {program?.title || 'Programa'}
               </button>
               {selectedModule && (
                 <>
-                  <span className="program-breadcrumb-separator">→</span>
+                  <span className="program-page__breadcrumb-sep">/</span>
                   <button
-                    className="program-breadcrumb-item program-breadcrumb-item-clickable"
-                    onClick={() => {
-                      // Navigate to modules page - clear module selection
-                      setSelectedModule(null);
-                      setSessions([]);
-                      setSelectedSession(null);
-                      setExercises([]);
-                    }}
+                    type="button"
+                    className="program-page__breadcrumb-link"
+                    onClick={() => { setSelectedModule(null); setSessions([]); setSelectedSession(null); setExercises([]); }}
                   >
-                    {selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8)}`}
+                    {selectedModule.title || selectedModule.name || `Semana`}
                   </button>
                 </>
               )}
               {selectedSession && (
                 <>
-                  <span className="program-breadcrumb-separator">→</span>
+                  <span className="program-page__breadcrumb-sep">/</span>
                   <button
-                    className="program-breadcrumb-item program-breadcrumb-item-clickable"
-                    onClick={() => {
-                      // Navigate to sessions page - go back to sessions list
-                      setSelectedSession(null);
-                      setExercises([]);
-                    }}
+                    type="button"
+                    className="program-page__breadcrumb-link program-page__breadcrumb-link--current"
+                    onClick={() => { setSelectedSession(null); setExercises([]); }}
                   >
-                    {selectedSession.title || selectedSession.name || `Sesión ${selectedSession.id?.slice(0, 8)}`}
+                    {selectedSession.title || selectedSession.name || 'Sesión'}
                   </button>
                 </>
               )}
-            </>
-          )}
-        </div>
-
-        {/* Tab Content Pager */}
-        <div 
-          className={`program-tab-pager ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-tab-pager-disabled' : ''}`}
-          ref={tabsScrollRef}
-          onWheel={handleTabWheel}
-        >
-          {TAB_CONFIG.map((tab, index) => (
-            <div 
-              key={tab.key}
-              className="program-tab-page"
-            >
-              {index === currentTabIndex && renderTabContent()}
             </div>
-          ))}
-        </div>
+          )}
+
+          <div className="program-page__content">
+            {renderTabContent()}
+          </div>
+        </main>
       </div>
 
       {/* Status Change Modal */}
@@ -7787,7 +7966,7 @@ const ProgramDetailScreen = () => {
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <button
                               className="copy-session-item-button"
-                              onClick={() => navigate(`/library/sessions/${librarySession.id}/edit`)}
+                              onClick={() => navigate(`/content/sessions/${librarySession.id}`, { state: { returnTo: location.pathname } })}
                               style={{ minWidth: 'auto', padding: '8px 12px', fontSize: '14px' }}
                             >
                               Editar

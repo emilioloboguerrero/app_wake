@@ -227,12 +227,121 @@ class FirestoreService {
     }
   }
 
-  async getCourseModules(courseId, userId = null) {
+  _oneOnOneModulesCache = {};
+  _oneOnOneModulesCacheTtlMs = 5 * 60 * 1000;
+
+  async getCourseModules(courseId, userId = null, options = {}) {
     try {
-      // First, get course to check if it's weekly and get creator_id
+      const cacheKey = userId ? `${courseId}_${userId}` : null;
+      if (options.cacheInMemory && cacheKey && options.ttlMs !== undefined) {
+        const entry = this._oneOnOneModulesCache[cacheKey];
+        if (entry && (Date.now() - entry.timestamp) < options.ttlMs) {
+          logger.debug('📱 Using in-memory cached modules for one-on-one:', courseId);
+          return entry.modules;
+        }
+      }
       const courseData = await this.getCourse(courseId);
       const isWeeklyProgram = courseData?.weekly === true;
       const creatorId = courseData?.creator_id;
+
+      // For one-on-one: use per-client content_plan_id override if set, else course-level
+      let contentPlanId = courseData?.content_plan_id;
+      if (userId) {
+        try {
+          const clientProgram = await this.getClientProgram(userId, courseId);
+          if (clientProgram?.content_plan_id) {
+            contentPlanId = clientProgram.content_plan_id;
+          }
+        } catch (_) { /* ignore */ }
+      }
+
+      // If course uses plan-based content, load modules from plans collection
+      if (contentPlanId) {
+        const planModulesQuery = query(
+          collection(firestore, 'plans', contentPlanId, 'modules'),
+          orderBy('order', 'asc')
+        );
+        const planModulesSnapshot = await getDocs(planModulesQuery);
+        const planModules = await Promise.all(
+          planModulesSnapshot.docs.map(async (moduleDoc) => {
+            const moduleData = { id: moduleDoc.id, ...moduleDoc.data() };
+            try {
+              const sessionsQuery = query(
+                collection(firestore, 'plans', contentPlanId, 'modules', moduleDoc.id, 'sessions'),
+                orderBy('order', 'asc')
+              );
+              const sessionsSnapshot = await getDocs(sessionsQuery);
+              const sessions = await Promise.all(
+                sessionsSnapshot.docs.map(async (sessionDoc) => {
+                  const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
+                  try {
+                    const exercisesQuery = query(
+                      collection(firestore, 'plans', contentPlanId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises'),
+                      orderBy('order', 'asc')
+                    );
+                    const exercisesSnapshot = await getDocs(exercisesQuery);
+                    const exercises = await Promise.all(
+                      exercisesSnapshot.docs.map(async (exerciseDoc) => {
+                        const exerciseData = { id: exerciseDoc.id, ...exerciseDoc.data() };
+                        try {
+                          const setsQuery = query(
+                            collection(firestore, 'plans', contentPlanId, 'modules', moduleDoc.id, 'sessions', sessionDoc.id, 'exercises', exerciseDoc.id, 'sets'),
+                            orderBy('order', 'asc')
+                          );
+                          const setsSnapshot = await getDocs(setsQuery);
+                          exerciseData.sets = setsSnapshot.docs.map(s => ({ id: s.id, ...s.data() }));
+                        } catch {
+                          exerciseData.sets = [];
+                        }
+                        return exerciseData;
+                      })
+                    );
+                    sessionData.exercises = exercises;
+                  } catch {
+                    sessionData.exercises = [];
+                  }
+                  return sessionData;
+                })
+              );
+              moduleData.sessions = sessions;
+            } catch {
+              moduleData.sessions = [];
+            }
+            return moduleData;
+          })
+        );
+        // Apply one-on-one week filtering: prefer client_plan_content copy, else filter by moduleIndex
+        let result = planModules.sort((a, b) => {
+          const oA = a.order != null ? a.order : Infinity;
+          const oB = b.order != null ? b.order : Infinity;
+          return oA - oB;
+        });
+        if (userId) {
+          try {
+            const clientProgram = await this.getClientProgram(userId, courseId);
+            const userDoc = await this.getUser(userId);
+            const isOneOnOneProgram = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
+            const weekAssignments = clientProgram?.weekAssignments ?? clientProgram?.planAssignments;
+            if (isOneOnOneProgram && weekAssignments) {
+              const currentWeek = getMondayWeek();
+              const weekAssignment = weekAssignments[currentWeek];
+              if (weekAssignment) {
+                const clientCopy = await this.getClientPlanContentCopy(userId, courseId, currentWeek);
+                if (clientCopy) {
+                  result = [clientCopy];
+                } else if (weekAssignment.moduleIndex !== undefined) {
+                  const filtered = result.filter((_, i) => i === weekAssignment.moduleIndex);
+                  result = filtered.length > 0 ? filtered : result;
+                }
+              }
+            }
+          } catch (_) { /* ignore */ }
+        }
+        if (options.cacheInMemory && cacheKey && options.ttlMs !== undefined) {
+          this._oneOnOneModulesCache[cacheKey] = { modules: result, timestamp: Date.now() };
+        }
+        return result;
+      }
       
       // Load client program overrides if userId provided (needed for one-on-one week assignments)
       let clientProgram = null;
@@ -250,9 +359,10 @@ class FirestoreService {
             isOneOnOneProgram = userCourseData?.deliveryType === 'one_on_one';
             
             // If one-on-one, check weekAssignments for current week
-            if (isOneOnOneProgram && clientProgram?.weekAssignments) {
+            const weekAssignments = clientProgram?.weekAssignments ?? clientProgram?.planAssignments;
+            if (isOneOnOneProgram && weekAssignments) {
               const currentWeek = getMondayWeek();
-              weekAssignment = clientProgram.weekAssignments[currentWeek];
+              weekAssignment = weekAssignments[currentWeek];
               logger.debug('📅 One-on-one program - week assignment for', currentWeek, ':', weekAssignment);
             }
           } catch (error) {
@@ -451,24 +561,19 @@ class FirestoreService {
         return orderA - orderB;
       });
       
-      // If one-on-one program has week assignment, filter to only that module
+      let result;
       if (isOneOnOneProgram && weekAssignment && weekAssignment.moduleIndex !== undefined) {
         const targetModuleIndex = weekAssignment.moduleIndex;
         logger.debug('📅 Filtering one-on-one program modules to index:', targetModuleIndex);
-        
-        // Filter to only the assigned module (by index in sorted array)
         const filteredModules = allModules.filter((module, index) => index === targetModuleIndex);
-        
-        if (filteredModules.length === 0) {
-          logger.warn('⚠️ No module found at index', targetModuleIndex, 'for week assignment. Total modules:', allModules.length);
-          return allModules; // Return all modules as fallback
-        } else {
-          logger.debug('✅ Filtered to module:', filteredModules[0].id, filteredModules[0].title || `Module ${targetModuleIndex}`);
-          return filteredModules;
-        }
+        result = filteredModules.length === 0 ? allModules : filteredModules;
+      } else {
+        result = allModules;
       }
-      
-      return allModules;
+      if (options.cacheInMemory && cacheKey && options.ttlMs !== undefined) {
+        this._oneOnOneModulesCache[cacheKey] = { modules: result, timestamp: Date.now() };
+      }
+      return result;
     } catch (error) {
       logger.error('Error in getCourseModules:', error);
       throw error;
@@ -536,6 +641,237 @@ class FirestoreService {
   }
 
   // Client Program Methods
+  /**
+   * Get planned session for a client on a specific date (from client_sessions)
+   * @param {string} userId - Client user ID
+   * @param {string} courseId - Program/course ID
+   * @param {Date} date - Date to check
+   * @returns {Promise<Object|null>} Client session doc or null
+   */
+  async getPlannedSessionForDate(userId, courseId, date) {
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      const start = new Date(d);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(d);
+      end.setHours(23, 59, 59, 999);
+      const q = query(
+        collection(firestore, 'client_sessions'),
+        where('client_id', '==', userId),
+        where('program_id', '==', courseId),
+        where('date_timestamp', '>=', start),
+        where('date_timestamp', '<=', end),
+        orderBy('date_timestamp', 'asc'),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) return null;
+      return { id: snap.docs[0].id, ...snap.docs[0].data() };
+    } catch (error) {
+      logger.debug('getPlannedSessionForDate:', error?.message);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve session content for a planned session.
+   * Tries client_session_content (client-specific copy) first; then plan or library.
+   * @param {Object} clientSession - client_sessions doc (must have id for copy lookup)
+   * @param {string} creatorId - Creator ID (for library resolution)
+   * @returns {Promise<Object|null>} Session with exercises (and sets per exercise) or null
+   */
+  async resolvePlannedSessionContent(clientSession, creatorId) {
+    try {
+      const clientSessionId = clientSession?.id;
+      if (clientSessionId) {
+        const copy = await this.getClientSessionContentCopy(clientSessionId);
+        if (copy) return copy;
+      }
+
+      const { plan_id, session_id, module_id, library_session_ref, program_id } = clientSession;
+      if (plan_id && session_id && module_id) {
+        return this._resolvePlannedSessionFromPlan(plan_id, module_id, session_id);
+      }
+      if (library_session_ref && session_id) {
+        let effectiveCreatorId = creatorId;
+        // Fallback: fetch creator_id from course if missing (defensive for orphaned/legacy data)
+        if (!effectiveCreatorId && program_id) {
+          try {
+            const courseDoc = await getDoc(doc(firestore, 'courses', program_id));
+            effectiveCreatorId = courseDoc.data()?.creator_id || courseDoc.data()?.creatorId || null;
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        if (effectiveCreatorId) {
+          return this._resolvePlannedSessionFromLibrary(effectiveCreatorId, session_id);
+        }
+        logger.warn('resolvePlannedSessionContent: library_session_ref but no creator_id (course may be missing creator_id)');
+      }
+      return null;
+    } catch (error) {
+      logger.error('resolvePlannedSessionContent:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get client session content copy (client_session_content collection).
+   * Returns session with exercises and sets, or null if no copy exists.
+   */
+  async getClientSessionContentCopy(clientSessionId) {
+    try {
+      const sessionRef = doc(firestore, 'client_session_content', clientSessionId);
+      const sessionSnap = await getDoc(sessionRef);
+      if (!sessionSnap.exists()) return null;
+
+      const sessionData = { id: sessionSnap.id, ...sessionSnap.data() };
+      const exercisesRef = collection(firestore, 'client_session_content', clientSessionId, 'exercises');
+      const exercisesSnap = await getDocs(query(exercisesRef, orderBy('order', 'asc')));
+
+      const exercises = await Promise.all(
+        exercisesSnap.docs.map(async (exDoc) => {
+          const exData = { id: exDoc.id, ...exDoc.data() };
+          const setsRef = collection(
+            firestore,
+            'client_session_content',
+            clientSessionId,
+            'exercises',
+            exDoc.id,
+            'sets'
+          );
+          const setsSnap = await getDocs(query(setsRef, orderBy('order', 'asc')));
+          exData.sets = setsSnap.docs.map((s) => ({ id: s.id, ...s.data() }));
+          return exData;
+        })
+      );
+      sessionData.exercises = exercises;
+      return sessionData;
+    } catch (error) {
+      logger.debug('getClientSessionContentCopy:', error?.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get client plan content copy (client_plan_content collection) for one week.
+   * Returns one module with sessions (each with exercises and sets), or null if no copy exists.
+   */
+  async getClientPlanContentCopy(userId, programId, weekKey) {
+    try {
+      const docId = `${userId}_${programId}_${weekKey}`;
+      const ref = doc(firestore, 'client_plan_content', docId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+
+      const data = { id: snap.id, ...snap.data() };
+      const sessionsRef = collection(firestore, 'client_plan_content', docId, 'sessions');
+      const sessionsSnap = await getDocs(query(sessionsRef, orderBy('order', 'asc')));
+      const sessions = await Promise.all(
+        sessionsSnap.docs.map(async (sDoc) => {
+          const s = { id: sDoc.id, ...sDoc.data() };
+          const exRef = collection(
+            firestore,
+            'client_plan_content',
+            docId,
+            'sessions',
+            sDoc.id,
+            'exercises'
+          );
+          const exSnap = await getDocs(query(exRef, orderBy('order', 'asc')));
+          s.exercises = await Promise.all(
+            exSnap.docs.map(async (eDoc) => {
+              const e = { id: eDoc.id, ...eDoc.data() };
+              const setsRef = collection(
+                firestore,
+                'client_plan_content',
+                docId,
+                'sessions',
+                sDoc.id,
+                'exercises',
+                eDoc.id,
+                'sets'
+              );
+              const setsSnap = await getDocs(query(setsRef, orderBy('order', 'asc')));
+              e.sets = setsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+              return e;
+            })
+          );
+          return s;
+        })
+      );
+      data.sessions = sessions;
+      return data;
+    } catch (error) {
+      logger.debug('getClientPlanContentCopy:', error?.message);
+      return null;
+    }
+  }
+
+  async _resolvePlannedSessionFromPlan(plan_id, module_id, session_id) {
+    const sessionRef = doc(firestore, 'plans', plan_id, 'modules', module_id, 'sessions', session_id);
+    const sessionDoc = await getDoc(sessionRef);
+    if (!sessionDoc.exists()) return null;
+    const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
+    const exercisesSnap = await getDocs(
+      query(
+        collection(firestore, 'plans', plan_id, 'modules', module_id, 'sessions', session_id, 'exercises'),
+        orderBy('order', 'asc')
+      )
+    );
+    const exercises = await Promise.all(
+      exercisesSnap.docs.map(async (exDoc) => {
+        const exData = { id: exDoc.id, ...exDoc.data() };
+        try {
+          const setsSnap = await getDocs(
+            query(
+              collection(firestore, 'plans', plan_id, 'modules', module_id, 'sessions', session_id, 'exercises', exDoc.id, 'sets'),
+              orderBy('order', 'asc')
+            )
+          );
+          exData.sets = setsSnap.docs.map((s) => ({ id: s.id, ...s.data() }));
+        } catch (_) {
+          exData.sets = [];
+        }
+        return exData;
+      })
+    );
+    sessionData.exercises = exercises;
+    return sessionData;
+  }
+
+  async _resolvePlannedSessionFromLibrary(creatorId, session_id) {
+    const sessionRef = doc(firestore, 'creator_libraries', creatorId, 'sessions', session_id);
+    const sessionDoc = await getDoc(sessionRef);
+    if (!sessionDoc.exists()) return null;
+    const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
+    const exercisesSnap = await getDocs(
+      query(
+        collection(firestore, 'creator_libraries', creatorId, 'sessions', session_id, 'exercises'),
+        orderBy('order', 'asc')
+      )
+    );
+    const exercises = await Promise.all(
+      exercisesSnap.docs.map(async (exDoc) => {
+        const exData = { id: exDoc.id, ...exDoc.data() };
+        try {
+          const setsSnap = await getDocs(
+            query(
+              collection(firestore, 'creator_libraries', creatorId, 'sessions', session_id, 'exercises', exDoc.id, 'sets'),
+              orderBy('order', 'asc')
+            )
+          );
+          exData.sets = setsSnap.docs.map((s) => ({ id: s.id, ...s.data() }));
+        } catch (_) {
+          exData.sets = [];
+        }
+        return exData;
+      })
+    );
+    sessionData.exercises = exercises;
+    return sessionData;
+  }
+
   /**
    * Get client program document
    * @param {string} userId - User ID
@@ -649,7 +985,7 @@ class FirestoreService {
           expires_at: expirationDate,
           status: 'active',
           purchased_at: new Date().toISOString(),
-          
+          deliveryType: courseDetails?.deliveryType ?? 'low_ticket', // PWA: one_on_one vs low_ticket load path
           // Minimal cached data for display
           title: courseDetails?.title || 'Untitled Course',
           image_url: courseDetails?.image_url || null,
@@ -755,6 +1091,7 @@ class FirestoreService {
         trial_duration_days: durationInDays,
         trial_state: 'active',
         purchased_at: existingCourse?.purchased_at || now.toISOString(),
+        deliveryType: courseDetails?.deliveryType ?? existingCourse?.deliveryType ?? 'low_ticket',
         title: courseDetails?.title || existingCourse?.title || 'Untitled Course',
         image_url: courseDetails?.image_url || existingCourse?.image_url || null,
         discipline: courseDetails?.discipline || existingCourse?.discipline || 'General',
@@ -789,6 +1126,108 @@ class FirestoreService {
         error: error.message || 'Error al iniciar la prueba gratuita',
         code: 'TRIAL_ERROR',
       };
+    }
+  }
+
+  /**
+   * Get orphaned one-on-one programs (client_programs without users.courses entry)
+   * @param {string} userId - User ID
+   * @param {Set} courseIdsFromUser - Set of course IDs already in users.courses
+   * @returns {Promise<Array>} Array of course entries in getUserPurchasedCourses format
+   */
+  async getOrphanedOneOnOnePrograms(userId, courseIdsFromUser = new Set()) {
+    const orphaned = [];
+    try {
+      const clientProgramsQuery = query(
+        collection(firestore, 'client_programs'),
+        where('user_id', '==', userId)
+      );
+      const clientProgramsSnap = await getDocs(clientProgramsQuery);
+      for (const docSnap of clientProgramsSnap.docs) {
+        const data = docSnap.data();
+        const programId = data.program_id;
+        if (!programId || courseIdsFromUser.has(programId)) continue;
+        const courseDoc = await getDoc(doc(firestore, 'courses', programId));
+        if (!courseDoc.exists()) continue;
+        const courseData = courseDoc.data();
+        const farFuture = new Date();
+        farFuture.setFullYear(farFuture.getFullYear() + 10);
+        orphaned.push({
+          id: `${userId}-${programId}`,
+          courseId: programId,
+          courseData: {
+            access_duration: 'one_on_one',
+            expires_at: farFuture.toISOString(),
+            status: 'active',
+            purchased_at: new Date().toISOString(),
+            deliveryType: 'one_on_one',
+            title: courseData.title || 'Untitled Program',
+            image_url: courseData.image_url || null,
+            discipline: courseData.discipline || 'General',
+            creatorName: courseData.creatorName || courseData.creator_name || 'Unknown Creator',
+          },
+          courseDetails: {
+            id: programId,
+            title: courseData.title || 'Curso sin título',
+            image_url: courseData.image_url || '',
+            discipline: courseData.discipline || 'General',
+            creatorName: courseData.creatorName || courseData.creator_name || null,
+          },
+          isActive: true,
+          isExpired: false,
+          isCompleted: false,
+          status: 'active',
+          paid_at: { toDate: () => new Date() },
+          expires_at: farFuture.toISOString(),
+        });
+        // Backfill users.courses in background
+        this.backfillOneOnOneCourseInUserDocument(userId, programId, courseData).catch(() => {});
+      }
+    } catch (err) {
+      logger.warn('getOrphanedOneOnOnePrograms:', err?.message);
+    }
+    return orphaned;
+  }
+
+  /**
+   * Backfill users.courses with one-on-one program (repair for orphaned client_programs)
+   * @param {string} userId - User ID
+   * @param {string} programId - Program ID
+   * @param {Object} courseData - Course metadata from courses collection
+   */
+  async backfillOneOnOneCourseInUserDocument(userId, programId, courseData) {
+    try {
+      const userRef = doc(firestore, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) return;
+      const userData = userDoc.data();
+      const courses = userData.courses || {};
+      if (courses[programId]) return; // Already present
+      const farFuture = new Date();
+      farFuture.setFullYear(farFuture.getFullYear() + 10);
+      courses[programId] = {
+        access_duration: 'one_on_one',
+        expires_at: farFuture.toISOString(),
+        status: 'active',
+        purchased_at: new Date().toISOString(),
+        deliveryType: 'one_on_one',
+        assigned_at: new Date().toISOString(),
+        title: courseData.title || 'Untitled Program',
+        image_url: courseData.image_url || null,
+        discipline: courseData.discipline || 'General',
+        creatorName: courseData.creatorName || courseData.creator_name || 'Unknown Creator',
+        completedTutorials: {
+          dailyWorkout: [],
+          warmup: [],
+          workoutExecution: [],
+          workoutCompletion: [],
+        },
+      };
+      await updateDoc(userRef, { courses });
+      logger.debug('✅ Backfilled one-on-one course in users.courses:', programId);
+    } catch (err) {
+      logger.error('❌ Error backfilling one-on-one course:', err);
+      throw err;
     }
   }
 
@@ -914,8 +1353,27 @@ class FirestoreService {
             isTrialCourse: isTrial,
           };
         });
+
+      // FIX: Merge orphaned one-on-one programs from client_programs (legacy/partial assignment)
+      const courseIdsFromUser = new Set(Object.keys(userCourses));
+      try {
+        const orphaned = await this.getOrphanedOneOnOnePrograms(userId, courseIdsFromUser);
+        for (const entry of orphaned) {
+          activeCourses.push({
+            courseId: entry.courseId,
+            courseData: entry.courseData,
+            purchasedAt: entry.courseData.purchased_at || null,
+            courseDetails: entry.courseDetails,
+            trialInfo: null,
+            trialHistory: null,
+            isTrialCourse: false,
+          });
+        }
+      } catch (err) {
+        logger.warn('⚠️ Error fetching client_programs for fallback:', err?.message);
+      }
       
-      logger.debug('✅ Active courses (single query):', activeCourses.length);
+      logger.debug('✅ Active courses (including fallback):', activeCourses.length);
       return activeCourses;
     } catch (error) {
       logger.error('Error getting user active courses:', error);

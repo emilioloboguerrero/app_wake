@@ -6,7 +6,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import programService from '../services/programService';
 import './ProductsScreen.css';
 
-const ProductsScreen = () => {
+const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [productType, setProductType] = useState('low_ticket'); // 'low_ticket' | 'one_on_one'
@@ -27,21 +27,22 @@ const ProductsScreen = () => {
 
   const currentPrograms = productType === 'low_ticket' ? lowTicketPrograms : oneOnOnePrograms;
 
-  const handleCreateLowTicket = () => {
-    navigate('/products/low-ticket/new');
-  };
-
-  const handleCreateOneOnOne = () => {
-    navigate('/products/one-on-one/new');
+  const handleNewProgram = () => {
+    if (onNewClick) {
+      onNewClick();
+    } else if (productType === 'low_ticket') {
+      navigate('/products/new?type=low_ticket');
+    } else {
+      navigate('/products/new?type=one_on_one');
+    }
   };
 
   const handleProgramClick = (programId) => {
     navigate(`/programs/${programId}`);
   };
 
-  return (
-    <DashboardLayout screenName="Productos">
-      <div className="products-screen">
+  const content = (
+    <div className="products-screen">
         {/* Product Type Selector */}
         <div className="products-type-selector">
           <button
@@ -55,7 +56,7 @@ const ProductsScreen = () => {
                 </svg>
               </div>
               <div className="products-type-tab-info">
-                <h3 className="products-type-tab-title">Low-Ticket</h3>
+                <h3 className="products-type-tab-title">Low-ticket</h3>
                 <p className="products-type-tab-description">
                   Programas completos con contenido que vendes a múltiples usuarios
                 </p>
@@ -93,11 +94,11 @@ const ProductsScreen = () => {
         <div className="products-content">
           <div className="products-header">
             <h2 className="products-title">
-              {productType === 'low_ticket' ? 'Low-Ticket' : '1-on-1'}
+              {productType === 'low_ticket' ? 'Low-ticket' : 'Programas generales (1-on-1)'}
             </h2>
             <button
               className="products-create-button"
-              onClick={productType === 'low_ticket' ? handleCreateLowTicket : handleCreateOneOnOne}
+              onClick={handleNewProgram}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -121,12 +122,17 @@ const ProductsScreen = () => {
                   </svg>
                 )}
               </div>
-              <h3>No hay programas {productType === 'low_ticket' ? 'low-ticket' : '1-on-1'}</h3>
+              <h3>No hay programas {productType === 'low_ticket' ? 'low-ticket' : 'generales (1-on-1)'}</h3>
+              {productType === 'one_on_one' && (
+                <p className="products-empty-description" style={{ marginTop: 8, marginBottom: 16, maxWidth: 360, opacity: 0.85, fontSize: 14 }}>
+                  Crea un programa general (título, imagen, descripción). Luego asigna ese programa a cada cliente y el contenido (semanas y sesiones) lo eliges en la ficha del cliente.
+                </p>
+              )}
               <button
                 className="products-empty-button"
-                onClick={productType === 'low_ticket' ? handleCreateLowTicket : handleCreateOneOnOne}
+                onClick={handleNewProgram}
               >
-                Crear Programa
+                {productType === 'one_on_one' ? 'Crear programa general' : 'Crear Programa'}
               </button>
             </div>
           ) : (
@@ -190,6 +196,12 @@ const ProductsScreen = () => {
           )}
         </div>
       </div>
+  );
+
+  if (noLayout) return content;
+  return (
+    <DashboardLayout screenName="Productos">
+      {content}
     </DashboardLayout>
   );
 };

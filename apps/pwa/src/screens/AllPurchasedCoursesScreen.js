@@ -165,6 +165,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   const renderCourseCard = (purchaseData, index) => {
     const course = purchaseData.courseDetails;
+    const isOneOnOne = purchaseData.courseData?.deliveryType === 'one_on_one';
 
     return (
       <View key={purchaseData.id || index} style={styles.courseCardWrapper}>
@@ -174,6 +175,11 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
             onPress={() => handleCoursePress(purchaseData)}
           >
             <View style={styles.courseImagePlaceholder}>
+              {isOneOnOne && (
+                <View style={styles.oneOnOneBadge}>
+                  <Text style={styles.oneOnOneBadgeText}>Asignado</Text>
+                </View>
+              )}
               {course.image_url ? (
                 <Image
                   source={{ uri: course.image_url }}
@@ -441,6 +447,26 @@ const styles = StyleSheet.create({
     marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  oneOnOneBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 199, 89, 0.4)',
+    backgroundColor: 'rgba(52, 199, 89, 0.2)',
+    zIndex: 5,
+  },
+  oneOnOneBadgeText: {
+    color: 'rgba(52, 199, 89, 1)',
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   courseImage: {
     width: '100%',

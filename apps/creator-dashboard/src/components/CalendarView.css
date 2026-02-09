@@ -85,6 +85,56 @@
   padding: 20px;
 }
 
+/* Plan bar - continuous row above days, one segment per week */
+.calendar-plan-bar-row {
+  display: flex;
+  width: 100%;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 40px;
+}
+
+.calendar-plan-bar-segment {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.calendar-plan-bar-segment:first-child {
+  border-left: none;
+}
+
+.calendar-plan-bar-segment-assigned {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.calendar-plan-bar-segment-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+}
+
+.calendar-plan-bar-segment-week {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -107,6 +157,31 @@
   gap: 8px;
 }
 
+/* Plan bar above each week row - rich bronze with gold accent, plan name (N semanas) */
+.calendar-week-plan-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  min-height: 14px;
+  max-height: 20px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid rgba(191, 168, 77, 0.65);
+}
+
+.calendar-week-plan-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .calendar-day {
   height: 80px;
   background-color: rgba(255, 255, 255, 0.04);
@@ -124,6 +199,7 @@
   justify-content: flex-start;
   padding: 6px 4px;
   position: relative;
+  overflow: visible;
 }
 
 .calendar-day-number {
@@ -171,42 +247,127 @@
 }
 
 .calendar-day-has-session {
-  border-width: 2px;
+  /* No full-day color; session name shown in card below */
 }
 
-.calendar-day-session-indicator {
+/* Days under a plan bar: gradient from plan bar color to normal card; keep visible border */
+.calendar-day-has-plan-assignment {
+  background: linear-gradient(
+    to bottom,
+    var(--calendar-plan-gradient-start, rgba(78, 64, 44, 0.55)) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.calendar-day-session-cards {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
   margin-top: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
-.calendar-day-session-count {
+.calendar-day-session-card {
+  position: relative;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 4px 6px;
+  padding-right: 22px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  min-height: 0;
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: visible;
+}
+
+.calendar-day-session-card-name {
   font-size: 10px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  background-color: rgba(0, 0, 0, 0.3);
-  padding: 2px 6px;
-  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.98);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   line-height: 1.2;
 }
 
-.calendar-day-session-dots {
-  display: flex;
-  gap: 3px;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+.calendar-day-session-card-actions {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  flex-shrink: 0;
 }
 
-.calendar-day-session-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.8);
-  flex-shrink: 0;
+.calendar-day-session-card-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.calendar-day-session-card-menu-trigger:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+.calendar-day-session-card-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  min-width: 100px;
+  background: var(--bg-elevated, #2a2a2e);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendar-day-session-card-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.calendar-day-session-card-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.calendar-day-session-card-menu-item-danger:hover {
+  background: rgba(220, 53, 69, 0.25);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.calendar-day-session-card-from-plan[draggable="true"] {
+  cursor: grab;
+}
+
+.calendar-day-session-card-from-plan[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .calendar-day-has-week-assignment {
@@ -219,15 +380,50 @@
   transform: scale(1.05);
 }
 
+.calendar-day-plan-assignment-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.calendar-day-add-plan-session {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.calendar-day-add-plan-session:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
 .calendar-day-plan-assignment-indicator,
 .calendar-day-week-assignment-indicator {
   display: flex;
+  flex-direction: column;
   gap: 4px;
   align-items: center;
   justify-content: center;
   width: 100%;
   margin-top: auto;
   padding-top: 2px;
+}
+
+.calendar-day-plan-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 
 .calendar-day-plan-assignment-dot,
@@ -244,7 +440,7 @@
   position: relative;
 }
 
-.calendar-day-week-tag {
+.calendar-day-tag {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -253,7 +449,7 @@
   z-index: 1;
 }
 
-.calendar-day-week-tag-text {
+.calendar-day-tag-text {
   font-size: 9px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
@@ -264,70 +460,6 @@
   letter-spacing: 0.3px;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-/* Legend */
-.calendar-legend {
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.calendar-legend-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin-bottom: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.calendar-legend-items {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.calendar-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.calendar-legend-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 70px;
-  height: 24px;
-  border-radius: 4px;
-  padding: 0 8px;
-}
-
-.calendar-legend-badge-text {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.calendar-legend-badge-session {
-  background-color: rgba(70, 130, 180, 0.8);
-}
-
-.calendar-legend-badge-program {
-  background-color: rgba(191, 168, 77, 0.8);
-}
-
-.calendar-legend-badge-planned {
-  background-color: rgba(107, 142, 35, 0.8);
-}
-
-.calendar-legend-label {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 /* Day Info Modal */
@@ -411,6 +543,14 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
+.calendar-day-info-plan-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
 .calendar-day-info-list {
   display: flex;
   flex-direction: column;
@@ -451,6 +591,42 @@
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.calendar-day-info-plan-actions {
+  margin-top: 10px;
+}
+
+.calendar-day-info-plan-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.calendar-day-info-plan-btn-personalize {
+  background: rgba(191, 168, 77, 0.25);
+  color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.calendar-day-info-plan-btn-personalize:hover {
+  background: rgba(191, 168, 77, 0.35);
+  border-color: rgba(191, 168, 77, 0.7);
+}
+
+.calendar-day-info-plan-btn-reset {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.calendar-day-info-plan-btn-reset:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .calendar-day-info-empty {

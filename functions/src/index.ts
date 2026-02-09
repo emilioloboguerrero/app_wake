@@ -1539,6 +1539,9 @@ export const processPaymentWebhook = functions
           status: "active",
           purchased_at: new Date().toISOString(),
 
+          // Delivery type: PWA uses this for one_on_one vs low_ticket (version/load path)
+          deliveryType: courseDetails?.deliveryType ?? "low_ticket",
+
           // Minimal cached data for display
           title: courseDetails?.title || "Untitled Course",
           image_url: courseDetails?.image_url || null,
@@ -2440,6 +2443,7 @@ export const verifyToken = functions.https.onRequest(async (req, res) => {
           iap_transaction_id: transactionId, // Store IAP transaction ID
           iap_original_transaction_id: receiptTransaction.original_transaction_id || transactionId, // Store original transaction ID
             is_subscription: isSubscription, // Track if this is a subscription
+          deliveryType: courseDetails?.deliveryType ?? "low_ticket", // PWA: one_on_one vs low_ticket
           title: courseDetails?.title || "Untitled Course",
           image_url: courseDetails?.image_url || null,
           discipline: courseDetails?.discipline || "General",

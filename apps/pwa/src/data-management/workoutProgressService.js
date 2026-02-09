@@ -473,12 +473,50 @@ class WorkoutProgressService {
   
   async getCourseDataForWorkout(courseId, userId = null) {
     try {
-      // Fast path: try local storage first (skip version checks for speed)
-      // This ensures instant load if course is already downloaded
       let courseData = await courseDownloadService.getCourseData(courseId, true);
-      
-      // If course not found locally, try hybrid cache (instant, no network)
-      if (!courseData && userId) {
+      const effectiveUserId = userId;
+      if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
+        const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, { cacheInMemory: true, ttlMs: 5 * 60 * 1000 });
+        if (modules) {
+          courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
+        }
+      }
+      // One-on-one: check client_sessions for today - if a session is planned for today, use it
+      if (effectiveUserId && courseData?.courseData) {
+        const today = new Date();
+        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
+        if (planned) {
+          let creatorId = courseData.courseData.creator_id ?? courseData.courseData.creatorId;
+          // Fallback: fetch creator_id from Firestore if missing (course may have minimal cached data)
+          if (!creatorId) {
+            try {
+              const courseDoc = await firestoreService.getCourse(courseId);
+              creatorId = courseDoc?.creator_id ?? courseDoc?.creatorId ?? null;
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          const resolved = await firestoreService.resolvePlannedSessionContent(planned, creatorId);
+          if (resolved) {
+            const plannedModule = {
+              id: 'planned-today',
+              title: 'Planificado',
+              order: 0,
+              sessions: [{
+                ...resolved,
+                sessionId: resolved.id,
+                moduleId: 'planned-today',
+                moduleTitle: 'Planificado'
+              }]
+            };
+            courseData = {
+              ...courseData,
+              courseData: { ...courseData.courseData, modules: [plannedModule] }
+            };
+          }
+        }
+      }
+      if (!courseData && effectiveUserId) {
         logger.log('📥 Course not found locally, checking hybrid cache:', courseId);
         try {
           const hybridDataService = require('../services/hybridDataService').default;
@@ -488,12 +526,11 @@ class WorkoutProgressService {
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
             // Get modules from Firestore (still needed, but at least we have course metadata)
-            const modules = await firestoreService.getCourseModules(courseId, userId);
+            const modules = await firestoreService.getCourseModules(courseId, effectiveUserId);
             
             if (modules) {
               logger.log('✅ Using hybrid cache + modules for instant load');
-              // Start download in background (non-blocking)
-              courseDownloadService.downloadCourse(courseId, userId).catch(error => {
+              courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
                 logger.error('❌ Background download failed:', error);
               });
               
@@ -517,14 +554,12 @@ class WorkoutProgressService {
         logger.log('📥 Course not in hybrid cache, fetching from Firestore:', courseId);
         try {
           // Start download in background (non-blocking)
-          courseDownloadService.downloadCourse(courseId, userId).catch(error => {
+          courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
             logger.error('❌ Background download failed:', error);
           });
-          
-          // Fetch in parallel for faster response
           const [firestoreCourse, modules] = await Promise.all([
             firestoreService.getCourse(courseId),
-            firestoreService.getCourseModules(courseId, userId)
+            firestoreService.getCourseModules(courseId, effectiveUserId)
           ]);
           
           if (firestoreCourse && modules) {

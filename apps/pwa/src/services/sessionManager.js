@@ -570,9 +570,8 @@ class SessionManager {
     try {
       logger.log('⏭️ Skipping session:', currentSessionId);
       
-      // Get course data
-      const courseDataResponse = await this.getCourseDataForWorkout(courseId);
-      const courseData = courseDataResponse.courseData;
+      const courseDataResponse = await this.getCourseDataForWorkout(courseId, userId);
+      const courseData = courseDataResponse?.courseData;
       
       if (!courseData) {
         throw new Error('Course data not found');
@@ -583,7 +582,6 @@ class SessionManager {
         throw new Error('No sessions found in course');
       }
       
-      // Find current session index
       const currentIndex = allSessions.findIndex(s => 
         (s.sessionId === currentSessionId) || (s.id === currentSessionId)
       );
@@ -647,10 +645,8 @@ class SessionManager {
   async goBackSession(userId, courseId, currentSessionId) {
     try {
       logger.log('⬅️ Going back from session:', currentSessionId);
-      
-      // Get course data
-      const courseDataResponse = await this.getCourseDataForWorkout(courseId);
-      const courseData = courseDataResponse.courseData;
+      const courseDataResponse = await this.getCourseDataForWorkout(courseId, userId);
+      const courseData = courseDataResponse?.courseData;
       
       if (!courseData) {
         throw new Error('Course data not found');
@@ -835,8 +831,9 @@ class SessionManager {
     try {
       logger.log('🔥 Starting weekly streak update:', { userId, courseId, sessionId });
 
-      const progress = await this.getCloudProgress(userId, courseId, true); // Force refresh to get latest streak data
-      const courseData = await this.getCourseDataForWorkout(courseId);
+      const progress = await this.getCloudProgress(userId, courseId, true);
+      const courseDataResponse = await this.getCourseDataForWorkout(courseId, userId);
+      const courseData = courseDataResponse?.courseData;
       
       if (!progress) {
         logger.error('❌ No progress data found for streak update');
@@ -954,11 +951,10 @@ class SessionManager {
   /**
    * Get course data for workout (simple implementation)
    */
-  async getCourseDataForWorkout(courseId) {
+  async getCourseDataForWorkout(courseId, userId = null) {
     try {
-      // Import workoutProgressService dynamically to avoid circular dependency
       const workoutProgressService = await import('../data-management/workoutProgressService');
-      return await workoutProgressService.default.getCourseDataForWorkout(courseId);
+      return await workoutProgressService.default.getCourseDataForWorkout(courseId, userId);
     } catch (error) {
       logger.error('❌ Error getting course data:', error);
       return null;

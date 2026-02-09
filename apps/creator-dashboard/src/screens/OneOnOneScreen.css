@@ -139,26 +139,261 @@
   font-style: italic;
 }
 
-/* Modal */
-.modal-one-on-one-content {
+/* Add Client Modal */
+.add-client-modal {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
+  max-height: calc(90vh - 120px);
 }
 
-.modal-error-message {
-  padding: 12px;
-  background-color: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  border-radius: 8px;
+.add-client-modal-error {
+  padding: 14px 18px;
+  background-color: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: 10px;
   color: #FF6B6B;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.add-client-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-client-modal-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.add-client-modal-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(191, 168, 77, 0.25);
+  color: rgba(191, 168, 77, 0.95);
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.add-client-modal-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.add-client-modal-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-left: auto;
+}
+
+.add-client-modal-section-content {
+  padding-left: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.add-client-modal-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  display: block;
+}
+
+.add-client-modal-required {
+  color: rgba(255, 107, 107, 0.95);
+}
+
+.add-client-modal-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.add-client-modal-loading {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
 }
 
-.modal-actions {
+/* Program cards grid */
+.add-client-modal-programs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+@media (min-width: 600px) {
+  .add-client-modal-programs-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+.add-client-modal-program-card {
+  position: relative;
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  text-align: left;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.add-client-modal-program-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.add-client-modal-program-card-selected {
+  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(191, 168, 77, 0.08);
+  box-shadow: 0 0 0 1px rgba(191, 168, 77, 0.3);
+}
+
+.add-client-modal-program-card-selected:hover {
+  border-color: rgba(191, 168, 77, 0.7);
+}
+
+.add-client-modal-program-card-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.add-client-modal-program-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.add-client-modal-program-card-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(191, 168, 77, 0.2), rgba(191, 168, 77, 0.05));
+  font-size: 32px;
+  font-weight: 600;
+  color: rgba(191, 168, 77, 0.6);
+  text-transform: uppercase;
+}
+
+.add-client-modal-program-card-info {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.add-client-modal-program-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.add-client-modal-program-card-discipline {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.add-client-modal-program-card-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(191, 168, 77, 0.9);
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* New program card */
+.add-client-modal-program-card-new {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.25);
+  min-height: 140px;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.add-client-modal-program-card-new:hover {
+  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(191, 168, 77, 0.06);
+}
+
+.add-client-modal-program-card-new-icon {
+  display: block;
+  font-size: 40px;
+  font-weight: 300;
+  color: rgba(191, 168, 77, 0.85);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.add-client-modal-program-card-new-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  display: block;
+}
+
+.add-client-modal-program-card-new-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 4px;
+  display: block;
+}
+
+.add-client-modal-empty-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  padding: 12px 0;
+  line-height: 1.5;
+}
+
+.add-client-modal-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: auto;
 }
 
 /* Client Detail Modal */

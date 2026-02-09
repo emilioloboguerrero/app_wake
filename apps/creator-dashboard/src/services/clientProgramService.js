@@ -123,16 +123,20 @@ class ClientProgramService {
    * Assign a program to a client user
    * Creates a client program document with version snapshot
    * Also adds program to user's courses for mobile app visibility
-   * 
+   * Atomic: adds users.courses first; on failure rolls back
+   *
    * @param {string} programId - Program ID
    * @param {string} userId - User ID to assign program to
    * @param {Object} initialOverrides - Optional initial overrides
    * @returns {Promise<string>} Client program document ID
    */
   async assignProgramToClient(programId, userId, initialOverrides = {}) {
+    let usersCoursesAdded = false;
+    const MAX_RETRIES = 3;
+
     try {
       console.log('📝 Assigning program to client:', { programId, userId });
-      
+
       // Get program to extract version info
       const program = await programService.getProgramById(programId);
       if (!program) {
@@ -146,15 +150,33 @@ class ClientProgramService {
       }
 
       // Extract library versions from program (only if creator_id exists)
-      const libraryVersions = creatorId 
+      const libraryVersions = creatorId
         ? await this.extractLibraryVersionsFromProgram(programId, creatorId)
         : { sessions: {}, modules: {} };
-      
-      // Create client program document
+
+      // Step 1: Add to users.courses FIRST (atomic - must succeed before client_programs)
+      let lastError;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await this.addOneOnOneProgramToUserCourses(userId, programId, program, creatorId);
+          usersCoursesAdded = true;
+          break;
+        } catch (err) {
+          lastError = err;
+          console.warn(`⚠️ addOneOnOneProgramToUserCourses attempt ${attempt}/${MAX_RETRIES} failed:`, err?.message);
+          if (attempt === MAX_RETRIES) {
+            throw new Error(`No se pudo agregar el programa al usuario después de ${MAX_RETRIES} intentos. ${err?.message || ''}`);
+          }
+          await new Promise(r => setTimeout(r, 500 * attempt));
+        }
+      }
+
+      // Step 2: Create client program document
       const clientProgramId = `${userId}_${programId}`;
       const clientProgramData = {
         program_id: programId,
         user_id: userId,
+        content_plan_id: initialOverrides.content_plan_id ?? null,
         version_snapshot: {
           program_version: program.version || '1.0',
           library_versions: libraryVersions
@@ -164,12 +186,30 @@ class ClientProgramService {
         ...initialOverrides
       };
 
-      await setDoc(doc(firestore, 'client_programs', clientProgramId), clientProgramData);
-      
-      // ✅ NEW: Add program to user's courses for mobile app visibility
-      // Use creatorId from above (with fallback), or null if not available
-      await this.addOneOnOneProgramToUserCourses(userId, programId, program, creatorId);
-      
+      try {
+        await setDoc(doc(firestore, 'client_programs', clientProgramId), clientProgramData);
+      } catch (err) {
+        // Rollback: remove from users.courses
+        if (usersCoursesAdded) {
+          try {
+            await this.removeOneOnOneProgramFromUserCourses(userId, programId);
+          } catch (rollbackErr) {
+            console.error('❌ Rollback failed after client_programs creation error:', rollbackErr);
+          }
+        }
+        throw err;
+      }
+
+      // Step 3: Update one_on_one_clients.courseId
+      if (creatorId) {
+        try {
+          const { default: oneOnOneService } = await import('./oneOnOneService');
+          await oneOnOneService.addCourseToClient(creatorId, userId, programId);
+        } catch (err) {
+          console.warn('Could not update one_on_one_clients.courseId:', err);
+        }
+      }
+
       console.log('✅ Client program created:', clientProgramId);
       return clientProgramId;
     } catch (error) {
@@ -292,16 +332,54 @@ class ClientProgramService {
   }
 
   /**
+   * Set the content plan for a client's program (reference: content comes from this plan).
+   * @param {string} programId - Program ID (general program / bucket)
+   * @param {string} userId - User ID
+   * @param {string|null} planId - Plan ID from plans collection, or null to clear
+   */
+  async setClientContentPlan(programId, userId, planId) {
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      const clientProgramRef = doc(firestore, 'client_programs', clientProgramId);
+      const clientProgramDoc = await getDoc(clientProgramRef);
+      if (!clientProgramDoc.exists()) {
+        throw new Error('Client program not found. Assign the program to the client first.');
+      }
+      await updateDoc(clientProgramRef, {
+        content_plan_id: planId ?? null,
+        updated_at: serverTimestamp()
+      });
+      console.log('✅ Client content plan set:', { programId, userId, planId });
+    } catch (error) {
+      console.error('❌ Error setting client content plan:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete client program (unassign program from user)
    * Also removes from user's courses
    */
   async deleteClientProgram(programId, userId) {
     try {
       const clientProgramId = `${userId}_${programId}`;
+      const program = await programService.getProgramById(programId);
+      const creatorId = program?.creator_id || program?.creatorId;
+      
       await deleteDoc(doc(firestore, 'client_programs', clientProgramId));
       
-      // ✅ NEW: Remove from user's courses
+      // ✅ Remove from user's courses
       await this.removeOneOnOneProgramFromUserCourses(userId, programId);
+      
+      // ✅ Update one_on_one_clients.courseId (dynamic import to avoid circular dependency)
+      if (creatorId) {
+        try {
+          const { default: oneOnOneService } = await import('./oneOnOneService');
+          await oneOnOneService.removeCourseFromClient(creatorId, userId, programId);
+        } catch (err) {
+          console.warn('Could not update one_on_one_clients.courseId:', err);
+        }
+      }
       
       console.log('✅ Client program deleted:', clientProgramId);
     } catch (error) {

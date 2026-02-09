@@ -1,5 +1,10 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+
+const RedirectLibrarySessionEdit = () => {
+  const { sessionId } = useParams();
+  return <Navigate to={`/content/sessions/${sessionId}`} replace />;
+};
 import { AuthProvider } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
@@ -14,7 +19,9 @@ import ProfileScreen from './screens/ProfileScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
 import ContentHubScreen from './screens/ContentHubScreen';
-import ProductsScreen from './screens/ProductsScreen';
+import PlanDetailScreen from './screens/PlanDetailScreen';
+import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
+import ProgramsAndClientsScreen from './screens/ProgramsAndClientsScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -69,10 +76,10 @@ function AppContent() {
               } 
             />
             <Route 
-              path="/plans/new" 
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId" 
               element={
                 <ProtectedRoute>
-                  <ContentHubScreen />
+                  <PlanSessionDetailScreen />
                 </ProtectedRoute>
               } 
             />
@@ -80,7 +87,7 @@ function AppContent() {
               path="/plans/:planId" 
               element={
                 <ProtectedRoute>
-                  <ContentHubScreen />
+                  <PlanDetailScreen />
                 </ProtectedRoute>
               } 
             />
@@ -96,7 +103,15 @@ function AppContent() {
               path="/products" 
               element={
                 <ProtectedRoute>
-                  <ProductsScreen />
+                  <ProgramsAndClientsScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/products/new" 
+              element={
+                <ProtectedRoute>
+                  <ProgramsScreen />
                 </ProtectedRoute>
               } 
             />
@@ -128,7 +143,7 @@ function AppContent() {
               path="/clients" 
               element={
                 <ProtectedRoute>
-                  <OneOnOneScreen />
+                  <Navigate to="/products?tab=clientes" replace />
                 </ProtectedRoute>
               } 
             />
@@ -136,7 +151,7 @@ function AppContent() {
               path="/one-on-one" 
               element={
                 <ProtectedRoute>
-                  <OneOnOneScreen />
+                  <Navigate to="/products?tab=clientes" replace />
                 </ProtectedRoute>
               } 
             />
@@ -163,6 +178,14 @@ function AppContent() {
                   <ProfileScreen />
                 </ProtectedRoute>
               } 
+            />
+            <Route 
+              path="/library/sessions/:sessionId/edit" 
+              element={
+                <ProtectedRoute>
+                  <RedirectLibrarySessionEdit />
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="/library/sessions/new" 

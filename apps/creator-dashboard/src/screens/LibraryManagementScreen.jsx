@@ -193,7 +193,7 @@ const LibraryManagementScreen = () => {
                     key={session.id} 
                     className="library-item-card"
                     style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/library/sessions/${session.id}/edit`)}
+                    onClick={() => navigate(`/content/sessions/${session.id}`)}
                   >
                     <div className="library-item-header">
                       <h3 className="library-item-title">

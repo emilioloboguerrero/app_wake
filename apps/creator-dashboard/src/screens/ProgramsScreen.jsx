@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
@@ -12,9 +12,17 @@ import { getUser } from '../services/firestoreService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import './ProgramsScreen.css';
 
+const TUTORIAL_SCREENS = [
+  { key: 'dailyWorkout', label: 'Entrenamiento diario' },
+  { key: 'workoutExecution', label: 'Ejecución del entrenamiento' },
+  { key: 'workoutCompletion', label: 'Completar entrenamiento' },
+  { key: 'warmup', label: 'Calentamiento' },
+];
+
 const ProgramsScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [isProgramTypeSelectionModalOpen, setIsProgramTypeSelectionModalOpen] = useState(false);
@@ -55,6 +63,14 @@ const ProgramsScreen = () => {
   const [availableLibraries, setAvailableLibraries] = useState([]);
   const [selectedLibraryIds, setSelectedLibraryIds] = useState(new Set());
   const [tutorials, setTutorials] = useState({});
+  // Optional tutorial video per screen (File or null)
+  const [tutorialFiles, setTutorialFiles] = useState({
+    dailyWorkout: null,
+    workoutExecution: null,
+    workoutCompletion: null,
+    warmup: null,
+  });
+  const [isUploadingTutorials, setIsUploadingTutorials] = useState(false);
 
   // Load programs with React Query (cached)
   const { data: programs = [], isLoading: loading, error: queryError } = useQuery({
@@ -88,17 +104,33 @@ const ProgramsScreen = () => {
     }
   }, [userDoc]);
 
-  // Check for autoCreate parameter and open modal if present
+  // Check for autoCreate parameter (from Contenido) and open modal if present
   useEffect(() => {
     const autoCreate = searchParams.get('autoCreate');
     if (autoCreate === 'true' && user) {
-      // Set delivery type to low_ticket and open the create modal directly
       setDeliveryType('low_ticket');
       setIsModalOpen(true);
-      // Remove the parameter from URL
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, user, setSearchParams]);
+
+  // When arriving at /products/new?type=low_ticket (from Programas y clientes), open create modal
+  useEffect(() => {
+    if (location.pathname === '/products/new' && searchParams.get('type') === 'low_ticket' && user) {
+      setDeliveryType('low_ticket');
+      setIsModalOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [location.pathname, searchParams, user, setSearchParams]);
+
+  // When arriving at /products/new?type=one_on_one, open create modal for general program (bucket)
+  useEffect(() => {
+    if (location.pathname === '/products/new' && searchParams.get('type') === 'one_on_one' && user) {
+      setDeliveryType('one_on_one');
+      setIsModalOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [location.pathname, searchParams, user, setSearchParams]);
 
   // Load libraries when modal opens
   useEffect(() => {
@@ -240,8 +272,17 @@ const ProgramsScreen = () => {
     setMinimumSessionsPerWeek(0);
     setWeightSuggestions(false);
     setAvailableLibraries([]);
+    if (location.pathname === '/products/new') {
+      navigate('/products');
+    }
     setSelectedLibraryIds(new Set());
     setTutorials({});
+    setTutorialFiles({
+      dailyWorkout: null,
+      workoutExecution: null,
+      workoutCompletion: null,
+      warmup: null,
+    });
   };
 
   const handleDurationIncrement = () => {
@@ -283,13 +324,13 @@ const ProgramsScreen = () => {
         title: programName.trim(),
         description: programDescription.trim() || '',
         discipline,
-        programType,
+        programType: deliveryType === 'one_on_one' ? 'subscription' : programType,
         deliveryType,
         status: 'draft', // Always draft
-        price: price ? parseInt(price, 10) : null,
-        freeTrialActive,
-        freeTrialDurationDays,
-        duration: duration !== undefined && duration !== null && programType === 'one-time' ? `${parseInt(duration, 10)} semanas` : (programType === 'subscription' ? 'Mensual' : null), // Duration format: "X semanas" for one-time, "Mensual" for subscription
+        price: deliveryType === 'one_on_one' ? null : (price ? parseInt(price, 10) : null),
+        freeTrialActive: deliveryType === 'one_on_one' ? false : freeTrialActive,
+        freeTrialDurationDays: deliveryType === 'one_on_one' ? '0' : freeTrialDurationDays,
+        duration: deliveryType === 'one_on_one' ? null : (duration !== undefined && duration !== null && programType === 'one-time' ? `${parseInt(duration, 10)} semanas` : (programType === 'subscription' ? 'Mensual' : null)),
         streakEnabled,
         minimumSessionsPerWeek,
         weightSuggestions,
@@ -352,6 +393,38 @@ const ProgramsScreen = () => {
           alert(`Error al subir el video intro: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
         } finally {
           setIsUploadingIntroVideo(false);
+        }
+      }
+
+      // Upload optional tutorial videos per screen
+      const hasTutorialFiles = Object.values(tutorialFiles).some(Boolean);
+      if (hasTutorialFiles && newProgram?.id) {
+        setIsUploadingTutorials(true);
+        try {
+          const tutorialsPayload = {
+            dailyWorkout: [],
+            workoutCompletion: [],
+            workoutExecution: [],
+            warmup: [],
+          };
+          for (const { key } of TUTORIAL_SCREENS) {
+            const file = tutorialFiles[key];
+            if (file) {
+              const url = await programService.uploadTutorialVideo(
+                newProgram.id,
+                key,
+                file,
+                (p) => {}
+              );
+              if (url) tutorialsPayload[key] = [url];
+            }
+          }
+          await programService.updateProgram(newProgram.id, { tutorials: tutorialsPayload });
+        } catch (uploadErr) {
+          console.error('Error uploading tutorial videos:', uploadErr);
+          alert(`Error al subir los tutoriales: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+        } finally {
+          setIsUploadingTutorials(false);
         }
       }
       
@@ -418,8 +491,10 @@ const ProgramsScreen = () => {
     }
   };
 
+  const isOneOnOneCreate = location.pathname === '/products/new' && deliveryType === 'one_on_one';
+
   return (
-    <DashboardLayout screenName="Programas low-ticket">
+    <DashboardLayout screenName={isOneOnOneCreate ? 'Nuevo programa general (1-on-1)' : 'Programas Low-ticket'}>
       <div className="programs-content">
         <div className="programs-actions">
           <button 
@@ -506,7 +581,7 @@ const ProgramsScreen = () => {
                         )}
                       </div>
                       <div className={`program-type-pill program-type-pill-${programDeliveryType}`}>
-                        {programDeliveryType === 'one_on_one' ? '1 on 1' : 'Low ticket'}
+                        {programDeliveryType === 'one_on_one' ? '1-on-1' : 'Low-ticket'}
                       </div>
                     </div>
                   </div>
@@ -521,9 +596,14 @@ const ProgramsScreen = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        title="Nuevo programa"
+        title={deliveryType === 'one_on_one' ? 'Nuevo programa general (1-on-1)' : 'Nuevo programa'}
       >
         <div className="one-on-one-modal-content">
+          {deliveryType === 'one_on_one' && (
+            <p className="one-on-one-field-note" style={{ marginBottom: '16px', padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px' }}>
+              Los programas generales son contenedores (metadata: título, imagen, descripción). El contenido (semanas y sesiones) se asigna por cliente en la ficha de cada cliente.
+            </p>
+          )}
           {/* Information Section */}
           <div className="one-on-one-modal-section">
             <div className="one-on-one-modal-section-header">
@@ -555,7 +635,7 @@ const ProgramsScreen = () => {
                 />
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: deliveryType === 'one_on_one' ? '1fr' : '1fr 1fr', gap: '20px' }}>
                 <div className="edit-program-input-group">
                   <label className="edit-program-input-label">
                     Disciplina <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
@@ -572,27 +652,30 @@ const ProgramsScreen = () => {
                   </p>
                 </div>
                 
-                <div className="edit-program-input-group">
-                  <label className="edit-program-input-label">
-                    Tipo <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
-                  </label>
-                  <select
-                    className="program-config-dropdown"
-                    value={programType}
-                    onChange={(e) => setProgramType(e.target.value)}
-                  >
-                    <option value="subscription">Suscripción</option>
-                    <option value="one-time">Pago único</option>
-                  </select>
-                  <p className="one-on-one-field-note">
-                    No se puede cambiar después de la creación
-                  </p>
-                </div>
+                {deliveryType !== 'one_on_one' && (
+                  <div className="edit-program-input-group">
+                    <label className="edit-program-input-label">
+                      Tipo <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                    </label>
+                    <select
+                      className="program-config-dropdown"
+                      value={programType}
+                      onChange={(e) => setProgramType(e.target.value)}
+                    >
+                      <option value="subscription">Suscripción</option>
+                      <option value="one-time">Pago único</option>
+                    </select>
+                    <p className="one-on-one-field-note">
+                      No se puede cambiar después de la creación
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Pricing & Duration Section */}
+          {/* Pricing & Duration Section - hide for 1-on-1 general programs */}
+          {deliveryType !== 'one_on_one' && (
           <div className="one-on-one-modal-section">
             <div className="one-on-one-modal-section-header">
               <h3 className="one-on-one-modal-section-title">Precio y Duración</h3>
@@ -717,6 +800,7 @@ const ProgramsScreen = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* Visual Content Section */}
           <div className="one-on-one-modal-section">
@@ -1066,13 +1150,68 @@ const ProgramsScreen = () => {
             </div>
           </div>
           
+          {/* Tutorials (optional) - same for low-ticket and one-on-one */}
+          <div className="one-on-one-modal-section">
+            <div className="one-on-one-modal-section-header">
+              <h3 className="one-on-one-modal-section-title">Tutoriales</h3>
+              <span className="one-on-one-modal-section-badge-optional">Opcional</span>
+            </div>
+            <div className="one-on-one-modal-section-content">
+              <p className="one-on-one-config-description" style={{ marginBottom: 16 }}>
+                Videos que verán los usuarios la primera vez que entren a cada pantalla de la app (MP4, M4V o MOV).
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {TUTORIAL_SCREENS.map(({ key, label }) => (
+                  <div key={key} className="one-on-one-config-item" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <label className="edit-program-input-label" style={{ minWidth: 180, marginBottom: 0 }}>
+                      {label}
+                    </label>
+                    <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/x-m4v,video/quicktime,.mp4,.m4v,.mov"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          setTutorialFiles((prev) => ({ ...prev, [key]: file || null }));
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      <span
+                        className="edit-program-image-action-pill"
+                        style={{
+                          padding: '8px 14px',
+                          fontSize: 13,
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          borderRadius: 8,
+                        }}
+                      >
+                        {tutorialFiles[key] ? tutorialFiles[key].name : 'Subir video'}
+                      </span>
+                    </label>
+                    {tutorialFiles[key] && (
+                      <button
+                        type="button"
+                        onClick={() => setTutorialFiles((prev) => ({ ...prev, [key]: null }))}
+                        className="edit-program-image-action-pill edit-program-image-delete-pill"
+                        style={{ padding: '8px 12px', fontSize: 13 }}
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
           {/* Create Button */}
           <div className="one-on-one-modal-actions">
             <Button
-              title={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo ? 'Creando...' : 'Crear Programa'}
+              title={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo || isUploadingTutorials ? 'Creando...' : 'Crear Programa'}
               onClick={handleCreateProgram}
-              disabled={!programName.trim() || !discipline || !programType || createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo}
-              loading={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo}
+              disabled={!programName.trim() || !discipline || !programType || createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo || isUploadingTutorials}
+              loading={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo || isUploadingTutorials}
             />
             <p className="one-on-one-modal-help-text">
               Los campos marcados con <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span> son requeridos. Podrás agregar contenido después de crear el programa.
@@ -1100,7 +1239,7 @@ const ProgramsScreen = () => {
                 </svg>
               </div>
               <div className="program-type-selection-option-content">
-                <h3 className="program-type-selection-option-title">Low Ticket</h3>
+                <h3 className="program-type-selection-option-title">Low-ticket</h3>
                 <p className="program-type-selection-option-description">Programas generales y escalables para múltiples usuarios</p>
               </div>
             </button>

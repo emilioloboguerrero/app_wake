@@ -87,8 +87,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 20px;
-  height: 32px;
+  padding: 8px 20px;
+  height: 40px;
   border-radius: 999px;
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -113,6 +113,45 @@
   gap: 24px;
 }
 
+.content-hub-grid--sessions {
+  grid-template-columns: 1fr;
+}
+
+.content-hub-sessions-search,
+.content-hub-search-bar {
+  width: 100%;
+}
+
+.content-hub-sessions-search .input-container,
+.content-hub-search-bar .input-container {
+  margin-bottom: 0;
+}
+
+.content-hub-sessions-search input,
+.content-hub-search-bar input {
+  width: 100%;
+  height: 40px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.content-hub-sessions-search input::placeholder,
+.content-hub-search-bar input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.content-hub-sessions-search input:focus,
+.content-hub-search-bar input:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 .content-hub-card {
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -131,6 +170,12 @@
   border-color: rgba(191, 168, 77, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.content-hub-card--session {
+  padding: 14px 18px;
+  gap: 8px;
+  min-height: unset;
 }
 
 .content-hub-card-edit-mode {

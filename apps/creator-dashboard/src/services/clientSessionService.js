@@ -29,37 +29,42 @@ class ClientSessionService {
    * @returns {Promise<string>} Client session document ID
    */
   async assignSessionToDate(clientId, programId, planId, sessionId, date, moduleId = null, metadata = {}) {
-    try {
-      console.log('📅 Assigning session to date:', { clientId, programId, planId, sessionId, date });
-      
-      // Normalize date to YYYY-MM-DD format for consistent storage
-      const dateStr = this.formatDateForStorage(date);
-      const sessionDate = new Date(date);
-      sessionDate.setHours(0, 0, 0, 0);
-      
-      // Create client session document
-      // ID format: {clientId}_{dateStr}_{sessionId} (or use auto-generated ID)
-      const clientSessionData = {
-        client_id: clientId,
-        program_id: programId,
-        plan_id: planId, // NEW: Track which plan this session comes from
-        session_id: sessionId,
-        module_id: moduleId,
-        date: dateStr,
-        date_timestamp: sessionDate,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-        ...metadata
-      };
+    const dateStr = this.formatDateForStorage(date);
+    const sessionDate = new Date(date);
+    sessionDate.setHours(0, 0, 0, 0);
 
-      // Use a more readable ID format
-      const clientSessionId = `${clientId}_${dateStr}_${sessionId}`;
-      await setDoc(doc(firestore, 'client_sessions', clientSessionId), clientSessionData);
-      
-      console.log('✅ Client session assigned:', clientSessionId);
-      return clientSessionId;
+    const clientSessionData = {
+      client_id: clientId,
+      program_id: programId,
+      plan_id: planId ?? null,
+      session_id: sessionId,
+      module_id: moduleId ?? null,
+      date: dateStr,
+      date_timestamp: sessionDate,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+      ...metadata
+    };
+
+    const clientSessionId = `${clientId}_${dateStr}_${sessionId}`;
+    console.log('[clientSessionService] assignSessionToDate: writing', { docId: clientSessionId, client_id: clientId, date: dateStr, session_id: sessionId });
+    await setDoc(doc(firestore, 'client_sessions', clientSessionId), clientSessionData);
+    console.log('[clientSessionService] assignSessionToDate: done', clientSessionId);
+    return clientSessionId;
+  }
+
+  /**
+   * Get a single client_sessions doc by id.
+   * @param {string} clientSessionId - client_sessions document id
+   * @returns {Promise<Object|null>}
+   */
+  async getClientSessionById(clientSessionId) {
+    try {
+      const snap = await getDoc(doc(firestore, 'client_sessions', clientSessionId));
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() };
     } catch (error) {
-      console.error('❌ Error assigning session to date:', error);
+      console.error('[clientSessionService] getClientSessionById:', error);
       throw error;
     }
   }
@@ -73,33 +78,67 @@ class ClientSessionService {
    * @returns {Promise<Array>} Array of client session objects
    */
   async getClientSessions(clientId, startDate = null, endDate = null) {
-    try {
-      // Default to current month if no dates provided
-      if (!startDate || !endDate) {
-        const now = new Date();
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      }
+    if (!startDate || !endDate) {
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
 
-      // Normalize dates
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+    console.log('[clientSessionService] getClientSessions: query', { clientId, start: startDate.toISOString(), end: endDate.toISOString() });
 
-      const clientSessionsQuery = query(
+    const runIndexedQuery = async () => {
+      const q = query(
         collection(firestore, 'client_sessions'),
         where('client_id', '==', clientId),
         where('date_timestamp', '>=', startDate),
         where('date_timestamp', '<=', endDate),
         orderBy('date_timestamp', 'asc')
       );
-      
-      const snapshot = await getDocs(clientSessionsQuery);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const snapshot = await getDocs(q);
+      const out = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('[clientSessionService] getClientSessions: indexed query ok', { count: out.length, ids: out.slice(0, 5).map(s => s.id), dates: out.slice(0, 5).map(s => s.date) });
+      return out;
+    };
+
+    const runFallbackQuery = async () => {
+      const q = query(
+        collection(firestore, 'client_sessions'),
+        where('client_id', '==', clientId)
+      );
+      const snapshot = await getDocs(q);
+      const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('[clientSessionService] getClientSessions: fallback query got', all.length, 'docs for client');
+      const filtered = all.filter((s) => {
+        const ts = s.date_timestamp;
+        const t = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+        if (!t) return false;
+        const tMs = t.getTime();
+        return tMs >= startDate.getTime() && tMs <= endDate.getTime();
+      }).sort((a, b) => {
+        const ta = a.date_timestamp?.toDate?.() ?? new Date(a.date_timestamp);
+        const tb = b.date_timestamp?.toDate?.() ?? new Date(b.date_timestamp);
+        return ta.getTime() - tb.getTime();
+      });
+      console.log('[clientSessionService] getClientSessions: fallback after date filter', { count: filtered.length, dates: filtered.map(s => s.date) });
+      return filtered;
+    };
+
+    try {
+      return await runIndexedQuery();
     } catch (error) {
-      console.error('❌ Error getting client sessions:', error);
+      const needsIndex = error?.code === 'failed-precondition' || (error?.message && error.message.includes('index'));
+      console.log('[clientSessionService] getClientSessions: indexed failed', { needsIndex, code: error?.code, message: error?.message?.slice(0, 120) });
+      if (needsIndex) {
+        console.warn('[clientSessionService] getClientSessions: using fallback (deploy firestore indexes for better performance)');
+        try {
+          return await runFallbackQuery();
+        } catch (fallbackError) {
+          console.error('[clientSessionService] getClientSessions fallback error:', fallbackError);
+          throw fallbackError;
+        }
+      }
       throw error;
     }
   }

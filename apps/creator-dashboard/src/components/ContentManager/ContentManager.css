@@ -1,0 +1,234 @@
+/* ========== Content Manager ========== */
+.content-manager {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* ========== Header ========== */
+.content-manager-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  min-height: 40px;
+}
+
+.content-manager-header--compact {
+  margin-bottom: 20px;
+  justify-content: flex-end;
+}
+
+.content-manager-header--compact .content-manager-edit-toggle {
+  margin-left: 0;
+}
+
+.content-manager-back {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.content-manager-back:hover {
+  color: rgba(191, 168, 77, 1);
+}
+
+.content-manager-title {
+  flex: 1;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+
+.content-manager-edit-toggle {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.content-manager-edit-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ========== Loading & Error ========== */
+.content-manager-loading,
+.content-manager-error {
+  padding: 40px 24px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.content-manager-loading {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.content-manager-error {
+  color: rgba(255, 68, 68, 0.9);
+}
+
+/* ========== Section ========== */
+.content-manager-section {
+  margin-top: 0;
+}
+
+.content-manager-section-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  min-height: 40px;
+}
+
+.content-manager-section-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+}
+
+.content-manager-back-inline {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.content-manager-back-inline:hover {
+  color: rgba(191, 168, 77, 1);
+}
+
+/* ========== Add Button ========== */
+.content-manager-add-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(191, 168, 77, 0.2);
+  border: 1px solid rgba(191, 168, 77, 0.45);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.content-manager-add-btn:hover:not(:disabled) {
+  background: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.6);
+}
+
+.content-manager-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========== List ========== */
+.content-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ========== Card ========== */
+.content-manager-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.content-manager-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.content-manager-card-edit .content-manager-card:hover {
+  cursor: default;
+}
+
+.content-manager-card-number {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(191, 168, 77, 0.18);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  flex-shrink: 0;
+}
+
+.content-manager-card-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.content-manager-delete-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.35);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.content-manager-delete-btn:hover {
+  background: rgba(255, 68, 68, 0.25);
+}
+
+/* ========== Empty State ========== */
+.content-manager-empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* ========== Modals ========== */
+.content-manager-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.content-manager-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
