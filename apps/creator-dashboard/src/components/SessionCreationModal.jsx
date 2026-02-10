@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
+import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
 import Button from './Button';
 import './SessionCreationModal.css';
@@ -9,13 +10,17 @@ const SessionCreationModal = ({
   onClose,
   selectedDate,
   onSave,
-  onSaveToLibrary
+  onSaveToLibrary,
+  creatorId = null,
 }) => {
   const [sessionName, setSessionName] = useState('');
   const [exercises, setExercises] = useState([]);
   const [isExerciseEditMode, setIsExerciseEditMode] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [saveToLibrary, setSaveToLibrary] = useState(false);
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
 
   const handleClose = () => {
@@ -24,7 +29,15 @@ const SessionCreationModal = ({
     setIsExerciseEditMode(false);
     setSelectedExercise(null);
     setSaveToLibrary(false);
+    setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
     onClose();
+  };
+
+  const handleMediaPickerSelect = (item) => {
+    setSessionImagePreview(item.url);
+    setSessionImageUrlFromLibrary(item.url);
+    setIsMediaPickerOpen(false);
   };
 
   const handleAddExercise = (e) => {
@@ -57,7 +70,8 @@ const SessionCreationModal = ({
       onSave({
         name: sessionName.trim(),
         exercises: exercises,
-        saveToLibrary: saveToLibrary
+        saveToLibrary: saveToLibrary,
+        image_url: sessionImageUrlFromLibrary || null,
       });
     }
     
@@ -93,6 +107,7 @@ const SessionCreationModal = ({
   if (!isOpen) return null;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
@@ -125,6 +140,30 @@ const SessionCreationModal = ({
               </label>
             </div>
           </div>
+
+          {/* Image Section */}
+          {creatorId && (
+            <div className="session-creation-image-field">
+              <label className="session-creation-image-label">
+                Imagen de la sesión
+                <span className="session-creation-recommended-tag">Altamente recomendado</span>
+              </label>
+              {sessionImagePreview ? (
+                <div className="session-creation-image-preview-wrap">
+                  <img src={sessionImagePreview} alt="Sesión" className="session-creation-image-preview" />
+                  <div className="session-creation-image-actions">
+                    <button type="button" className="session-creation-image-btn" onClick={() => setIsMediaPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="session-creation-image-btn session-creation-image-btn--remove" onClick={() => { setSessionImagePreview(null); setSessionImageUrlFromLibrary(null); }}>Quitar</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="session-creation-image-upload-area" onClick={() => setIsMediaPickerOpen(true)}>
+                  <span className="session-creation-image-upload-icon">+</span>
+                  <span>Elegir imagen</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Exercises Section */}
           <div className="session-creation-exercises">
@@ -204,9 +243,17 @@ const SessionCreationModal = ({
           </div>
         </div>
       </div>
-
-      {/* TODO: Use the same modal from ProgramDetailScreen - needs to be extracted into a shared component */}
     </Modal>
+    {creatorId && (
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={creatorId}
+        accept="image/*"
+      />
+    )}
+    </>
   );
 };
 

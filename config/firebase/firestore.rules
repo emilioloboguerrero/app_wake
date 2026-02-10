@@ -38,15 +38,20 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == creatorId;
     }
     
+    // Creator can read/update a user doc if that user is their one-on-one client (creator_client_access doc exists)
+    function creatorHasClientAccess(userId) {
+      return isCreator() && exists(/databases/$(database)/documents/creator_client_access/$(request.auth.uid + '_' + userId));
+    }
+    
     // ============================================
     // USER DATA
     // ============================================
     
-    // Users collection - only owner or admin can access
+    // Users collection - owner, admin, or creator (for their clients) can read/update
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
       allow delete: if isOwner(userId) || isAdmin();
       
       // Exercise history subcollections
@@ -54,10 +59,19 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       
-      // Session history subcollections  
+      // Session history subcollections (creator can read for completion indicator on calendar)
       match /sessionHistory/{sessionId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
+        allow write: if isOwner(userId);
       }
+    }
+    
+    // Creator-client access: doc id = creatorId_userId; allows creator to read/update that user's document (e.g. set access end date)
+    match /creator_client_access/{accessId} {
+      allow read: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid && accessId == request.auth.uid + '_' + request.resource.data.userId;
+      allow update: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid;
     }
     
     // ============================================
@@ -203,6 +217,16 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
     
+    // ============================================
+    // CREATOR MEDIA (personal folder for images/videos)
+    // ============================================
+    match /creator_media/{creatorId} {
+      allow read, write: if isSignedIn() && request.auth.uid == creatorId;
+      match /files/{fileId} {
+        allow read, write: if isSignedIn() && request.auth.uid == creatorId;
+      }
+    }
+
     // ============================================
     // DEFAULT RULE (Fallback for any other collections)
     // ============================================

@@ -28,7 +28,47 @@ class ClientSessionService {
    * @param {Object} metadata - Optional metadata (e.g., notes, customizations)
    * @returns {Promise<string>} Client session document ID
    */
+  /**
+   * Remove all client_sessions for a (client, program, date). Ensures one session per day per program when assigning.
+   */
+  async removeSessionsForDateAndProgram(clientId, programId, date) {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    const sessions = await this.getClientSessions(clientId, startOfDay, endOfDay);
+    const toDelete = sessions.filter((s) => s.program_id === programId);
+    for (const s of toDelete) {
+      await deleteDoc(doc(firestore, 'client_sessions', s.id));
+    }
+    if (toDelete.length > 0) {
+      console.log('[clientSessionService] removeSessionsForDateAndProgram: removed', toDelete.length, 'for', clientId, programId, this.formatDateForStorage(date));
+    }
+  }
+
+  /**
+   * Delete all client_sessions for a (client, program) in a given week (e.g. when removing plan from week).
+   */
+  async deleteClientSessionsForWeek(clientId, programId, weekKey) {
+    const { getWeekDates } = await import('../utils/weekCalculation');
+    const { start, end } = getWeekDates(weekKey);
+    const startDate = new Date(start);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+    const sessions = await this.getClientSessions(clientId, startDate, endDate);
+    const toDelete = sessions.filter((s) => s.program_id === programId);
+    for (const s of toDelete) {
+      await deleteDoc(doc(firestore, 'client_sessions', s.id));
+    }
+    if (toDelete.length > 0) {
+      console.log('[clientSessionService] deleteClientSessionsForWeek: removed', toDelete.length, 'for', clientId, programId, weekKey);
+    }
+  }
+
   async assignSessionToDate(clientId, programId, planId, sessionId, date, moduleId = null, metadata = {}) {
+    await this.removeSessionsForDateAndProgram(clientId, programId, date);
+
     const dateStr = this.formatDateForStorage(date);
     const sessionDate = new Date(date);
     sessionDate.setHours(0, 0, 0, 0);

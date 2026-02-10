@@ -112,6 +112,33 @@ body.header-scrolled .program-page {
   color: rgba(255, 255, 255, 0.35);
 }
 
+.program-page__breadcrumb-image-btn {
+  margin-left: 8px;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  vertical-align: middle;
+}
+
+.program-page__breadcrumb-image-btn:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.program-page__breadcrumb-image-btn img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+
 .program-page__content {
   flex: 1;
   padding: 32px;

@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import './DashboardLayout.css';
 
-const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, headerIcon = null }) => {
+const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, headerIcon = null, headerImageIcon = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,7 +86,7 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
             <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M21 9.25V9.2C21 8.0799 21 7.51984 20.782 7.09202C20.5903 6.7157 20.2843 6.40974 19.908 6.21799C19.4802 6 18.9201 6 17.8 6L3 6M3 6L3 16.8C3 17.9201 3 18.4802 3.21799 18.908C3.40973 19.2843 3.7157 19.5903 4.09202 19.782C4.51984 20 5.0799 20 6.2 20H7M3 6L3 5.6C3 5.03995 3 4.75992 3.109 4.54601C3.20487 4.35785 3.35785 4.20487 3.54601 4.10899C3.75992 4 4.03995 4 4.6 4H9.33726C9.58185 4 9.70415 4 9.81923 4.02763C9.92127 4.05213 10.0188 4.09253 10.1083 4.14736C10.2092 4.2092 10.2957 4.29568 10.4686 4.46863L12 6M16 14L18 16M11 21V18.5L18.5 11L21 13.5L13.5 21H11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            {isSidebarVisible && <span className="menu-label">Contenido</span>}
+            {isSidebarVisible && <span className="menu-label">Biblioteca</span>}
           </button>
           <button
             className={`menu-item ${location.pathname === '/products' || location.pathname.startsWith('/programs/') || location.pathname.startsWith('/clients') || location.pathname.startsWith('/one-on-one') ? 'active' : ''}`}
@@ -165,6 +165,7 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
           onMenuClick={isMobile ? toggleSidebar : undefined}
           showMenuButton={isMobile}
           icon={headerIcon}
+          headerImageIcon={headerImageIcon}
         />
         {children}
       </main>

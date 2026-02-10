@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import debounce from 'lodash/debounce';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
+import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import programService from '../services/programService';
@@ -722,7 +723,10 @@ const ProgramDetailScreen = () => {
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
   const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
   const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaPickerContext, setMediaPickerContext] = useState('program'); // 'program' | 'session'
   const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
@@ -5368,6 +5372,7 @@ const ProgramDetailScreen = () => {
     setSessionName('');
     setSessionImageFile(null);
     setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
     setSessionImageUploadProgress(0);
   };
 
@@ -5417,11 +5422,51 @@ const ProgramDetailScreen = () => {
   const handleSessionImageDelete = () => {
     setSessionImageFile(null);
     setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
     setSessionImageUploadProgress(0);
     // If editing, mark that we want to remove the image
     if (sessionToEdit) {
       setSessionImagePreview(null);
     }
+  };
+
+  const handleOpenMediaPicker = (context) => {
+    setMediaPickerContext(context);
+    setIsMediaPickerOpen(true);
+  };
+
+  const handleMediaPickerSelect = async (item) => {
+    if (mediaPickerContext === 'program' && program) {
+      try {
+        await programService.updateProgram(program.id, { image_url: item.url, image_path: null });
+        queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, image_url: item.url, image_path: null }));
+      } catch (err) {
+        console.error('Error updating program image:', err);
+        alert('Error al asignar la imagen.');
+      }
+      setIsMediaPickerOpen(false);
+      return;
+    }
+    if (mediaPickerContext === 'session') {
+      if (isSessionModalOpen) {
+        setSessionImagePreview(item.url);
+        setSessionImageFile(null);
+        setSessionImageUrlFromLibrary(item.url);
+      } else if (selectedSession && programId && selectedModule) {
+        try {
+          if (selectedSession.librarySessionRef && user) {
+            await libraryService.updateLibrarySession(user.uid, selectedSession.librarySessionRef, { image_url: item.url });
+          } else {
+            await programService.updateSession(programId, selectedModule.id, selectedSession.id, { image_url: item.url });
+          }
+          setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
+        } catch (err) {
+          console.error('Error updating session image:', err);
+          alert('Error al asignar la imagen.');
+        }
+      }
+    }
+    setIsMediaPickerOpen(false);
   };
 
   const handleCreateSession = async () => {
@@ -5439,29 +5484,20 @@ const ProgramDetailScreen = () => {
         hasImageFile: !!sessionImageFile,
       });
       
-      let imageUrl = null;
-      
-      // Upload image if provided
-      if (sessionImageFile) {
+      let imageUrl = sessionImageUrlFromLibrary || null;
+      if (!imageUrl && sessionImageFile) {
         try {
           setIsUploadingSessionImage(true);
           setSessionImageUploadProgress(0);
-          
           imageUrl = await programService.uploadSessionImage(
             programId,
             selectedModule.id,
             sessionImageFile,
-            (progress) => {
-              setSessionImageUploadProgress(Math.round(progress));
-            }
+            (progress) => setSessionImageUploadProgress(Math.round(progress))
           );
-          
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
           console.error('Error uploading session image - Full error:', uploadErr);
-          console.error('Error code:', uploadErr.code);
-          console.error('Error message:', uploadErr.message);
-          console.error('Error stack:', uploadErr.stack);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
           return;
         } finally {
@@ -5535,8 +5571,7 @@ const ProgramDetailScreen = () => {
         if (!editChoice) {
           // User chose to customize for this program only
           // Update override instead
-          let imageUrl = sessionToEdit.image_url || null;
-          
+          let imageUrl = sessionImageUrlFromLibrary ?? sessionToEdit.image_url ?? null;
           if (sessionImageFile) {
             try {
               setIsUploadingSessionImage(true);
@@ -5583,37 +5618,28 @@ const ProgramDetailScreen = () => {
       }
       
       // ✅ Regular update (standalone or editing library)
-      let imageUrl = sessionToEdit.image_url || null;
+      let imageUrl = sessionImageUrlFromLibrary ?? sessionToEdit.image_url ?? null;
       let shouldRemoveImage = false;
       
-      // Upload new image if provided
       if (sessionImageFile) {
         try {
           setIsUploadingSessionImage(true);
           setSessionImageUploadProgress(0);
-          
           imageUrl = await programService.uploadSessionImage(
             programId,
             selectedModule.id,
             sessionImageFile,
-            (progress) => {
-              setSessionImageUploadProgress(Math.round(progress));
-            }
+            (progress) => setSessionImageUploadProgress(Math.round(progress))
           );
-          
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
           console.error('Error uploading session image - Full error:', uploadErr);
-          console.error('Error code:', uploadErr.code);
-          console.error('Error message:', uploadErr.message);
-          console.error('Error stack:', uploadErr.stack);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
           return;
         } finally {
           setIsUploadingSessionImage(false);
         }
       } else if (!sessionImagePreview && sessionToEdit.image_url) {
-        // Image was deleted (no preview and had image before)
         shouldRemoveImage = true;
         imageUrl = null;
       }
@@ -5980,10 +6006,9 @@ const ProgramDetailScreen = () => {
                       <>
                         <img src={program.image_url} alt="Programa" />
                         <div className="program-visual-card__overlay">
-                          <label className="program-visual-card__btn program-visual-card__btn--change">
-                            <input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploadingImage} style={{ display: 'none' }} />
-                            {isUploadingImage ? `Subiendo ${imageUploadProgress}%` : 'Cambiar'}
-                          </label>
+                          <button type="button" className="program-visual-card__btn program-visual-card__btn--change" onClick={() => handleOpenMediaPicker('program')}>
+                            Cambiar
+                          </button>
                           {isUploadingImage && (
                             <div className="program-visual-card__progress">
                               <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div>
@@ -5993,12 +6018,10 @@ const ProgramDetailScreen = () => {
                         </div>
                       </>
                     ) : (
-                      <label className="program-visual-card__placeholder program-visual-card__placeholder--clickable">
-                        <input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploadingImage} style={{ display: 'none' }} />
+                      <button type="button" className="program-visual-card__placeholder program-visual-card__placeholder--clickable" onClick={() => handleOpenMediaPicker('program')}>
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        <span>{isUploadingImage ? `Subiendo ${imageUploadProgress}%` : 'Subir imagen'}</span>
-                        {isUploadingImage && <div className="program-visual-card__progress"><div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div></div>}
-                      </label>
+                        <span>Subir imagen</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -6679,6 +6702,21 @@ const ProgramDetailScreen = () => {
                   >
                     {selectedSession.title || selectedSession.name || 'Sesión'}
                   </button>
+                  <button
+                    type="button"
+                    className="program-page__breadcrumb-image-btn"
+                    onClick={() => handleOpenMediaPicker('session')}
+                    aria-label="Cambiar imagen de la sesión"
+                    title="Cambiar imagen"
+                  >
+                    {selectedSession.image_url ? (
+                      <img src={selectedSession.image_url} alt="" />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </button>
                 </>
               )}
             </div>
@@ -6857,35 +6895,12 @@ const ProgramDetailScreen = () => {
                     />
                     <div className="edit-program-image-overlay">
                       <div className="edit-program-image-actions">
-                        <label className="edit-program-image-action-pill">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            disabled={isUploadingImage}
-                            style={{ display: 'none' }}
-                          />
-                          <span className="edit-program-image-action-text">
-                            {isUploadingImage ? 'Subiendo...' : 'Cambiar'}
-                          </span>
-                        </label>
-                        {isUploadingImage && (
-                          <div className="edit-program-image-progress">
-                            <div className="edit-program-image-progress-bar">
-                              <div 
-                                className="edit-program-image-progress-fill"
-                                style={{ width: `${imageUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="edit-program-image-progress-text">
-                              {imageUploadProgress}%
-                            </span>
-                          </div>
-                        )}
+                        <button type="button" className="edit-program-image-action-pill" onClick={() => handleOpenMediaPicker('program')}>
+                          <span className="edit-program-image-action-text">Cambiar</span>
+                        </button>
                         <button
                           className="edit-program-image-action-pill edit-program-image-delete-pill"
                           onClick={handleImageDelete}
-                          disabled={isUploadingImage}
                         >
                           <span className="edit-program-image-action-text">Eliminar</span>
                         </button>
@@ -6895,29 +6910,9 @@ const ProgramDetailScreen = () => {
                 ) : (
                   <div className="edit-program-no-image">
                     <p>No hay imagen disponible</p>
-                    <label className="edit-program-image-upload-button">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        disabled={isUploadingImage}
-                        style={{ display: 'none' }}
-                      />
-                      {isUploadingImage ? 'Subiendo...' : 'Subir Imagen'}
-                    </label>
-                    {isUploadingImage && (
-                      <div className="edit-program-image-progress">
-                        <div className="edit-program-image-progress-bar">
-                          <div 
-                            className="edit-program-image-progress-fill"
-                            style={{ width: `${imageUploadProgress}%` }}
-                          />
-                        </div>
-                        <span className="edit-program-image-progress-text">
-                          {imageUploadProgress}%
-                        </span>
-                      </div>
-                    )}
+                    <button type="button" className="edit-program-image-upload-button" onClick={() => handleOpenMediaPicker('program')}>
+                      Subir Imagen
+                    </button>
                   </div>
                 )}
               </div>
@@ -7712,31 +7707,9 @@ const ProgramDetailScreen = () => {
                     />
                     <div className="edit-program-image-overlay">
                       <div className="edit-program-image-actions">
-                        <label className="edit-program-image-action-pill">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleSessionImageUpload}
-                            disabled={isUploadingSessionImage || isCreatingSession}
-                            style={{ display: 'none' }}
-                          />
-                          <span className="edit-program-image-action-text">
-                            {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
-                          </span>
-                        </label>
-                        {isUploadingSessionImage && (
-                          <div className="edit-program-image-progress">
-                            <div className="edit-program-image-progress-bar">
-                              <div 
-                                className="edit-program-image-progress-fill"
-                                style={{ width: `${sessionImageUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="edit-program-image-progress-text">
-                              {sessionImageUploadProgress}%
-                            </span>
-                          </div>
-                        )}
+                        <button type="button" className="edit-program-image-action-pill" onClick={() => handleOpenMediaPicker('session')}>
+                          <span className="edit-program-image-action-text">Cambiar</span>
+                        </button>
                         <button
                           className="edit-program-image-action-pill edit-program-image-delete-pill"
                           onClick={handleSessionImageDelete}
@@ -7750,29 +7723,9 @@ const ProgramDetailScreen = () => {
                 ) : (
                   <div className="edit-program-no-image">
                     <p>No hay imagen disponible</p>
-                    <label className="edit-program-image-upload-button">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleSessionImageUpload}
-                        disabled={isUploadingSessionImage || isCreatingSession}
-                        style={{ display: 'none' }}
-                      />
-                      {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
-                    </label>
-                    {isUploadingSessionImage && (
-                      <div className="edit-program-image-progress">
-                        <div className="edit-program-image-progress-bar">
-                          <div 
-                            className="edit-program-image-progress-fill"
-                            style={{ width: `${sessionImageUploadProgress}%` }}
-                          />
-                        </div>
-                        <span className="edit-program-image-progress-text">
-                          {sessionImageUploadProgress}%
-                        </span>
-                      </div>
-                    )}
+                    <button type="button" className="edit-program-image-upload-button" onClick={() => handleOpenMediaPicker('session')}>
+                      Subir Imagen
+                    </button>
                   </div>
                 )}
               </div>
@@ -7795,6 +7748,14 @@ const ProgramDetailScreen = () => {
           </div>
         </div>
       </Modal>
+
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={user?.uid}
+        accept="image/*"
+      />
 
       {/* Create/Copy Session Modal */}
       <Modal
@@ -7854,31 +7815,9 @@ const ProgramDetailScreen = () => {
                         />
                         <div className="edit-program-image-overlay">
                           <div className="edit-program-image-actions">
-                            <label className="edit-program-image-action-pill">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleSessionImageUpload}
-                                disabled={isUploadingSessionImage || isCreatingSession}
-                                style={{ display: 'none' }}
-                              />
-                              <span className="edit-program-image-action-text">
-                                {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
-                              </span>
-                            </label>
-                            {isUploadingSessionImage && (
-                              <div className="edit-program-image-progress">
-                                <div className="edit-program-image-progress-bar">
-                                  <div 
-                                    className="edit-program-image-progress-fill"
-                                    style={{ width: `${sessionImageUploadProgress}%` }}
-                                  />
-                                </div>
-                                <span className="edit-program-image-progress-text">
-                                  {sessionImageUploadProgress}%
-                                </span>
-                              </div>
-                            )}
+                            <button type="button" className="edit-program-image-action-pill" onClick={() => handleOpenMediaPicker('session')}>
+                              <span className="edit-program-image-action-text">Cambiar</span>
+                            </button>
                             <button
                               className="edit-program-image-action-pill edit-program-image-delete-pill"
                               onClick={handleSessionImageDelete}
@@ -7892,29 +7831,9 @@ const ProgramDetailScreen = () => {
                     ) : (
                       <div className="edit-program-no-image">
                         <p>No hay imagen disponible</p>
-                        <label className="edit-program-image-upload-button">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleSessionImageUpload}
-                            disabled={isUploadingSessionImage || isCreatingSession}
-                            style={{ display: 'none' }}
-                          />
-                          {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
-                        </label>
-                        {isUploadingSessionImage && (
-                          <div className="edit-program-image-progress">
-                            <div className="edit-program-image-progress-bar">
-                              <div 
-                                className="edit-program-image-progress-fill"
-                                style={{ width: `${sessionImageUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="edit-program-image-progress-text">
-                              {sessionImageUploadProgress}%
-                            </span>
-                          </div>
-                        )}
+                        <button type="button" className="edit-program-image-upload-button" onClick={() => handleOpenMediaPicker('session')}>
+                          Subir Imagen
+                        </button>
                       </div>
                     )}
                   </div>

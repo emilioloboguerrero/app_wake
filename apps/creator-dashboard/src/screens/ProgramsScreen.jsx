@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
+import MediaPickerModal from '../components/MediaPickerModal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import programService from '../services/programService';
@@ -47,7 +48,9 @@ const ProgramsScreen = () => {
   const [price, setPrice] = useState('');
   const [programImageFile, setProgramImageFile] = useState(null);
   const [programImagePreview, setProgramImagePreview] = useState(null);
+  const [programImageUrlFromLibrary, setProgramImageUrlFromLibrary] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [introVideoFile, setIntroVideoFile] = useState(null);
   const [introVideoPreview, setIntroVideoPreview] = useState(null);
@@ -103,6 +106,13 @@ const ProgramsScreen = () => {
       setCreatorName(userDoc);
     }
   }, [userDoc]);
+
+  const handleMediaPickerSelect = (item) => {
+    setProgramImagePreview(item.url);
+    setProgramImageFile(null);
+    setProgramImageUrlFromLibrary(item.url);
+    setIsMediaPickerOpen(false);
+  };
 
   // Check for autoCreate parameter (from Contenido) and open modal if present
   useEffect(() => {
@@ -264,6 +274,7 @@ const ProgramsScreen = () => {
     setPrice('');
     setProgramImageFile(null);
     setProgramImagePreview(null);
+    setProgramImageUrlFromLibrary(null);
     setIntroVideoFile(null);
     setIntroVideoPreview(null);
     setFreeTrialActive(false);
@@ -345,20 +356,20 @@ const ProgramsScreen = () => {
         programData: programData
       });
       
-      // Upload image if provided
-      if (programImageFile && newProgram?.id) {
+      if (programImageUrlFromLibrary && newProgram?.id) {
+        await programService.updateProgram(newProgram.id, {
+          image_url: programImageUrlFromLibrary,
+          image_path: null
+        });
+      } else if (programImageFile && newProgram?.id) {
         try {
           setIsUploadingImage(true);
           setImageUploadProgress(0);
-          
           await programService.uploadProgramImage(
             newProgram.id,
             programImageFile,
-            (progress) => {
-              setImageUploadProgress(Math.round(progress));
-            }
+            (progress) => setImageUploadProgress(Math.round(progress))
           );
-          
           setImageUploadProgress(100);
         } catch (uploadErr) {
           console.error('Error uploading image:', uploadErr);
@@ -825,48 +836,17 @@ const ProgramsScreen = () => {
                         />
                         <div className="program-config-card-image-overlay">
                           <div className="program-config-card-image-actions">
-                            <label className="edit-program-image-action-pill">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const file = e.target.files[0];
-                                  if (file) {
-                                    setProgramImageFile(file);
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => {
-                                      setProgramImagePreview(reader.result);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                style={{ display: 'none' }}
-                                disabled={isUploadingImage}
-                              />
-                              <span className="edit-program-image-action-text">
-                                {isUploadingImage ? 'Subiendo...' : 'Cambiar'}
-                              </span>
-                            </label>
-                            {isUploadingImage && (
-                              <div className="edit-program-image-progress">
-                                <div className="edit-program-image-progress-bar">
-                                  <div 
-                                    className="edit-program-image-progress-fill"
-                                    style={{ width: `${imageUploadProgress}%` }}
-                                  />
-                                </div>
-                                <span className="edit-program-image-progress-text">
-                                  {imageUploadProgress}%
-                                </span>
-                              </div>
-                            )}
+                            <button type="button" className="edit-program-image-action-pill" onClick={() => setIsMediaPickerOpen(true)}>
+                              <span className="edit-program-image-action-text">Cambiar</span>
+                            </button>
                             <button
+                              type="button"
                               className="edit-program-image-action-pill edit-program-image-delete-pill"
                               onClick={() => {
                                 setProgramImageFile(null);
                                 setProgramImagePreview(null);
+                                setProgramImageUrlFromLibrary(null);
                               }}
-                              disabled={isUploadingImage}
                             >
                               <span className="edit-program-image-action-text">Eliminar</span>
                             </button>
@@ -874,31 +854,18 @@ const ProgramsScreen = () => {
                         </div>
                       </div>
                     ) : (
-                      <label style={{ cursor: 'pointer' }}>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files[0];
-                              if (file) {
-                                setProgramImageFile(file);
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setProgramImagePreview(reader.result);
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                            style={{ display: 'none' }}
-                            disabled={isUploadingImage}
-                          />
+                      <button
+                        type="button"
+                        style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, width: '100%' }}
+                        onClick={() => setIsMediaPickerOpen(true)}
+                      >
                         <div className="program-config-card-placeholder">
                           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '8px', opacity: 0.5 }}>
                             <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3M12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                           <span>Subir imagen</span>
                         </div>
-                      </label>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1278,6 +1245,14 @@ const ProgramsScreen = () => {
           </p>
         </div>
       </Modal>
+
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={user?.uid}
+        accept="image/*"
+      />
     </DashboardLayout>
   );
 };

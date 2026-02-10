@@ -223,39 +223,50 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                 onMouseEnter={() => loadClientPrograms(client.clientUserId)}
               >
                 <div className="one-on-one-client-header">
-                  <span 
-                    className="one-on-one-client-name"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleClientNameClick(client);
-                    }}
-                  >
-                    {client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`}
-                  </span>
-                </div>
-                {clientPrograms[client.clientUserId] && (
-                  <div className="one-on-one-client-programs">
-                    {clientPrograms[client.clientUserId].filter(p => p.isAssigned).length > 0 ? (
-                      <div className="one-on-one-client-programs-list">
-                        {clientPrograms[client.clientUserId]
-                          .filter(p => p.isAssigned)
-                          .slice(0, 3)
-                          .map((program) => (
-                            <span key={program.id} className="one-on-one-client-program-badge">
-                              {program.title || `Programa ${program.id.slice(0, 8)}`}
-                            </span>
-                          ))}
-                        {clientPrograms[client.clientUserId].filter(p => p.isAssigned).length > 3 && (
-                          <span className="one-on-one-client-program-more">
-                            +{clientPrograms[client.clientUserId].filter(p => p.isAssigned).length - 3} más
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="one-on-one-client-no-programs">Sin programas asignados</span>
-                    )}
+                  <div className="one-on-one-client-name-wrap">
+                    <span className="one-on-one-client-name">
+                      {client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="one-on-one-client-info-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClientNameClick(client);
+                      }}
+                      title="Ver información del cliente"
+                      aria-label="Ver información del cliente"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
                   </div>
-                )}
+                  {clientPrograms[client.clientUserId] && (
+                    <div className="one-on-one-client-programs-inline">
+                      {clientPrograms[client.clientUserId].filter(p => p.isAssigned).length > 0 ? (
+                        <>
+                          {clientPrograms[client.clientUserId]
+                            .filter(p => p.isAssigned)
+                            .slice(0, 3)
+                            .map((program) => (
+                              <span key={program.id} className="one-on-one-client-program-tag">
+                                {program.title || `Programa ${program.id.slice(0, 8)}`}
+                              </span>
+                            ))}
+                          {clientPrograms[client.clientUserId].filter(p => p.isAssigned).length > 3 && (
+                            <span className="one-on-one-client-program-tag one-on-one-client-program-tag--more">
+                              +{clientPrograms[client.clientUserId].filter(p => p.isAssigned).length - 3}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="one-on-one-client-program-tag one-on-one-client-program-tag--empty">Sin programas</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

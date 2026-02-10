@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import Button from '../components/Button';
 import CalendarView from '../components/CalendarView';
 import SessionAssignmentModal from '../components/SessionAssignmentModal';
+import SessionPerformanceModal from '../components/SessionPerformanceModal';
 import PlanningLibrarySidebar from '../components/PlanningLibrarySidebar';
 import plansService from '../services/plansService';
 import oneOnOneService from '../services/oneOnOneService';
@@ -12,7 +14,8 @@ import clientProgramService from '../services/clientProgramService';
 import clientPlanContentService from '../services/clientPlanContentService';
 import programService from '../services/programService';
 import libraryService from '../services/libraryService';
-import { getWeeksBetween } from '../utils/weekCalculation';
+import { getUser } from '../services/firestoreService';
+import { getWeeksBetween, getMondayWeek } from '../utils/weekCalculation';
 import './ClientProgramScreen.css';
 
 const TAB_CONFIG = [
@@ -54,6 +57,16 @@ const ClientProgramScreen = () => {
   const [librarySessionsForAdd, setLibrarySessionsForAdd] = useState([]);
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
   const [planWeeksCount, setPlanWeeksCount] = useState({}); // { [planId]: number } for calendar plan bar label
+  const [completedSessionIds, setCompletedSessionIds] = useState(new Set()); // session IDs client has completed (for green indicator)
+  const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } for Ver desempeño
+  // Info tab: client user doc and access end date form
+  const [clientUserDoc, setClientUserDoc] = useState(null);
+  const [loadingClientUser, setLoadingClientUser] = useState(false);
+  const [infoProgramId, setInfoProgramId] = useState(null);
+  const [infoAccessEndDate, setInfoAccessEndDate] = useState('');
+  const [infoNoEndDate, setInfoNoEndDate] = useState(true);
+  const [isSavingAccessEndDate, setIsSavingAccessEndDate] = useState(false);
+  const [accessEndDateError, setAccessEndDateError] = useState(null);
 
   useEffect(() => {
     const loadClient = async () => {
@@ -128,6 +141,65 @@ const ClientProgramScreen = () => {
     loadAssignedPrograms();
   }, [user?.uid, client?.clientUserId]);
 
+  // Load client user doc when Info tab is active (for access end date)
+  const isInfoTab = TAB_CONFIG[currentTabIndex]?.key === 'info';
+  useEffect(() => {
+    if (!isInfoTab || !client?.clientUserId) return;
+    let cancelled = false;
+    setLoadingClientUser(true);
+    setAccessEndDateError(null);
+    getUser(client.clientUserId)
+      .then((userDoc) => {
+        if (!cancelled) setClientUserDoc(userDoc);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAccessEndDateError(err?.message || 'Error al cargar datos del usuario');
+          setClientUserDoc(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingClientUser(false);
+      });
+    return () => { cancelled = true; };
+  }, [isInfoTab, client?.clientUserId]);
+
+  // Sync info program selector when assignedPrograms loads and we're on Info tab
+  useEffect(() => {
+    if (!isInfoTab || assignedPrograms.length === 0) return;
+    const assigned = assignedPrograms.filter((p) => p.isAssigned);
+    if (assigned.length > 0 && !infoProgramId) setInfoProgramId(assigned[0].id);
+  }, [isInfoTab, assignedPrograms, infoProgramId]);
+
+  // Sync access end date form from clientUserDoc when program or user doc changes
+  useEffect(() => {
+    if (!clientUserDoc || !infoProgramId) return;
+    const courses = clientUserDoc.courses || {};
+    const entry = courses[infoProgramId];
+    if (!entry) {
+      setInfoNoEndDate(true);
+      setInfoAccessEndDate('');
+      return;
+    }
+    const exp = entry.expires_at;
+    if (!exp) {
+      setInfoNoEndDate(true);
+      setInfoAccessEndDate('');
+      return;
+    }
+    try {
+      const d = new Date(exp);
+      const far = new Date();
+      far.setFullYear(far.getFullYear() + 2);
+      const noEnd = d > far;
+      setInfoNoEndDate(noEnd);
+      setInfoAccessEndDate(noEnd ? '' : d.toISOString().slice(0, 10));
+    } catch {
+      setInfoNoEndDate(true);
+      setInfoAccessEndDate('');
+    }
+  }, [clientUserDoc, infoProgramId]);
+
   // Enrich planned sessions with library session titles (for date-assigned sessions, not from plan)
   const enrichPlannedSessionsWithTitles = async (sessions, creatorId) => {
     if (!sessions?.length || !creatorId) return sessions ?? [];
@@ -144,19 +216,32 @@ const ClientProgramScreen = () => {
   };
 
   // Load planned sessions when client or date changes (use clientUserId for client_sessions)
+  // Include overflow weeks (past/future month days visible in calendar grid) so sessions show there too
   useEffect(() => {
-    if (!client?.clientUserId) {
-      console.log('[ClientProgramScreen] loadPlannedSessions: skip (no client.clientUserId)', { hasClient: !!client });
+    if (!client?.clientUserId || !user?.uid) {
       return;
     }
-    const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const lastOfMonth = new Date(year, month + 1, 0);
+    const daysInMonth = lastOfMonth.getDate();
+    const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7; // Mon=0
+    const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+    const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+    const startDate = new Date(year, month, 1 - startingDayOfWeek);
+    const endDate = new Date(year, month, daysInMonth + trailingCount);
     let cancelled = false;
     (async () => {
       try {
-        const sessions = await clientSessionService.getClientSessions(client.clientUserId, startDate, endDate);
+        const [programs, sessions] = await Promise.all([
+          programService.getProgramsByCreator(user.uid),
+          clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
+        ]);
         if (cancelled) return;
-        const enriched = await enrichPlannedSessionsWithTitles(sessions ?? [], user?.uid);
+        const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+        const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+        const enriched = await enrichPlannedSessionsWithTitles(filtered, user.uid);
         if (cancelled) return;
         setPlannedSessions(enriched);
       } catch (err) {
@@ -205,14 +290,26 @@ const ClientProgramScreen = () => {
     loadContentPlan();
   }, [selectedProgramId, client?.clientUserId]);
 
-  // Load week content (plan sessions or client copy) for each week in current month that has a plan assignment
+  // Ref to read latest weekContentByWeekKey inside async effect (skip refetch when already loaded)
+  const weekContentByWeekKeyRef = React.useRef(weekContentByWeekKey);
+  weekContentByWeekKeyRef.current = weekContentByWeekKey;
+
+  // Load week content (plan sessions or client copy) for each week visible in calendar grid that has a plan assignment
   useEffect(() => {
     if (!client?.clientUserId || !selectedProgramId || !planAssignments || Object.keys(planAssignments).length === 0) {
       setWeekContentByWeekKey({});
       return;
     }
-    const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const lastOfMonth = new Date(year, month + 1, 0);
+    const daysInMonth = lastOfMonth.getDate();
+    const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7;
+    const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+    const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+    const startDate = new Date(year, month, 1 - startingDayOfWeek);
+    const endDate = new Date(year, month, daysInMonth + trailingCount);
     const weekKeysInMonth = getWeeksBetween(startDate, endDate);
     const weekKeysWithPlans = weekKeysInMonth.filter((wk) => planAssignments[wk]?.planId);
     if (weekKeysWithPlans.length === 0) {
@@ -222,10 +319,16 @@ const ClientProgramScreen = () => {
     let cancelled = false;
     setIsLoadingWeekContent(true);
     const load = async () => {
+      const prev = weekContentByWeekKeyRef.current;
       const next = {};
       for (const weekKey of weekKeysWithPlans) {
         if (cancelled) return;
         const assignment = planAssignments[weekKey];
+        const existing = prev?.[weekKey];
+        if (existing?.planId === assignment.planId && existing?.sessions?.length !== undefined) {
+          next[weekKey] = existing;
+          continue;
+        }
         try {
           const clientContent = await clientPlanContentService.getClientPlanContent(
             client.clientUserId,
@@ -233,12 +336,27 @@ const ClientProgramScreen = () => {
             weekKey
           );
           if (clientContent?.sessions) {
+            const planId = clientContent.source_plan_id || assignment.planId;
+            const moduleId = clientContent.source_module_id;
+            let sessions = clientContent.sessions;
+            if (planId && moduleId) {
+              try {
+                const planSessions = await plansService.getSessionsByModule(planId, moduleId);
+                const refBySessionId = new Map(planSessions.map((ps) => [ps.id, ps.librarySessionRef]).filter(([, ref]) => ref));
+                if (refBySessionId.size > 0) {
+                  sessions = clientContent.sessions.map((s) => {
+                    const libraryRef = s.librarySessionRef ?? refBySessionId.get(s.id);
+                    return libraryRef ? { ...s, librarySessionRef: libraryRef } : s;
+                  });
+                }
+              } catch (_) {}
+            }
             next[weekKey] = {
-              sessions: clientContent.sessions,
+              sessions,
               title: clientContent.title,
               fromClientCopy: true,
-              planId: clientContent.source_plan_id || assignment.planId,
-              moduleId: clientContent.source_module_id
+              planId,
+              moduleId
             };
             continue;
           }
@@ -258,14 +376,38 @@ const ClientProgramScreen = () => {
           }
         } catch (_) {}
       }
+      if (!cancelled && user?.uid) {
+        const weekKeys = Object.keys(next);
+        if (weekKeys.length > 0) {
+          try {
+            const librarySessions = await libraryService.getSessionLibrary(user.uid);
+            const libraryByTitle = new Map();
+            for (const lib of librarySessions || []) {
+              const t = (lib.title || lib.name || '').trim().toLowerCase();
+              if (t && !libraryByTitle.has(t)) libraryByTitle.set(t, lib.id);
+            }
+            for (const weekKey of weekKeys) {
+              const entry = next[weekKey];
+              if (!entry?.sessions?.length) continue;
+              const enriched = entry.sessions.map((s) => {
+                if (s.librarySessionRef) return s;
+                const title = (s.title || s.session_name || '').trim().toLowerCase();
+                const matchedId = title ? libraryByTitle.get(title) : null;
+                return matchedId ? { ...s, librarySessionRef: matchedId } : s;
+              });
+              next[weekKey] = { ...entry, sessions: enriched };
+            }
+          } catch (_) {}
+        }
+      }
       if (!cancelled) {
-        setWeekContentByWeekKey(next);
+        setWeekContentByWeekKey((prevState) => ({ ...prevState, ...next }));
         setIsLoadingWeekContent(false);
       }
     };
     load();
     return () => { cancelled = true; };
-  }, [client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments]);
+  }, [client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments, user?.uid]);
 
   // Load week count per plan for calendar plan bar "(N semanas)"
   useEffect(() => {
@@ -292,6 +434,35 @@ const ClientProgramScreen = () => {
     load();
     return () => { cancelled = true; };
   }, [planAssignments]);
+
+  // Load completed session IDs for this client+program (from users.courseProgress) - for calendar completion indicator
+  useEffect(() => {
+    if (!client?.clientUserId || !selectedProgramId) {
+      console.log('[ClientProgramScreen] completedSessionIds: skip load (missing clientUserId or selectedProgramId)', {
+        clientUserId: client?.clientUserId ?? null,
+        selectedProgramId: selectedProgramId ?? null
+      });
+      setCompletedSessionIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    console.log('[ClientProgramScreen] completedSessionIds: loading for', {
+      clientUserId: client.clientUserId,
+      selectedProgramId
+    });
+    clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId).then((ids) => {
+      if (!cancelled) {
+        console.log('[ClientProgramScreen] completedSessionIds: loaded', { size: ids.size, sample: ids.size ? [...ids].slice(0, 10) : [] });
+        setCompletedSessionIds(ids);
+      }
+    }).catch((err) => {
+      if (!cancelled) {
+        console.error('[ClientProgramScreen] completedSessionIds: load failed', err?.message || err);
+        setCompletedSessionIds(new Set());
+      }
+    });
+    return () => { cancelled = true; };
+  }, [client?.clientUserId, selectedProgramId]);
 
   // Create program colors map for calendar
   const programColors = useMemo(() => {
@@ -335,14 +506,35 @@ const ClientProgramScreen = () => {
       );
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const sessions = await clientSessionService.getClientSessions(client.clientUserId, startDate, endDate);
-      const enriched = await enrichPlannedSessionsWithTitles(sessions ?? [], user?.uid);
+      const [programs, sessions] = await Promise.all([
+        programService.getProgramsByCreator(user.uid),
+        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
+      ]);
+      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
       
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       console.error('Error assigning session:', error);
       alert('Error al asignar la sesión');
+    }
+  };
+
+  const handleSaveAccessEndDate = async () => {
+    if (!client?.clientUserId || !infoProgramId) return;
+    setAccessEndDateError(null);
+    setIsSavingAccessEndDate(true);
+    try {
+      const value = infoNoEndDate ? null : (infoAccessEndDate ? new Date(infoAccessEndDate + 'T23:59:59.999Z').toISOString() : null);
+      await clientProgramService.setClientProgramAccessEndDate(client.clientUserId, infoProgramId, value);
+      const userDoc = await getUser(client.clientUserId);
+      setClientUserDoc(userDoc);
+    } catch (err) {
+      setAccessEndDateError(err?.message || 'Error al guardar');
+    } finally {
+      setIsSavingAccessEndDate(false);
     }
   };
 
@@ -390,10 +582,58 @@ const ClientProgramScreen = () => {
       
       setPlanAssignments(assignments || {});
 
+      // Load week content for the newly assigned week so session cards show immediately (no wait for effect)
+      try {
+        const modules = await plansService.getModulesByPlan(planId);
+        const mod = modules?.[moduleIndex];
+        if (mod) {
+          const sessions = await plansService.getSessionsByModule(planId, mod.id);
+          setWeekContentByWeekKey((prev) => ({
+            ...prev,
+            [weekKey]: {
+              sessions: sessions || [],
+              title: mod.title,
+              fromClientCopy: false,
+              planId,
+              moduleId: mod.id
+            }
+          }));
+        }
+      } catch (err) {
+        console.warn('Could not preload week content for new assignment:', err);
+      }
+
       console.log('✅ Plan assigned to week:', { programId: selectedProgramId, planId, weekKey, moduleIndex });
     } catch (error) {
       console.error('Error assigning plan to week:', error);
       alert(`Error al asignar el plan a la semana: ${error.message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleRemovePlanFromWeek = async (weekKey) => {
+    if (!client?.clientUserId || !selectedProgramId || !weekKey) return;
+    try {
+      await clientProgramService.removePlanFromWeek(selectedProgramId, client.clientUserId, weekKey);
+      const assignments = await clientProgramService.getPlanAssignments(selectedProgramId, client.clientUserId);
+      setPlanAssignments(assignments || {});
+      setWeekContentByWeekKey((prev) => {
+        const next = { ...prev };
+        delete next[weekKey];
+        return next;
+      });
+      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      const [programs, sessions] = await Promise.all([
+        programService.getProgramsByCreator(user.uid),
+        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
+      ]);
+      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
+      setPlannedSessions(enriched);
+    } catch (error) {
+      console.error('Error removing plan from week:', error);
+      alert(`Error al quitar el plan de la semana: ${error.message || 'Error desconocido'}`);
     }
   };
 
@@ -420,8 +660,13 @@ const ClientProgramScreen = () => {
       console.log('[ClientProgramScreen] handleSessionAssignment: wrote doc, reloading sessions for', client.clientUserId);
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const sessions = await clientSessionService.getClientSessions(client.clientUserId, startDate, endDate);
-      const enriched = await enrichPlannedSessionsWithTitles(sessions ?? [], user?.uid);
+      const [programs, sessions] = await Promise.all([
+        programService.getProgramsByCreator(user.uid),
+        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
+      ]);
+      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
       console.error('[ClientProgramScreen] handleSessionAssignment error:', error);
@@ -431,6 +676,18 @@ const ClientProgramScreen = () => {
 
   const handleEditSessionAssignment = ({ session, date }) => {
     if (!client?.clientUserId || !session?.session_id) return;
+    if (session.plan_id) {
+      navigate(`/content/sessions/${session.session_id}`, {
+        state: {
+          editScope: 'client_plan',
+          clientId: client.clientUserId,
+          programId: selectedProgramId,
+          weekKey: getMondayWeek(date),
+          clientName: client?.clientName || client?.name || client?.displayName || 'Cliente'
+        }
+      });
+      return;
+    }
     navigate(`/content/sessions/${session.session_id}`, {
       state: {
         editScope: 'client',
@@ -452,8 +709,13 @@ const ClientProgramScreen = () => {
       );
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const sessions = await clientSessionService.getClientSessions(client.clientUserId, startDate, endDate);
-      const enriched = await enrichPlannedSessionsWithTitles(sessions ?? [], user?.uid);
+      const [programs, sessions] = await Promise.all([
+        programService.getProgramsByCreator(user.uid),
+        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
+      ]);
+      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
       console.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
@@ -848,14 +1110,17 @@ const ClientProgramScreen = () => {
               </div>
               <div className="plan-structure-main client-program-planning-main">
                 <CalendarView
+                  clientUserId={client?.clientUserId}
                   onDateSelect={handleDateSelect}
                   plannedSessions={plannedSessions}
                   programColors={programColors}
+                  completedSessionIds={completedSessionIds}
                   onMonthChange={setCurrentDate}
                   planAssignments={planAssignments}
                   plans={plans}
                   planWeeksCount={planWeeksCount}
                   onPlanAssignment={handlePlanAssignment}
+                  onRemovePlanFromWeek={handleRemovePlanFromWeek}
                   onSessionAssignment={handleSessionAssignment}
                   onEditSessionAssignment={handleEditSessionAssignment}
                   onDeleteSessionAssignment={handleDeleteSessionAssignment}
@@ -872,6 +1137,20 @@ const ClientProgramScreen = () => {
                   onAddPlanSessionToDay={handleAddPlanSessionToDay}
                   assignedPrograms={assignedPrograms}
                   selectedProgramId={selectedProgramId}
+                  onVerDesempeno={setPerformanceModalContext}
+                />
+                <SessionPerformanceModal
+                  isOpen={!!performanceModalContext}
+                  onClose={() => setPerformanceModalContext(null)}
+                  clientUserId={client?.clientUserId ?? null}
+                  creatorId={user?.uid ?? null}
+                  programId={selectedProgramId ?? null}
+                  session={performanceModalContext?.session ?? null}
+                  dateStr={performanceModalContext?.date
+                    ? (performanceModalContext.date instanceof Date
+                        ? performanceModalContext.date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                        : String(performanceModalContext.date))
+                    : performanceModalContext?.weekKey ?? null}
                 />
                 <SessionAssignmentModal
                   isOpen={isSessionAssignmentModalOpen}
@@ -930,10 +1209,203 @@ const ClientProgramScreen = () => {
           </div>
         );
       case 'info':
+        const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
+        const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;
+        const currentStatusText = (() => {
+          if (!currentExpiresAt) return 'Sin fecha de fin';
+          try {
+            const d = new Date(currentExpiresAt);
+            const far = new Date();
+            far.setFullYear(far.getFullYear() + 2);
+            if (d > far) return 'Sin fecha de fin';
+            return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+          } catch {
+            return 'Sin fecha de fin';
+          }
+        })();
+        const savedAccessState = (() => {
+          if (!infoProgramId || !clientUserDoc?.courses?.[infoProgramId]) return { noEndDate: true, date: '' };
+          const exp = clientUserDoc.courses[infoProgramId].expires_at;
+          if (!exp) return { noEndDate: true, date: '' };
+          try {
+            const d = new Date(exp);
+            const far = new Date();
+            far.setFullYear(far.getFullYear() + 2);
+            if (d > far) return { noEndDate: true, date: '' };
+            return { noEndDate: false, date: d.toISOString().slice(0, 10) };
+          } catch {
+            return { noEndDate: true, date: '' };
+          }
+        })();
+        const hasAccessFormChanged = infoProgramId && clientUserDoc?.courses?.[infoProgramId] && (
+          infoNoEndDate !== savedAccessState.noEndDate ||
+          (!infoNoEndDate && (infoAccessEndDate || '') !== savedAccessState.date)
+        );
+        const profileName = clientUserDoc?.displayName || clientUserDoc?.name || client?.clientName || null;
+        const profileEmail = clientUserDoc?.email || client?.clientEmail || null;
+        const hasProfile = profileName || profileEmail;
         return (
-          <div className="client-program-tab-content client-program-tab-empty">
-            <p className="client-program-tab-empty-title">Info del cliente</p>
-            <p className="client-program-tab-empty-message">Próximamente podrás ver y editar la información de perfil del cliente.</p>
+          <div className="client-program-tab-content client-program-info-tab">
+            {loadingClientUser ? (
+              <div className="client-program-info-loading">
+                <div className="client-program-info-loading-skeleton client-program-info-loading-skeleton-avatar" />
+                <div className="client-program-info-loading-skeleton client-program-info-loading-skeleton-line" />
+                <div className="client-program-info-loading-skeleton client-program-info-loading-skeleton-line short" />
+                <div className="client-program-info-loading-skeleton client-program-info-loading-skeleton-card" />
+              </div>
+            ) : accessEndDateError && !clientUserDoc ? (
+              <div className="client-program-info-err-block">
+                <span className="client-program-info-err-icon" aria-hidden>!</span>
+                <p className="client-program-info-error">{accessEndDateError}</p>
+              </div>
+            ) : assignedForInfo.length === 0 ? (
+              <div className="client-program-info-empty-block">
+                <span className="client-program-info-empty-icon" aria-hidden>◇</span>
+                <p className="client-program-info-empty">Este cliente no tiene programas asignados</p>
+                <p className="client-program-info-empty-hint">Ve a la pestaña Planificación y asígnale un programa para gestionar su acceso aquí.</p>
+              </div>
+            ) : (
+              <div className={`client-program-info-layout ${!hasProfile ? 'client-program-info-layout--no-profile' : ''}`}>
+                {hasProfile && (
+                  <section className="client-program-info-profile-card">
+                    <div className="client-program-info-profile-header">
+                      <div className="client-program-info-profile-avatar">
+                        {(profileName || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="client-program-info-profile-heading">
+                        <h3 className="client-program-info-profile-name">{profileName || 'Sin nombre'}</h3>
+                        {profileEmail && (
+                          <a href={`mailto:${profileEmail}`} className="client-program-info-profile-email">{profileEmail}</a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="client-program-info-profile-fields">
+                      {(clientUserDoc?.age != null && clientUserDoc?.age !== '') && (
+                        <div className="client-program-info-profile-field">
+                          <span className="client-program-info-profile-field-label">Edad</span>
+                          <span className="client-program-info-profile-field-value">{clientUserDoc.age} años</span>
+                        </div>
+                      )}
+                      {(clientUserDoc?.country || clientUserDoc?.city) && (
+                        <div className="client-program-info-profile-field">
+                          <span className="client-program-info-profile-field-label">Ubicación</span>
+                          <span className="client-program-info-profile-field-value">
+                            {[clientUserDoc?.city, clientUserDoc?.country].filter(Boolean).join(', ') || '—'}
+                          </span>
+                        </div>
+                      )}
+                      {(clientUserDoc?.height != null && clientUserDoc?.height !== '') && (
+                        <div className="client-program-info-profile-field">
+                          <span className="client-program-info-profile-field-label">Altura</span>
+                          <span className="client-program-info-profile-field-value">{clientUserDoc.height} cm</span>
+                        </div>
+                      )}
+                      {(clientUserDoc?.initialWeight != null && clientUserDoc?.initialWeight !== '') && (
+                        <div className="client-program-info-profile-field">
+                          <span className="client-program-info-profile-field-label">Peso inicial</span>
+                          <span className="client-program-info-profile-field-value">{clientUserDoc.initialWeight} kg</span>
+                        </div>
+                      )}
+                      {clientUserDoc?.gender && (
+                        <div className="client-program-info-profile-field">
+                          <span className="client-program-info-profile-field-label">Género</span>
+                          <span className="client-program-info-profile-field-value">{clientUserDoc.gender}</span>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                <section className="client-program-info-access-card">
+                  <div className="client-program-info-access-card-inner">
+                    <header className="client-program-info-access-card-header">
+                      <h3 className="client-program-info-access-card-title">Programa y acceso</h3>
+                    </header>
+
+                    <div className="client-program-info-access-card-row">
+                      <div className="client-program-info-access-card-program-block">
+                        <span className="client-program-info-access-card-label">Programa</span>
+                        <div className="client-program-info-program-list">
+                          {assignedForInfo.map((program) => (
+                            <button
+                              key={program.id}
+                              type="button"
+                              className={`client-program-info-program-item ${infoProgramId === program.id ? 'client-program-info-program-item--selected' : ''}`}
+                              onClick={() => setInfoProgramId(program.id)}
+                            >
+                              {program.image_url ? (
+                                <span className="client-program-info-program-thumb" style={{ backgroundImage: `url(${program.image_url})` }} />
+                              ) : (
+                                <span className="client-program-info-program-initial">
+                                  {(program.title || 'P').charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                              <span className="client-program-info-program-name">
+                                {program.title || `Programa ${program.id.slice(0, 8)}`}
+                              </span>
+                              {infoProgramId === program.id && (
+                                <span className="client-program-info-program-check" aria-hidden>✓</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {infoProgramId && clientUserDoc?.courses?.[infoProgramId] ? (
+                        <div className="client-program-info-access-card-end-block">
+                          <span className="client-program-info-access-card-label">Fin de acceso</span>
+                          <div className="client-program-info-status-card">
+                            <span className="client-program-info-status-label">Ahora</span>
+                            <span className="client-program-info-status-value">{currentStatusText}</span>
+                          </div>
+                          <div className="client-program-info-access-row">
+                            <span className="client-program-info-access-label">Cambiar a</span>
+                            <div className="client-program-info-access-controls">
+                              <button
+                                type="button"
+                                className={`client-program-info-access-btn ${infoNoEndDate ? 'client-program-info-access-btn--on' : ''}`}
+                                onClick={() => { setInfoNoEndDate(true); setInfoAccessEndDate(''); }}
+                              >
+                                Sin fecha
+                              </button>
+                              <button
+                                type="button"
+                                className={`client-program-info-access-btn ${!infoNoEndDate ? 'client-program-info-access-btn--on' : ''}`}
+                                onClick={() => setInfoNoEndDate(false)}
+                              >
+                                Hasta
+                              </button>
+                              {!infoNoEndDate && (
+                                <input
+                                  type="date"
+                                  className="client-program-info-date"
+                                  value={infoAccessEndDate}
+                                  onChange={(e) => setInfoAccessEndDate(e.target.value)}
+                                />
+                              )}
+                            </div>
+                          </div>
+                          {accessEndDateError && (
+                            <p className="client-program-info-msg client-program-info-msg--error">{accessEndDateError}</p>
+                          )}
+                          <Button
+                            title={isSavingAccessEndDate ? 'Guardando…' : 'Guardar cambios'}
+                            onClick={handleSaveAccessEndDate}
+                            disabled={!hasAccessFormChanged || isSavingAccessEndDate}
+                            loading={isSavingAccessEndDate}
+                          />
+                        </div>
+                      ) : (
+                        <div className="client-program-info-access-card-end-block client-program-info-access-card-end-block--empty">
+                          <span className="client-program-info-access-card-label">Fin de acceso</span>
+                          <p className="client-program-info-access-empty-hint">Selecciona un programa para gestionar su fecha de fin de acceso.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
           </div>
         );
       default:

@@ -162,9 +162,10 @@
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
+  gap: 6px;
   min-height: 14px;
   max-height: 20px;
-  padding: 3px 10px;
+  padding: 3px 6px 3px 10px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-left: 3px solid rgba(191, 168, 77, 0.65);
@@ -175,11 +176,71 @@
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   letter-spacing: 0.02em;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+}
+
+.calendar-week-plan-bar-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.calendar-week-plan-bar-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.calendar-week-plan-bar-menu-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 1);
+}
+
+.calendar-week-plan-bar-menu-portal {
+  min-width: 200px;
+  background: #2a2a2e;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.calendar-week-plan-bar-menu-portal .calendar-day-session-card-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.calendar-week-plan-bar-menu-portal .calendar-day-session-card-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.calendar-week-plan-bar-menu-portal .calendar-day-session-card-menu-item-danger:hover {
+  background: rgba(220, 53, 69, 0.25);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .calendar-day {
@@ -215,11 +276,26 @@
   transform: translateY(-1px);
 }
 
-.calendar-day-empty {
-  background-color: transparent;
-  border: none;
-  cursor: default;
-  pointer-events: none;
+/* Past/future month overflow cells - white with very low opacity (not gold/bronze) */
+.calendar-day.calendar-day-other-month {
+  background: rgba(255, 255, 255, 0.04) !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Empty overflow cells (no sessions) - even less opaque */
+.calendar-day.calendar-day-other-month:not(.calendar-day-has-session):not(.calendar-day-has-week-content) {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Day numbers in overflow cells - less opaque */
+.calendar-day-other-month .calendar-day-number {
+  opacity: 0.4;
+}
+
+/* Session cards in other-month cells - show with reduced opacity */
+.calendar-day-other-month .calendar-day-session-cards {
+  opacity: 0.5;
 }
 
 .calendar-day-today {
@@ -286,6 +362,18 @@
   overflow: visible;
 }
 
+/* Completed session - green gradient indicator (top-right to bottom-left) */
+.calendar-day-session-card-completed {
+  background: linear-gradient(
+    to left bottom,
+    rgba(34, 139, 34, 0.25) 0%,
+    rgba(50, 205, 50, 0.15) 50%,
+    rgba(255, 255, 255, 0.14) 100%
+  ) !important;
+  border-color: rgba(34, 139, 34, 0.5) !important;
+  cursor: pointer;
+}
+
 .calendar-day-session-card-name {
   font-size: 10px;
   font-weight: 600;
@@ -338,6 +426,41 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Session menu in portal - outside calendar-day button so hover/click work reliably */
+.calendar-day-session-card-menu-portal {
+  min-width: 140px;
+  background: #2a2a2e;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.calendar-day-session-card-menu-portal .calendar-day-session-card-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.calendar-day-session-card-menu-portal .calendar-day-session-card-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.calendar-day-session-card-menu-portal .calendar-day-session-card-menu-item-danger:hover {
+  background: rgba(220, 53, 69, 0.25);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .calendar-day-session-card-menu-item {

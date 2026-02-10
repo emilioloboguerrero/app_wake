@@ -15,6 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../Modal';
+import MediaPickerModal from '../MediaPickerModal';
 import Input from '../Input';
 import Button from '../Button';
 import './ContentManager.css';
@@ -49,6 +50,9 @@ const ContentManager = ({
   const [deleteModuleConfirmation, setDeleteModuleConfirmation] = useState('');
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionName, setSessionName] = useState('');
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [deleteSessionConfirmation, setDeleteSessionConfirmation] = useState('');
@@ -209,7 +213,7 @@ const ContentManager = ({
       if (contentType === 'plan' && libraryService && creatorId) {
         const librarySession = await libraryService.createLibrarySession(creatorId, {
           title: sessionName.trim(),
-          image_url: null
+          image_url: sessionImageUrlFromLibrary || null
         });
         librarySessionRef = librarySession.id;
       }
@@ -219,6 +223,8 @@ const ContentManager = ({
       if (contentType === 'plan' && contentId && created?.id) {
         setIsSessionModalOpen(false);
         setSessionName('');
+        setSessionImagePreview(null);
+        setSessionImageUrlFromLibrary(null);
         navigate(`/plans/${contentId}/modules/${selectedModule.id}/sessions/${created.id}`, {
           state: { librarySessionRef: librarySessionRef || undefined }
         });
@@ -228,6 +234,8 @@ const ContentManager = ({
       setSessions(sess);
       setIsSessionModalOpen(false);
       setSessionName('');
+      setSessionImagePreview(null);
+      setSessionImageUrlFromLibrary(null);
     } catch (err) {
       alert(err.message || 'Error al crear la sesión');
     } finally {
@@ -479,7 +487,7 @@ const ContentManager = ({
       </Modal>
 
       {/* Create Session Modal */}
-      <Modal isOpen={isSessionModalOpen} onClose={() => setIsSessionModalOpen(false)} title="Nueva sesión">
+      <Modal isOpen={isSessionModalOpen} onClose={() => { setIsSessionModalOpen(false); setSessionImagePreview(null); setSessionImageUrlFromLibrary(null); }} title="Nueva sesión">
         <div className="content-manager-modal-body">
           <Input
             placeholder="Nombre de la sesión (ej: Día 1 - Piernas)"
@@ -487,11 +495,42 @@ const ContentManager = ({
             onChange={(e) => setSessionName(e.target.value)}
             light
           />
+          {contentType === 'plan' && creatorId && (
+            <div className="content-manager-session-image-field">
+              <label className="content-manager-session-image-label">
+                Imagen de la sesión
+                <span className="content-manager-recommended-tag">Altamente recomendado</span>
+              </label>
+              {sessionImagePreview ? (
+                <div className="content-manager-image-preview-wrap">
+                  <img src={sessionImagePreview} alt="Sesión" className="content-manager-image-preview" />
+                  <div className="content-manager-image-actions">
+                    <button type="button" className="content-manager-image-btn" onClick={() => setIsMediaPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="content-manager-image-btn content-manager-image-btn--remove" onClick={() => { setSessionImagePreview(null); setSessionImageUrlFromLibrary(null); }}>Quitar</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="content-manager-image-upload-area" onClick={() => setIsMediaPickerOpen(true)}>
+                  <span className="content-manager-image-upload-icon">+</span>
+                  <span>Elegir imagen</span>
+                </button>
+              )}
+            </div>
+          )}
           <div className="content-manager-modal-actions">
             <Button title={isCreatingSession ? 'Creando...' : 'Crear'} onClick={handleCreateSession} disabled={!sessionName.trim() || isCreatingSession} loading={isCreatingSession} />
           </div>
         </div>
       </Modal>
+      {creatorId && (
+        <MediaPickerModal
+          isOpen={isMediaPickerOpen}
+          onClose={() => setIsMediaPickerOpen(false)}
+          onSelect={(item) => { setSessionImagePreview(item.url); setSessionImageUrlFromLibrary(item.url); setIsMediaPickerOpen(false); }}
+          creatorId={creatorId}
+          accept="image/*"
+        />
+      )}
 
       {/* Create Exercise Modal */}
       <Modal isOpen={isExerciseModalOpen} onClose={() => setIsExerciseModalOpen(false)} title="Nuevo ejercicio">

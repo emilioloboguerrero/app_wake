@@ -690,7 +690,7 @@ class FirestoreService {
 
       const { plan_id, session_id, module_id, library_session_ref, program_id } = clientSession;
       if (plan_id && session_id && module_id) {
-        return this._resolvePlannedSessionFromPlan(plan_id, module_id, session_id);
+        return this._resolvePlannedSessionFromPlan(plan_id, module_id, session_id, creatorId);
       }
       if (library_session_ref && session_id) {
         let effectiveCreatorId = creatorId;
@@ -808,11 +808,14 @@ class FirestoreService {
     }
   }
 
-  async _resolvePlannedSessionFromPlan(plan_id, module_id, session_id) {
+  async _resolvePlannedSessionFromPlan(plan_id, module_id, session_id, creatorId = null) {
     const sessionRef = doc(firestore, 'plans', plan_id, 'modules', module_id, 'sessions', session_id);
     const sessionDoc = await getDoc(sessionRef);
     if (!sessionDoc.exists()) return null;
     const sessionData = { id: sessionDoc.id, ...sessionDoc.data() };
+    if (sessionData.librarySessionRef && creatorId) {
+      return this._resolvePlannedSessionFromLibrary(creatorId, sessionData.librarySessionRef);
+    }
     const exercisesSnap = await getDocs(
       query(
         collection(firestore, 'plans', plan_id, 'modules', module_id, 'sessions', session_id, 'exercises'),

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
+import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
 import { DRAG_TYPE_LIBRARY_SESSION } from './PlanStructureSidebar';
 import './PlanWeeksGrid.css';
@@ -29,6 +30,9 @@ const PlanWeeksGrid = ({
   const [addSessionDayIndex, setAddSessionDayIndex] = useState(0);
   const [newSessionName, setNewSessionName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [openMenuSession, setOpenMenuSession] = useState(null); // { moduleId, sessionId }
   const [menuAnchorEl, setMenuAnchorEl] = useState(null); // DOM element for portal positioning
@@ -63,7 +67,15 @@ const PlanWeeksGrid = ({
     setAddSessionDayIndex(dayIndex);
     setNewSessionName('');
     setSaveToLibrary(true);
+    setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
     setIsAddSessionModalOpen(true);
+  };
+
+  const handleMediaPickerSelect = (item) => {
+    setSessionImagePreview(item.url);
+    setSessionImageUrlFromLibrary(item.url);
+    setIsMediaPickerOpen(false);
   };
 
   const refreshModules = async () => {
@@ -86,7 +98,7 @@ const PlanWeeksGrid = ({
       if (libraryService && creatorId) {
         const libSession = await libraryService.createLibrarySession(creatorId, {
           title: newSessionName.trim(),
-          image_url: null,
+          image_url: sessionImageUrlFromLibrary || null,
           showInLibrary: saveToLibrary,
         });
         librarySessionRef = libSession.id;
@@ -406,6 +418,8 @@ const PlanWeeksGrid = ({
           setIsAddSessionModalOpen(false);
           setNewSessionName('');
           setSaveToLibrary(true);
+          setSessionImagePreview(null);
+          setSessionImageUrlFromLibrary(null);
         }}
         title="Nueva sesión"
       >
@@ -418,6 +432,26 @@ const PlanWeeksGrid = ({
               placeholder="Ej: Día 1 - Fuerza"
               light
             />
+          </div>
+          <div className="plan-weeks-modal-field">
+            <label>
+              Imagen de la sesión
+              <span className="plan-weeks-modal-recommended-tag">Altamente recomendado</span>
+            </label>
+            {sessionImagePreview ? (
+              <div className="plan-weeks-image-preview-wrap">
+                <img src={sessionImagePreview} alt="Sesión" className="plan-weeks-image-preview" />
+                <div className="plan-weeks-image-actions">
+                  <button type="button" className="plan-weeks-image-btn" onClick={() => setIsMediaPickerOpen(true)}>Cambiar</button>
+                  <button type="button" className="plan-weeks-image-btn plan-weeks-image-btn--remove" onClick={() => { setSessionImagePreview(null); setSessionImageUrlFromLibrary(null); }}>Quitar</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="plan-weeks-image-upload-area" onClick={() => setIsMediaPickerOpen(true)}>
+                <span className="plan-weeks-image-upload-icon">+</span>
+                <span>Elegir imagen</span>
+              </button>
+            )}
           </div>
           <div className="plan-weeks-modal-field">
             <label>¿Dónde guardar?</label>
@@ -474,6 +508,13 @@ const PlanWeeksGrid = ({
           </div>
         </div>
       </Modal>
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={creatorId}
+        accept="image/*"
+      />
     </div>
   );
 };

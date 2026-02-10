@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
+import MediaPickerModal from './MediaPickerModal';
 import Button from './Button';
 import Input from './Input';
 import libraryService from '../services/libraryService';
@@ -16,13 +17,24 @@ const SessionAssignmentModal = ({
   const [mode, setMode] = useState('choose'); // 'choose' | 'create'
   const [newSessionName, setNewSessionName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
+  const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
   const handleClose = () => {
     setMode('choose');
     setNewSessionName('');
     setSaveToLibrary(true);
+    setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
     onClose();
+  };
+
+  const handleMediaPickerSelect = (item) => {
+    setSessionImagePreview(item.url);
+    setSessionImageUrlFromLibrary(item.url);
+    setIsMediaPickerOpen(false);
   };
 
   const formatDate = (date) => {
@@ -45,7 +57,7 @@ const SessionAssignmentModal = ({
       setIsCreating(true);
       const libSession = await libraryService.createLibrarySession(creatorId, {
         title: newSessionName.trim(),
-        image_url: null,
+        image_url: sessionImageUrlFromLibrary || null,
         showInLibrary: saveToLibrary,
       });
       onSessionAssigned({
@@ -120,6 +132,7 @@ const SessionAssignmentModal = ({
   // Create: name + save to library option (same as plan screen) + Crear y asignar
   if (mode === 'create') {
     return (
+      <>
       <Modal isOpen={isOpen} onClose={handleClose} title="Crear nueva sesión">
         <div className="session-assignment-modal-content">
           <div className="session-assignment-date">{formatDate(selectedDate)}</div>
@@ -132,6 +145,26 @@ const SessionAssignmentModal = ({
                 placeholder="Ej: Día 1 - Fuerza"
                 light
               />
+            </div>
+            <div className="session-assignment-create-field">
+              <label className="session-assignment-create-label">
+                Imagen de la sesión
+                <span className="session-assignment-recommended-tag">Altamente recomendado</span>
+              </label>
+              {sessionImagePreview ? (
+                <div className="session-assignment-image-preview-wrap">
+                  <img src={sessionImagePreview} alt="Sesión" className="session-assignment-image-preview" />
+                  <div className="session-assignment-image-actions">
+                    <button type="button" className="session-assignment-image-btn" onClick={() => setIsMediaPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="session-assignment-image-btn session-assignment-image-btn--remove" onClick={() => { setSessionImagePreview(null); setSessionImageUrlFromLibrary(null); }}>Quitar</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="session-assignment-image-upload-area" onClick={() => setIsMediaPickerOpen(true)}>
+                  <span className="session-assignment-image-upload-icon">+</span>
+                  <span>Elegir imagen</span>
+                </button>
+              )}
             </div>
             <div className="session-assignment-create-field">
               <label className="session-assignment-create-label">¿Dónde guardar?</label>
@@ -180,6 +213,14 @@ const SessionAssignmentModal = ({
           </div>
         </div>
       </Modal>
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={creatorId}
+        accept="image/*"
+      />
+      </>
     );
   }
 

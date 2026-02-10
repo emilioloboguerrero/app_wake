@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
+import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
@@ -308,6 +309,9 @@ const LibraryContentScreen = () => {
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
   const [sessionImagePreview, setSessionImagePreview] = useState(null);
+  const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaPickerContext, setMediaPickerContext] = useState('edit'); // 'edit' | 'header'
   const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
   const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
@@ -677,6 +681,7 @@ const LibraryContentScreen = () => {
     setSessionName(selectedSession.title || '');
     setSessionImagePreview(selectedSession.image_url || null);
     setSessionImageFile(null);
+    setSessionImageUrlFromLibrary(null);
     setIsSessionModalOpen(true);
   };
 
@@ -712,6 +717,25 @@ const LibraryContentScreen = () => {
   const handleSessionImageDelete = () => {
     setSessionImageFile(null);
     setSessionImagePreview(null);
+    setSessionImageUrlFromLibrary(null);
+  };
+
+  const handleMediaPickerSelect = async (item) => {
+    if (mediaPickerContext === 'header' && selectedSession && user) {
+      try {
+        await libraryService.updateLibrarySession(user.uid, selectedSession.id, { image_url: item.url });
+        setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
+      } catch (err) {
+        console.error('Error updating session image:', err);
+        alert('Error al actualizar la imagen.');
+      }
+      setIsMediaPickerOpen(false);
+      return;
+    }
+    setSessionImagePreview(item.url);
+    setSessionImageFile(null);
+    setSessionImageUrlFromLibrary(item.url);
+    setIsMediaPickerOpen(false);
   };
 
   const handleUpdateSession = async () => {
@@ -722,70 +746,32 @@ const LibraryContentScreen = () => {
     try {
       setIsUpdatingSession(true);
       
-      let imageUrl = selectedSession.image_url; // Keep existing image by default
+      let imageUrl = sessionImageUrlFromLibrary ?? selectedSession.image_url ?? null;
       
-      // Upload new image if provided
-      if (sessionImageFile) {
-        // Validate file before upload
-        if (!(sessionImageFile instanceof File)) {
-          console.error('Invalid file object:', sessionImageFile);
-          alert('Error: Archivo inválido. Por favor, intenta de nuevo.');
-          setIsUpdatingSession(false);
-          return;
-        }
-
+      if (sessionImageFile && sessionImageFile instanceof File) {
         setIsUploadingSessionImage(true);
         setSessionImageUploadProgress(0);
-        
         try {
-          console.log('Starting image upload:', {
-            userId: user.uid,
-            sessionId: selectedSession.id,
-            fileName: sessionImageFile.name,
-            fileSize: sessionImageFile.size,
-            fileType: sessionImageFile.type
-          });
-
           imageUrl = await libraryService.uploadLibrarySessionImage(
             user.uid,
             selectedSession.id,
             sessionImageFile,
-            (progress) => {
-              setSessionImageUploadProgress(Math.round(progress));
-            }
+            (progress) => setSessionImageUploadProgress(Math.round(progress))
           );
-
-          console.log('Image uploaded successfully, URL:', imageUrl);
-          
-          // Note: uploadLibrarySessionImage already updates the session document with image_url
-          // So we don't need to update it again in the updateLibrarySession call below
         } catch (uploadError) {
           console.error('Error uploading session image:', uploadError);
-          console.error('Upload error details:', {
-            message: uploadError.message,
-            code: uploadError.code,
-            serverResponse: uploadError.serverResponse,
-            stack: uploadError.stack
-          });
-          
-          const errorMessage = uploadError.message || 'Error desconocido al subir la imagen';
-          alert(`Error al subir la imagen: ${errorMessage}. Por favor, intenta de nuevo.`);
-          
-          // Reset upload state
-          setIsUploadingSessionImage(false);
-          setSessionImageUploadProgress(0);
+          alert(`Error al subir la imagen: ${uploadError.message || 'Por favor, intenta de nuevo.'}`);
           setIsUpdatingSession(false);
+          setIsUploadingSessionImage(false);
           return;
         } finally {
           setIsUploadingSessionImage(false);
           setSessionImageUploadProgress(0);
         }
       } else if (!sessionImagePreview && selectedSession.image_url) {
-        // Image was deleted
         imageUrl = null;
       }
       
-      // Update session
       await libraryService.updateLibrarySession(user.uid, selectedSession.id, {
         title: sessionName.trim(),
         image_url: imageUrl
@@ -2789,6 +2775,22 @@ const LibraryContentScreen = () => {
       onBack={null}
       showBackButton={true}
       backPath={getBackPath()}
+      headerImageIcon={selectedSession ? (
+        <button
+          type="button"
+          onClick={() => { setMediaPickerContext('header'); setIsMediaPickerOpen(true); }}
+          aria-label="Cambiar imagen de la sesión"
+          title="Cambiar imagen"
+        >
+          {selectedSession.image_url ? (
+            <img src={selectedSession.image_url} alt="" />
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
+      ) : null}
     >
       <div className="program-detail-container">
         <div className="program-tab-content">
@@ -3800,35 +3802,13 @@ const LibraryContentScreen = () => {
                     />
                     <div className="edit-program-image-overlay">
                       <div className="edit-program-image-actions">
-                        <label className="edit-program-image-action-pill">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleSessionImageUpload}
-                            disabled={isUploadingSessionImage || isUpdatingSession}
-                            style={{ display: 'none' }}
-                          />
-                          <span className="edit-program-image-action-text">
-                            {isUploadingSessionImage ? 'Subiendo...' : 'Cambiar'}
-                          </span>
-                        </label>
-                        {isUploadingSessionImage && (
-                          <div className="edit-program-image-progress">
-                            <div className="edit-program-image-progress-bar">
-                              <div 
-                                className="edit-program-image-progress-fill"
-                                style={{ width: `${sessionImageUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="edit-program-image-progress-text">
-                              {sessionImageUploadProgress}%
-                            </span>
-                          </div>
-                        )}
+                        <button type="button" className="edit-program-image-action-pill" onClick={() => { setMediaPickerContext('edit'); setIsMediaPickerOpen(true); }}>
+                          <span className="edit-program-image-action-text">Cambiar</span>
+                        </button>
                         <button
                           className="edit-program-image-action-pill edit-program-image-delete-pill"
                           onClick={handleSessionImageDelete}
-                          disabled={isUploadingSessionImage || isUpdatingSession}
+                          disabled={isUpdatingSession}
                         >
                           <span className="edit-program-image-action-text">Eliminar</span>
                         </button>
@@ -3838,29 +3818,9 @@ const LibraryContentScreen = () => {
                 ) : (
                   <div className="edit-program-no-image">
                     <p>No hay imagen disponible</p>
-                    <label className="edit-program-image-upload-button">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleSessionImageUpload}
-                        disabled={isUploadingSessionImage || isUpdatingSession}
-                        style={{ display: 'none' }}
-                      />
-                      {isUploadingSessionImage ? 'Subiendo...' : 'Subir Imagen'}
-                    </label>
-                    {isUploadingSessionImage && (
-                      <div className="edit-program-image-progress">
-                        <div className="edit-program-image-progress-bar">
-                          <div 
-                            className="edit-program-image-progress-fill"
-                            style={{ width: `${sessionImageUploadProgress}%` }}
-                          />
-                        </div>
-                        <span className="edit-program-image-progress-text">
-                          {sessionImageUploadProgress}%
-                        </span>
-                      </div>
-                    )}
+                    <button type="button" className="edit-program-image-upload-button" onClick={() => { setMediaPickerContext('edit'); setIsMediaPickerOpen(true); }}>
+                      Subir Imagen
+                    </button>
                   </div>
                 )}
               </div>
@@ -3881,6 +3841,14 @@ const LibraryContentScreen = () => {
           </div>
         </div>
       </Modal>
+
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        creatorId={user?.uid}
+        accept="image/*"
+      />
 
       {/* Delete Session Modal */}
       <Modal

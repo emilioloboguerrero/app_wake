@@ -8,6 +8,7 @@ import {
   doc,
   getDoc,
   addDoc,
+  setDoc,
   deleteDoc,
   updateDoc,
   arrayUnion,
@@ -107,6 +108,10 @@ class OneOnOneService {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+
+      // Allow creator to read/update this user's document (for access end date etc.)
+      const accessRef = doc(firestore, 'creator_client_access', `${creatorId}_${clientUserId}`);
+      await setDoc(accessRef, { creatorId, userId: clientUserId, updated_at: serverTimestamp() }, { merge: true });
 
       // Get the created document to return
       const createdDoc = await getDoc(newClientRef);

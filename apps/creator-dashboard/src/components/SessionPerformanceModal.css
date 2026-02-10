@@ -1,0 +1,439 @@
+/* ===== Backdrop ===== */
+.session-performance-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(8px);
+}
+
+/* ===== Modal container ===== */
+.session-performance-modal {
+  background: #1a1a1d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  width: 94%;
+  max-width: 880px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== Header ===== */
+.session-performance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.session-performance-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.session-performance-subtitle {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 6px 0 0 0;
+  font-weight: 500;
+}
+
+.session-performance-close {
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.session-performance-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* ===== Content ===== */
+.session-performance-content {
+  padding: 28px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.session-performance-loading,
+.session-performance-error {
+  padding: 48px;
+  text-align: center;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.session-performance-error {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.12);
+  border-radius: 12px;
+}
+
+/* ===== Meta block ===== */
+.session-performance-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.session-performance-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.session-performance-session-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.session-performance-date {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.session-performance-completed-at {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.session-performance-duration {
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 2px;
+}
+
+/* ===== Stats summary - prominent for creator ===== */
+.session-performance-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.session-performance-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 16px;
+  border-radius: 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.session-performance-stat-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 4px;
+  letter-spacing: -0.02em;
+}
+
+.session-performance-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+}
+
+/* Completed - green */
+.session-performance-stat-completed {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.session-performance-stat-completed .session-performance-stat-value {
+  color: #86efac;
+}
+
+.session-performance-stat-completed .session-performance-stat-label {
+  color: rgba(134, 239, 172, 0.9);
+}
+
+/* Not completed - RED as requested */
+.session-performance-stat-not-completed {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.session-performance-stat-not-completed .session-performance-stat-value {
+  color: #fca5a5;
+}
+
+.session-performance-stat-not-completed .session-performance-stat-label {
+  color: rgba(252, 165, 165, 0.95);
+}
+
+/* Extra - blue */
+.session-performance-stat-extra {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
+
+.session-performance-stat-extra .session-performance-stat-value {
+  color: #93c5fd;
+}
+
+.session-performance-stat-extra .session-performance-stat-label {
+  color: rgba(147, 197, 253, 0.9);
+}
+
+/* Empty state */
+.session-performance-stat-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* ===== Section title ===== */
+.session-performance-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 16px 0;
+}
+
+/* ===== Compare header ===== */
+.session-performance-compare-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px 12px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+}
+
+.session-performance-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-performance-compare-col-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.session-performance-compare-col-sub {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+.session-performance-compare-col--planned .session-performance-compare-col-title {
+  color: #93c5fd;
+}
+
+.session-performance-compare-col--performed .session-performance-compare-col-title {
+  color: #86efac;
+}
+
+/* ===== Exercise cards ===== */
+.session-performance-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+}
+
+.session-performance-card {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.015);
+  transition: background 0.2s ease;
+}
+
+.session-performance-card:last-child {
+  border-bottom: none;
+}
+
+.session-performance-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.session-performance-card-head:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.session-performance-card-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #ffffff;
+  line-height: 1.4;
+}
+
+/* Badges */
+.session-performance-card-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.session-performance-card-badge--completed {
+  background: rgba(34, 197, 94, 0.25);
+  color: #86efac;
+}
+
+/* No completado - RED */
+.session-performance-card-badge--deleted,
+.session-performance-card-badge--not_completed {
+  background: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.session-performance-card-badge--extra {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+
+.session-performance-card-chevron {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.session-performance-card-head[aria-expanded="true"] .session-performance-card-chevron {
+  transform: rotate(90deg);
+}
+
+.session-performance-card-body {
+  padding: 0 24px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Compare row */
+.session-performance-compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  padding-top: 20px;
+}
+
+@media (max-width: 600px) {
+  .session-performance-compare-header,
+  .session-performance-compare-row {
+    grid-template-columns: 1fr;
+  }
+
+  .session-performance-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .session-performance-content {
+    padding: 20px;
+  }
+}
+
+/* Set lists */
+.session-performance-set-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-performance-set-list--performed .session-performance-set-item {
+  color: #a7f3d0;
+}
+
+.session-performance-set-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+}
+
+.session-performance-set-num {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  min-width: 24px;
+}
+
+.session-performance-set-values {
+  flex: 1;
+}
+
+.session-performance-empty-col {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-style: italic;
+}
+
+.session-performance-empty-col:not(:only-child) {
+  padding-top: 6px;
+}

@@ -76,6 +76,18 @@ service firebase.storage {
         );
     }
     
+    // Creator media library (personal folder: images/videos for reuse across programs/sessions)
+    match /creator_media/{creatorId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == creatorId
+        && (
+          (request.resource.contentType.matches('image/.*') && request.resource.size < 10 * 1024 * 1024)
+          ||
+          request.resource.contentType.matches('video/.*')
+        );
+    }
+
     // Legal documents (publicly readable, admin-only write)
     match /legal-documents/{fileName} {
       // Allow anyone to read legal documents (no authentication required)

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { getMondayWeek } from '../utils/weekCalculation';
+import { createPortal } from 'react-dom';
+import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
 import './CalendarView.css';
 
@@ -23,13 +24,16 @@ const PROGRAM_COLORS = [
 ];
 
 const CalendarView = ({ 
+  clientUserId = null,
   onDateSelect, 
   plannedSessions = [], 
   programColors = {}, 
+  completedSessionIds = new Set(),
   onMonthChange,
   planAssignments = {},
   plans = [],
   onPlanAssignment,
+  onRemovePlanFromWeek,
   onSessionAssignment,
   onEditSessionAssignment,
   onDeleteSessionAssignment,
@@ -46,7 +50,8 @@ const CalendarView = ({
   onAddPlanSessionToDay,
   assignedPrograms = [],
   selectedProgramId = null,
-  planWeeksCount = {} // optional: { [planId]: number } for "Plan name (N semanas)"
+  planWeeksCount = {}, // optional: { [planId]: number } for "Plan name (N semanas)"
+  onVerDesempeno = null
 }) => {
   const PLAN_BAR_COLOR = 'rgba(78, 64, 44, 0.96)'; // rich bronze/amber (más llamativo)
   const PLAN_BAR_ACCENT = 'rgba(191, 168, 77, 0.65)'; // visible gold accent
@@ -55,7 +60,9 @@ const CalendarView = ({
   const [selectedDate, setSelectedDate] = useState(null);
   const [draggedOverDay, setDraggedOverDay] = useState(null);
   const [selectedDayInfo, setSelectedDayInfo] = useState(null);
-  const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
+  const [sessionMenuContext, setSessionMenuContext] = useState(null);
+  const openSessionMenuId = sessionMenuContext?.id ?? null;
+  const [planBarMenuContext, setPlanBarMenuContext] = useState(null);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -64,16 +71,33 @@ const CalendarView = ({
     console.log('[CalendarView] plannedSessions prop changed', { length: plannedSessions?.length ?? 0, sample: plannedSessions?.slice(0, 2)?.map(s => ({ id: s.id, date: s.date, client_id: s.client_id })) });
   }, [plannedSessions]);
 
-  // Close session card menu when clicking outside (not on trigger or menu)
+  // Close session card menu when clicking outside (not on trigger or portal menu)
   useEffect(() => {
-    if (openSessionMenuId === null) return;
+    if (!sessionMenuContext) return;
     const close = (e) => {
-      if (e.target.closest('.calendar-day-session-card-actions') || e.target.closest('.calendar-day-session-card-menu')) return;
-      setOpenSessionMenuId(null);
+      if (e.target.closest('.calendar-day-session-card-actions') || e.target.closest('.calendar-day-session-card-menu-portal')) return;
+      setSessionMenuContext(null);
     };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
-  }, [openSessionMenuId]);
+  }, [sessionMenuContext]);
+
+  // Close plan bar menu when clicking outside
+  useEffect(() => {
+    if (!planBarMenuContext) return;
+    const close = (e) => {
+      if (e.target.closest('.calendar-week-plan-bar-actions') || e.target.closest('.calendar-week-plan-bar-menu-portal')) return;
+      setPlanBarMenuContext(null);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [planBarMenuContext]);
+
+  // Get Date from cell { day, monthOffset }
+  const getDateFromCell = (cell) => {
+    if (!cell) return null;
+    return new Date(currentYear, currentMonth + cell.monthOffset, cell.day);
+  };
 
   // Get first day of month and number of days
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
@@ -82,17 +106,23 @@ const CalendarView = ({
   // Convert Sunday (0) to 6, Monday (1) to 0, etc. so Monday is first
   const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
 
-  // Generate calendar days
+  // Generate calendar days - each cell has { day, monthOffset } (monthOffset: 0=current, -1=prev, +1=next)
   const calendarDays = [];
-  
-  // Add empty cells for days before the first day of the month
+  const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+  const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+
+  // Leading cells (past month)
   for (let i = 0; i < startingDayOfWeek; i++) {
-    calendarDays.push(null);
+    const d = new Date(currentYear, currentMonth, 1 - (startingDayOfWeek - i));
+    calendarDays.push({ day: d.getDate(), monthOffset: -1 });
   }
-  
-  // Add all days of the month
+  // Current month
   for (let day = 1; day <= daysInMonth; day++) {
-    calendarDays.push(day);
+    calendarDays.push({ day, monthOffset: 0 });
+  }
+  // Trailing cells (future month)
+  for (let i = 0; i < trailingCount; i++) {
+    calendarDays.push({ day: i + 1, monthOffset: 1 });
   }
 
   const handlePrevMonth = () => {
@@ -122,26 +152,30 @@ const CalendarView = ({
     }
   };
 
-  const handleDateClick = (day) => {
-    if (day === null) return;
-    const date = new Date(currentYear, currentMonth, day);
+  const handleDateClick = (cell) => {
+    if (!cell) return;
+    const date = getDateFromCell(cell);
     setSelectedDate(date);
     
     // Collect information for this day
-    const daySessions = getSessionsForDay(day);
-    const planAssignmentsForDay = getPlanAssignmentsForDay(day);
-    const planSessionsForDay = getPlanSessionsForDay(day);
-    const weekKey = getWeekKeyForDay(day);
-    const hasAnySession = daySessions.length > 0 || planSessionsForDay.length > 0;
+    const daySessions = getSessionsForCell(cell);
+    const planAssignmentsForDay = getPlanAssignmentsForCell(cell);
+    const planSessionsForDay = getPlanSessionsForCell(cell);
+    // Exclude plan-origin client_sessions when plan sessions shown (same filter as calendar display)
+    const displayedDaySessions = planSessionsForDay.length > 0
+      ? daySessions.filter((s) => !s.plan_id)
+      : daySessions;
+    const weekKey = getWeekKeyForCell(cell);
+    const hasAnySession = displayedDaySessions.length > 0 || planSessionsForDay.length > 0;
     
     const dayInfo = {
       date,
       day,
       weekKey,
-      sessions: daySessions,
+      sessions: displayedDaySessions,
       planSessions: planSessionsForDay,
       planAssignments: planAssignmentsForDay,
-      hasContent: daySessions.length > 0 || planAssignmentsForDay.length > 0,
+      hasContent: displayedDaySessions.length > 0 || planAssignmentsForDay.length > 0,
       hasAnySession
     };
     
@@ -152,22 +186,24 @@ const CalendarView = ({
     }
   };
 
-  const isToday = (day) => {
-    if (day === null) return false;
+  const isToday = (cell) => {
+    if (!cell) return false;
+    const date = getDateFromCell(cell);
     const today = new Date();
     return (
-      day === today.getDate() &&
-      currentMonth === today.getMonth() &&
-      currentYear === today.getFullYear()
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
     );
   };
 
-  const isSelected = (day) => {
-    if (day === null || !selectedDate) return false;
+  const isSelected = (cell) => {
+    if (!cell || !selectedDate) return false;
+    const date = getDateFromCell(cell);
     return (
-      day === selectedDate.getDate() &&
-      currentMonth === selectedDate.getMonth() &&
-      currentYear === selectedDate.getFullYear()
+      date.getDate() === selectedDate.getDate() &&
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getFullYear() === selectedDate.getFullYear()
     );
   };
 
@@ -180,7 +216,15 @@ const CalendarView = ({
     return `${year}-${month}-${day}`;
   };
 
-  // Create a map of date strings to sessions for quick lookup
+  // Monday = 0, Tuesday = 1, ... Sunday = 6 (for dateStr YYYY-MM-DD)
+  const getWeekdayIndexFromDateStr = (dateStr) => {
+    if (!dateStr) return 0;
+    const d = new Date(dateStr + 'T12:00:00');
+    return (d.getDay() + 6) % 7;
+  };
+
+  // Create a map of date strings to sessions for quick lookup.
+  // Plan-origin sessions (plan_id set) are only shown on the weekday that matches day_index to avoid ghost sessions on other days.
   const sessionsByDate = useMemo(() => {
     const map = {};
     if (!plannedSessions || plannedSessions.length === 0) {
@@ -195,6 +239,11 @@ const CalendarView = ({
         dateStr = formatDateForStorage(dateObj);
       }
       if (dateStr) {
+        const isPlanOrigin = !!session.plan_id;
+        const dayIndex = session.day_index != null ? session.day_index : 0;
+        if (isPlanOrigin && getWeekdayIndexFromDateStr(dateStr) !== dayIndex) {
+          return;
+        }
         if (!map[dateStr]) map[dateStr] = [];
         map[dateStr].push(session);
       } else {
@@ -205,11 +254,85 @@ const CalendarView = ({
     return map;
   }, [plannedSessions]);
 
+  // Debug: log exact completed IDs and candidate IDs so we can see any mismatch (must run after sessionsByDate is defined)
+  useEffect(() => {
+    const size = completedSessionIds?.size ?? 0;
+    const completedArr = size ? [...completedSessionIds] : [];
+    console.log('[CalendarView] completedSessionIds (exact)', { size, ids: completedArr });
 
-  // Get sessions for a specific day
-  const getSessionsForDay = (day) => {
-    if (day === null) return [];
-    const date = new Date(currentYear, currentMonth, day);
+    if (size === 0) return;
+
+    const dateKeys = plannedSessions?.length ? Object.keys(sessionsByDate || {}) : [];
+    const dateSessionsSample = [];
+    for (const dateStr of dateKeys.slice(0, 5)) {
+      const sessions = sessionsByDate[dateStr] || [];
+      for (const s of sessions.slice(0, 2)) {
+        const candidateIds = [s.id, s.session_id].filter(Boolean);
+        const matched = candidateIds.some((id) => id && completedSessionIds.has(id));
+        dateSessionsSample.push({ dateStr, session_id: s.session_id, sessionId: s.id, candidateIds, matched });
+      }
+    }
+    if (dateSessionsSample.length) {
+      console.log('[CalendarView] PLANNED vs COMPLETED (date-assigned). Completed ids:', completedArr);
+      dateSessionsSample.forEach((item, i) => {
+        const inId = completedSessionIds.has(item.sessionId);
+        const inSessionId = completedSessionIds.has(item.session_id);
+        console.log(`  [${i}] PLANNED id=${item.sessionId} session_id=${item.session_id} date=${item.dateStr} | inCompleted: id? ${inId} session_id? ${inSessionId} | MATCH: ${item.matched}`);
+      });
+    }
+
+    const weekKeys = weekContentByWeekKey ? Object.keys(weekContentByWeekKey) : [];
+    const planSessionsSample = [];
+    for (const weekKey of weekKeys.slice(0, 3)) {
+      const weekContent = weekContentByWeekKey[weekKey];
+      const sessions = weekContent?.sessions || [];
+      let weekStartDate;
+      try {
+        const { start } = getWeekDates(weekKey);
+        weekStartDate = start;
+      } catch (_) {
+        weekStartDate = null;
+      }
+      for (const s of sessions.slice(0, 3)) {
+        const dayIndex = s.dayIndex != null ? s.dayIndex : 0;
+        const sessionDate = weekStartDate ? new Date(weekStartDate.getTime()) : null;
+        if (sessionDate) sessionDate.setDate(sessionDate.getDate() + dayIndex);
+        const y = sessionDate?.getFullYear();
+        const m = sessionDate != null && !Number.isNaN(y) ? String(sessionDate.getMonth() + 1).padStart(2, '0') : null;
+        const d = sessionDate != null && !Number.isNaN(y) ? String(sessionDate.getDate()).padStart(2, '0') : null;
+        const dateStrForDay = y != null && m != null && d != null ? `${y}-${m}-${d}` : null;
+        const clientSessionDocId = clientUserId && dateStrForDay ? `${clientUserId}_${dateStrForDay}_${s.id}` : null;
+        const candidateIds = [s.id, s.session_id, clientSessionDocId, s.librarySessionRef].filter(Boolean);
+        const matched = candidateIds.some((id) => id && completedSessionIds.has(id));
+        planSessionsSample.push({
+          weekKey,
+          dayIndex,
+          dateStrForDay,
+          sessionId: s.id,
+          session_id: s.session_id,
+          librarySessionRef: s.librarySessionRef,
+          clientSessionDocId,
+          candidateIds,
+          matched
+        });
+      }
+    }
+    if (planSessionsSample.length) {
+      console.log('[CalendarView] PLANNED vs COMPLETED (plan). Completed ids:', completedArr);
+      planSessionsSample.forEach((item, i) => {
+        const inId = completedSessionIds.has(item.sessionId);
+        const inSessionId = completedSessionIds.has(item.session_id);
+        const inLibRef = completedSessionIds.has(item.librarySessionRef);
+        const inDocId = completedSessionIds.has(item.clientSessionDocId);
+        console.log(`  [${i}] PLANNED id=${item.sessionId} session_id=${item.session_id} libraryRef=${item.librarySessionRef ?? 'n/a'} docId=${item.clientSessionDocId ?? 'n/a'} | inCompleted: id? ${inId} session_id? ${inSessionId} libraryRef? ${inLibRef} docId? ${inDocId} | MATCH: ${item.matched}`);
+      });
+    }
+  }, [completedSessionIds, plannedSessions, sessionsByDate, weekContentByWeekKey, clientUserId]);
+
+  // Get sessions for a specific cell
+  const getSessionsForCell = (cell) => {
+    if (!cell) return [];
+    const date = getDateFromCell(cell);
     const dateStr = formatDateForStorage(date);
     return sessionsByDate[dateStr] || [];
   };
@@ -225,17 +348,17 @@ const CalendarView = ({
     return PROGRAM_COLORS[hash % PROGRAM_COLORS.length];
   };
 
-  // Get week key for a specific day
-  const getWeekKeyForDay = (day) => {
-    if (day === null) return null;
-    const date = new Date(currentYear, currentMonth, day);
+  // Get week key for a specific cell
+  const getWeekKeyForCell = (cell) => {
+    if (!cell) return null;
+    const date = getDateFromCell(cell);
     return getMondayWeek(date);
   };
 
-  // Get plan assignments for a specific day
-  const getPlanAssignmentsForDay = (day) => {
-    if (day === null) return [];
-    const weekKey = getWeekKeyForDay(day);
+  // Get plan assignments for a specific cell
+  const getPlanAssignmentsForCell = (cell) => {
+    if (!cell) return [];
+    const weekKey = getWeekKeyForCell(cell);
     if (!weekKey) return [];
     const assignment = planAssignments[weekKey];
     
@@ -250,32 +373,85 @@ const CalendarView = ({
   };
 
   // Monday = 0, Tuesday = 1, ... Sunday = 6 (matches plan dayIndex)
-  const getWeekdayIndex = (day) => {
-    if (day === null) return 0;
-    const date = new Date(currentYear, currentMonth, day);
+  const getWeekdayIndex = (cell) => {
+    if (!cell) return 0;
+    const date = getDateFromCell(cell);
     return (date.getDay() + 6) % 7;
   };
 
-  // Plan sessions for this day from the week's content (by dayIndex; null/undefined dayIndex → show on Monday)
-  const getPlanSessionsForDay = (day) => {
-    if (day === null) return [];
-    const weekKey = getWeekKeyForDay(day);
+  // Plan sessions for this cell from the week's content (by dayIndex; null/undefined dayIndex → show on Monday)
+  const getPlanSessionsForCell = (cell) => {
+    if (!cell) return [];
+    const weekKey = getWeekKeyForCell(cell);
     const weekContent = weekContentByWeekKey?.[weekKey];
     if (!weekContent?.sessions?.length) return [];
-    const weekdayIndex = getWeekdayIndex(day);
+    const weekdayIndex = getWeekdayIndex(cell);
     return weekContent.sessions.filter((s) => {
       const sessionDay = s.dayIndex != null ? s.dayIndex : 0;
       return sessionDay === weekdayIndex;
     });
   };
 
+  // Count how many calendar cards show each "naked" session id, and the first dateStr where each appears.
+  // When the same session appears on multiple days, we only mark the first occurrence as completed (by naked match).
+  const { nakedIdToCount, nakedIdToFirstDateStr } = useMemo(() => {
+    const count = new Map();
+    const firstDateStr = new Map();
+    for (let i = 0; i < calendarDays.length; i++) {
+      const cell = calendarDays[i];
+      const date = getDateFromCell(cell);
+      const dateStr = formatDateForStorage(date);
+      const weekKey = getWeekKeyForCell(cell);
+      const weekContent = weekContentByWeekKey?.[weekKey];
+      const weekdayIndex = (date.getDay() + 6) % 7;
+      const planSessionsForDay = weekContent?.sessions?.filter((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex) ?? [];
+      const daySessions = sessionsByDate[dateStr] ?? [];
+      const displayed = planSessionsForDay.length > 0 ? daySessions.filter((s) => !s.plan_id) : daySessions;
+      for (const s of planSessionsForDay) {
+        const id = s.librarySessionRef || s.session_id;
+        if (id) {
+          count.set(id, (count.get(id) || 0) + 1);
+          if (!firstDateStr.has(id)) firstDateStr.set(id, dateStr);
+        }
+      }
+      for (const s of displayed) {
+        if (s.session_id) {
+          count.set(s.session_id, (count.get(s.session_id) || 0) + 1);
+          if (!firstDateStr.has(s.session_id)) firstDateStr.set(s.session_id, dateStr);
+        }
+      }
+    }
+    return { nakedIdToCount: count, nakedIdToFirstDateStr: firstDateStr };
+  }, [calendarDays, weekContentByWeekKey, sessionsByDate, currentYear, currentMonth]);
+
+  // Check if session is completed. Prefer date-specific id (client_session doc id). If only a "naked" session id
+  // matches: when it appears on one card, show green; when it appears on multiple cards, show green only on the
+  // first occurrence (by date) so we don't mark all of them.
+  const isSessionCompleted = (candidateIds, dateSpecificIds, options = {}) => {
+    if (!completedSessionIds?.size) return false;
+    const { nakedIdToCountMap = nakedIdToCount, nakedIdToFirstDateStrMap = nakedIdToFirstDateStr, thisDateStr = null } = options;
+    const dateSpecificSet = new Set((dateSpecificIds || []).filter(Boolean));
+    for (const id of candidateIds) {
+      if (!id || !completedSessionIds.has(id)) continue;
+      if (dateSpecificSet.has(id)) return true;
+    }
+    for (const id of candidateIds) {
+      if (!id || !completedSessionIds.has(id)) continue;
+      if (dateSpecificSet.has(id)) continue;
+      const n = nakedIdToCountMap.get(id);
+      if (n === undefined || n <= 1) return true;
+      if (thisDateStr && nakedIdToFirstDateStrMap.get(id) === thisDateStr) return true;
+      return false;
+    }
+    return false;
+  };
+
   // Handle drag over (preventDefault required for drop to fire)
-  const handleDragOver = (e, day) => {
-    if (day === null) return;
+  const handleDragOver = (e, index) => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'copy';
-    setDraggedOverDay(day);
+    setDraggedOverDay(index);
   };
 
   // Handle drag leave
@@ -285,13 +461,13 @@ const CalendarView = ({
   };
 
   // Handle drop (plan or library session)
-  const handleDrop = (e, day) => {
-    console.log('[CalendarView] handleDrop FIRED', { day, currentYear, currentMonth });
+  const handleDrop = (e, cell) => {
     e.preventDefault();
     e.stopPropagation();
     setDraggedOverDay(null);
-    if (day === null) return;
+    if (!cell) return;
 
+    const date = getDateFromCell(cell);
     let rawData;
     try {
       rawData = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
@@ -305,12 +481,10 @@ const CalendarView = ({
     try {
       const dragData = JSON.parse(rawData);
       const { type } = dragData;
-      const date = new Date(currentYear, currentMonth, day);
-      console.log('[CalendarView] handleDrop parsed', { type, DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN });
 
       if (type === DRAG_TYPE_PLAN && dragData.planId) {
-      const weekKey = getMondayWeek(date);
-        if (onPlanAssignment) onPlanAssignment(dragData.planId, weekKey, day);
+        const weekKey = getMondayWeek(date);
+        if (onPlanAssignment) onPlanAssignment(dragData.planId, weekKey, date.getDate());
         return;
       }
 
@@ -469,11 +643,11 @@ const CalendarView = ({
             const el = document.elementFromPoint(x, y);
             let dayEl = el;
             while (dayEl && dayEl !== document.body) {
-              const dayAttr = dayEl.getAttribute?.('data-calendar-day');
-              if (dayAttr !== null && dayAttr !== '') {
-                const day = parseInt(dayAttr, 10);
-                if (!Number.isNaN(day)) {
-                  handleDrop(e, day);
+              const idxAttr = dayEl.getAttribute?.('data-calendar-index');
+              if (idxAttr !== null && idxAttr !== '') {
+                const idx = parseInt(idxAttr, 10);
+                if (!Number.isNaN(idx) && calendarDays[idx]) {
+                  handleDrop(e, calendarDays[idx]);
                   return;
                 }
               }
@@ -502,36 +676,71 @@ const CalendarView = ({
                 title={planTitle}
               >
                 <span className="calendar-week-plan-bar-label">{planBarLabel}</span>
+                {onRemovePlanFromWeek && (
+                  <div className="calendar-week-plan-bar-actions">
+                    <button
+                      type="button"
+                      className="calendar-week-plan-bar-menu-trigger"
+                      aria-label="Opciones del plan"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const isOpen = planBarMenuContext?.weekKey === weekKey;
+                        if (isOpen) {
+                          setPlanBarMenuContext(null);
+                        } else {
+                          setPlanBarMenuContext({ weekKey, anchorEl: e.currentTarget });
+                        }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <circle cx="12" cy="6" r="1.5" />
+                        <circle cx="12" cy="12" r="1.5" />
+                        <circle cx="12" cy="18" r="1.5" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : null;
-            const dayCells = rowDays.map((day, colIndex) => {
+            const dayCells = rowDays.map((cell, colIndex) => {
             const index = rowIndex * 7 + colIndex;
-            const daySessions = getSessionsForDay(day);
-            const planSessionsForDay = getPlanSessionsForDay(day);
-            const hasSessions = daySessions.length > 0;
+            const isOtherMonth = cell?.monthOffset !== 0;
+            const daySessions = getSessionsForCell(cell);
+            const planSessionsForDay = getPlanSessionsForCell(cell);
+            // Exclude plan-origin client_sessions when plan sessions are shown - they're duplicates
+            // created for PWA sync; showing both caused a ghost "Sesión 1" card that errored on edit
+            const displayedDaySessions = planSessionsForDay.length > 0
+              ? daySessions.filter((s) => !s.plan_id)
+              : daySessions;
+            const hasSessions = displayedDaySessions.length > 0;
             const hasPlanSessions = planSessionsForDay.length > 0;
-            const dayPlanAssignments = getPlanAssignmentsForDay(day);
+            const dayPlanAssignments = getPlanAssignmentsForCell(cell);
             const hasPlanAssignments = dayPlanAssignments.length > 0;
-            const weekKey = day !== null ? getWeekKeyForDay(day) : null;
+            const weekKey = getWeekKeyForCell(cell);
             const weekContent = weekKey ? weekContentByWeekKey[weekKey] : null;
-            const isDraggedOver = draggedOverDay === day;
+            const isDraggedOver = draggedOverDay === index;
             const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions;
-            
+            const cellDate = getDateFromCell(cell);
+            const dateStr = formatDateForStorage(cellDate);
+
             // Days under a plan bar get gradient (no solid primaryColor)
             const dayStyle = hasPlanAssignments ? { '--calendar-plan-gradient-start': PLAN_BAR_COLOR } : undefined;
             return (
-              <button
+              <div
                 key={index}
-                data-calendar-day={day !== null ? String(day) : ''}
-                className={`calendar-day ${day === null ? 'calendar-day-empty' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${isSelected(day) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''} ${hasPlanAssignments ? 'calendar-day-has-plan-assignment' : ''} ${isDraggedOver ? 'calendar-day-drag-over' : ''} ${hasDayContent ? 'calendar-day-has-week-content' : ''}`}
-                onClick={() => handleDateClick(day)}
-                onDragOver={(e) => handleDragOver(e, day)}
+                role="button"
+                tabIndex={0}
+                data-calendar-day={dateStr}
+                data-calendar-index={index}
+                className={`calendar-day ${isOtherMonth ? 'calendar-day-other-month' : ''} ${isToday(cell) ? 'calendar-day-today' : ''} ${isSelected(cell) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''} ${hasPlanAssignments ? 'calendar-day-has-plan-assignment' : ''} ${isDraggedOver ? 'calendar-day-drag-over' : ''} ${hasDayContent ? 'calendar-day-has-week-content' : ''}`}
+                onClick={() => handleDateClick(cell)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDateClick(cell); } }}
+                onDragOver={(e) => { handleDragOver(e, index); }}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, day)}
-                disabled={day === null}
+                onDrop={(e) => handleDrop(e, cell)}
                 style={dayStyle}
               >
-                <span className="calendar-day-number">{day}</span>
+                <span className="calendar-day-number">{cell.day}</span>
                 
                 {/* Plan sessions (from week plan) - colored cards, draggable, Editar / Eliminar */}
                 {hasPlanSessions && weekContent && (
@@ -540,13 +749,30 @@ const CalendarView = ({
                       const sessionName = session.title || session.session_name || 'Sesión';
                       const docId = `plan-${weekKey}-${session.id}`;
                       const isMenuOpen = openSessionMenuId === docId;
-                      const weekdayIdx = getWeekdayIndex(day);
+                      const weekdayIdx = getWeekdayIndex(cell);
+                      const clientSessionDocId = clientUserId && cellDate ? `${clientUserId}_${dateStr}_${session.id}` : null;
+                      const planCandidateIds = [session.id, session.session_id, clientSessionDocId, session.librarySessionRef].filter(Boolean);
+                      const isCompleted = isSessionCompleted(planCandidateIds, [clientSessionDocId], { thisDateStr: dateStr });
                       return (
                         <div
                           key={docId}
-                          className="calendar-day-session-card calendar-day-session-card-from-plan"
+                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''}`}
                           title={`${sessionName}. Arrastra a otro día o semana para mover.`}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isCompleted && (onEditPlanSession || onDeletePlanSession)) {
+                              if (isMenuOpen) setSessionMenuContext(null);
+                              else setSessionMenuContext({
+                                id: docId,
+                                anchorEl: e.currentTarget,
+                                type: 'plan',
+                                session,
+                                weekKey,
+                                weekContent,
+                                isCompleted: true
+                              });
+                            }
+                          }}
                           draggable={!!(onMovePlanSessionDay || onMovePlanSessionToWeek)}
                           onDragStart={(e) => {
                             if (!onMovePlanSessionDay && !onMovePlanSessionToWeek) return;
@@ -570,7 +796,19 @@ const CalendarView = ({
                                 aria-label="Abrir menú"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setOpenSessionMenuId(isMenuOpen ? null : docId);
+                                  if (isMenuOpen) {
+                                    setSessionMenuContext(null);
+                                  } else {
+                                    setSessionMenuContext({
+                                      id: docId,
+                                      anchorEl: e.currentTarget,
+                                      type: 'plan',
+                                      session,
+                                      weekKey,
+                                      weekContent,
+                                      isCompleted
+                                    });
+                                  }
                                 }}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -579,37 +817,6 @@ const CalendarView = ({
                                   <circle cx="12" cy="18" r="1.5" />
                                 </svg>
                               </button>
-                              {isMenuOpen && (
-                                <div
-                                  className="calendar-day-session-card-menu"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {onEditPlanSession && (
-                                    <button
-                                      type="button"
-                                      className="calendar-day-session-card-menu-item"
-                                      onClick={() => {
-                                        setOpenSessionMenuId(null);
-                                        onEditPlanSession({ session, weekKey, weekContent });
-                                      }}
-                                    >
-                                      Editar
-                                    </button>
-                                  )}
-                                  {onDeletePlanSession && (
-                                    <button
-                                      type="button"
-                                      className="calendar-day-session-card-menu-item calendar-day-session-card-menu-item-danger"
-                                      onClick={() => {
-                                        setOpenSessionMenuId(null);
-                                        onDeletePlanSession({ session, weekKey, weekContent });
-                                      }}
-                                    >
-                                      Eliminar de esta semana
-                                    </button>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>
@@ -621,17 +828,31 @@ const CalendarView = ({
                 {/* Date-assigned session name(s) in colored cards with 3-dots menu */}
                 {hasSessions && (
                   <div className="calendar-day-session-cards">
-                    {daySessions.map((session, idx) => {
+                    {displayedDaySessions.map((session, idx) => {
                       const sessionName = session.session_name || session.title || `Sesión ${idx + 1}`;
-                      const sessionDocId = session.id || `session-${day}-${session.session_id || idx}`;
+                      const sessionDocId = session.id || `session-${dateStr}-${session.session_id || idx}`;
                       const isMenuOpen = openSessionMenuId === sessionDocId;
-                      const date = new Date(currentYear, currentMonth, day);
+                      const dateCandidateIds = [session.id, session.session_id].filter(Boolean);
+                      const isCompleted = isSessionCompleted(dateCandidateIds, [session.id], { thisDateStr: dateStr });
                       return (
                         <div
                           key={sessionDocId}
-                          className="calendar-day-session-card"
+                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''}`}
                           title={sessionName}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isCompleted) {
+                              if (isMenuOpen) setSessionMenuContext(null);
+                              else setSessionMenuContext({
+                                id: sessionDocId,
+                                anchorEl: e.currentTarget,
+                                type: 'date',
+                                session,
+                                date: cellDate,
+                                isCompleted: true
+                              });
+                            }
+                          }}
                         >
                           <span className="calendar-day-session-card-name">{sessionName}</span>
                           <div className="calendar-day-session-card-actions">
@@ -641,7 +862,18 @@ const CalendarView = ({
                               aria-label="Abrir menú"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setOpenSessionMenuId(isMenuOpen ? null : sessionDocId);
+                                if (isMenuOpen) {
+                                  setSessionMenuContext(null);
+                                } else {
+                                  setSessionMenuContext({
+                                    id: sessionDocId,
+                                    anchorEl: e.currentTarget,
+                                    type: 'date',
+                                    session,
+                                    date: cellDate,
+                                    isCompleted
+                                  });
+                                }
                               }}
                             >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -650,46 +882,173 @@ const CalendarView = ({
                                 <circle cx="12" cy="18" r="1.5" />
                               </svg>
                             </button>
-                            {isMenuOpen && (
-                              <div
-                                className="calendar-day-session-card-menu"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  className="calendar-day-session-card-menu-item"
-                                  onClick={() => {
-                                    setOpenSessionMenuId(null);
-                                    if (onEditSessionAssignment) onEditSessionAssignment({ session, date });
-                                  }}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="calendar-day-session-card-menu-item calendar-day-session-card-menu-item-danger"
-                                  onClick={() => {
-                                    setOpenSessionMenuId(null);
-                                    if (onDeleteSessionAssignment) onDeleteSessionAssignment({ session, date });
-                                  }}
-                                >
-                                  Eliminar
-                                </button>
-                              </div>
-                            )}
-                    </div>
-                  </div>
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
                 )}
-              </button>
+              </div>
             );
           });
             return planBar ? [ planBar, ...dayCells ] : dayCells;
           })}
         </div>
       </div>
+
+      {/* Plan bar menu in portal */}
+      {planBarMenuContext?.anchorEl && onRemovePlanFromWeek && (() => {
+        const rect = planBarMenuContext.anchorEl.getBoundingClientRect();
+        const menuWidth = 160;
+        const menuStyle = {
+          position: 'fixed',
+          top: rect.bottom + 2,
+          left: Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8),
+          zIndex: 10000,
+        };
+        if (menuStyle.left < 8) menuStyle.left = 8;
+        return createPortal(
+          <div
+            className="calendar-week-plan-bar-menu-portal"
+            style={menuStyle}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="calendar-day-session-card-menu-item calendar-day-session-card-menu-item-danger"
+              onClick={() => {
+                setPlanBarMenuContext(null);
+                onRemovePlanFromWeek(planBarMenuContext.weekKey);
+              }}
+            >
+              Quitar plan de esta semana
+            </button>
+          </div>,
+          document.body
+        );
+      })()}
+
+      {/* Session card menu rendered in portal so it is not inside the calendar-day button and stays clickable */}
+      {sessionMenuContext?.anchorEl && (() => {
+        const rect = sessionMenuContext.anchorEl.getBoundingClientRect();
+        const menuWidth = 140;
+        const menuStyle = {
+          position: 'fixed',
+          top: rect.bottom + 2,
+          left: Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8),
+          zIndex: 10000,
+        };
+        if (menuStyle.left < 8) menuStyle.left = 8;
+        return createPortal(
+          <div
+            className="calendar-day-session-card-menu-portal"
+            style={menuStyle}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {sessionMenuContext.type === 'plan' && (
+              <>
+                {sessionMenuContext.isCompleted && (
+                  <button
+                    type="button"
+                    className="calendar-day-session-card-menu-item"
+                    onClick={() => {
+                      if (onVerDesempeno) {
+                        onVerDesempeno({
+                          session: sessionMenuContext.session,
+                          type: 'plan',
+                          weekKey: sessionMenuContext.weekKey,
+                          weekContent: sessionMenuContext.weekContent,
+                          date: sessionMenuContext.date,
+                        });
+                      }
+                      setSessionMenuContext(null);
+                    }}
+                  >
+                    Ver desempeño
+                  </button>
+                )}
+                {onEditPlanSession && (
+                  <button
+                    type="button"
+                    className="calendar-day-session-card-menu-item"
+                    onClick={() => {
+                      setSessionMenuContext(null);
+                      onEditPlanSession({
+                        session: sessionMenuContext.session,
+                        weekKey: sessionMenuContext.weekKey,
+                        weekContent: sessionMenuContext.weekContent
+                      });
+                    }}
+                  >
+                    Editar
+                  </button>
+                )}
+                {onDeletePlanSession && (
+                  <button
+                    type="button"
+                    className="calendar-day-session-card-menu-item calendar-day-session-card-menu-item-danger"
+                    onClick={() => {
+                      setSessionMenuContext(null);
+                      onDeletePlanSession({
+                        session: sessionMenuContext.session,
+                        weekKey: sessionMenuContext.weekKey,
+                        weekContent: sessionMenuContext.weekContent
+                      });
+                    }}
+                  >
+                    Eliminar de esta semana
+                  </button>
+                )}
+              </>
+            )}
+            {sessionMenuContext.type === 'date' && (
+              <>
+                {sessionMenuContext.isCompleted && (
+                  <button
+                    type="button"
+                    className="calendar-day-session-card-menu-item"
+                    onClick={() => {
+                      if (onVerDesempeno) {
+                        onVerDesempeno({
+                          session: sessionMenuContext.session,
+                          type: 'date',
+                          date: sessionMenuContext.date,
+                        });
+                      }
+                      setSessionMenuContext(null);
+                    }}
+                  >
+                    Ver desempeño
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="calendar-day-session-card-menu-item"
+                  onClick={() => {
+                    setSessionMenuContext(null);
+                    if (onEditSessionAssignment) onEditSessionAssignment({ session: sessionMenuContext.session, date: sessionMenuContext.date });
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  className="calendar-day-session-card-menu-item calendar-day-session-card-menu-item-danger"
+                  onClick={() => {
+                    setSessionMenuContext(null);
+                    if (onDeleteSessionAssignment) onDeleteSessionAssignment({ session: sessionMenuContext.session, date: sessionMenuContext.date });
+                  }}
+                >
+                  Eliminar
+                </button>
+              </>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
 
       {/* Day Info Modal - only when this day has at least one session (date-assigned or from plan) */}
       {selectedDayInfo && selectedDayInfo.hasAnySession && (

@@ -15,8 +15,69 @@ import {
 } from 'firebase/firestore';
 import libraryService from './libraryService';
 import programService from './programService';
+import plansService from './plansService';
+import clientSessionService from './clientSessionService';
+import { getWeekDates } from '../utils/weekCalculation';
+
+// Doc ID for creator_client_access: creatorId_userId (enables Firestore rules for creator → client user read/update)
+const CREATOR_CLIENT_ACCESS_COLLECTION = 'creator_client_access';
+
+function getCreatorClientAccessId(creatorId, userId) {
+  return `${creatorId}_${userId}`;
+}
 
 class ClientProgramService {
+  /**
+   * Ensure creator_client_access doc exists so Firestore rules allow creator to read/update this user's document.
+   * @param {string} creatorId - Creator user ID
+   * @param {string} userId - Client user ID
+   */
+  async ensureCreatorClientAccess(creatorId, userId) {
+    if (!creatorId || !userId) return;
+    try {
+      const accessId = getCreatorClientAccessId(creatorId, userId);
+      const ref = doc(firestore, CREATOR_CLIENT_ACCESS_COLLECTION, accessId);
+      await setDoc(ref, {
+        creatorId,
+        userId,
+        updated_at: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('ensureCreatorClientAccess failed:', err?.message);
+    }
+  }
+
+  /**
+   * Set access end date for a client's program (one-on-one). Updates users.courses[programId].expires_at.
+   * Creator must have creator_client_access for this user (created when adding client or assigning program).
+   * @param {string} userId - Client user ID
+   * @param {string} programId - Program ID
+   * @param {string|null} expiresAt - ISO date string, or null for "no end date" (stored as far future)
+   * @returns {Promise<void>}
+   */
+  async setClientProgramAccessEndDate(userId, programId, expiresAt) {
+    const userRef = doc(firestore, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      throw new Error('Usuario no encontrado');
+    }
+    const userData = userDoc.data();
+    const courses = { ...(userData.courses || {}) };
+    if (!courses[programId]) {
+      throw new Error('Este cliente no tiene asignado este programa');
+    }
+    const entry = { ...courses[programId] };
+    if (expiresAt == null || expiresAt === '') {
+      const far = new Date();
+      far.setFullYear(far.getFullYear() + 10);
+      entry.expires_at = far.toISOString();
+    } else {
+      entry.expires_at = typeof expiresAt === 'string' ? expiresAt : new Date(expiresAt).toISOString();
+    }
+    courses[programId] = entry;
+    await updateDoc(userRef, { courses });
+  }
+
   /**
    * Add one-on-one program to user's courses object (for mobile app visibility)
    * @param {string} userId - User ID
@@ -153,6 +214,9 @@ class ClientProgramService {
       const libraryVersions = creatorId
         ? await this.extractLibraryVersionsFromProgram(programId, creatorId)
         : { sessions: {}, modules: {} };
+
+      // Ensure creator can read/update this user's doc (for rules and future end-date edits)
+      await this.ensureCreatorClientAccess(creatorId, userId);
 
       // Step 1: Add to users.courses FIRST (atomic - must succeed before client_programs)
       let lastError;
@@ -514,6 +578,26 @@ class ClientProgramService {
         updated_at: serverTimestamp()
       });
 
+      // Create client_sessions for each day of the week so the PWA can show today's session
+      const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
+      const modules = await plansService.getModulesByPlan(planId);
+      const mod = modules?.[moduleIndex];
+      if (mod) {
+        const sessions = await plansService.getSessionsByModule(planId, mod.id);
+        // Monday = 0, Tuesday = 1, ... Sunday = 6 (match CalendarView getWeekdayIndex)
+        const getWeekdayIndex = (d) => (d.getDay() + 6) % 7;
+        for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+          const date = new Date(d);
+          const weekdayIndex = getWeekdayIndex(date);
+          const sessionForDay = sessions.find((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex);
+          if (sessionForDay) {
+            await clientSessionService.assignSessionToDate(userId, programId, planId, sessionForDay.id, date, mod.id, {
+              day_index: sessionForDay.dayIndex != null ? sessionForDay.dayIndex : 0
+            });
+          }
+        }
+      }
+
       console.log('✅ Plan assigned to week:', { programId, userId, planId, weekKey, moduleIndex });
     } catch (error) {
       console.error('❌ Error assigning program to week:', error);
@@ -550,10 +634,110 @@ class ClientProgramService {
         updated_at: serverTimestamp()
       });
 
+      // Remove client_sessions for this week so PWA no longer shows those sessions
+      await clientSessionService.deleteClientSessionsForWeek(userId, programId, weekKey);
+
       console.log('✅ Plan removed from week:', { programId, userId, weekKey });
     } catch (error) {
       console.error('❌ Error removing plan from week:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get set of completed session IDs for a client in a program (from users.courseProgress)
+   * Used to show completion indicator on calendar session cards
+   * @param {string} programId - Program ID (courseId in courseProgress)
+   * @param {string} userId - Client user ID
+   * @returns {Promise<Set<string>>} Set of session IDs the client has completed
+   */
+  async getClientCompletedSessionIds(programId, userId) {
+    try {
+      const userRef = doc(firestore, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      const userExists = userDoc.exists();
+      console.log('[clientProgramService] getClientCompletedSessionIds:', {
+        programId,
+        userId,
+        userExists,
+        userDocError: !userExists ? 'user doc missing or permission denied' : null
+      });
+      if (!userExists) return new Set();
+      const userData = userDoc.data();
+      const courseProgressKeys = userData.courseProgress ? Object.keys(userData.courseProgress) : [];
+      const courseProgress = userData.courseProgress?.[programId];
+      const hasProgressForProgram = !!courseProgress;
+      const arr = courseProgress?.allSessionsCompleted || [];
+      const arrLength = Array.isArray(arr) ? arr.length : 0;
+      const ids = new Set(Array.isArray(arr) ? arr : []);
+
+      // Also merge sessionHistory for this program (doc id = sessionId; each doc has courseId)
+      try {
+        const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
+        const snapshot = await getDocs(sessionHistoryRef);
+        let fromHistory = 0;
+        snapshot.docs.forEach((d) => {
+          const data = d.data();
+          if (data.courseId === programId) {
+            const sid = data.sessionId || d.id;
+            if (sid) {
+              ids.add(sid);
+              fromHistory += 1;
+            }
+          }
+        });
+        if (fromHistory > 0) {
+          console.log('[clientProgramService] getClientCompletedSessionIds: merged from sessionHistory', {
+            programId,
+            fromHistory,
+            totalSetSize: ids.size
+          });
+        }
+      } catch (historyErr) {
+        console.warn('[clientProgramService] getClientCompletedSessionIds: sessionHistory read failed (may need rule)', historyErr?.message || historyErr);
+      }
+
+      if (!hasProgressForProgram && courseProgressKeys.length > 0) {
+        console.warn('[clientProgramService] getClientCompletedSessionIds: programId not in user courseProgress', {
+          programId,
+          courseProgressKeys,
+          hint: 'PWA may use a different course/program id than dashboard selectedProgramId'
+        });
+      }
+      if (userData.courseProgress && courseProgressKeys.length === 0) {
+        console.warn('[clientProgramService] getClientCompletedSessionIds: user has courseProgress but keys empty');
+      }
+      console.log('[clientProgramService] getClientCompletedSessionIds result:', {
+        programId,
+        courseProgressKeys,
+        hasProgressForProgram,
+        allSessionsCompletedLength: arrLength,
+        allSessionsCompletedSample: arrLength ? (Array.isArray(arr) ? arr.slice(0, 10) : []) : [],
+        returnedSetSize: ids.size
+      });
+      return ids;
+    } catch (error) {
+      console.error('❌ Error getting client completed sessions:', error?.message || error, { programId, userId });
+      return new Set();
+    }
+  }
+
+  /**
+   * Get a single session history document for a user (PWA completion data).
+   * Path: users/{userId}/sessionHistory/{sessionId}
+   * @param {string} userId - Client user ID
+   * @param {string} sessionId - Session ID (e.g. library session id used when completing)
+   * @returns {Promise<Object|null>} Doc data or null if not found
+   */
+  async getSessionHistoryDoc(userId, sessionId) {
+    if (!userId || !sessionId) return null;
+    try {
+      const ref = doc(firestore, 'users', userId, 'sessionHistory', sessionId);
+      const snap = await getDoc(ref);
+      return snap.exists() ? snap.data() : null;
+    } catch (error) {
+      console.warn('getSessionHistoryDoc failed:', error?.message);
+      return null;
     }
   }
 

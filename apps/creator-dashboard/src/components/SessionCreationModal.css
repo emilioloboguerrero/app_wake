@@ -57,6 +57,105 @@
   text-align: center;
 }
 
+/* Image Section */
+.session-creation-image-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-creation-image-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.02em;
+}
+
+.session-creation-recommended-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(191, 168, 77, 0.95);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.session-creation-image-preview-wrap {
+  position: relative;
+  display: inline-block;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.session-creation-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+}
+
+.session-creation-image-actions {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+}
+
+.session-creation-image-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.session-creation-image-btn--remove {
+  background: rgba(255, 68, 68, 0.4);
+}
+
+.session-creation-image-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 100px;
+  padding: 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.session-creation-image-upload-area:hover {
+  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(191, 168, 77, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.session-creation-image-upload-icon {
+  font-size: 28px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.session-creation-image-upload-area:hover .session-creation-image-upload-icon {
+  color: rgba(191, 168, 77, 0.9);
+}
+
 /* Elegant Toggle Styles (same as ProgramDetailScreen) */
 .elegant-toggle {
   position: relative;

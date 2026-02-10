@@ -81,6 +81,15 @@
 .one-on-one-client-header {
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.one-on-one-client-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .one-on-one-client-box:hover {
@@ -89,16 +98,69 @@
 }
 
 .one-on-one-client-name {
+  min-width: 0;
   color: rgba(255, 255, 255, 0.9);
   font-size: 16px;
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-client-info-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.2s ease;
 }
 
-.one-on-one-client-name:hover {
-  color: rgba(191, 168, 77, 0.9);
+.one-on-one-client-info-btn:hover {
+  color: rgba(191, 168, 77, 0.95);
+}
+
+.one-on-one-client-info-btn:hover {
+  color: rgba(191, 168, 77, 0.95);
+}
+
+.one-on-one-client-programs-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.one-on-one-client-program-tag {
+  padding: 4px 12px;
+  background: rgba(191, 168, 77, 0.15);
+  border: 1px solid rgba(191, 168, 77, 0.3);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.one-on-one-client-program-tag--more {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.one-on-one-client-program-tag--empty {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .one-on-one-client-programs {
