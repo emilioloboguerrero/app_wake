@@ -513,6 +513,21 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
+.session-exercise-incomplete-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 152, 0, 0.95);
+  background: rgba(255, 152, 0, 0.12);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-top: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
 .draggable-exercise-delete {
   width: 32px;
   height: 32px;
@@ -773,5 +788,463 @@
     min-width: 0;
     max-height: 400px;
   }
+}
+
+/* Sets panel: glass cards stack */
+.sets-panel-cards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sets-panel-glass-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sets-panel-glass-card-series {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.18);
+  border-left: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.sets-panel-glass-card-series .sets-panel-glass-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.sets-panel-glass-card-series .sets-panel-number-wrap {
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.sets-panel-glass-card-series .sets-panel-number-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sets-panel-glass-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sets-panel-glass-card .sets-panel-number-wrap {
+  margin: 0;
+}
+
+.sets-panel-glass-card:not(.sets-panel-glass-card-series) {
+  align-items: center;
+}
+.sets-panel-glass-card:not(.sets-panel-glass-card-series) .sets-panel-glass-input-wrap,
+.sets-panel-glass-card:not(.sets-panel-glass-card-series) .sets-panel-glass-input {
+  align-self: center;
+}
+.sets-panel-glass-input,
+.sets-panel-glass-input-wrap .exercise-series-input {
+  width: 100%;
+  max-width: 110px;
+  min-width: 0;
+  padding: 8px 14px;
+  font-size: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-family: inherit;
+}
+
+.sets-panel-glass-input:focus,
+.sets-panel-glass-input-wrap .exercise-series-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.sets-panel-glass-input-wrap.sets-panel-glass-input-wrap {
+  min-width: 0;
+  max-width: 110px;
+}
+.sets-panel-glass-input-wrap.exercise-series-intensity-input-wrapper {
+  max-width: 130px;
+}
+.sets-panel-glass-input-wrap.exercise-series-intensity-input-wrapper .exercise-series-input {
+  max-width: 56px;
+}
+
+.sets-panel-toggle-detail {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.02);
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sets-panel-toggle-detail:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sets-panel-empty-compact {
+  padding: 14px 0;
+}
+
+.sets-panel-empty-compact p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+/* Per-set detail table (when "Editar por serie" is expanded) */
+.sets-detail-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.04) rgba(255, 255, 255, 0.03);
+}
+
+.sets-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sets-detail-th,
+.sets-detail-td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: middle;
+}
+
+.sets-detail-th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sets-detail-th-num,
+.sets-detail-td-num {
+  width: 36px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sets-detail-th-actions,
+.sets-detail-td-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.sets-detail-input,
+.sets-detail-input-wrap .exercise-series-input {
+  width: 100%;
+  max-width: 96px;
+  min-width: 56px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.sets-detail-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.sets-detail-action-btn {
+  padding: 6px 10px;
+  margin-left: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.sets-detail-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.sets-detail-save {
+  color: rgba(144, 202, 119, 0.95);
+}
+
+.sets-detail-delete:hover {
+  color: #e57373;
+  border-color: rgba(229, 115, 115, 0.4);
+}
+
+.sets-detail-drag-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0 0 8px 0;
+}
+
+.sets-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Scrollbar for sets panel (individual sets view) – match right panel background */
+.exercise-modal-right-panel .exercise-sets-panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+.exercise-modal-right-panel .exercise-sets-panel-content::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.exercise-modal-right-panel .exercise-sets-panel-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+.exercise-modal-right-panel .exercise-sets-panel-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.sets-detail-table-wrap::-webkit-scrollbar {
+  height: 6px;
+}
+.sets-detail-table-wrap::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+}
+.sets-detail-table-wrap::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+.sets-detail-table-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Legacy block (kept for any fallback) */
+.sets-panel-default-block {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.sets-panel-default-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.sets-panel-default-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sets-panel-number-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.sets-panel-number-btn {
+  width: 36px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.sets-panel-number-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.sets-panel-number-input {
+  width: 48px;
+  height: 32px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -moz-appearance: textfield;
+}
+
+.sets-panel-number-input::-webkit-outer-spin-button,
+.sets-panel-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sets-panel-default-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.sets-panel-default-row-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.sets-panel-default-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 72px;
+  max-width: 120px;
+}
+
+.sets-panel-default-field .create-exercise-set-label {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sets-panel-default-input {
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font-family: inherit;
+}
+
+.sets-panel-default-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.sets-panel-default-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.sets-panel-apply-btn {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sets-panel-apply-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sets-panel-apply-to-all {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.sets-panel-apply-to-all-header {
+  margin-bottom: 10px;
+}
+
+.sets-panel-apply-to-all-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sets-panel-apply-to-all-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sets-panel-apply-to-all-row .exercise-series-set-number-space {
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.sets-panel-apply-to-all-row .exercise-series-inputs-container {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sets-panel-apply-to-all-row .exercise-series-input-group {
+  flex: 1;
+  min-width: 80px;
 }
 

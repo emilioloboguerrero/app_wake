@@ -2094,7 +2094,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [screenWidth]);
 
-  const getFieldDisplayName = useCallback((field) => {
+  const getFieldDisplayName = useCallback((field, exercise = null) => {
+    if (exercise?.customMeasureLabels?.[field]) return exercise.customMeasureLabels[field];
     const fieldNames = {
       'reps': 'Reps',
       'weight': 'Peso (kg)',
@@ -4098,9 +4099,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
     
     const { evenGap } = calculateEvenGaps(set);
+    const exerciseForLabel = exercise || getCurrentExercise();
 
     return fieldsToShow.map((field, fieldIndex) => {
-      const fieldName = getFieldDisplayName(field);
+      const fieldName = getFieldDisplayName(field, exerciseForLabel);
       const fieldValue = set[field]?.toString() || '';
       const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : '--';
       const titleWidth = fieldName.length * 8;
@@ -4151,7 +4153,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const { evenGap } = calculateEvenGaps(set);
 
     return fieldsToShow.map((field, fieldIndex) => {
-      const fieldName = getFieldDisplayName(field);
+      const fieldName = getFieldDisplayName(field, exercise);
       const objectiveValue = set[field];
       const placeholderText = objectiveValue?.toString() || '--';
       const titleWidth = fieldName.length * 8;
@@ -4672,10 +4674,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return exercise.sets[currentSetIndex];
   };
 
-  // Translate metric names to Spanish and capitalize first letter
-  const translateMetric = (metric) => {
-    if (!metric) return null; // Handle undefined/null metrics
-    
+  // Translate metric names to Spanish and capitalize first letter (optional exercise for custom objective labels)
+  const translateMetric = (metric, exercise = null) => {
+    if (!metric) return null;
+    if (exercise?.customObjectiveLabels?.[metric]) return exercise.customObjectiveLabels[metric];
     const translations = {
       'weight': 'Peso',
       'reps': 'Repeticiones',
@@ -4691,7 +4693,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       'previous': 'Anterior',
       'intensity': 'Intensidad'
     };
-    
     const translated = translations[metric.toLowerCase()] || metric;
     return translated.charAt(0).toUpperCase() + translated.slice(1);
   };
@@ -5241,11 +5242,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               {Object.keys(currentSetInputData).map((field) => {
                 const fieldValue = currentSetInputData[field] || '';
                 const isInvalid = fieldValue !== '' && (fieldValue.trim() === '' || isNaN(parseFloat(fieldValue)) || parseFloat(fieldValue) < 0);
-                
+                const currentExerciseForLabel = workout?.exercises?.[currentExerciseIndex];
+                const fieldLabel = getFieldDisplayName(field, currentExerciseForLabel);
                 return (
                 <View key={`input-field-${currentExerciseIndex}-${currentSetIndex}-${field}`} style={styles.setInputField}>
                   <Text style={styles.setInputFieldLabel}>
-                    {getFieldDisplayName(field)}
+                    {fieldLabel}
                   </Text>
                   <TextInput
                       style={[
@@ -5258,7 +5260,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       [field]: value
                     }))}
                     keyboardType="numeric"
-                    placeholder={`Ingresa ${getFieldDisplayName(field).toLowerCase()}`}
+                    placeholder={`Ingresa ${fieldLabel.toLowerCase()}`}
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
@@ -5359,7 +5361,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             }
                             sortedObjectives.forEach((objective) => {
                               items.push({
-                                label: translateMetric(objective) || 'Objetivo',
+                                label: translateMetric(objective, currentExercise) || 'Objetivo',
                                 value: getMetricValueForCard(objective),
                               });
                             });
@@ -5888,6 +5890,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       {/* Objectives Cards (sorted: reps, previous, then rest) */}
                       {sortedObjectives.map((objective, index) => {
                         const hasInfo = objectivesInfoService.hasInfo(objective);
+                        const currentExercise = workout?.exercises?.[currentExerciseIndex];
                         return (
                           <TouchableOpacity
                             key={`objective-${currentExerciseIndex}-${index}-${objective}`}
@@ -5897,7 +5900,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             activeOpacity={hasInfo ? 0.7 : 1}
                           >
                             <Text style={styles.metricTitle}>
-                              {translateMetric(objective) || 'Objetivo'}
+                              {translateMetric(objective, currentExercise) || 'Objetivo'}
                             </Text>
                             <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                               {getMetricValueForCard(objective)}

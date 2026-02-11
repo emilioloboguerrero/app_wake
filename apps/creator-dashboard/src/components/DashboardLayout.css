@@ -413,6 +413,16 @@
   padding-top: 0;
 }
 
+/* Extra scroll room when header is shrunk so layout doesn't bounce and user can always scroll */
+body.header-scrolled .main-content:has(.sticky-header-with-image) {
+  padding-bottom: 200px;
+}
+
+/* Space between shrunken header and content so the header doesn't cover the top of the content */
+body.header-scrolled .main-content:has(.sticky-header-with-image) > .sticky-header ~ * {
+  margin-top: 140px;
+}
+
 .main-content-sidebar-expanded {
   margin-left: 280px;
 }
@@ -448,6 +458,14 @@
 @media (max-width: 640px) {
   .main-content {
     padding: 0;
+  }
+
+  body.header-scrolled .main-content:has(.sticky-header-with-image) {
+    padding-bottom: 200px;
+  }
+
+  body.header-scrolled .main-content:has(.sticky-header-with-image) > .sticky-header ~ * {
+    margin-top: 96px;
   }
 }
 

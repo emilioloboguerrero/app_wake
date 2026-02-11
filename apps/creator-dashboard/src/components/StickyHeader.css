@@ -1,3 +1,9 @@
+/* Fixed-height slot for image header: prevents layout shift when header shrinks, so scroll never jumps and no loop */
+.sticky-header-slot {
+  height: 320px;
+  position: relative;
+}
+
 .sticky-header {
   position: sticky;
   top: 0;
@@ -365,6 +371,10 @@
 
 /* Mobile Optimizations */
 @media (max-width: 640px) {
+  .sticky-header-slot {
+    height: 240px;
+  }
+
   .sticky-header {
     padding: 12px 16px;
     min-height: 64px;
