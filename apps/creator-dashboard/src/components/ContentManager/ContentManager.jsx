@@ -217,8 +217,9 @@ const ContentManager = ({
         });
         librarySessionRef = librarySession.id;
       }
+      const planImageUrl = contentType === 'plan' ? (sessionImageUrlFromLibrary ?? librarySession?.image_url ?? null) : null;
       const created = contentType === 'plan' && librarySessionRef
-        ? await contentService.createSession(contentId, selectedModule.id, sessionName.trim(), null, null, librarySessionRef)
+        ? await contentService.createSession(contentId, selectedModule.id, sessionName.trim(), null, planImageUrl, librarySessionRef)
         : await createSession(selectedModule.id, sessionName.trim());
       if (contentType === 'plan' && contentId && created?.id) {
         setIsSessionModalOpen(false);

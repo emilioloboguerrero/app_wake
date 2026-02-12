@@ -224,23 +224,6 @@ async function updateCheckoutIntent(
   );
 }
 
-// Helper: Get human-readable description for receipt verification status codes
-function getReceiptStatusDescription(status: number): string {
-  const statusCodes: {[key: number]: string} = {
-    0: "Valid receipt",
-    21000: "The App Store could not read the JSON object you provided",
-    21002: "The data in the receipt-data property was malformed or missing",
-    21003: "The receipt could not be authenticated",
-    21004: "The shared secret you provided does not match the shared secret on file for your account",
-    21005: "The receipt server is not currently available",
-    21006: "This receipt is valid but the subscription has expired",
-    21007: "This receipt is from the test environment, but it was sent to the production environment for verification",
-    21008: "This receipt is from the production environment, but it was sent to the test environment for verification",
-    21010: "This receipt could not be authorized",
-  };
-  return statusCodes[status] || `Unknown status code: ${status}`;
-}
-
 // Helper: Calculate expiration date from access duration (same as app)
 function calculateExpirationDate(
   accessDuration: string,
@@ -1993,569 +1976,166 @@ export const verifyToken = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// IAP function removed - using MercadoPago only
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
-
-    if (request.method === "OPTIONS") {
-      response.status(204).send("");
-      return;
+/**
+ * Lookup user by email or username for creator invite (one-on-one client add).
+ * Only creators can call this. Returns user info for confirmation before enrollment.
+ */
+export const lookupUserForCreatorInvite = functions.https.onCall(
+  async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Debes iniciar sesión para buscar usuarios"
+      );
     }
 
-    try {
-      const {receipt, transactionId, productId, userId, courseId} = request.body;
+    const creatorId = context.auth.uid;
+    const { emailOrUsername } = data || {};
 
-      functions.logger.info("📥 IAP receipt verification request received:", {
-        transactionId,
-        productId,
-        userId,
-        courseId,
-        receiptLength: receipt?.length || 0,
-        hasReceipt: !!receipt,
-        hasTransactionId: !!transactionId
-      });
+    if (!emailOrUsername || typeof emailOrUsername !== "string") {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Proporciona un email o nombre de usuario"
+      );
+    }
 
-      if (!receipt || !transactionId || !productId || !userId || !courseId) {
-        functions.logger.error("❌ Missing required fields:", {
-          hasReceipt: !!receipt,
-          hasTransactionId: !!transactionId,
-          hasProductId: !!productId,
-          hasUserId: !!userId,
-          hasCourseId: !!courseId
-        });
-        response.status(400).json({
-          success: false,
-          error: "Missing required fields",
-        });
-        return;
+    const trimmed = emailOrUsername.trim();
+    if (!trimmed) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Proporciona un email o nombre de usuario"
+      );
+    }
+
+    // Check caller is creator or admin
+    const creatorDoc = await db.collection("users").doc(creatorId).get();
+    const role = creatorDoc.exists
+      ? (creatorDoc.data()?.role as string | undefined)
+      : undefined;
+    if (role !== "creator" && role !== "admin") {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo creadores pueden buscar usuarios"
+      );
+    }
+
+    let userId: string | null = null;
+    let displayName = "";
+    let email = "";
+    let username = "";
+    let userDocData: Record<string, unknown> | null = null;
+
+    // If input looks like email, try Firebase Auth lookup first
+    if (trimmed.includes("@")) {
+      try {
+        const authUser = await admin.auth().getUserByEmail(trimmed);
+        userId = authUser.uid;
+        email = authUser.email || trimmed;
+        displayName = authUser.displayName || "";
+      } catch (_err) {
+        // User not found by email - fall through to username lookup
       }
+    }
 
-      // Check if transaction already processed
-      const processedRef = db
-        .collection("processed_iap_transactions")
-        .doc(transactionId);
+    // If not found by email, try Firestore username lookup
+    if (!userId) {
+      const usersSnapshot = await db
+        .collection("users")
+        .where("username", "==", trimmed.toLowerCase())
+        .limit(1)
+        .get();
 
-      const processedDoc = await processedRef.get();
-      if (processedDoc.exists) {
-        functions.logger.info("⚠️ Transaction already processed:", {
-          transactionId,
-          userId: processedDoc.data()?.userId,
-          courseId: processedDoc.data()?.courseId,
-          status: processedDoc.data()?.status
-        });
-        response.json({
-          success: true,
-          alreadyProcessed: true,
-          userId: processedDoc.data()?.userId,
-          courseId: processedDoc.data()?.courseId,
-        });
-        return;
+      if (!usersSnapshot.empty) {
+        const userDoc = usersSnapshot.docs[0];
+        userId = userDoc.id;
+        userDocData = userDoc.data() as Record<string, unknown>;
+        const d = userDocData;
+        displayName = String(d?.displayName || d?.name || "");
+        email = String(d?.email || "");
+        username = String(d?.username || trimmed);
       }
-      
-      functions.logger.info("🔄 New transaction, proceeding with verification...");
+    }
 
-      // Verify with Apple's servers
-      // IMPORTANT: Always try sandbox first, then production if needed
-      // Status 21007 means receipt is from production but sent to sandbox
-      const sandboxURL = "https://sandbox.itunes.apple.com/verifyReceipt";
-      const productionURL = "https://buy.itunes.apple.com/verifyReceipt";
-
-      // Type definition for receipt transaction
-      type ReceiptTransaction = {
-        transaction_id: string;
-        product_id: string;
-        expires_date_ms?: string;
-        expires_date?: string;
-        purchase_date_ms?: string;
-        purchase_date?: string;
-        original_transaction_id?: string;
-        is_trial_period?: string;
-        is_in_intro_offer_period?: string;
-      };
-
-      type ReceiptResponse = {
-        status: number;
-        receipt?: {
-          in_app?: ReceiptTransaction[];
-          latest_receipt_info?: ReceiptTransaction[];
-        };
-      };
-
-      // Get app secret from Firebase Functions secrets
-      const appSecret = iapAppSecret.value();
-
-      // Log secret info (first 4 and last 4 chars only for security)
-      const secretPreview = appSecret.length > 8 
-        ? `${appSecret.substring(0, 4)}...${appSecret.substring(appSecret.length - 4)}`
-        : "***";
-      functions.logger.info("🔐 Using shared secret:", {
-        length: appSecret.length,
-        preview: secretPreview,
-        hasWhitespace: /\s/.test(appSecret),
-        trimmedLength: appSecret.trim().length
-      });
-
-      // Apple's recommended approach: Try production first (for TestFlight and App Store)
-      // Then fall back to sandbox if needed (for local testing)
-      functions.logger.info("🔄 Attempting receipt verification with production URL first (Apple recommended)...");
-      
-      // Try production first (for TestFlight and App Store purchases)
-      let verifyResponse = await fetch(productionURL, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          "receipt-data": receipt,
-          "password": appSecret.trim(), // Trim any whitespace
-          "exclude-old-transactions": true,
-        }),
-      });
-
-      let verifyResult = await verifyResponse.json() as ReceiptResponse;
-
-      functions.logger.info("📊 Production verification result:", {
-        status: verifyResult.status,
-        statusDescription: getReceiptStatusDescription(verifyResult.status),
-        hasReceipt: !!verifyResult.receipt,
-        inAppPurchasesCount: verifyResult.receipt?.in_app?.length || 0
-      });
-
-      // If production returns 21007, the receipt is from sandbox (local testing) - retry with sandbox URL
-      // Status 21007: "This receipt is from the test environment, but it was sent to the production environment for verification"
-      // Status 21008: "This receipt is from the production environment, but it was sent to the test environment for verification"
-      if (verifyResult.status === 21007) {
-        functions.logger.info("🔄 Production returned 21007 (sandbox receipt), trying sandbox URL...");
-        verifyResponse = await fetch(sandboxURL, {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            "receipt-data": receipt,
-            "password": appSecret.trim(), // Trim any whitespace
-            "exclude-old-transactions": true,
-          }),
-        });
-
-        verifyResult = await verifyResponse.json() as ReceiptResponse;
-        
-        functions.logger.info("📊 Sandbox verification result:", {
-          status: verifyResult.status,
-          statusDescription: getReceiptStatusDescription(verifyResult.status),
-          hasReceipt: !!verifyResult.receipt,
-          inAppPurchasesCount: verifyResult.receipt?.in_app?.length || 0
-        });
-      }
-
-      if (verifyResult.status !== 0) {
-        functions.logger.error("Apple receipt verification failed:", {
-          status: verifyResult.status,
-          statusDescription: getReceiptStatusDescription(verifyResult.status)
-        });
-        response.status(400).json({
-          success: false,
-          error: "Receipt verification failed",
-          status: verifyResult.status,
-          statusDescription: getReceiptStatusDescription(verifyResult.status),
-        });
-        return;
-      }
-
-      // Check if transaction is valid
-      const receiptInfo = verifyResult.receipt;
-      // Use latest_receipt_info if available (more accurate for subscriptions), otherwise fall back to in_app
-      const inAppPurchases = receiptInfo?.latest_receipt_info || receiptInfo?.in_app || [];
-
-      functions.logger.info("🔍 Searching for transaction in receipt:", {
-        transactionId,
-        productId,
-        inAppPurchasesCount: inAppPurchases.length,
-        transactionIds: inAppPurchases.map(p => p.transaction_id),
-        originalTransactionIds: inAppPurchases.map(p => p.original_transaction_id),
-        usingLatestReceiptInfo: !!receiptInfo?.latest_receipt_info
-      });
-
-      // Try to find transaction by transaction_id first
-      let transaction = inAppPurchases.find(
-        (purchase: ReceiptTransaction) => purchase.transaction_id === transactionId
-      ) as ReceiptTransaction | undefined;
-
-      // If not found, try matching by product_id (for subscriptions, transaction IDs can differ)
-      // This handles cases where the purchase object has a different transaction ID than the receipt
-      // This is common with subscriptions where orderId might not match receipt transaction_id
-      if (!transaction && productId) {
-        functions.logger.warn("⚠️ Transaction ID not found, trying to match by product_id:", {
-          requestedTransactionId: transactionId,
-          productId,
-          availableTransactions: inAppPurchases.map(p => ({
-            transaction_id: p.transaction_id,
-            product_id: p.product_id,
-            original_transaction_id: p.original_transaction_id
-          }))
-        });
-        
-        // Find by product_id - prioritize most recent transaction for this product
-        const matchingByProduct = inAppPurchases.filter(
-          (purchase: ReceiptTransaction) => purchase.product_id === productId
-        );
-        
-        if (matchingByProduct.length > 0) {
-          // For subscriptions, use the most recent transaction for this product
-          // Try to sort by expiration date (most recent expiration = most recent purchase)
-          // If no expiration date, fall back to transaction_id comparison
-          transaction = matchingByProduct.sort((a, b) => {
-            const aExpires = a.expires_date_ms || a.expires_date || '0';
-            const bExpires = b.expires_date_ms || b.expires_date || '0';
-            if (aExpires !== '0' && bExpires !== '0') {
-              return parseInt(bExpires) - parseInt(aExpires); // Most recent expiration first
-            }
-            // Fall back to transaction_id comparison
-            return (b.transaction_id || '').localeCompare(a.transaction_id || '');
-          })[0] as ReceiptTransaction;
-          
-          functions.logger.info("✅ Found transaction by product_id match:", {
-            matchedTransactionId: transaction.transaction_id,
-            requestedTransactionId: transactionId,
-            productId,
-            matchedExpiresDate: transaction.expires_date_ms || transaction.expires_date,
-            originalTransactionId: transaction.original_transaction_id
-          });
-        }
-      }
-
-      // If still not found, try matching by original_transaction_id (for subscription renewals)
-      // This handles cases where the purchase object's orderId matches the original_transaction_id
-      if (!transaction && productId) {
-        const matchingByOriginal = inAppPurchases.find(
-          (purchase: ReceiptTransaction) => {
-            // Check if requested transactionId matches original_transaction_id
-            if (purchase.original_transaction_id === transactionId) {
-              return true;
-            }
-            // Or if product matches and we have an original_transaction_id
-            if (purchase.product_id === productId && purchase.original_transaction_id) {
-              return true;
-            }
-            return false;
-          }
-        ) as ReceiptTransaction | undefined;
-        
-        if (matchingByOriginal) {
-          transaction = matchingByOriginal;
-          functions.logger.info("✅ Found transaction by original_transaction_id match:", {
-            matchedTransactionId: transaction.transaction_id,
-            originalTransactionId: transaction.original_transaction_id,
-            requestedTransactionId: transactionId,
-            productId
-          });
-        }
-      }
-
-      if (!transaction) {
-        functions.logger.error("❌ Transaction not found in receipt:", {
-          requestedTransactionId: transactionId,
-          requestedProductId: productId,
-          availableTransactionIds: inAppPurchases.map(p => p.transaction_id),
-          availableOriginalTransactionIds: inAppPurchases.map(p => p.original_transaction_id),
-          availableProductIds: inAppPurchases.map(p => p.product_id)
-        });
-        response.status(400).json({
-          success: false,
-          error: "Transaction not found in receipt",
-        });
-        return;
-      }
-      
-      functions.logger.info("✅ Transaction found in receipt:", {
-        transactionId: transaction.transaction_id,
-        productId: transaction.product_id,
-        expires_date_ms: transaction.expires_date_ms,
-        expires_date: transaction.expires_date,
-        purchase_date_ms: transaction.purchase_date_ms,
-        purchase_date: transaction.purchase_date,
-        original_transaction_id: transaction.original_transaction_id
-      });
-
-      // Extract dates from receipt (preferred over calculated dates)
-      let expirationDate: string | null = null;
-      let purchaseDate: string | null = null;
-      let renewalDate: string | null = null;
-
-      // Parse expiration date from receipt
-      if (transaction.expires_date_ms) {
-        expirationDate = new Date(parseInt(transaction.expires_date_ms)).toISOString();
-      } else if (transaction.expires_date) {
-        expirationDate = new Date(transaction.expires_date).toISOString();
-      }
-
-      // Parse purchase date from receipt
-      if (transaction.purchase_date_ms) {
-        purchaseDate = new Date(parseInt(transaction.purchase_date_ms)).toISOString();
-      } else if (transaction.purchase_date) {
-        purchaseDate = new Date(transaction.purchase_date).toISOString();
-      }
-
-      // Validate user exists
+    // Enrich from Firestore if we found by email (or to get full profile for any path)
+    if (userId) {
       const userDoc = await db.collection("users").doc(userId).get();
-      if (!userDoc.exists) {
-        response.status(404).json({
-          success: false,
-          error: "User not found",
-        });
-        return;
-      }
-
-      // Validate course exists
-      const courseDoc = await db.collection("courses").doc(courseId).get();
-      if (!courseDoc.exists) {
-        response.status(404).json({
-          success: false,
-          error: "Course not found",
-        });
-        return;
-      }
-
-      const courseDetails = courseDoc.data();
-      const courseAccessDuration = courseDetails?.access_duration;
-
-      if (!courseAccessDuration) {
-        response.status(400).json({
-          success: false,
-          error: "Course missing access_duration",
-        });
-        return;
-      }
-
-      // Check if access_duration is a subscription (monthly, yearly, etc. that auto-renews)
-      const isSubscription = courseAccessDuration === "monthly" || courseAccessDuration === "yearly";
-
-      // For subscriptions, renewal date is the same as expiration date (when it will renew)
-      if (isSubscription && expirationDate) {
-        renewalDate = expirationDate;
-      }
-
-      // Check if user already owns course
-      const existingPurchase = await checkUserOwnsCourse(userId, courseId);
-      const isRenewal = existingPurchase && isSubscription;
-
-      // Use receipt dates if available, otherwise calculate
-      let finalExpirationDate: string;
-      let finalPurchaseDate: string;
-
-      if (expirationDate) {
-        // Use receipt expiration date (most accurate)
-        finalExpirationDate = expirationDate;
-        functions.logger.info("✅ Using expiration date from receipt:", finalExpirationDate);
-      } else if (isRenewal) {
-        // Subscription renewal: extend expiration date from current expiration
-        functions.logger.info("Subscription renewal detected, calculating expiration date:", userId, courseId);
-        
-        const userData = userDoc.data();
-        const currentCourse = (userData?.courses || {})[courseId];
-        const currentExpiration = currentCourse?.expires_at ?? null;
-        
-        finalExpirationDate = calculateExpirationDate(courseAccessDuration, {
-          from: currentExpiration ?? undefined,
-        });
-        
-        functions.logger.info(
-          "Using calculated expiration date for renewal:",
-          finalExpirationDate,
-          "Base:",
-          currentExpiration
-        );
-      } else {
-        // Initial purchase (subscription or non-subscription) - calculate if no receipt date
-        finalExpirationDate = calculateExpirationDate(courseAccessDuration);
-        functions.logger.info("Using calculated expiration date:", finalExpirationDate);
-      }
-
-      if (purchaseDate) {
-        finalPurchaseDate = purchaseDate;
-        functions.logger.info("✅ Using purchase date from receipt:", finalPurchaseDate);
-      } else {
-        finalPurchaseDate = new Date().toISOString();
-        functions.logger.info("Using current date as purchase date:", finalPurchaseDate);
-      }
-
-      if (existingPurchase && !isSubscription) {
-        // Non-subscription already owned - mark as processed
-        functions.logger.info("User already owns course (non-subscription), marking transaction as processed");
-        await processedRef.set({
-          userId,
-          courseId,
-          productId,
-          transactionId,
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "already_owned",
-        });
-        response.json({
-          success: true,
-          alreadyOwned: true,
-        });
-        return;
-      }
-
-      // Use transaction for atomic update
-      // Note: Rename receipt transaction to avoid conflict with Firestore transaction parameter
-      const receiptTransaction = transaction;
-      
-      await db.runTransaction(async (firestoreTransaction) => {
-        const userRef = db.collection("users").doc(userId);
-        const userDoc = await firestoreTransaction.get(userRef);
-
-        if (!userDoc.exists) {
-          throw new Error("User not found");
+      if (userDoc.exists) {
+        userDocData = userDoc.data() ?? null;
+        const d = userDocData as Record<string, unknown> | null;
+        if (d) {
+          displayName = displayName || String(d.displayName || d.name || "");
+          email = email || String(d.email || "");
+          username = username || String(d.username || "");
         }
+      }
+    }
 
-        const userData = userDoc.data();
-        const courses = userData?.courses || {};
+    if (!userId) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "No se encontró ningún usuario con ese email o nombre de usuario"
+      );
+    }
 
-        // Check if course already assigned (atomic check)
-        // For renewals, we want to update even if active (to extend expiration)
-        if (courses[courseId] && !isRenewal) {
-          const courseData = courses[courseId];
-          const isActive = courseData.status === "active";
-          const isNotExpired = new Date(courseData.expires_at) > new Date();
-
-          if (isActive && isNotExpired) {
-            functions.logger.info("Course already assigned, skipping");
-            return;
+    // Build extra profile fields for creator preview
+    let age: number | null = null;
+    let gender = "";
+    let country = "";
+    let city = "";
+    let height: number | string | null = null;
+    let weight: number | string | null = null;
+    if (userDocData) {
+      const d = userDocData as Record<string, unknown>;
+      const ageVal = d.age;
+      age =
+        typeof ageVal === "number" && !Number.isNaN(ageVal) ? ageVal : null;
+      if (age == null && d.birthDate) {
+        const raw = d.birthDate as { toDate?: () => Date } | string;
+        const birthDate =
+          typeof raw === "object" && raw?.toDate
+            ? raw.toDate()
+            : new Date(raw as string);
+        if (!isNaN(birthDate.getTime())) {
+          age =
+            new Date().getFullYear() -
+            birthDate.getFullYear();
+          const monthDiff =
+            new Date().getMonth() - birthDate.getMonth();
+          if (
+            monthDiff < 0 ||
+            (monthDiff === 0 &&
+              new Date().getDate() < birthDate.getDate())
+          ) {
+            age--;
           }
         }
-
-        // For renewals, keep existing data and just update expiration
-        if (isRenewal && courses[courseId]) {
-          courses[courseId] = {
-            ...courses[courseId],
-            expires_at: finalExpirationDate,
-            renewal_date: renewalDate || finalExpirationDate, // Store renewal date
-            status: "active",
-            // Keep all existing data (purchased_at, completedTutorials, etc.)
-          };
-        } else {
-          // Initial purchase: Add course to user (atomic write)
-        courses[courseId] = {
-          access_duration: courseAccessDuration,
-          expires_at: finalExpirationDate,
-          renewal_date: renewalDate || finalExpirationDate, // Store renewal date (when subscription will renew)
-          status: "active",
-          purchased_at: finalPurchaseDate,
-          purchase_method: "iap", // Track purchase method
-          iap_transaction_id: transactionId, // Store IAP transaction ID
-          iap_original_transaction_id: receiptTransaction.original_transaction_id || transactionId, // Store original transaction ID
-            is_subscription: isSubscription, // Track if this is a subscription
-          deliveryType: courseDetails?.deliveryType ?? "low_ticket", // PWA: one_on_one vs low_ticket
-          title: courseDetails?.title || "Untitled Course",
-          image_url: courseDetails?.image_url || null,
-          discipline: courseDetails?.discipline || "General",
-          creatorName: courseDetails?.creatorName ||
-            courseDetails?.creator_name ||
-            "Unknown Creator",
-          completedTutorials: {
-            dailyWorkout: [],
-            warmup: [],
-            workoutExecution: [],
-            workoutCompletion: [],
-          },
-        };
-        }
-
-        // For subscriptions, also create/update subscription document
-        if (isSubscription) {
-          const subscriptionId = receiptTransaction.original_transaction_id || transactionId;
-          const subscriptionRef = db
-            .collection("users")
-            .doc(userId)
-            .collection("subscriptions")
-            .doc(subscriptionId);
-
-          const subscriptionData = {
-            subscription_id: subscriptionId,
-            user_id: userId,
-            course_id: courseId,
-            course_title: courseDetails?.title || "Subscription",
-            status: "active",
-            type: "iap", // Mark as IAP subscription
-            payer_email: userDoc.data()?.email || null,
-            transaction_amount: null, // IAP doesn't provide amount in receipt
-            currency_id: null,
-            created_at: admin.firestore.FieldValue.serverTimestamp(),
-            updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            expires_at: admin.firestore.Timestamp.fromDate(new Date(finalExpirationDate)),
-            renewal_date: admin.firestore.Timestamp.fromDate(new Date(renewalDate || finalExpirationDate)),
-            next_billing_date: admin.firestore.Timestamp.fromDate(new Date(renewalDate || finalExpirationDate)),
-            iap_transaction_id: transactionId,
-            iap_original_transaction_id: receiptTransaction.original_transaction_id || transactionId,
-            iap_product_id: productId,
-            purchase_date: admin.firestore.Timestamp.fromDate(new Date(finalPurchaseDate)),
-          };
-
-          firestoreTransaction.set(subscriptionRef, subscriptionData, {merge: true});
-          
-          functions.logger.info("📝 Created/updated IAP subscription document:", {
-            subscriptionId,
-            courseId,
-            expires_at: finalExpirationDate,
-            renewal_date: renewalDate || finalExpirationDate
-          });
-        }
-
-        functions.logger.info("📝 Updating user document with course:", {
-          userId,
-          courseId,
-          courseData: courses[courseId],
-          totalCourses: Object.keys(courses).length
-        });
-
-        firestoreTransaction.update(userRef, {
-          courses: courses,
-          purchased_courses: [
-            ...new Set([...(userData?.purchased_courses || []), courseId]),
-          ],
-        });
-
-        // Mark transaction as processed (atomic write)
-        firestoreTransaction.set(
-          processedRef,
-          {
-            userId,
-            courseId,
-            productId,
-            transactionId,
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved",
-          },
-          {merge: true}
-        );
-      });
-
-      functions.logger.info("✅ IAP purchase processed successfully - transaction committed:", {
-        transactionId,
-        userId,
-        courseId,
-        productId
-      });
-
-      response.json({
-        success: true,
-        transactionId,
-        courseId,
-        userId,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      const stack = error instanceof Error ? error.stack : undefined;
-      functions.logger.error("❌ Error verifying IAP receipt:", {
-        error: message,
-        stack,
-        transactionId: request.body?.transactionId,
-        userId: request.body?.userId,
-        courseId: request.body?.courseId
-      });
-      response.status(500).json({
-        success: false,
-        error: message,
-      });
+      }
+      gender = String(d.gender ?? "");
+      country = String(d.country ?? "");
+      city = String(d.city ?? d.location ?? "");
+      const h = d.height;
+      height =
+        h != null && (typeof h === "number" || typeof h === "string")
+          ? h
+          : null;
+      const w = d.bodyweight ?? d.weight;
+      weight =
+        w != null && (typeof w === "number" || typeof w === "string")
+          ? w
+          : null;
     }
-  });
 
-
+    return {
+      userId,
+      displayName: displayName || undefined,
+      email: email || undefined,
+      username: username || undefined,
+      age: age ?? null,
+      gender: gender || null,
+      country: country || null,
+      city: city || null,
+      height: height ?? null,
+      weight: weight ?? null,
+    };
+  }
+);

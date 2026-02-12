@@ -5,6 +5,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // Firebase configuration (same as mobile app)
 const firebaseConfig = {
@@ -24,7 +25,11 @@ const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
+// Initialize Functions (us-central1 to match deployed functions)
+const functions = getFunctions(app, 'us-central1');
+
 // Export Firebase services
-export { auth, firestore, storage };
+export { auth, firestore, storage, functions };
+export { httpsCallable } from 'firebase/functions';
 export default app;
 

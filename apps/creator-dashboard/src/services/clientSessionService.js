@@ -1,6 +1,7 @@
 // Client Session Service for Web App
 // Handles planned sessions assigned to specific dates for clients
 import { firestore } from '../config/firebase';
+import clientSessionContentService from './clientSessionContentService';
 import { 
   doc, 
   getDoc,
@@ -48,8 +49,11 @@ class ClientSessionService {
 
   /**
    * Delete all client_sessions for a (client, program) in a given week (e.g. when removing plan from week).
+   * Also deletes client_session_content for each session (custom copies) so re-assignment shows fresh content.
+   * Preserves completed sessions (ids in excludeCompletedIds) so they stay visible on the calendar.
+   * @param {Set<string>} [excludeCompletedIds] - Session IDs to keep (e.g. completed session doc ids)
    */
-  async deleteClientSessionsForWeek(clientId, programId, weekKey) {
+  async deleteClientSessionsForWeek(clientId, programId, weekKey, excludeCompletedIds = null) {
     const { getWeekDates } = await import('../utils/weekCalculation');
     const { start, end } = getWeekDates(weekKey);
     const startDate = new Date(start);
@@ -57,8 +61,16 @@ class ClientSessionService {
     const endDate = new Date(end);
     endDate.setHours(23, 59, 59, 999);
     const sessions = await this.getClientSessions(clientId, startDate, endDate);
-    const toDelete = sessions.filter((s) => s.program_id === programId);
+    let toDelete = sessions.filter((s) => s.program_id === programId);
+    if (excludeCompletedIds && excludeCompletedIds.size > 0) {
+      toDelete = toDelete.filter((s) => !excludeCompletedIds.has(s.id));
+    }
     for (const s of toDelete) {
+      try {
+        await clientSessionContentService.deleteClientSessionContent(s.id);
+      } catch (err) {
+        console.warn('[clientSessionService] deleteClientSessionsForWeek: could not delete client_session_content for', s.id, err?.message);
+      }
       await deleteDoc(doc(firestore, 'client_sessions', s.id));
     }
     if (toDelete.length > 0) {

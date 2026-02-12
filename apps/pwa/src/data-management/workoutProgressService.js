@@ -475,111 +475,141 @@ class WorkoutProgressService {
     try {
       let courseData = await courseDownloadService.getCourseData(courseId, true);
       const effectiveUserId = userId;
+      logger.log('📦 [getCourseDataForWorkout] initial courseData:', {
+        hasCourseData: !!courseData,
+        hasInner: !!courseData?.courseData,
+        isOneOnOne: courseData?.courseData?.isOneOnOne,
+        modulesLength: courseData?.courseData?.modules?.length ?? 'n/a',
+        innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : []
+      });
       if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
         const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, { cacheInMemory: true, ttlMs: 5 * 60 * 1000 });
+        logger.log('📦 [getCourseDataForWorkout] getCourseModules result:', { modulesLength: modules?.length ?? 0, isArray: Array.isArray(modules) });
         if (modules) {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
         }
       }
-      // One-on-one: check client_sessions for today - if a session is planned for today, use it
-      if (effectiveUserId && courseData?.courseData) {
+      // One-on-one: keep full week module; only attach today's planned session id for initial selection (no longer replace modules)
+      if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
         const today = new Date();
-        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
-        if (planned) {
-          let creatorId = courseData.courseData.creator_id ?? courseData.courseData.creatorId;
-          // Fallback: fetch creator_id from Firestore if missing (course may have minimal cached data)
-          if (!creatorId) {
-            try {
-              const courseDoc = await firestoreService.getCourse(courseId);
-              creatorId = courseDoc?.creator_id ?? courseDoc?.creatorId ?? null;
-            } catch (_) {
-              /* ignore */
-            }
+        const creatorId = courseData.courseData.creator_id ?? courseData.courseData.creatorId ?? null;
+        const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
+        const plannedId = resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null;
+        logger.log('🔍 [getCourseDataForWorkout] one-on-one plannedSessionIdForToday:', {
+          date: today.toDateString(),
+          plannedId,
+          sessionIdForMatching: resolved?.sessionIdForMatching,
+          resolvedTitle: resolved?.title
+        });
+        courseData = {
+          ...courseData,
+          courseData: {
+            ...courseData.courseData,
+            plannedSessionIdForToday: plannedId
           }
-          const resolved = await firestoreService.resolvePlannedSessionContent(planned, creatorId);
-          if (resolved) {
-            const plannedModule = {
-              id: 'planned-today',
-              title: 'Planificado',
-              order: 0,
-              sessions: [{
-                ...resolved,
-                sessionId: resolved.id,
-                moduleId: 'planned-today',
-                moduleTitle: 'Planificado'
-              }]
-            };
-            courseData = {
-              ...courseData,
-              courseData: { ...courseData.courseData, modules: [plannedModule] }
-            };
-          }
-        }
+        };
       }
       if (!courseData && effectiveUserId) {
         logger.log('📥 Course not found locally, checking hybrid cache:', courseId);
         try {
           const hybridDataService = require('../services/hybridDataService').default;
-          const allCourses = await hybridDataService.loadCourses();
+          const allCourses = await hybridDataService.loadCourses(effectiveUserId);
           const hybridCourse = allCourses.find(c => c.id === courseId);
+          logger.log('📦 [getCourseDataForWorkout] hybrid lookup:', {
+            courseId,
+            hybridCount: allCourses?.length ?? 0,
+            hybridIds: allCourses?.map(c => c.id) ?? [],
+            foundInHybrid: !!hybridCourse
+          });
           
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
-            // Get modules from Firestore (still needed, but at least we have course metadata)
-            const modules = await firestoreService.getCourseModules(courseId, effectiveUserId);
-            
-            if (modules) {
-              logger.log('✅ Using hybrid cache + modules for instant load');
-              courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
-                logger.error('❌ Background download failed:', error);
-              });
-              
-              return {
-                courseId,
-                courseData: {
-                  ...hybridCourse,
-                  modules
-                },
-                version: hybridCourse.version || '1.0',
-                expiresAt: hybridCourse.expires_at || hybridCourse.expiresAt,
-                imageUrl: hybridCourse.image_url || hybridCourse.imageUrl
-              };
-            }
+            const today = new Date();
+            const creatorId = hybridCourse.creator_id ?? hybridCourse.creatorId ?? null;
+            const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId);
+            const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
+            const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
+            const plannedIdHybrid = isOneOnOne ? (resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null) : undefined;
+            if (plannedIdHybrid != null) logger.log('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdHybrid });
+            // sessionService reads courseData.courseData as "inner" and expects inner.modules and inner.isOneOnOne
+            const innerCourseData = {
+              ...(hybridCourse.courseData || hybridCourse),
+              modules: modulesToUse || [],
+              isOneOnOne: isOneOnOne || !!hybridCourse.isOneOnOne,
+              plannedSessionIdForToday: plannedIdHybrid
+            };
+            const returnPayload = {
+              courseId,
+              courseData: { ...hybridCourse, ...innerCourseData },
+              version: hybridCourse.version || '1.0',
+              expiresAt: hybridCourse.expires_at || hybridCourse.expiresAt,
+              imageUrl: hybridCourse.image_url || hybridCourse.imageUrl
+            };
+            logger.log('✅ Using hybrid cache + full week modules for instant load');
+            logger.log('📦 [getCourseDataForWorkout] HYBRID return shape:', {
+              hasCourseData: !!returnPayload.courseData,
+              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
+              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
+              isOneOnOne: returnPayload.courseData?.isOneOnOne
+            });
+            courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
+              logger.error('❌ Background download failed:', error);
+            });
+            return returnPayload;
           }
-        } catch (error) {
-          logger.error('❌ Error checking hybrid cache:', error);
-        }
-        
-        // Last resort: Firestore (slower, but still needed if hybrid cache fails)
-        logger.log('📥 Course not in hybrid cache, fetching from Firestore:', courseId);
-        try {
-          // Start download in background (non-blocking)
-          courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
-            logger.error('❌ Background download failed:', error);
-          });
+
+          // Course not in hybrid (e.g. one-on-one assigned via users.courses; hybrid uses courses collection). Fetch from Firestore.
+          logger.log('📥 Course not in hybrid list (hybrid uses courses collection; one-on-one may be in users.courses). Fetching from Firestore:', courseId);
           const [firestoreCourse, modules] = await Promise.all([
             firestoreService.getCourse(courseId),
             firestoreService.getCourseModules(courseId, effectiveUserId)
           ]);
-          
-          if (firestoreCourse && modules) {
-            logger.log('✅ Using Firestore fallback while downloading');
-            return {
+          if (firestoreCourse) {
+            courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
+              logger.error('❌ Background download failed:', error);
+            });
+            const today = new Date();
+            const creatorId = firestoreCourse.creator_id ?? firestoreCourse.creatorId ?? null;
+            const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
+            const isOneOnOne = firestoreCourse.deliveryType === 'one_on_one' || firestoreCourse.isOneOnOne === true;
+            const modulesToUse = modules || [];
+            const plannedIdFirestore = isOneOnOne ? (resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null) : undefined;
+            if (plannedIdFirestore != null) logger.log('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdFirestore });
+            const innerCourseData = {
+              ...(firestoreCourse.courseData || firestoreCourse),
+              modules: modulesToUse,
+              isOneOnOne: isOneOnOne || !!firestoreCourse.isOneOnOne,
+              plannedSessionIdForToday: plannedIdFirestore
+            };
+            const returnPayload = {
               courseId,
-              courseData: {
-                ...firestoreCourse,
-                modules
-              },
+              courseData: { ...firestoreCourse, ...innerCourseData },
               version: firestoreCourse.version || '1.0',
               expiresAt: firestoreCourse.expires_at || firestoreCourse.expiresAt,
               imageUrl: firestoreCourse.image_url || firestoreCourse.imageUrl
             };
+            logger.log('✅ Using Firestore (course not in hybrid list)');
+            logger.log('📦 [getCourseDataForWorkout] FIRESTORE return shape:', {
+              hasCourseData: !!returnPayload.courseData,
+              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
+              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
+              isOneOnOne: returnPayload.courseData?.isOneOnOne,
+              modulesIsArray: Array.isArray(returnPayload.courseData?.modules)
+            });
+            return returnPayload;
           }
+          logger.warn('📦 [getCourseDataForWorkout] Course not found in Firestore either:', courseId);
         } catch (error) {
-          logger.error('❌ Failed to fetch course from Firestore:', error);
+          logger.error('❌ Error in hybrid/Firestore path:', error);
         }
       }
       
+      logger.log('📦 [getCourseDataForWorkout] LOCAL return shape:', {
+        hasCourseData: !!courseData,
+        innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : [],
+        modulesLength: courseData?.courseData?.modules?.length ?? 'n/a',
+        isOneOnOne: courseData?.courseData?.isOneOnOne
+      });
       return courseData;
     } catch (error) {
       logger.error('❌ Failed to get course data:', error);

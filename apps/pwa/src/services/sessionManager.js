@@ -95,6 +95,39 @@ class SessionManager {
         });
       });
     }
+    // One-on-one week: sort by dayIndex (0=Mon, 1=Tue, ...) so list order = weekday order and "Hoy" can use calendar index
+    const hasDayIndex = allSessions.some(s => s.dayIndex != null);
+    if (hasDayIndex) {
+      allSessions.sort((a, b) => {
+        const dayA = a.dayIndex != null ? a.dayIndex : 99;
+        const dayB = b.dayIndex != null ? b.dayIndex : 99;
+        return dayA - dayB || (a.sessionOrder ?? 0) - (b.sessionOrder ?? 0);
+      });
+    }
+    // [NAV INVESTIGATION] Log flattened list: index -> sessionId (duplicates cause wrong navigation)
+    const idList = allSessions.map((s, i) => ({
+      i,
+      id: s.id,
+      sessionId: s.sessionId,
+      title: s.title,
+      moduleOrder: s.moduleOrder,
+      sessionOrder: s.sessionOrder,
+      dayIndex: s.dayIndex,
+      hasExercises: !!s.exercises?.length,
+      exercisesCount: s.exercises?.length ?? 0,
+      hasImageUrl: !!s.image_url,
+      librarySessionRef: s.librarySessionRef ?? null
+    }));
+    const ids = allSessions.map(s => s.sessionId || s.id);
+    const duplicateIds = ids.filter((id, i) => id != null && ids.indexOf(id) !== i);
+    if (duplicateIds.length > 0) {
+      logger.log('🔍 [flattenAllSessions] DUPLICATE session ids in list (same session planned multiple times):', duplicateIds);
+    }
+    logger.log('🔍 [flattenAllSessions] allSessions:', allSessions.length, 'entries (ids used for matching plannedSessionIdForToday):', idList);
+    const sessionsWithoutContent = allSessions.filter(s => !s.exercises?.length || !s.image_url);
+    if (sessionsWithoutContent.length > 0) {
+      logger.log('🔍 [flattenAllSessions] Sessions missing content (no exercises or no image - may show empty when selected):', sessionsWithoutContent.map(s => ({ id: s.id ?? s.sessionId, title: s.title, hasEx: !!s.exercises?.length, hasImg: !!s.image_url })));
+    }
     return allSessions;
   }
   

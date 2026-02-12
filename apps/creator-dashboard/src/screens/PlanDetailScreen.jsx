@@ -9,6 +9,9 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
+import propagationService from '../services/propagationService';
+import PropagateChangesModal from '../components/PropagateChangesModal';
+import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import './PlanDetailScreen.css';
 
 const PlanDetailScreen = () => {
@@ -25,6 +28,12 @@ const PlanDetailScreen = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [modulesWithSessions, setModulesWithSessions] = useState([]);
   const [structureSearchQuery, setStructureSearchQuery] = useState('');
+  const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
+  const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
+  const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
+  const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
+  const [isPropagating, setIsPropagating] = useState(false);
+  const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
   const isNew = planId === 'new';
 
@@ -82,6 +91,7 @@ const PlanDetailScreen = () => {
       const nextNum = nextOrder + 1;
       await plansService.createModule(planId, `Semana ${nextNum}`, nextOrder);
       await loadModulesWithSessions();
+      setHasMadeChanges(true);
     } catch (err) {
       alert(err.message || 'Error al añadir semana');
     }
@@ -115,6 +125,7 @@ const PlanDetailScreen = () => {
       });
       setPlan({ ...plan, title: planTitle, description: planDescription, discipline: planDiscipline });
       setIsEditModalOpen(false);
+      setHasMadeChanges(true);
     } catch (err) {
       alert(err.message || 'Error al guardar');
     } finally {
@@ -122,7 +133,99 @@ const PlanDetailScreen = () => {
     }
   };
 
+  const handleModulesChange = (modules) => {
+    setModulesWithSessions(modules);
+    setHasMadeChanges(true);
+  };
+
+  const handleDeleteWeek = () => {
+    setHasMadeChanges(true);
+    loadModulesWithSessions();
+  };
+
   const handleBack = () => {
+    if (hasMadeChanges && propagateAffectedCount > 0) {
+      setIsNavigateModalOpen(true);
+    } else {
+      navigate('/content');
+    }
+  };
+
+  const handleOpenPropagateModal = async () => {
+    if (!planId) return;
+    try {
+      const { affectedUserIds } = await propagationService.findAffectedByPlan(planId);
+      setPropagateAffectedCount(affectedUserIds.length);
+      const users = await propagationService.getAffectedUsersWithDetailsByPlan(planId);
+      setPropagateAffectedUsers(users);
+      setIsPropagateModalOpen(true);
+    } catch (err) {
+      console.error('Error finding affected users:', err);
+      alert('Error al comprobar usuarios afectados.');
+    }
+  };
+
+  const handlePropagatePlan = async () => {
+    if (!planId) return;
+    setIsPropagating(true);
+    try {
+      const { propagated, errors } = await propagationService.propagatePlan(planId);
+      if (errors.length > 0) {
+        console.warn('Propagation had some errors:', errors);
+        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+      } else if (propagated > 0) {
+        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+      }
+      setHasMadeChanges(false);
+    } catch (err) {
+      console.error('Error propagating:', err);
+      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+    } finally {
+      setIsPropagating(false);
+    }
+  };
+
+  // Fetch affected count when hasMadeChanges becomes true
+  useEffect(() => {
+    if (!planId || !hasMadeChanges) return;
+    propagationService.findAffectedByPlan(planId)
+      .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
+      .catch((err) => console.warn('Error fetching affected count:', err));
+  }, [planId, hasMadeChanges]);
+
+  // Fetch affected users when navigate modal opens (for display in modal)
+  useEffect(() => {
+    if (!isNavigateModalOpen || !planId || propagateAffectedCount === 0) return;
+    if (propagateAffectedUsers.length > 0) return; // Already have them
+    propagationService.getAffectedUsersWithDetailsByPlan(planId)
+      .then(setPropagateAffectedUsers)
+      .catch((err) => console.warn('Error fetching affected users:', err));
+  }, [isNavigateModalOpen, planId, propagateAffectedCount, propagateAffectedUsers.length]);
+
+  // Block browser close/refresh when unpropagated changes
+  useEffect(() => {
+    const shouldBlock = hasMadeChanges && propagateAffectedCount > 0;
+    const handler = (e) => {
+      if (shouldBlock) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    if (shouldBlock) {
+      window.addEventListener('beforeunload', handler);
+    }
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasMadeChanges, propagateAffectedCount]);
+
+  const handleNavigatePropagate = async () => {
+    await handlePropagatePlan();
+    setIsNavigateModalOpen(false);
+    navigate('/content');
+  };
+
+  const handleNavigateLeaveWithoutPropagate = () => {
+    setIsNavigateModalOpen(false);
+    setHasMadeChanges(false);
     navigate('/content');
   };
 
@@ -206,9 +309,25 @@ const PlanDetailScreen = () => {
       screenName={plan.title || 'Plan'}
       showBackButton
       backPath="/content"
+      onBack={handleBack}
       onHeaderEditClick={() => setIsEditModalOpen(true)}
     >
       <div className="plan-page">
+        <div className="plan-page-toolbar">
+          {hasMadeChanges && propagateAffectedCount > 0 && (
+            <button
+              type="button"
+              className="plan-propagate-button"
+              onClick={handleOpenPropagateModal}
+              title="Propagar cambios del plan a los usuarios que lo tienen asignado"
+            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17 1L21 5L17 9M3 11V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18H16M21 5H9C7.93913 5 6.92172 5.42143 6.17157 6.17157C5.42143 6.92172 5 7.93913 5 9V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Propagar a usuarios
+          </button>
+          )}
+        </div>
         <div className="plan-structure-layout">
           <div className="plan-structure-sidebars">
             <PlanStructureSidebar
@@ -223,8 +342,8 @@ const PlanDetailScreen = () => {
               planId={planId}
               modules={modulesWithSessions}
               onAddWeek={handleAddWeek}
-              onDeleteWeek={loadModulesWithSessions}
-              onModulesChange={setModulesWithSessions}
+              onDeleteWeek={handleDeleteWeek}
+              onModulesChange={handleModulesChange}
               onSessionClick={(moduleId, sessionId) =>
                 navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}`)
               }
@@ -235,6 +354,27 @@ const PlanDetailScreen = () => {
           </div>
         </div>
 
+        <PropagateChangesModal
+          isOpen={isPropagateModalOpen}
+          onClose={() => setIsPropagateModalOpen(false)}
+          type="plan"
+          itemName={plan?.title}
+          affectedCount={propagateAffectedCount}
+          affectedUsers={propagateAffectedUsers}
+          isPropagating={isPropagating}
+          onPropagate={handlePropagatePlan}
+        />
+        <PropagateNavigateModal
+          isOpen={isNavigateModalOpen}
+          onClose={() => setIsNavigateModalOpen(false)}
+          type="plan"
+          itemName={plan?.title}
+          affectedCount={propagateAffectedCount}
+          affectedUsers={propagateAffectedUsers}
+          isPropagating={isPropagating}
+          onPropagate={handleNavigatePropagate}
+          onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
+        />
         <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Editar plan">
           <div className="plan-modal-body">
             <div className="plan-form-field">

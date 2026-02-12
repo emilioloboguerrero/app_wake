@@ -1,7 +1,7 @@
 import React from 'react';
 import './Modal.css';
 
-const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = false }) => {
+const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = false, containerClassName: extraClass = '', contentClassName: contentClass = '' }) => {
   if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
@@ -10,7 +10,7 @@ const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = fal
     }
   };
 
-  const containerClassName = `modal-container ${wide ? 'modal-container-wide' : ''} ${extraWide ? 'modal-container-extra-wide' : ''}`;
+  const containerClassName = `modal-container ${wide ? 'modal-container-wide' : ''} ${extraWide ? 'modal-container-extra-wide' : ''} ${extraClass}`.trim();
 
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
@@ -21,7 +21,7 @@ const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = fal
             ×
           </button>
         </div>
-        <div className="modal-content">
+        <div className={`modal-content ${contentClass}`.trim()}>
           {children}
         </div>
       </div>

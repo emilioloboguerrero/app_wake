@@ -378,6 +378,10 @@
   padding-top: 20px;
 }
 
+.session-performance-compare-row--history-only {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 600px) {
   .session-performance-compare-header,
   .session-performance-compare-row {

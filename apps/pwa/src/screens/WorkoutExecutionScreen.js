@@ -3949,9 +3949,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     
                     logger.log('💪 Passing workout with actual set data to session service');
                     const result = await sessionService.completeSession(
-                      currentUser.uid, 
-                      course.courseId, 
-                      workoutWithSetData
+                      currentUser.uid,
+                      course.courseId,
+                      workoutWithSetData,
+                      { plannedWorkout: workout }
                     );
                      
                      logger.log('🔍 Session completion result:', { 

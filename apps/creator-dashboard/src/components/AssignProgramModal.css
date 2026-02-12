@@ -1,0 +1,269 @@
+/* AssignProgramModal - same structure as PropagateChangesModal + exercise modal card feel */
+
+/* Left column fixed width (like Propagate right), right column takes remaining space */
+.assign-program-modal-layout .propagate-modal-left {
+  flex: 0 0 240px;
+  width: 240px;
+}
+
+.assign-program-modal-layout .propagate-modal-right.assign-program-right {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+@media (max-width: 700px) {
+  .assign-program-modal-layout .propagate-modal-right.assign-program-right {
+    min-height: 280px;
+  }
+}
+
+/* Left card: single user block (like one item from propagate list) */
+.assign-program-user-block {
+  padding: 4px 0;
+  flex: 1;
+}
+
+.assign-program-user-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 4px 0;
+}
+
+.assign-program-user-email {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0 0 12px 0;
+}
+
+.assign-program-user-details {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assign-program-user-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.assign-program-user-row dt {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  font-weight: 500;
+}
+
+.assign-program-user-row dd {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.88);
+  margin: 0;
+}
+
+.assign-program-user-no-data {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  padding: 8px 0 0 0;
+  line-height: 1.4;
+}
+
+/* Program list: vertical list (same scrollbar as propagate-modal-users-list) */
+.assign-program-list {
+  list-style: none;
+  padding-left: 0;
+  padding-right: 4px;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.assign-program-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.assign-program-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.assign-program-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.assign-program-item,
+.assign-program-item-new {
+  margin-bottom: 8px;
+}
+
+.assign-program-item:last-child,
+.assign-program-item-new:last-child {
+  margin-bottom: 0;
+}
+
+/* Program row - exercise-implements-card style (card with border, rounded) */
+.assign-program-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.assign-program-item-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.assign-program-item-btn-selected {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.4);
+}
+
+.assign-program-item-btn-selected:hover {
+  background: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.assign-program-item-thumb {
+  flex-shrink: 0;
+  width: 48px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.assign-program-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assign-program-item-placeholder {
+  flex-shrink: 0;
+  width: 48px;
+  height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(191, 168, 77, 0.2);
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(191, 168, 77, 0.8);
+}
+
+.assign-program-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assign-program-item-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assign-program-item-discipline {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.assign-program-item-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(191, 168, 77, 0.9);
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Create new program row - dashed style like exercise modal */
+.assign-program-item-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.8);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.assign-program-item-new-btn:hover {
+  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(191, 168, 77, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.assign-program-item-new-icon {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(191, 168, 77, 0.9);
+}
+
+.assign-program-item-new-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.assign-program-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.assign-program-empty {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  margin: 0;
+  padding: 16px 0;
+}
+
+.assign-program-error {
+  padding: 14px 24px;
+  margin: 0 24px 16px 24px;
+  background-color: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: 10px;
+  color: #FF6B6B;
+  font-size: 14px;
+  line-height: 1.4;
+}

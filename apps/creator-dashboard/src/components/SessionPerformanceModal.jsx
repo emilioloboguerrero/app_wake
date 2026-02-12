@@ -50,6 +50,8 @@ export default function SessionPerformanceModal({
   programId,
   session = null,
   dateStr = null,
+  /** When provided, show only performed data (history-only mode, e.g. from Historial tab after plan deletion) */
+  historyOnlyData = null,
 }) {
   const [historyDoc, setHistoryDoc] = useState(null);
   const [plannedExercises, setPlannedExercises] = useState([]);
@@ -68,7 +70,24 @@ export default function SessionPerformanceModal({
   }, [session]);
 
   useEffect(() => {
-    if (!isOpen || !clientUserId || !creatorId || !programId || !session || sessionIdsToTry.length === 0) {
+    if (!isOpen || !clientUserId || !programId) {
+      setHistoryDoc(null);
+      setPlannedExercises([]);
+      setError(null);
+      return;
+    }
+
+    if (historyOnlyData) {
+      setHistoryDoc(historyOnlyData);
+      // Use planned snapshot if available (history is self-contained)
+      const plannedFromSnapshot = historyOnlyData.planned?.exercises;
+      setPlannedExercises(Array.isArray(plannedFromSnapshot) ? plannedFromSnapshot : []);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (!session || sessionIdsToTry.length === 0) {
       setHistoryDoc(null);
       setPlannedExercises([]);
       setError(null);
@@ -90,16 +109,23 @@ export default function SessionPerformanceModal({
         if (cancelled) return;
         setHistoryDoc(doc || null);
 
-        const librarySessionId = session.librarySessionRef || sessionIdsToTry[0];
-        let planned = [];
-        if (librarySessionId && creatorId) {
-          try {
-            planned = await libraryService.getLibrarySessionExercises(creatorId, librarySessionId);
-          } catch (e) {
-            console.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
+        // Prefer planned snapshot from history (self-contained, immune to plan changes)
+        const plannedFromSnapshot = doc?.planned?.exercises;
+        if (Array.isArray(plannedFromSnapshot) && plannedFromSnapshot.length > 0) {
+          if (!cancelled) setPlannedExercises(plannedFromSnapshot);
+        } else {
+          // Fallback: load from library (subject to plan/library changes)
+          const librarySessionId = session.librarySessionRef || sessionIdsToTry[0];
+          let planned = [];
+          if (librarySessionId && creatorId) {
+            try {
+              planned = await libraryService.getLibrarySessionExercises(creatorId, librarySessionId);
+            } catch (e) {
+              console.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
+            }
           }
+          if (!cancelled) setPlannedExercises(Array.isArray(planned) ? planned : []);
         }
-        if (!cancelled) setPlannedExercises(Array.isArray(planned) ? planned : []);
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Error al cargar el desempeño');
       } finally {
@@ -109,9 +135,23 @@ export default function SessionPerformanceModal({
 
     load();
     return () => { cancelled = true; };
-  }, [isOpen, clientUserId, creatorId, programId, session, sessionIdsToTry]);
+  }, [isOpen, clientUserId, creatorId, programId, session, sessionIdsToTry, historyOnlyData]);
 
   const comparison = useMemo(() => {
+    // History-only mode: show only performed when we have no planned (from snapshot or library)
+    const hasNoPlanned = !plannedExercises?.length;
+    if (historyOnlyData && hasNoPlanned) {
+      const performed = historyOnlyData.exercises ? { ...historyOnlyData.exercises } : {};
+      return Object.entries(performed).map(([key, data], index) => ({
+        id: `history-only-${key}-${index}`,
+        type: STATUS.extra,
+        displayName: getPerformedExerciseDisplayName(data, key),
+        plannedSets: [],
+        performedSets: data?.sets || [],
+        planned: null,
+        performed: data,
+      }));
+    }
     const performed = historyDoc?.exercises ? { ...historyDoc.exercises } : {};
     const fallbackSessionId = session?.librarySessionRef || sessionIdsToTry[0];
     const items = [];
@@ -188,7 +228,7 @@ export default function SessionPerformanceModal({
     });
 
     return items;
-  }, [historyDoc, plannedExercises, session?.librarySessionRef, sessionIdsToTry]);
+  }, [historyDoc, plannedExercises, session?.librarySessionRef, sessionIdsToTry, historyOnlyData]);
 
   const stats = useMemo(() => {
     let completed = 0, not_completed = 0, extra = 0;
@@ -206,11 +246,13 @@ export default function SessionPerformanceModal({
     if (e.target === e.currentTarget) onClose();
   };
 
-  const sessionName = session?.title || session?.session_name || session?.name || 'Sesión';
-  const completedAt = historyDoc?.completedAt
-    ? new Date(historyDoc.completedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
+  const displayHistoryDoc = historyOnlyData || historyDoc;
+  const sessionName = historyOnlyData?.sessionName || session?.title || session?.session_name || session?.name || 'Sesión';
+  const completedAt = displayHistoryDoc?.completedAt
+    ? new Date(displayHistoryDoc.completedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
     : null;
-  const duration = historyDoc?.duration != null ? Number(historyDoc.duration) : null;
+  const duration = displayHistoryDoc?.duration != null ? Number(displayHistoryDoc.duration) : null;
+  const isHistoryOnly = !!historyOnlyData && !plannedExercises?.length;
 
   return (
     <div className="session-performance-backdrop" onClick={handleBackdropClick}>
@@ -218,7 +260,9 @@ export default function SessionPerformanceModal({
         <div className="session-performance-header">
           <div>
             <h2 className="session-performance-title">Desempeño de la sesión</h2>
-            <p className="session-performance-subtitle">Compara lo planificado con lo que hizo tu cliente</p>
+            <p className="session-performance-subtitle">
+              {isHistoryOnly ? 'Lo que hizo tu cliente en esta sesión' : 'Compara lo planificado con lo que hizo tu cliente'}
+            </p>
           </div>
           <button type="button" className="session-performance-close" onClick={onClose}>×</button>
         </div>
@@ -272,18 +316,22 @@ export default function SessionPerformanceModal({
                 )}
               </div>
 
-              <h3 className="session-performance-section-title">Planificado vs realizado</h3>
+              <h3 className="session-performance-section-title">
+                {isHistoryOnly ? 'Ejercicios realizados' : 'Planificado vs realizado'}
+              </h3>
 
-              <div className="session-performance-compare-header">
-                <div className="session-performance-compare-col session-performance-compare-col--planned">
-                  <span className="session-performance-compare-col-title">Planificado</span>
-                  <span className="session-performance-compare-col-sub">Lo que tenías programado</span>
+              {!isHistoryOnly && (
+                <div className="session-performance-compare-header">
+                  <div className="session-performance-compare-col session-performance-compare-col--planned">
+                    <span className="session-performance-compare-col-title">Planificado</span>
+                    <span className="session-performance-compare-col-sub">Lo que tenías programado</span>
+                  </div>
+                  <div className="session-performance-compare-col session-performance-compare-col--performed">
+                    <span className="session-performance-compare-col-title">Realizado</span>
+                    <span className="session-performance-compare-col-sub">Lo que hizo el cliente</span>
+                  </div>
                 </div>
-                <div className="session-performance-compare-col session-performance-compare-col--performed">
-                  <span className="session-performance-compare-col-title">Realizado</span>
-                  <span className="session-performance-compare-col-sub">Lo que hizo el cliente</span>
-                </div>
-              </div>
+              )}
 
               <div className="session-performance-exercises">
                 {comparison.map((item) => (
@@ -309,7 +357,8 @@ export default function SessionPerformanceModal({
                     </button>
                     {expandedId === item.id && (
                       <div className="session-performance-card-body">
-                        <div className="session-performance-compare-row">
+                        <div className={`session-performance-compare-row ${isHistoryOnly ? 'session-performance-compare-row--history-only' : ''}`}>
+                          {!isHistoryOnly && (
                           <div className="session-performance-compare-col session-performance-compare-col--planned">
                             {item.plannedSets.length > 0 ? (
                               <ul className="session-performance-set-list">
@@ -328,6 +377,7 @@ export default function SessionPerformanceModal({
                               <p className="session-performance-empty-col">—</p>
                             )}
                           </div>
+                          )}
                           <div className="session-performance-compare-col session-performance-compare-col--performed">
                             {item.performedSets.length > 0 ? (
                               <ul className="session-performance-set-list session-performance-set-list--performed">

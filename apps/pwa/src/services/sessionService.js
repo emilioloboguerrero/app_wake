@@ -37,20 +37,71 @@ class SessionService {
         }
       }
 
+      const t0 = Date.now();
       // Get course data (with automatic download fallback)
       const courseData = await workoutProgressService.getCourseDataForWorkout(courseId, userId);
-      if (!courseData?.courseData?.modules) {
+      const tAfterCourse = Date.now();
+      logger.log('⏱️ [getCurrentSession] getCourseDataForWorkout:', tAfterCourse - t0, 'ms');
+      const inner = courseData?.courseData;
+      const isOneOnOne = inner?.isOneOnOne === true;
+      const modules = inner?.modules;
+
+      logger.log('📦 [getCurrentSession] received:', {
+        hasCourseData: !!courseData,
+        hasInner: !!inner,
+        innerKeys: inner ? Object.keys(inner) : [],
+        modulesType: typeof modules,
+        modulesLength: Array.isArray(modules) ? modules.length : 'not-array',
+        isOneOnOne,
+        willThrow: !modules && !isOneOnOne
+      });
+
+      if (!modules && !isOneOnOne) {
+        logger.error('📦 [getCurrentSession] throwing: inner.modules and inner.isOneOnOne both falsy', {
+          innerModules: inner?.modules,
+          innerIsOneOnOne: inner?.isOneOnOne
+        });
         throw new Error('Course data not available');
       }
 
-      // Flatten all sessions
-      const allSessions = sessionManager.flattenAllSessions(courseData.courseData);
+      // Flatten all sessions (may be empty for one-on-one week with no planning)
+      const allSessions = inner && Array.isArray(modules)
+        ? sessionManager.flattenAllSessions({ ...inner, modules })
+        : [];
+
+      logger.log('📦 [getCurrentSession] allSessions.length:', allSessions.length, 'isOneOnOne:', isOneOnOne);
+      logger.log('🔍 [getCurrentSession] allSessions ids (used for matching plannedSessionIdForToday):', allSessions.map((s, i) => ({ i, id: s.id, sessionId: s.sessionId, title: s.title })));
+
+      // One-on-one with no sessions in the week: return empty state with reason
+      if (isOneOnOne && allSessions.length === 0) {
+        const sessionState = {
+          session: null,
+          workout: null,
+          index: 0,
+          isManual: false,
+          allSessions: [],
+          progress: await this.getCourseProgress(userId, courseId),
+          isLoading: false,
+          error: null,
+          emptyReason: 'no_planning_this_week'
+        };
+        this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+        logger.log('🔍 [getCurrentSession] ONE-ON-ONE NO SESSIONS: no_planning_this_week', {
+          userId,
+          courseId,
+          note: 'getCourseModules returned [] - no planAssignments for current week or content_plan_id path returned empty'
+        });
+        return sessionState;
+      }
+
       if (allSessions.length === 0) {
         throw new Error('No sessions available');
       }
 
       // Get progress from user document
       const progress = await this.getCourseProgress(userId, courseId);
+      const tAfterProgress = Date.now();
+      logger.log('⏱️ [getCurrentSession] getCourseProgress:', tAfterProgress - tAfterCourse, 'ms');
 
       let currentSession;
       let currentIndex;
@@ -58,31 +109,105 @@ class SessionService {
 
       if (manualSessionId && manualSessionIndex !== null) {
         // Manual selection
-        currentSession = allSessions.find(s => 
+        const foundById = allSessions.find(s =>
           (s.id === manualSessionId) || (s.sessionId === manualSessionId)
         );
-        currentIndex = manualSessionIndex;
+        const findIndexById = allSessions.findIndex(s =>
+          (s.id === manualSessionId) || (s.sessionId === manualSessionId)
+        );
+        currentSession = foundById;
+        currentIndex = currentSession ? manualSessionIndex : findIndexById;
+        if (currentIndex < 0) currentIndex = 0;
+        currentSession = allSessions[currentIndex] || currentSession;
         isManual = true;
+        logger.log('🔍 [getCurrentSession] manual selection:', {
+          manualSessionId,
+          manualSessionIndex,
+          findIndexById,
+          'allSessions indices→id': allSessions.map((s, i) => ({ i, id: s.sessionId || s.id, title: s.title })),
+          chosenCurrentIndex: currentIndex,
+          chosenSessionId: currentSession?.sessionId || currentSession?.id,
+          chosenTitle: currentSession?.title,
+          note: 'When same sessionId appears twice, findIndexById is first match only; we use manualSessionIndex for currentIndex so chosen session is correct if index was passed correctly'
+        });
         logger.log('🎯 Using manual session selection:', currentSession?.title);
+      } else if (isOneOnOne && inner?.plannedSessionIdForToday != null) {
+        // One-on-one: use session planned for today as initial current
+        const todayId = inner.plannedSessionIdForToday;
+        currentIndex = allSessions.findIndex(s =>
+          (s.id === todayId) || (s.sessionId === todayId)
+        );
+        logger.log('🔍 [getCurrentSession] one-on-one today match:', {
+          plannedSessionIdForToday: todayId,
+          findIndexByTodayId: currentIndex,
+          matchSucceeded: currentIndex >= 0,
+          'allSessions indices→id': allSessions.map((s, i) => ({ i, id: s.sessionId || s.id, title: s.title })),
+          note: currentIndex === -1
+            ? 'ROOT CAUSE: plannedSessionIdForToday does not match any allSessions[].id - often because plannedId is client_sessions doc id (userId_date_sessionId) and allSessions use plan session id'
+            : 'When same session is planned on multiple days, findIndex returns FIRST match (e.g. Monday not Thursday)'
+        });
+        if (currentIndex >= 0) {
+          currentSession = allSessions[currentIndex];
+          logger.log('🎯 One-on-one: using today\'s planned session:', currentSession?.title);
+        } else {
+          currentSession = null;
+          currentIndex = 0;
+          logger.log('🔍 [getCurrentSession] One-on-one: today match FAILED (findIndex -1) - showing placeholder; plannedId not in allSessions list');
+        }
+      } else if (isOneOnOne) {
+        // One-on-one but no session planned for today (plannedSessionIdForToday is null): do not show any session in the main card; show placeholder until user explicitly selects one
+        currentSession = null;
+        currentIndex = 0;
+        logger.log('🎯 One-on-one: no session planned for today (plannedSessionIdForToday null), showing placeholder');
       } else {
         // Automatic selection with progression logic
-        
         const currentId = this.findCurrentSessionId(progress, allSessions);
-        const currentIndex = allSessions.findIndex(s => 
+        currentIndex = allSessions.findIndex(s =>
           (s.id === currentId) || (s.sessionId === currentId)
         );
-        
-        currentSession = allSessions[currentIndex >= 0 ? currentIndex : 0];
-        isManual = false;
+        if (currentIndex < 0) currentIndex = 0;
+        currentSession = allSessions[currentIndex];
         logger.log('🎯 Using automatic session selection:', currentSession?.title);
+      }
+
+      // One-on-one with sessions but none for today: valid state, show placeholder
+      if (isOneOnOne && !currentSession) {
+        const sessionState = {
+          session: null,
+          workout: null,
+          index: 0,
+          isManual: false,
+          allSessions,
+          progress,
+          isLoading: false,
+          error: null,
+          emptyReason: 'no_session_today'
+        };
+        this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+        logger.log('🔍 [getCurrentSession] One-on-one: emptyReason=no_session_today (plannedSessionIdForToday did not match allSessions or no plan for today)');
+        return sessionState;
       }
 
       if (!currentSession) {
         throw new Error('Current session not found');
       }
 
-      // Build workout data
+      logger.log('🔍 [getCurrentSession] current session content before buildWorkoutFromSession:', {
+        sessionId: currentSession.sessionId || currentSession.id,
+        title: currentSession.title,
+        hasExercises: !!currentSession.exercises?.length,
+        exercisesCount: currentSession.exercises?.length ?? 0,
+        hasImageUrl: !!currentSession.image_url,
+        librarySessionRef: currentSession.librarySessionRef ?? null,
+        note: 'If hasExercises false or hasImageUrl false, workout/detail will show empty - getCourseModules may have returned library ref without resolving'
+      });
+
+      // Build workout data (resolves each exercise from library - main bottleneck when changing session)
+      const tBeforeBuild = Date.now();
       const workout = await this.buildWorkoutFromSession(currentSession);
+      const tAfterBuild = Date.now();
+      logger.log('⏱️ [getCurrentSession] buildWorkoutFromSession:', tAfterBuild - tBeforeBuild, 'ms (exercises:', currentSession.exercises?.length ?? 0, ')');
+      logger.log('⏱️ [getCurrentSession] TOTAL (uncached):', tAfterBuild - t0, 'ms');
 
       const sessionState = {
         session: currentSession,
@@ -92,7 +217,8 @@ class SessionService {
         allSessions: allSessions,
         progress: progress,
         isLoading: false,
-        error: null
+        error: null,
+        emptyReason: null
       };
 
       // Cache the result
@@ -119,7 +245,8 @@ class SessionService {
         allSessions: [],
         progress: null,
         isLoading: false,
-        error: error.message
+        error: error.message,
+        emptyReason: null
       };
     }
   }
@@ -128,20 +255,21 @@ class SessionService {
    * Select a session manually
    */
   async selectSession(userId, courseId, sessionId, sessionIndex) {
+    const tSelectStart = Date.now();
     try {
       logger.log('📍 Selecting session manually:', { sessionId, sessionIndex });
-      
-      // Clear cache first
+
+      // Clear cache first (forces full re-fetch: course data, progress, and workout build)
       this.clearCache(userId, courseId);
-      
+
       // Get new state with manual selection (no progress update)
       const newState = await this.getCurrentSession(userId, courseId, {
         forceRefresh: true,
         manualSessionId: sessionId,
         manualSessionIndex: sessionIndex
       });
-      
-      logger.log('✅ Session selection completed:', {
+
+      logger.log('✅ Session selection completed in', Date.now() - tSelectStart, 'ms:', {
         sessionTitle: newState.session?.title,
         isManual: newState.isManual
       });
@@ -155,9 +283,35 @@ class SessionService {
   }
 
   /**
-   * Complete a session
+   * Build planned snapshot from workout template (for session history).
+   * Captures what was planned at completion time so history is self-contained.
    */
-  async completeSession(userId, courseId, sessionData) {
+  buildPlannedSnapshot(workout) {
+    if (!workout || !workout.exercises || !Array.isArray(workout.exercises)) return null;
+    return {
+      exercises: workout.exercises.map(ex => ({
+        id: ex.id,
+        title: ex.name || ex.exerciseName || '',
+        name: ex.name || ex.exerciseName || '',
+        primary: ex.primary || (ex.libraryId ? { [ex.libraryId]: ex.name || ex.exerciseName } : {}),
+        sets: (ex.sets || []).map(s => ({
+          reps: s.reps,
+          weight: s.weight,
+          intensity: s.intensity
+        }))
+      }))
+    };
+  }
+
+  /**
+   * Complete a session
+   * @param {string} userId - User ID
+   * @param {string} courseId - Course ID
+   * @param {Object} sessionData - Session/workout data with performed exercises
+   * @param {Object} [options] - Optional options
+   * @param {Object} [options.plannedWorkout] - Original workout template (before user merge) for planned snapshot
+   */
+  async completeSession(userId, courseId, sessionData, options = {}) {
     try {
       logger.log('🏁 Completing session:', sessionData.sessionId || sessionData.id);
 
@@ -222,8 +376,13 @@ class SessionService {
         logger.log('❌ Course name not found in course data');
       }
 
+      // Build planned snapshot from template when available (makes history self-contained)
+      const plannedSnapshot = options.plannedWorkout
+        ? this.buildPlannedSnapshot(options.plannedWorkout)
+        : null;
+
       // Update exercise history
-      await this.addSessionData(userId, actualSessionData);
+      await this.addSessionData(userId, actualSessionData, plannedSnapshot);
       
       logger.log('🔍 SESSION SERVICE DEBUG: actualSessionData.courseName:', actualSessionData.courseName);
       logger.log('🔍 SESSION SERVICE DEBUG: actualSessionData.sessionName:', actualSessionData.sessionName);
@@ -752,8 +911,11 @@ class SessionService {
 
   /**
    * Add session data to exercise and session history
+   * @param {string} userId - User ID
+   * @param {Object} sessionData - Session data with exercises (performed)
+   * @param {Object} [plannedSnapshot] - Optional snapshot of planned session at completion time
    */
-  async addSessionData(userId, sessionData) {
+  async addSessionData(userId, sessionData, plannedSnapshot = null) {
     try {
       logger.log('📚 Adding session data to history:', sessionData.sessionId);
       logger.log('📚 Session data structure:', {
@@ -764,7 +926,7 @@ class SessionService {
       });
       
       // Use the exerciseHistoryService which has proper data filtering
-      await exerciseHistoryService.addSessionData(userId, sessionData);
+      await exerciseHistoryService.addSessionData(userId, sessionData, plannedSnapshot);
       
       // Update weekly streak after adding session data
       try {
@@ -857,11 +1019,24 @@ class SessionService {
    * Build workout from session data
    */
   async buildWorkoutFromSession(session) {
+    const t0 = Date.now();
     try {
       logger.log('🏗️ Building workout from session:', session.title);
+      logger.log('🔍 [buildWorkoutFromSession] session content:', {
+        sessionId: session.sessionId || session.id,
+        title: session.title,
+        hasExercises: !!session.exercises?.length,
+        exercisesCount: session.exercises?.length ?? 0,
+        hasImageUrl: !!session.image_url,
+        librarySessionRef: session.librarySessionRef ?? null,
+        note: 'Empty exercises => no workout list; no image_url => no session image in UI'
+      });
 
       if (!session.exercises || session.exercises.length === 0) {
-        logger.log('⚠️ Session has no exercises');
+        logger.log('🔍 [buildWorkoutFromSession] Session has NO EXERCISES - returning empty workout (root cause: session from getCourseModules may be library ref not resolved)', {
+          sessionId: session.sessionId || session.id,
+          title: session.title
+        });
         return {
           id: session.sessionId || session.id,
           title: session.title || 'Sesión de entrenamiento',
@@ -874,7 +1049,7 @@ class SessionService {
         };
       }
 
-      // Resolve all exercises in parallel
+      // Resolve all exercises in parallel (each resolvePrimaryExercise may hit Firestore/library - main cost when changing session)
       const resolvedExercises = await Promise.all(
         session.exercises.map(async (exercise) => {
           try {
@@ -940,7 +1115,10 @@ class SessionService {
         exercises: resolvedExercises
       };
 
-      logger.log('✅ Workout built with', workout.exercises.length, 'exercises');
+      if (!session.image_url) {
+        logger.log('🔍 [buildWorkoutFromSession] Session has no image_url - card/header may show no image', { sessionId: session.sessionId || session.id });
+      }
+      logger.log('✅ Workout built with', workout.exercises.length, 'exercises in', Date.now() - t0, 'ms');
       return workout;
 
     } catch (error) {

@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   Animated,
   FlatList,
+  Platform,
 } from 'react-native';
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -26,6 +27,7 @@ import hybridDataService from '../services/hybridDataService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
+import firestoreService from '../services/firestoreService';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -155,14 +157,14 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
     allSessions: [],
     progress: null,
     isLoading: true,
-    error: null
+    error: null,
+    emptyReason: null // 'no_session_today' | 'no_planning_this_week' for one-on-one placeholders
   });
   
   // UI state
   const [courseMetadata, setCourseMetadata] = useState(null);
   const [previewSessionId, setPreviewSessionId] = useState(null);
   const [isChangingSession, setIsChangingSession] = useState(false);
-  
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
@@ -185,7 +187,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   // Subtle pulse on entire session image card once, 1.5s after load (affordance: card is tappable)
   const pulseScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    const shouldPulse = sessionState.workout && !sessionState.isLoading && !sessionState.error;
+    const shouldPulse = sessionState.workout && !sessionState.isLoading && !sessionState.error && !sessionState.emptyReason;
     if (!shouldPulse) {
       pulseScale.setValue(1);
       return;
@@ -352,12 +354,12 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
       );
       
       setSessionState(newState);
-      
+
       // Check for tutorials after session is loaded
       if (newState.session && !newState.error) {
         await checkForTutorials();
       }
-      
+
       logger.log('✅ Session state loaded successfully');
       
     } catch (error) {
@@ -384,20 +386,29 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
       
       if (!courses || cacheAge > CACHE_TTL) {
         logger.log('📥 Fetching fresh course data from hybrid system...');
-        courses = await hybridDataService.loadCourses();
+        courses = await hybridDataService.loadCourses(user?.uid ?? null);
         serviceCache.current.courses = courses;
         serviceCache.current.lastFetch = now;
       } else {
         logger.log('✅ Using cached course data');
       }
       
-      const courseMeta = courses.find(c => c.id === course.courseId);
-      
+      let courseMeta = courses.find(c => c.id === course.courseId);
       if (courseMeta) {
         setCourseMetadata(courseMeta);
         logger.log('✅ Course metadata loaded:', courseMeta.title);
       } else {
-        logger.log('⚠️ Course metadata not found in hybrid cache');
+        logger.log('⚠️ Course metadata not found in hybrid cache (one-on-one may be in users.courses). Trying Firestore...');
+        try {
+          const firestoreCourse = await firestoreService.getCourse(course.courseId);
+          if (firestoreCourse) {
+            courseMeta = { id: firestoreCourse.id, ...firestoreCourse };
+            setCourseMetadata(courseMeta);
+            logger.log('✅ Course metadata loaded from Firestore:', courseMeta.title);
+          }
+        } catch (e) {
+          logger.debug('Could not load course metadata from Firestore:', e?.message);
+        }
       }
       
     } catch (error) {
@@ -556,18 +567,39 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
     }
   };
 
+  // Helper: index of this session in sessionState.allSessions (avoids matching undefined id and handles duplicates by position)
+  const getIndexInAllSessions = (session, listIndex) => {
+    const listData = sessionState.workout
+      ? sessionState.allSessions.filter(s => s.moduleId === sessionState.workout?.moduleId)
+      : sessionState.allSessions;
+    const isFiltered = listData.length !== sessionState.allSessions.length;
+    if (!isFiltered) return listIndex;
+    const byRef = sessionState.allSessions.findIndex(s => s === session);
+    if (byRef >= 0) return byRef;
+    return sessionState.allSessions.findIndex(s =>
+      (session.sessionId != null && s.sessionId === session.sessionId) || (session.id != null && s.id === session.id)
+    );
+  };
+
+  // Monday = 0, Tuesday = 1, ... Sunday = 6 (matches creator week day order)
+  const getTodayWeekdayIndex = () => (new Date().getDay() + 6) % 7;
+
   // Render session card for list
   const renderSessionCard = ({ item: session, index }) => {
     const sessionId = session.sessionId || session.id;
-    const isCurrentSession = sessionId === (sessionState.session?.sessionId || sessionState.session?.id);
+    const indexInAllSessions = getIndexInAllSessions(session, index);
+    const isCurrentSession = sessionState.index === indexInAllSessions;
     const isPreviewSession = sessionId === previewSessionId;
     const isLoadingThisCard = isChangingSession && isPreviewSession;
-    
-    // Debug logging
+    // "Hoy" = planned for today: only when this session's dayIndex equals today's weekday (not list position, which breaks when no session exists for today)
+    const isDayOrdered = sessionState.allSessions.some(s => s.dayIndex != null);
+    const todayWeekdayIndex = getTodayWeekdayIndex();
+    const isPlannedForToday = isDayOrdered && session.dayIndex === todayWeekdayIndex;
+
     if (isLoadingThisCard) {
       logger.log('🔄 Loading overlay should be visible for session:', session.title);
     }
-    
+
     return (
       <TouchableOpacity 
         style={[
@@ -576,11 +608,10 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
           isChangingSession && styles.disabledCard
         ]}
         onPress={() => {
-          // If card is already in preview mode, select it
+          const sessionIndexToUse = indexInAllSessions >= 0 ? indexInAllSessions : index;
           if (isPreviewSession) {
-            handleSelectSession(session, index);
+            handleSelectSession(session, sessionIndexToUse);
           } else {
-            // Otherwise, show preview
             setPreviewSessionId(sessionId);
           }
         }}
@@ -631,7 +662,14 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
             <Text style={styles.currentBadgeText}>Actual</Text>
           </TouchableOpacity>
         )}
-        
+
+        {/* Today's planned session indicator (single word: "Hoy") – only when list is day-ordered and this slot is today's weekday */}
+        {isPlannedForToday && !isCurrentSession && (
+          <View style={styles.todayBadge}>
+            <Text style={styles.todayBadgeText}>Hoy</Text>
+          </View>
+        )}
+
         {/* Preview Session Arrow */}
         {isPreviewSession && !isCurrentSession && (
           <View style={styles.previewBadge}>
@@ -750,6 +788,50 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                     <Text style={styles.cardRetryButtonText}>Reintentar</Text>
                 </TouchableOpacity>
               </View>
+            ) : sessionState.emptyReason === 'no_session_today' ? (
+                <View style={styles.noSessionTodayRoot}>
+                  <View style={StyleSheet.absoluteFill}>
+                    {(course?.image_url || course?.imageUrl) ? (
+                      <ExpoImage
+                        source={{ uri: course?.image_url || course?.imageUrl }}
+                        style={styles.noSessionTodayBgImage}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
+                    ) : (
+                      <View style={styles.noSessionTodayBgFallback} />
+                    )}
+                    <View style={styles.noSessionTodayOverlay} />
+                  </View>
+                  <View style={styles.noSessionTodayGlassWrap}>
+                    <View style={[styles.noSessionTodayGlassCard, isWeb && styles.noSessionTodayGlassCardWeb]}>
+                      <View style={styles.noSessionTodayGlassCardInner}>
+                        <Text style={styles.noSessionTodayTitle}>No hay sesión para hoy</Text>
+                        <Text style={styles.noSessionTodaySubtitle}>
+                          Aprovecha para recuperarte o elige otra sesión a la derecha.
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+            ) : sessionState.emptyReason === 'no_planning_this_week' ? (
+                <View style={styles.placeholderCardContainer}>
+                  <View style={styles.placeholderCardContentWrapper}>
+                    <View style={styles.placeholderCardContent}>
+                      <Text style={styles.placeholderCardTitle}>Sin planificación esta semana</Text>
+                      <Text style={styles.placeholderCardSubtitle}>
+                        Tu entrenador aún no ha planificado las sesiones de esta semana. Vuelve más adelante o consulta el programa.
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.placeholderCardRetryButton}
+                    onPress={() => loadSessionState({ forceRefresh: true })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.placeholderCardRetryButtonText}>Consultar</Text>
+                  </TouchableOpacity>
+                </View>
             ) : sessionState.workout ? (
                 <>
                   {sessionState.workout.image_url && !failedImages.has(`workout-${sessionState.workout.id}`) ? (
@@ -774,13 +856,15 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                           <Text style={styles.sessionTitleText}>
                           {sessionState.workout.title}
                       </Text>
-                          <Text style={styles.sessionModuleText}>
-                          {sessionState.workout.moduleTitle || 'Módulo'}
-                      </Text>
+                          {(course?.creatorName || course?.creator_name || courseMetadata?.creatorName || courseMetadata?.creator_name) ? (
+                            <Text style={styles.sessionModuleText}>
+                              Por {course?.creatorName || course?.creator_name || courseMetadata?.creatorName || courseMetadata?.creator_name}
+                            </Text>
+                          ) : null}
                     </View>
                         
                         {/* Streak Overlay - Bottom Right */}
-                        <View style={styles.streakOverlay}>
+                        <View style={[styles.streakOverlay, isWeb && styles.streakOverlayWeb]}>
                           <View style={styles.streakIconAndNumber}>
                             <StreakDisplay 
                               streak={streak} 
@@ -792,14 +876,27 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                     </View>
                     </View>
                   ) : (
-                      <View style={styles.sessionTitleOverlay}>
-                        <Text style={styles.sessionTitleText}>
-                        {sessionState.workout.title}
-                    </Text>
-                        <Text style={styles.sessionModuleText}>
-                        {sessionState.workout.moduleTitle || 'Módulo'}
-                    </Text>
-                  </View>
+                      <View
+                        style={[
+                          styles.noImageGradientContainer,
+                          isWeb && {
+                            backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)',
+                          },
+                        ]}
+                      >
+                        <View style={styles.noImageContentContainer}>
+                          <View style={styles.noImageDecorativeBorder}>
+                            <Text style={styles.noImageTitleText}>
+                              {sessionState.workout.title}
+                            </Text>
+                            {(course?.creatorName || course?.creator_name || courseMetadata?.creatorName || courseMetadata?.creator_name) ? (
+                              <Text style={styles.noImageModuleText}>
+                                Por {course?.creatorName || course?.creator_name || courseMetadata?.creatorName || courseMetadata?.creator_name}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
                 )}
                 
                 {/* Show message if session has no exercises */}
@@ -840,14 +937,22 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                 {/* All Sessions List at Top */}
                 <View style={styles.allSessionsCard}>
                   <Text style={styles.allSessionsTitle}>
-                    Sesiones {sessionState.workout?.moduleTitle || 'Módulo'}
+                    {sessionState.workout
+                      ? (sessionState.workout.moduleTitle === 'Planificado' ? 'Sesiones' : `Sesiones ${sessionState.workout.moduleTitle || 'Módulo'}`)
+                      : (sessionState.allSessions[0]?.moduleTitle ? `Sesiones ${sessionState.allSessions[0].moduleTitle}` : 'Sesiones de la semana')}
                   </Text>
+                  {sessionState.emptyReason === 'no_planning_this_week' && sessionState.allSessions.length === 0 ? (
+                    <View style={styles.emptyWeekMessageContainer}>
+                      <Text style={styles.emptyWeekMessageText}>No hay sesiones esta semana</Text>
+                      <Text style={styles.emptyWeekMessageSubtext}>Tu planificación aparecerá aquí cuando esté lista.</Text>
+                    </View>
+                  ) : (
                   <FlatList
-                    data={sessionState.allSessions.filter(session => 
-                      session.moduleId === sessionState.workout?.moduleId
-                    )}
+                    data={sessionState.workout
+                      ? sessionState.allSessions.filter(session => session.moduleId === sessionState.workout?.moduleId)
+                      : sessionState.allSessions}
                     renderItem={renderSessionCard}
-                    keyExtractor={(item, index) => item.id || item.sessionId || `session-${index}`}
+                    keyExtractor={(item, index) => (item.sessionId || item.id) ? `${item.sessionId || item.id}-${index}` : `session-${index}`}
                     showsVerticalScrollIndicator={true}
                     initialNumToRender={5}
                     maxToRenderPerBatch={5}
@@ -860,7 +965,15 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                       offset: 100 * index,
                       index
                     })}
+                    ListEmptyComponent={
+                      sessionState.allSessions.length === 0 && !sessionState.isLoading ? (
+                        <View style={styles.emptyWeekMessageContainer}>
+                          <Text style={styles.emptyWeekMessageText}>No hay sesiones</Text>
+                        </View>
+                      ) : null
+                    }
                   />
+                  )}
                               </View>
                 
                 {/* Programa Card at Bottom */}
@@ -1045,6 +1158,47 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
+  // No Image Card Styles - Gradient background with centered text (web uses CSS gradient, native uses solid)
+  noImageGradientContainer: {
+    flex: 1,
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', // Fallback for native (web overrides with gradient)
+  },
+  noImageContentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  noImageDecorativeBorder: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: Math.max(16, screenWidth * 0.05),
+    borderStyle: 'dashed',
+    paddingVertical: 40,
+    paddingHorizontal: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'rgba(255, 255, 255, 0.2)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  noImageTitleText: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  noImageModuleText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+  },
   sessionImage: {
     width: '100%',
     height: '100%',
@@ -1075,11 +1229,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     right: 16,
     flexDirection: 'column',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)', // Same as library cards but with 0.2 opacity
-    borderRadius: Math.max(12, screenWidth * 0.04), // Same responsive border radius
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: Math.max(12, screenWidth * 0.04),
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)', // Same border color
-    shadowColor: 'rgba(255, 255, 255, 0.4)', // Same shadow color
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 2,
@@ -1087,6 +1241,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     padding: 12,
     minWidth: 80,
     gap: 4,
+  },
+  streakOverlayWeb: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
   },
   streakOverlayLabel: {
     fontSize: 16,
@@ -1235,13 +1394,26 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 24,
     alignSelf: 'center', // Center vertically in the card
   },
   currentBadgeText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  todayBadge: {
+    backgroundColor: 'rgba(100, 100, 100, 0.75)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginRight: 24,
+    alignSelf: 'center',
+  },
+  todayBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '500',
   },
   previewBadge: {
     backgroundColor: 'rgba(191, 168, 77, 0.8)',
@@ -1250,7 +1422,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 24,
     alignSelf: 'center',
   },
   previewBadgeText: {
@@ -1580,6 +1752,137 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     height: Math.max(500, screenHeight * 0.6), // Responsive height: 60% of screen height, min 500px
+  },
+  // No session today – hero-style: program cover + black overlay + glass card (happy, relaxed)
+  noSessionTodayRoot: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  noSessionTodayBgImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  noSessionTodayBgFallback: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1a1a2e',
+  },
+  noSessionTodayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  noSessionTodayGlassWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  noSessionTodayGlassCard: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: Math.max(20, screenWidth * 0.05),
+    maxWidth: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  noSessionTodayGlassCardWeb: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+  },
+  noSessionTodayGlassCardInner: {
+    paddingVertical: 32,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+  },
+  noSessionTodayTitle: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 10,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  noSessionTodaySubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.82)',
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 280,
+  },
+  // Placeholder cards for one-on-one (no planning this week)
+  placeholderCardContainer: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: 24,
+  },
+  placeholderCardContentWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  placeholderCardContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderStyle: 'dashed',
+    paddingVertical: 32,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
+  placeholderCardTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  placeholderCardSubtitle: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.75)',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  placeholderCardRetryButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  placeholderCardRetryButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  emptyWeekMessageContainer: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  emptyWeekMessageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 6,
+  },
+  emptyWeekMessageSubtext: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.55)',
+    textAlign: 'center',
   },
   cardNoWorkoutText: {
     color: '#ffffff',

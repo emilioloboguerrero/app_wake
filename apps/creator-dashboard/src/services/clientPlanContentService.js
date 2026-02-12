@@ -27,8 +27,12 @@ function docId(clientId, programId, weekKey) {
 
 /**
  * Get one module (week) with full sessions/exercises/sets from plans.
+ * When creatorId is provided and a session has librarySessionRef, exercises/sets are resolved from the library.
+ * @param {string} planId
+ * @param {string} moduleId
+ * @param {string|null} [creatorId] - Creator uid; when set, sessions with librarySessionRef get exercises from library
  */
-async function getPlanModuleFull(planId, moduleId) {
+async function getPlanModuleFull(planId, moduleId, creatorId = null) {
   const moduleRef = doc(firestore, 'plans', planId, 'modules', moduleId);
   const moduleSnap = await getDoc(moduleRef);
   if (!moduleSnap.exists()) return null;
@@ -36,6 +40,30 @@ async function getPlanModuleFull(planId, moduleId) {
   const sessions = await plansService.getSessionsByModule(planId, moduleId);
   const sessionsWithExercises = await Promise.all(
     sessions.map(async (session) => {
+      const librarySessionRef = session.librarySessionRef;
+      let mergedSession = session;
+      if (creatorId && librarySessionRef) {
+        try {
+          const libraryService = (await import('./libraryService')).default;
+          const libSession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
+          if (libSession) {
+            mergedSession = {
+              ...session,
+              image_url: session.image_url ?? libSession.image_url ?? null,
+              title: session.title ?? libSession.title ?? null
+            };
+            if (libSession?.exercises?.length) {
+              const exercisesWithSets = (libSession.exercises || []).map((ex) => ({
+                ...ex,
+                sets: ex.sets || []
+              }));
+              return { ...mergedSession, exercises: exercisesWithSets };
+            }
+          }
+        } catch (err) {
+          console.warn('[clientPlanContentService] getPlanModuleFull: could not resolve library session', librarySessionRef, err);
+        }
+      }
       const exercises = await plansService.getExercisesBySession(planId, moduleId, session.id);
       const exercisesWithSets = await Promise.all(
         exercises.map(async (ex) => {
@@ -43,7 +71,7 @@ async function getPlanModuleFull(planId, moduleId) {
           return { ...ex, sets };
         })
       );
-      return { ...session, exercises: exercisesWithSets };
+      return { ...mergedSession, exercises: exercisesWithSets };
     })
   );
   moduleData.sessions = sessionsWithExercises;
@@ -101,10 +129,12 @@ class ClientPlanContentService {
 
   /**
    * Copy one plan module (week) into client_plan_content. Creates the copy.
+   * When creatorId is provided, sessions with librarySessionRef get exercises/sets from the library.
+   * @param {string} [creatorId] - Creator uid; when set, resolves library-ref sessions from library
    */
-  async copyFromPlan(clientId, programId, weekKey, planId, moduleId) {
+  async copyFromPlan(clientId, programId, weekKey, planId, moduleId, creatorId = null) {
     try {
-      const moduleData = await getPlanModuleFull(planId, moduleId);
+      const moduleData = await getPlanModuleFull(planId, moduleId, creatorId);
       if (!moduleData) throw new Error('Plan module not found');
 
       const id = docId(clientId, programId, weekKey);
@@ -384,9 +414,9 @@ class ClientPlanContentService {
   async ensureClientPlanContentForWeek(clientId, programId, weekKey, options = {}) {
     const existing = await this.getClientPlanContent(clientId, programId, weekKey);
     if (existing) return;
-    const { planId, moduleId } = options;
+    const { planId, moduleId, creatorId } = options;
     if (planId && moduleId) {
-      await this.copyFromPlan(clientId, programId, weekKey, planId, moduleId);
+      await this.copyFromPlan(clientId, programId, weekKey, planId, moduleId, creatorId);
       return;
     }
     const id = docId(clientId, programId, weekKey);

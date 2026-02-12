@@ -29,6 +29,7 @@ const CalendarView = ({
   plannedSessions = [], 
   programColors = {}, 
   completedSessionIds = new Set(),
+  completedSessionsByDate = {},
   onMonthChange,
   planAssignments = {},
   plans = [],
@@ -561,7 +562,7 @@ const CalendarView = ({
       const rowDays = calendarDays.slice(rowStart, rowStart + 7);
       const firstDayInRow = rowDays.find((d) => d !== null);
       if (firstDayInRow != null) {
-        const date = new Date(currentYear, currentMonth, firstDayInRow);
+        const date = new Date(currentYear, currentMonth + firstDayInRow.monthOffset, firstDayInRow.day);
         weeks.push(getMondayWeek(date));
       } else if (weeks.length > 0) {
         const prev = weeks[weeks.length - 1];
@@ -719,9 +720,20 @@ const CalendarView = ({
             const weekKey = getWeekKeyForCell(cell);
             const weekContent = weekKey ? weekContentByWeekKey[weekKey] : null;
             const isDraggedOver = draggedOverDay === index;
-            const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions;
             const cellDate = getDateFromCell(cell);
             const dateStr = formatDateForStorage(cellDate);
+            // Completed sessions from history (persist when plan is deleted) - avoid duplicates with plan/date sessions
+            const completedHistoryForDay = completedSessionsByDate[dateStr] || [];
+            const planAndDateIds = new Set();
+            planSessionsForDay.forEach((s) => {
+              [s.id, s.session_id, s.librarySessionRef, clientUserId && dateStr ? `${clientUserId}_${dateStr}_${s.id}` : null].filter(Boolean).forEach((id) => planAndDateIds.add(id));
+            });
+            displayedDaySessions.forEach((s) => {
+              [s.id, s.session_id].filter(Boolean).forEach((id) => planAndDateIds.add(id));
+            });
+            const historyOnlySessions = completedHistoryForDay.filter((h) => !planAndDateIds.has(h.sessionId));
+            const hasHistoryOnlySessions = historyOnlySessions.length > 0;
+            const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions || hasHistoryOnlySessions;
 
             // Days under a plan bar get gradient (no solid primaryColor)
             const dayStyle = hasPlanAssignments ? { '--calendar-plan-gradient-start': PLAN_BAR_COLOR } : undefined;
@@ -807,6 +819,68 @@ const CalendarView = ({
                                       weekKey,
                                       weekContent,
                                       isCompleted
+                                    });
+                                  }
+                                }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                  <circle cx="12" cy="6" r="1.5" />
+                                  <circle cx="12" cy="12" r="1.5" />
+                                  <circle cx="12" cy="18" r="1.5" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {/* History-only sessions (from sessionHistory - persist when plan is deleted) */}
+                {hasHistoryOnlySessions && (
+                  <div className="calendar-day-session-cards">
+                    {historyOnlySessions.map((historyItem, idx) => {
+                      const sessionName = historyItem.sessionName || historyItem.courseName || 'Sesión';
+                      const docId = `history-${dateStr}-${historyItem.sessionId}-${idx}`;
+                      const isMenuOpen = openSessionMenuId === docId;
+                      return (
+                        <div
+                          key={docId}
+                          className="calendar-day-session-card calendar-day-session-card-completed calendar-day-session-card-from-history"
+                          title={sessionName}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isMenuOpen) setSessionMenuContext(null);
+                            else setSessionMenuContext({
+                              id: docId,
+                              anchorEl: e.currentTarget,
+                              type: 'history',
+                              historyItem,
+                              date: cellDate,
+                              isCompleted: true
+                            });
+                          }}
+                        >
+                          <span className="calendar-day-session-card-name">{sessionName}</span>
+                          {onVerDesempeno && (
+                            <div className="calendar-day-session-card-actions">
+                              <button
+                                type="button"
+                                className="calendar-day-session-card-menu-trigger"
+                                aria-label="Abrir menú"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isMenuOpen) {
+                                    setSessionMenuContext(null);
+                                  } else {
+                                    setSessionMenuContext({
+                                      id: docId,
+                                      anchorEl: e.currentTarget,
+                                      type: 'history',
+                                      historyItem,
+                                      date: cellDate,
+                                      isCompleted: true
                                     });
                                   }
                                 }}
@@ -1002,6 +1076,20 @@ const CalendarView = ({
                   </button>
                 )}
               </>
+            )}
+            {sessionMenuContext.type === 'history' && (
+              <button
+                type="button"
+                className="calendar-day-session-card-menu-item"
+                onClick={() => {
+                  if (onVerDesempeno) {
+                    onVerDesempeno({ historyOnlyData: sessionMenuContext.historyItem });
+                  }
+                  setSessionMenuContext(null);
+                }}
+              >
+                Ver desempeño
+              </button>
             )}
             {sessionMenuContext.type === 'date' && (
               <>

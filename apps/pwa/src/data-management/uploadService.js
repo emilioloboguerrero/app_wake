@@ -24,24 +24,18 @@ class UploadService {
         return null; // Return null to indicate no upload occurred
       }
       
-      // Create cloud document structure
-      const cloudDocument = await this.createSessionDocument(sessionData);
-      
-      // Use new flat session-based structure
-      // Document ID: {userId}_{courseId}_{sessionId}
+      // Progress is stored in users/{userId}.courseProgress and users/{userId}/sessionHistory.
+      // We no longer write to the top-level progress collection (deprecated).
+      // Still mark upload completed and cleanup so the queue does not retry.
       const docId = `${sessionData.userId}_${sessionData.courseId}_${sessionData.sessionId}`;
-      
-      // Upload to Firestore using new structure
-      const docRef = doc(firestore, 'progress', docId);
-      await setDoc(docRef, cloudDocument);
-      
-      logger.log('✅ Session uploaded successfully:', docRef.id);
+
+      logger.log('✅ Session upload processed (progress lives in user doc):', docId);
       
       // Mark upload as completed and cleanup
       await this.markUploadCompleted(sessionData.sessionId);
       await this.cleanupLocalSession(sessionData.sessionId);
       
-      return docRef.id;
+      return docId;
       
     } catch (error) {
       logger.error('❌ Session upload failed:', error);

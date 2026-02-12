@@ -21,6 +21,7 @@ import './ClientProgramScreen.css';
 const TAB_CONFIG = [
   { key: 'lab', title: 'Lab' },
   { key: 'planificacion', title: 'Planificación' },
+  { key: 'historial', title: 'Historial' },
   { key: 'nutricion', title: 'Nutrición' },
   { key: 'info', title: 'Info' },
 ];
@@ -58,7 +59,9 @@ const ClientProgramScreen = () => {
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
   const [planWeeksCount, setPlanWeeksCount] = useState({}); // { [planId]: number } for calendar plan bar label
   const [completedSessionIds, setCompletedSessionIds] = useState(new Set()); // session IDs client has completed (for green indicator)
-  const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } for Ver desempeño
+  const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } or { historyOnlyData } for Historial
+  const [sessionHistory, setSessionHistory] = useState([]); // Completed sessions from sessionHistory (independent of plans)
+  const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
   // Info tab: client user doc and access end date form
   const [clientUserDoc, setClientUserDoc] = useState(null);
   const [loadingClientUser, setLoadingClientUser] = useState(false);
@@ -164,12 +167,12 @@ const ClientProgramScreen = () => {
     return () => { cancelled = true; };
   }, [isInfoTab, client?.clientUserId]);
 
-  // Sync info program selector when assignedPrograms loads and we're on Info tab
+  // Sync info program selector when assignedPrograms loads (so Planificación uses same program as Info)
   useEffect(() => {
-    if (!isInfoTab || assignedPrograms.length === 0) return;
+    if (assignedPrograms.length === 0) return;
     const assigned = assignedPrograms.filter((p) => p.isAssigned);
     if (assigned.length > 0 && !infoProgramId) setInfoProgramId(assigned[0].id);
-  }, [isInfoTab, assignedPrograms, infoProgramId]);
+  }, [assignedPrograms, infoProgramId]);
 
   // Sync access end date form from clientUserDoc when program or user doc changes
   useEffect(() => {
@@ -463,6 +466,58 @@ const ClientProgramScreen = () => {
     });
     return () => { cancelled = true; };
   }, [client?.clientUserId, selectedProgramId]);
+
+  // Load session history when Historial or Planificación tab is active
+  // Independent of plans - shows completions even after plan deletion
+  const isHistorialTab = TAB_CONFIG[currentTabIndex]?.key === 'historial';
+  const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
+  const needsSessionHistory = isHistorialTab || isPlanificacionTab;
+
+  // When on Planificación tab, use the program selected in Info (no selector on Planificación)
+  useEffect(() => {
+    if (isPlanificacionTab && infoProgramId) setSelectedProgramId(infoProgramId);
+  }, [isPlanificacionTab, infoProgramId]);
+
+  useEffect(() => {
+    if (!needsSessionHistory || !client?.clientUserId || !selectedProgramId) {
+      if (needsSessionHistory && (!client?.clientUserId || !selectedProgramId)) {
+        setSessionHistory([]);
+      }
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingSessionHistory(true);
+    setSessionHistory([]);
+    clientProgramService.getClientSessionHistory(selectedProgramId, client.clientUserId).then((items) => {
+      if (!cancelled) setSessionHistory(items);
+    }).catch((err) => {
+      if (!cancelled) {
+        console.error('[ClientProgramScreen] sessionHistory load failed', err?.message);
+        setSessionHistory([]);
+      }
+    }).finally(() => {
+      if (!cancelled) setIsLoadingSessionHistory(false);
+    });
+    return () => { cancelled = true; };
+  }, [needsSessionHistory, client?.clientUserId, selectedProgramId]);
+
+  // Map session history to date for calendar (so completed sessions persist when plan is deleted)
+  const completedSessionsByDate = useMemo(() => {
+    const map = {};
+    if (!sessionHistory?.length) return map;
+    sessionHistory.forEach((item) => {
+      const completedAt = item.completedAt;
+      if (!completedAt) return;
+      const d = typeof completedAt === 'string' ? new Date(completedAt) : completedAt;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${day}`;
+      if (!map[dateStr]) map[dateStr] = [];
+      map[dateStr].push(item);
+    });
+    return map;
+  }, [sessionHistory]);
 
   // Create program colors map for calendar
   const programColors = useMemo(() => {
@@ -771,7 +826,8 @@ const ClientProgramScreen = () => {
         selectedProgramId,
         weekKey,
         assignment.planId,
-        module.id
+        module.id,
+        user?.uid
       );
       setHasClientPlanCopy(true);
     } catch (error) {
@@ -807,7 +863,8 @@ const ClientProgramScreen = () => {
           selectedProgramId,
           weekKey,
           weekContent.planId,
-          weekContent.moduleId
+          weekContent.moduleId,
+          user?.uid
         );
         const content = await clientPlanContentService.getClientPlanContent(
           client.clientUserId,
@@ -854,7 +911,8 @@ const ClientProgramScreen = () => {
           selectedProgramId,
           weekKey,
           weekContent.planId,
-          weekContent.moduleId
+          weekContent.moduleId,
+          user?.uid
         );
       }
       await clientPlanContentService.deleteSession(client.clientUserId, selectedProgramId, weekKey, session.id);
@@ -886,7 +944,8 @@ const ClientProgramScreen = () => {
           selectedProgramId,
           weekKey,
           weekContent.planId,
-          weekContent.moduleId
+          weekContent.moduleId,
+          user?.uid
         );
       }
       await clientPlanContentService.updateSession(
@@ -978,7 +1037,7 @@ const ClientProgramScreen = () => {
           client.clientUserId,
           selectedProgramId,
           weekKey,
-          { planId: assignment.planId, moduleId: mod.id }
+          { planId: assignment.planId, moduleId: mod.id, creatorId: user.uid }
         );
       } else {
         await clientPlanContentService.ensureClientPlanContentForWeek(client.clientUserId, selectedProgramId, weekKey, {});
@@ -1074,10 +1133,9 @@ const ClientProgramScreen = () => {
             <p className="client-program-tab-empty-message">Próximamente podrás ver aquí métricas y progreso de este cliente.</p>
           </div>
         );
-      case 'planificacion':
+      case 'historial':
         return (
-          <div className="client-program-planning-content">
-            {/* Program selector (required for plan/session assignment) */}
+          <div className="client-program-tab-content client-program-historial-content">
             <div className="client-program-planning-header">
               <div className="client-program-planning-header-inner">
                 <label className="client-program-planning-program-label">Programa</label>
@@ -1085,7 +1143,7 @@ const ClientProgramScreen = () => {
                   className="client-program-planning-program-select"
                   value={selectedProgramId || ''}
                   onChange={(e) => handleProgramSelect(e.target.value || null)}
-                  title="Selecciona el programa para asignar planes (por semana) o sesiones (por día)"
+                  title="Selecciona el programa para ver el historial de sesiones completadas"
                 >
                   <option value="">— Selecciona un programa —</option>
                   {assignedPrograms.map((program) => (
@@ -1096,9 +1154,46 @@ const ClientProgramScreen = () => {
                   ))}
                 </select>
               </div>
-              <p className="client-program-planning-hint">Selecciona un programa y arrastra <strong>planes</strong> a la barra de semanas o <strong>sesiones</strong> a un día concreto.</p>
+              <p className="client-program-planning-hint">Sesiones completadas por el cliente. Visible aunque se hayan eliminado planes o el programa.</p>
             </div>
-            {/* Layout: left (library - sessions/plans only), right (calendar) */}
+            <div className="client-program-historial-list-wrap">
+              {!selectedProgramId ? (
+                <p className="client-program-historial-empty">Selecciona un programa para ver el historial.</p>
+              ) : isLoadingSessionHistory ? (
+                <p className="client-program-historial-loading">Cargando historial...</p>
+              ) : sessionHistory.length === 0 ? (
+                <p className="client-program-historial-empty">No hay sesiones completadas para este programa.</p>
+              ) : (
+                <ul className="client-program-historial-list">
+                  {sessionHistory.map((item) => (
+                    <li key={item.sessionId} className="client-program-historial-item">
+                      <div className="client-program-historial-item-main">
+                        <span className="client-program-historial-item-name">{item.sessionName || 'Sesión'}</span>
+                        <span className="client-program-historial-item-date">
+                          {item.completedAt ? new Date(item.completedAt).toLocaleDateString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                          {item.duration != null && !Number.isNaN(Number(item.duration)) && (
+                            <> · {Math.round(Number(item.duration))} min</>
+                          )}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="client-program-historial-item-btn"
+                        onClick={() => setPerformanceModalContext({ historyOnlyData: item })}
+                      >
+                        Ver desempeño
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        );
+      case 'planificacion':
+        return (
+          <div className="client-program-planning-content">
+            {/* Layout: left (library - sessions/plans only), right (calendar). Program is chosen in Info tab. */}
             <div className="plan-structure-layout client-program-planning-layout">
               <div className="plan-structure-sidebars client-program-planning-left">
                 <PlanningLibrarySidebar
@@ -1115,6 +1210,7 @@ const ClientProgramScreen = () => {
                   plannedSessions={plannedSessions}
                   programColors={programColors}
                   completedSessionIds={completedSessionIds}
+                  completedSessionsByDate={completedSessionsByDate}
                   onMonthChange={setCurrentDate}
                   planAssignments={planAssignments}
                   plans={plans}
@@ -1138,19 +1234,6 @@ const ClientProgramScreen = () => {
                   assignedPrograms={assignedPrograms}
                   selectedProgramId={selectedProgramId}
                   onVerDesempeno={setPerformanceModalContext}
-                />
-                <SessionPerformanceModal
-                  isOpen={!!performanceModalContext}
-                  onClose={() => setPerformanceModalContext(null)}
-                  clientUserId={client?.clientUserId ?? null}
-                  creatorId={user?.uid ?? null}
-                  programId={selectedProgramId ?? null}
-                  session={performanceModalContext?.session ?? null}
-                  dateStr={performanceModalContext?.date
-                    ? (performanceModalContext.date instanceof Date
-                        ? performanceModalContext.date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-                        : String(performanceModalContext.date))
-                    : performanceModalContext?.weekKey ?? null}
                 />
                 <SessionAssignmentModal
                   isOpen={isSessionAssignmentModalOpen}
@@ -1477,6 +1560,22 @@ const ClientProgramScreen = () => {
         <div className="client-program-content">
           {renderTabContent()}
         </div>
+
+        {/* Session performance modal - shared across Planificación and Historial tabs */}
+        <SessionPerformanceModal
+          isOpen={!!performanceModalContext}
+          onClose={() => setPerformanceModalContext(null)}
+          clientUserId={client?.clientUserId ?? null}
+          creatorId={user?.uid ?? null}
+          programId={selectedProgramId ?? null}
+          session={performanceModalContext?.session ?? null}
+          dateStr={performanceModalContext?.date
+            ? (performanceModalContext.date instanceof Date
+                ? performanceModalContext.date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                : String(performanceModalContext.date))
+            : performanceModalContext?.weekKey ?? null}
+          historyOnlyData={performanceModalContext?.historyOnlyData ?? null}
+        />
       </div>
     </DashboardLayout>
   );

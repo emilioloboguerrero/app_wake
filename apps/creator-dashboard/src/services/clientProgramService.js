@@ -17,6 +17,8 @@ import libraryService from './libraryService';
 import programService from './programService';
 import plansService from './plansService';
 import clientSessionService from './clientSessionService';
+import clientPlanContentService from './clientPlanContentService';
+import clientSessionContentService from './clientSessionContentService';
 import { getWeekDates } from '../utils/weekCalculation';
 
 // Doc ID for creator_client_access: creatorId_userId (enables Firestore rules for creator → client user read/update)
@@ -422,19 +424,52 @@ class ClientProgramService {
 
   /**
    * Delete client program (unassign program from user)
-   * Also removes from user's courses
+   * Also removes: client_plan_content, client_sessions, client_session_content.
+   * Keeps: users.courseProgress, users.sessionHistory (completion history).
    */
   async deleteClientProgram(programId, userId) {
     try {
       const clientProgramId = `${userId}_${programId}`;
+      const clientProgramRef = doc(firestore, 'client_programs', clientProgramId);
       const program = await programService.getProgramById(programId);
       const creatorId = program?.creator_id || program?.creatorId;
-      
-      await deleteDoc(doc(firestore, 'client_programs', clientProgramId));
-      
+
+      // Read planAssignments before deleting client_programs (needed for client_plan_content cleanup)
+      const clientProgramDoc = await getDoc(clientProgramRef);
+      const planAssignments = clientProgramDoc.exists() ? (clientProgramDoc.data().planAssignments || {}) : {};
+
+      // Delete client_plan_content for each week (custom week copies)
+      for (const weekKey of Object.keys(planAssignments)) {
+        try {
+          await clientPlanContentService.deleteClientPlanContent(userId, programId, weekKey);
+        } catch (err) {
+          console.warn('[clientProgramService] deleteClientProgram: could not delete client_plan_content for', weekKey, err?.message);
+        }
+      }
+
+      // Delete all client_sessions and their client_session_content for this user+program
+      try {
+        const sessions = await clientSessionService.getSessionsForProgram(userId, programId);
+        for (const s of sessions) {
+          try {
+            await clientSessionContentService.deleteClientSessionContent(s.id);
+          } catch (err) {
+            console.warn('[clientProgramService] deleteClientProgram: could not delete client_session_content for', s.id, err?.message);
+          }
+          await deleteDoc(doc(firestore, 'client_sessions', s.id));
+        }
+        if (sessions.length > 0) {
+          console.log('[clientProgramService] deleteClientProgram: removed', sessions.length, 'client_sessions for', clientProgramId);
+        }
+      } catch (err) {
+        console.warn('[clientProgramService] deleteClientProgram: could not delete client_sessions:', err?.message);
+      }
+
+      await deleteDoc(clientProgramRef);
+
       // ✅ Remove from user's courses
       await this.removeOneOnOneProgramFromUserCourses(userId, programId);
-      
+
       // ✅ Update one_on_one_clients.courseId (dynamic import to avoid circular dependency)
       if (creatorId) {
         try {
@@ -444,7 +479,7 @@ class ClientProgramService {
           console.warn('Could not update one_on_one_clients.courseId:', err);
         }
       }
-      
+
       console.log('✅ Client program deleted:', clientProgramId);
     } catch (error) {
       console.error('❌ Error deleting client program:', error);
@@ -607,6 +642,8 @@ class ClientProgramService {
 
   /**
    * Remove a plan assignment from a week
+   * Also deletes client_plan_content (custom week copy) and client_session_content (per-session copies)
+   * so re-assignment shows fresh content from the plan/library.
    * @param {string} programId - Program ID
    * @param {string} userId - User ID
    * @param {string} weekKey - Week key in format "YYYY-WXX"
@@ -634,8 +671,17 @@ class ClientProgramService {
         updated_at: serverTimestamp()
       });
 
-      // Remove client_sessions for this week so PWA no longer shows those sessions
-      await clientSessionService.deleteClientSessionsForWeek(userId, programId, weekKey);
+      // Remove client_plan_content (custom week copy) so re-assignment shows fresh plan content
+      try {
+        await clientPlanContentService.deleteClientPlanContent(userId, programId, weekKey);
+      } catch (err) {
+        console.warn('[clientProgramService] removePlanFromWeek: could not delete client_plan_content:', err?.message);
+      }
+
+      // Remove client_sessions for this week (also deletes client_session_content for each)
+      // Preserve completed sessions so they stay visible on the calendar
+      const completedIds = await this.getClientCompletedSessionIds(programId, userId);
+      await clientSessionService.deleteClientSessionsForWeek(userId, programId, weekKey, completedIds);
 
       console.log('✅ Plan removed from week:', { programId, userId, weekKey });
     } catch (error) {
@@ -719,6 +765,43 @@ class ClientProgramService {
     } catch (error) {
       console.error('❌ Error getting client completed sessions:', error?.message || error, { programId, userId });
       return new Set();
+    }
+  }
+
+  /**
+   * Get all session history for a client in a program (from users.sessionHistory).
+   * Independent of plans/client_sessions - shows completions even after plan deletion.
+   * @param {string} programId - Program ID (courseId in sessionHistory)
+   * @param {string} userId - Client user ID
+   * @returns {Promise<Array>} Array of { sessionId, sessionName, completedAt, duration, exercises, ... } sorted by completedAt desc
+   */
+  async getClientSessionHistory(programId, userId) {
+    try {
+      const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
+      const snapshot = await getDocs(sessionHistoryRef);
+      const items = [];
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        if (data.courseId === programId) {
+          items.push({
+            sessionId: d.id,
+            sessionName: data.sessionName || data.courseName || 'Sesión',
+            completedAt: data.completedAt,
+            duration: data.duration,
+            exercises: data.exercises || {},
+            ...data
+          });
+        }
+      });
+      items.sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return tb - ta;
+      });
+      return items;
+    } catch (error) {
+      console.error('getClientSessionHistory failed:', error?.message);
+      return [];
     }
   }
 

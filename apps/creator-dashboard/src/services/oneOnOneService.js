@@ -1,5 +1,5 @@
 // One-on-One Client Service for Wake Web Dashboard
-import { firestore } from '../config/firebase';
+import { firestore, functions, httpsCallable } from '../config/firebase';
 import { 
   collection, 
   query, 
@@ -18,7 +18,36 @@ import {
 import { getUser } from './firestoreService';
 import clientProgramService from './clientProgramService';
 
+const lookupUserForCreatorInvite = httpsCallable(functions, 'lookupUserForCreatorInvite');
+
 class OneOnOneService {
+  /**
+   * Look up a user by email or username for creator invite (Option 4 flow).
+   * Returns { userId, displayName, email, username } for confirmation.
+   * @param {string} emailOrUsername - Email or username to search for
+   * @returns {Promise<Object>} User info for confirmation
+   */
+  async lookupUserByEmailOrUsername(emailOrUsername) {
+    const result = await lookupUserForCreatorInvite({ emailOrUsername: emailOrUsername.trim() });
+    const data = result?.data;
+    if (!data || !data.userId) {
+      throw new Error('No se encontró ningún usuario');
+    }
+    const out = {
+      userId: data.userId,
+      displayName: data.displayName ?? '',
+      email: data.email ?? '',
+      username: data.username ?? '',
+      age: data.age != null ? data.age : null,
+      gender: data.gender ?? '',
+      country: data.country ?? '',
+      city: data.city ?? '',
+      height: data.height != null ? data.height : null,
+      weight: data.weight != null ? data.weight : null
+    };
+    return out;
+  }
+
   /**
    * Get all clients for a creator
    * @param {string} creatorId - Creator user ID

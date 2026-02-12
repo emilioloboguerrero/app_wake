@@ -1,0 +1,236 @@
+/* Narrower modal */
+.propagate-modal-container {
+  max-width: 760px !important;
+}
+
+.propagate-modal-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  min-height: 0;
+  flex: 1;
+}
+
+.propagate-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+
+.propagate-modal-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  flex: 1;
+  min-height: 360px;
+  padding: 24px 24px 16px;
+}
+
+@media (max-width: 700px) {
+  .propagate-modal-layout {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .propagate-modal-right {
+    order: -1;
+    min-height: 220px;
+  }
+}
+
+.propagate-modal-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.propagate-modal-left {
+  flex: 1;
+}
+
+.propagate-modal-left .propagate-modal-options {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+
+.propagate-modal-right {
+  flex: 0 0 240px;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+}
+
+.propagate-modal-right .propagate-modal-users-header {
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .propagate-modal-right {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
+
+.propagate-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.propagate-option {
+  padding: 0;
+}
+
+.propagate-option-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 6px 0;
+}
+
+.propagate-option-desc {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+}
+
+.propagate-option-desc strong {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+
+/* Footer buttons - PWA style (cerrar sesión / eliminar cuenta) */
+.propagate-modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 16px 24px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.propagate-modal-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.propagate-modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.propagate-modal-btn-dont {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #cccccc;
+}
+
+.propagate-modal-btn-dont:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #e0e0e0;
+}
+
+.propagate-modal-btn-propagate {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.propagate-modal-btn-propagate:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.propagate-modal-users-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.propagate-modal-users-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.propagate-modal-users-count {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 10px;
+  min-width: 32px;
+  text-align: center;
+}
+
+.propagate-modal-users-list {
+  margin: 0;
+  padding-left: 20px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.9rem;
+  line-height: 1.8;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.propagate-modal-users-list li {
+  margin-bottom: 4px;
+}
+
+.propagate-modal-users-list li:last-child {
+  margin-bottom: 0;
+}
+
+.propagate-modal-users-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.propagate-modal-users-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.propagate-modal-users-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.propagate-modal-intro-wrap {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.propagate-modal-intro {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}

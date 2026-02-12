@@ -6,8 +6,11 @@ import logger from '../utils/logger.js';
 class ExerciseHistoryService {
   /**
    * Add session data to both exercise and session history
+   * @param {string} userId - User ID
+   * @param {Object} sessionData - Session data with exercises (performed)
+   * @param {Object} [plannedSnapshot] - Optional snapshot of planned session at completion time
    */
-  async addSessionData(userId, sessionData) {
+  async addSessionData(userId, sessionData, plannedSnapshot = null) {
     try {
       logger.log('📚 Adding session data to exercise history:', sessionData.sessionId);
       logger.log('📚 Session data structure:', JSON.stringify(sessionData, null, 2));
@@ -22,8 +25,8 @@ class ExerciseHistoryService {
         await this.updateExerciseHistory(userId, exercise, sessionData);
       }
       
-      // Update session-specific subcollection
-      await this.updateSessionHistory(userId, sessionData);
+      // Update session-specific subcollection (with planned snapshot when available)
+      await this.updateSessionHistory(userId, sessionData, plannedSnapshot);
       
       logger.log('✅ Session data added to exercise history');
     } catch (error) {
@@ -107,14 +110,20 @@ class ExerciseHistoryService {
   
   /**
    * Update session history subcollection
+   * @param {string} userId - User ID
+   * @param {Object} sessionData - Session data with exercises (performed)
+   * @param {Object} [plannedSnapshot] - Optional snapshot of planned session at completion time.
+   *   Format: { exercises: [{ id, title, primary, sets: [{ reps, weight, intensity }] }] }
+   *   When present, history is self-contained and immune to plan/library changes.
    */
-  async updateSessionHistory(userId, sessionData) {
+  async updateSessionHistory(userId, sessionData, plannedSnapshot = null) {
     try {
       logger.log('📋 Updating session history:', {
         sessionId: sessionData.sessionId,
         sessionName: sessionData.sessionName,
         courseName: sessionData.courseName,
-        exercisesCount: sessionData.exercises?.length
+        exercisesCount: sessionData.exercises?.length,
+        hasPlannedSnapshot: !!plannedSnapshot
       });
       
       // Validate session data
@@ -142,6 +151,23 @@ class ExerciseHistoryService {
         duration: sessionData.duration || 0,
         exercises: {}
       };
+      
+      // Add planned snapshot when available (makes history self-contained)
+      if (plannedSnapshot && plannedSnapshot.exercises && Array.isArray(plannedSnapshot.exercises)) {
+        sessionHistoryData.planned = {
+          exercises: plannedSnapshot.exercises.map(ex => ({
+            id: ex.id,
+            title: ex.title || ex.name || '',
+            name: ex.name || ex.exerciseName || ex.title || '',
+            primary: ex.primary || {},
+            sets: (ex.sets || []).map(s => ({
+              reps: s.reps,
+              weight: s.weight,
+              intensity: s.intensity
+            }))
+          }))
+        };
+      }
       
       // Add exercise data
       sessionData.exercises.forEach(exercise => {

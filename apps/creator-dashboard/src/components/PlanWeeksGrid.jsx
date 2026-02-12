@@ -95,20 +95,22 @@ const PlanWeeksGrid = ({
     try {
       setIsCreatingSession(true);
       let librarySessionRef = null;
+      let libSession = null;
       if (libraryService && creatorId) {
-        const libSession = await libraryService.createLibrarySession(creatorId, {
+        libSession = await libraryService.createLibrarySession(creatorId, {
           title: newSessionName.trim(),
           image_url: sessionImageUrlFromLibrary || null,
           showInLibrary: saveToLibrary,
         });
         librarySessionRef = libSession.id;
       }
+      const imageUrl = sessionImageUrlFromLibrary || libSession?.image_url || null;
       const created = await plansService.createSession(
         planId,
         addSessionModuleId,
         newSessionName.trim(),
         addSessionDayIndex,
-        null,
+        imageUrl,
         librarySessionRef,
         addSessionDayIndex
       );
@@ -140,12 +142,13 @@ const PlanWeeksGrid = ({
       if (data.type !== DRAG_TYPE_LIBRARY_SESSION || !data.librarySessionRef) return;
       const libSession = await libraryService?.getLibrarySessionById?.(creatorId, data.librarySessionRef);
       const title = libSession?.title || data.title || 'Sesión';
+      const imageUrl = libSession?.image_url ?? null;
       await plansService.createSession(
         planId,
         moduleId,
         title,
         dayIndex,
-        null,
+        imageUrl,
         data.librarySessionRef,
         dayIndex
       );

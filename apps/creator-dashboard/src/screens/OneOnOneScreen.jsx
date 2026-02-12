@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
-import Input from '../components/Input';
-import Button from '../components/Button';
+import FindUserModal from '../components/FindUserModal';
+import AssignProgramModal from '../components/AssignProgramModal';
 import oneOnOneService from '../services/oneOnOneService';
 import clientProgramService from '../services/clientProgramService';
 import programService from '../services/programService';
@@ -16,12 +16,15 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [clientUserId, setClientUserId] = useState('');
-  const [selectedProgramId, setSelectedProgramId] = useState('');
+  const [isFindUserModalOpen, setIsFindUserModalOpen] = useState(false);
+  const [isAssignProgramModalOpen, setIsAssignProgramModalOpen] = useState(false);
+  const [lookedUpUser, setLookedUpUser] = useState(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [findUserError, setFindUserError] = useState(null);
   const [oneOnOnePrograms, setOneOnOnePrograms] = useState([]);
   const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignError, setAssignError] = useState(null);
   const [isClientDetailModalOpen, setIsClientDetailModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientUserData, setClientUserData] = useState(null);
@@ -53,10 +56,10 @@ const OneOnOneScreen = ({ noLayout = false }) => {
     loadClients();
   }, [user]);
 
-  // Load one-on-one programs when modal opens (for program selector)
+  // Load one-on-one programs when AssignProgramModal opens
   useEffect(() => {
     const loadPrograms = async () => {
-      if (!isModalOpen || !user) return;
+      if (!isAssignProgramModalOpen || !user) return;
       try {
         setIsLoadingPrograms(true);
         const allPrograms = await programService.getProgramsByCreator(user.uid);
@@ -64,9 +67,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           (p) => (p.deliveryType || 'low_ticket') === 'one_on_one'
         );
         setOneOnOnePrograms(oneOnOne);
-        if (oneOnOne.length > 0 && !selectedProgramId) {
-          setSelectedProgramId(oneOnOne[0].id);
-        }
       } catch (err) {
         console.error('Error loading programs:', err);
         setOneOnOnePrograms([]);
@@ -75,7 +75,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       }
     };
     loadPrograms();
-  }, [isModalOpen, user]);
+  }, [isAssignProgramModalOpen, user]);
 
   // Load programs for a specific client
   const loadClientPrograms = async (clientUserId) => {
@@ -124,44 +124,71 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   };
 
   const handleAddClient = () => {
-    setIsModalOpen(true);
+    setIsFindUserModalOpen(true);
+    setFindUserError(null);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setClientUserId('');
-    setSelectedProgramId('');
-    setError(null);
+  const handleCloseFindUserModal = () => {
+    setIsFindUserModalOpen(false);
+    setFindUserError(null);
   };
 
-  const handleCreateClient = async () => {
-    if (!clientUserId.trim() || !user) {
-      return;
-    }
-    if (!selectedProgramId) {
-      setError('Selecciona un programa 1-on-1 para asignar al cliente');
-      return;
-    }
-
+  const handleLookupUser = async (emailOrUsername) => {
+    if (!emailOrUsername?.trim() || !user) return null;
     try {
-      setIsCreating(true);
-      setError(null);
+      setIsLookingUp(true);
+      setFindUserError(null);
+      const found = await oneOnOneService.lookupUserByEmailOrUsername(emailOrUsername.trim());
+      return found;
+    } catch (err) {
+      console.error('Error looking up user:', err);
+      setFindUserError(err.message || 'No se encontró ningún usuario');
+      return null;
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
 
-      await oneOnOneService.addClientToProgram(
-        user.uid,
-        clientUserId.trim(),
-        selectedProgramId
-      );
+  const handleUserFound = (userInfo) => {
+    setLookedUpUser(userInfo);
+    setIsFindUserModalOpen(false);
+    setIsAssignProgramModalOpen(true);
+    setAssignError(null);
+  };
+
+  const handleCloseAssignProgramModal = () => {
+    setIsAssignProgramModalOpen(false);
+    setLookedUpUser(null);
+    setAssignError(null);
+  };
+
+  const handleAssign = async (clientUserId, programId) => {
+    if (!clientUserId || !programId || !user) return;
+    try {
+      setIsAssigning(true);
+      setAssignError(null);
+
+      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
 
       const creatorClients = await oneOnOneService.getClientsByCreator(user.uid);
       setClients(creatorClients);
-      handleCloseModal();
+      handleCloseAssignProgramModal();
     } catch (err) {
-      console.error('Error creating client:', err);
-      setError(err.message || 'Error al agregar el cliente');
+      console.error('Error adding client:', err);
+      setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
-      setIsCreating(false);
+      setIsAssigning(false);
     }
+  };
+
+  const handleViewClient = (clientId) => {
+    handleCloseFindUserModal();
+    navigate(`/one-on-one/${clientId}`);
+  };
+
+  const handleCreateProgram = () => {
+    handleCloseAssignProgramModal();
+    navigate('/products/new?type=one_on_one');
   };
 
   const handleClientNameClick = async (client) => {
@@ -273,119 +300,30 @@ const OneOnOneScreen = ({ noLayout = false }) => {
         )}
       </div>
 
-      {/* Add Client Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        title="Agregar Cliente"
-        wide
-      >
-        <div className="add-client-modal">
-          {error && (
-            <div className="add-client-modal-error">
-              <p>{error}</p>
-            </div>
-          )}
+      {/* Find User Modal (step 1) */}
+      <FindUserModal
+        isOpen={isFindUserModalOpen}
+        onClose={handleCloseFindUserModal}
+        onUserFound={handleUserFound}
+        onLookup={handleLookupUser}
+        onViewClient={handleViewClient}
+        clients={clients}
+        isLookingUp={isLookingUp}
+        error={findUserError}
+      />
 
-          {/* Step 1: Client ID */}
-          <section className="add-client-modal-section">
-            <div className="add-client-modal-section-header">
-              <span className="add-client-modal-step">1</span>
-              <h3 className="add-client-modal-section-title">Datos del cliente</h3>
-            </div>
-            <div className="add-client-modal-section-content">
-              <label className="add-client-modal-label">
-                User ID del cliente <span className="add-client-modal-required">*</span>
-              </label>
-              <Input
-                placeholder="Ej: abc123xyz o el ID que te comparta el cliente"
-                value={clientUserId}
-                onChange={(e) => setClientUserId(e.target.value)}
-                type="text"
-                light={true}
-              />
-              <p className="add-client-modal-hint">
-                El cliente puede encontrar su User ID en la app (perfil o ajustes). Pídele que te lo comparta.
-              </p>
-            </div>
-          </section>
-
-          {/* Step 2: Program selection */}
-          <section className="add-client-modal-section">
-            <div className="add-client-modal-section-header">
-              <span className="add-client-modal-step">2</span>
-              <h3 className="add-client-modal-section-title">Programa a asignar</h3>
-              <span className="add-client-modal-subtitle">Selecciona un programa 1-on-1</span>
-            </div>
-            <div className="add-client-modal-section-content">
-              {isLoadingPrograms ? (
-                <div className="add-client-modal-loading">Cargando programas...</div>
-              ) : (
-                <div className="add-client-modal-programs-grid">
-                  {/* + Create new program card */}
-                  <button
-                    type="button"
-                    className="add-client-modal-program-card add-client-modal-program-card-new"
-                    onClick={() => {
-                      handleCloseModal();
-                      navigate('/products/new?type=one_on_one');
-                    }}
-                  >
-                    <span className="add-client-modal-program-card-new-icon">+</span>
-                    <span className="add-client-modal-program-card-new-label">Crear nuevo programa</span>
-                    <span className="add-client-modal-program-card-new-hint">Ir a Productos</span>
-                  </button>
-
-                  {/* Existing program cards */}
-                  {oneOnOnePrograms.map((program) => (
-                    <button
-                      key={program.id}
-                      type="button"
-                      className={`add-client-modal-program-card ${selectedProgramId === program.id ? 'add-client-modal-program-card-selected' : ''}`}
-                      onClick={() => setSelectedProgramId(program.id)}
-                    >
-                      {program.image_url ? (
-                        <div className="add-client-modal-program-card-image">
-                          <img src={program.image_url} alt={program.title || 'Programa'} />
-                        </div>
-                      ) : (
-                        <div className="add-client-modal-program-card-placeholder">
-                          <span>{program.title?.charAt(0) || 'P'}</span>
-                        </div>
-                      )}
-                      <div className="add-client-modal-program-card-info">
-                        <span className="add-client-modal-program-card-title">
-                          {program.title || `Programa ${program.id.slice(0, 8)}`}
-                        </span>
-                        {program.discipline && (
-                          <span className="add-client-modal-program-card-discipline">{program.discipline}</span>
-                        )}
-                      </div>
-                      {selectedProgramId === program.id && (
-                        <div className="add-client-modal-program-card-check">✓</div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {!isLoadingPrograms && oneOnOnePrograms.length === 0 && (
-                <p className="add-client-modal-empty-hint">
-                  No tienes programas 1-on-1. Crea uno con el botón anterior o ve a Productos → 1-on-1.
-                </p>
-              )}
-            </div>
-          </section>
-
-          <div className="add-client-modal-actions">
-            <Button
-              title="Agregar cliente"
-              onClick={handleCreateClient}
-              disabled={!clientUserId.trim() || !selectedProgramId || isCreating || isLoadingPrograms || oneOnOnePrograms.length === 0}
-              loading={isCreating}
-            />
-          </div>
-        </div>
-      </Modal>
+      {/* Assign Program Modal (step 2) */}
+      <AssignProgramModal
+        isOpen={isAssignProgramModalOpen}
+        onClose={handleCloseAssignProgramModal}
+        user={lookedUpUser}
+        onAssign={handleAssign}
+        programs={oneOnOnePrograms}
+        isLoadingPrograms={isLoadingPrograms}
+        isAssigning={isAssigning}
+        error={assignError}
+        onCreateProgram={handleCreateProgram}
+      />
 
       {/* Client Detail Modal */}
       <Modal
