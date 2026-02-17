@@ -57,6 +57,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import PlanningLibrarySidebar from '../components/PlanningLibrarySidebar';
+import ProgramWeeksGrid from '../components/ProgramWeeksGrid';
+import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
+import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import './ProgramDetailScreen.css';
 
 const TAB_CONFIG = [
@@ -192,19 +196,6 @@ const isLibraryExerciseDataComplete = (exerciseData) => {
   const hasImplements = Boolean(exerciseData.implements && Array.isArray(exerciseData.implements) && exerciseData.implements.length > 0);
   
   return hasVideo && hasMuscles && hasImplements;
-};
-
-const getPrimaryReferences = (exercise) => {
-  if (!exercise || typeof exercise.primary !== 'object' || exercise.primary === null) {
-    return [];
-  }
-  
-  return Object.entries(exercise.primary)
-    .filter(([libraryId, exerciseName]) => Boolean(libraryId) && Boolean(exerciseName))
-    .map(([libraryId, exerciseName]) => ({
-      libraryId,
-      exerciseName,
-    }));
 };
 
 const getAlternativeReferences = (exercise) => {
@@ -736,6 +727,11 @@ const ProgramDetailScreen = () => {
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [deleteSessionConfirmation, setDeleteSessionConfirmation] = useState('');
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isMigratingSessionToLibrary, setIsMigratingSessionToLibrary] = useState(false);
+  const [weekVolumeDrawerOpen, setWeekVolumeDrawerOpen] = useState(false);
+  const [selectedWeekModuleIdForVolume, setSelectedWeekModuleIdForVolume] = useState('');
+  const [weekVolumeLoading, setWeekVolumeLoading] = useState(false);
+  const [weekVolumeMuscleVolumes, setWeekVolumeMuscleVolumes] = useState({});
   // ✅ NEW: Library session states
   const [librarySessions, setLibrarySessions] = useState([]);
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
@@ -764,6 +760,8 @@ const ProgramDetailScreen = () => {
   const [deleteExerciseConfirmation, setDeleteExerciseConfirmation] = useState('');
   const [isDeletingExercise, setIsDeletingExercise] = useState(false);
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
+  const [structureSearchQuery, setStructureSearchQuery] = useState('');
+  const [isAddingWeek, setIsAddingWeek] = useState(false);
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
   const [newExerciseDraft, setNewExerciseDraft] = useState(null);
   const [newExerciseSets, setNewExerciseSets] = useState([]);
@@ -918,11 +916,240 @@ const ProgramDetailScreen = () => {
     }
   };
 
+  const handleAddWeekForGrid = async () => {
+    if (!programId) return;
+    setIsAddingWeek(true);
+    try {
+      const nextNum = (gridModulesData?.length ?? 0) + 1;
+      await programService.createModule(programId, `Semana ${nextNum}`, null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+    } catch (err) {
+      alert(err?.message || 'Error al añadir semana');
+    } finally {
+      setIsAddingWeek(false);
+    }
+  };
+
+  const navigateToSessionEdit = useCallback(async (session, module) => {
+    console.log('[ProgramDetailScreen] navigateToSessionEdit called', {
+      programId,
+      hasUser: !!user,
+      userId: user?.uid,
+      hasModule: !!module,
+      moduleId: module?.id,
+      hasSession: !!session,
+      sessionId: session?.id,
+      sessionTitle: session?.title || session?.name,
+      librarySessionRef: session?.librarySessionRef,
+      hasLibraryService: !!libraryService,
+      hasProgramService: !!programService,
+    });
+    if (!programId || !user || !module) {
+      console.warn('[ProgramDetailScreen] navigateToSessionEdit early return: missing programId, user, or module', {
+        programId: !!programId,
+        user: !!user,
+        module: !!module,
+      });
+      return;
+    }
+    const targetLibraryId = session.librarySessionRef;
+    if (targetLibraryId) {
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: session has librarySessionRef, navigating', { targetLibraryId });
+      navigate(`/content/sessions/${targetLibraryId}`, { state: { returnTo: location.pathname } });
+      return;
+    }
+    console.log('[ProgramDetailScreen] navigateToSessionEdit: inline session, migrating to library');
+    setIsMigratingSessionToLibrary(true);
+    try {
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: creating library session');
+      const librarySession = await libraryService.createLibrarySession(user.uid, {
+        title: session.title || session.name || 'Sesión',
+        image_url: session.image_url || null,
+      });
+      const librarySessionId = librarySession.id;
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: library session created', { librarySessionId });
+      const programExercises = await programService.getExercisesBySession(programId, module.id, session.id);
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: loaded program exercises', { count: programExercises?.length ?? 0, exerciseIds: programExercises?.map((e) => e.id) });
+      for (let i = 0; i < programExercises.length; i++) {
+        const ex = programExercises[i];
+        const exerciseName = ex.title || ex.name || (ex.primary && typeof ex.primary === 'object' && Object.values(ex.primary)[0]) || 'Ejercicio';
+        console.log('[ProgramDetailScreen] navigateToSessionEdit: creating library exercise', { index: i, exerciseId: ex.id, exerciseName });
+        const created = await libraryService.createExerciseInLibrarySession(
+          user.uid,
+          librarySessionId,
+          exerciseName,
+          i
+        );
+        const exerciseUpdateData = {};
+        if (ex.primary != null && typeof ex.primary === 'object') exerciseUpdateData.primary = ex.primary;
+        if (ex.alternatives != null && typeof ex.alternatives === 'object') exerciseUpdateData.alternatives = ex.alternatives;
+        if (Array.isArray(ex.measures)) exerciseUpdateData.measures = ex.measures;
+        if (Array.isArray(ex.objectives)) exerciseUpdateData.objectives = ex.objectives;
+        if (ex.customObjectiveLabels != null && typeof ex.customObjectiveLabels === 'object') exerciseUpdateData.customObjectiveLabels = ex.customObjectiveLabels;
+        if (ex.customMeasureLabels != null && typeof ex.customMeasureLabels === 'object') exerciseUpdateData.customMeasureLabels = ex.customMeasureLabels;
+        if (Object.keys(exerciseUpdateData).length > 0) {
+          await libraryService.updateExerciseInLibrarySession(user.uid, librarySessionId, created.id, exerciseUpdateData);
+        }
+        const programSets = await programService.getSetsByExercise(programId, module.id, session.id, ex.id);
+        console.log('[ProgramDetailScreen] navigateToSessionEdit: loaded sets for exercise', { exerciseId: ex.id, setCount: programSets?.length ?? 0 });
+        for (let j = 0; j < programSets.length; j++) {
+          const setData = programSets[j];
+          const newSet = await libraryService.createSetInLibraryExercise(user.uid, librarySessionId, created.id, j);
+          const setUpdates = {};
+          const skipKeys = new Set(['id', 'created_at', 'updated_at']);
+          Object.keys(setData).forEach((k) => {
+            if (skipKeys.has(k)) return;
+            setUpdates[k] = setData[k];
+          });
+          if (Object.keys(setUpdates).length > 0) {
+            await libraryService.updateSetInLibraryExercise(
+              user.uid,
+              librarySessionId,
+              created.id,
+              newSet.id,
+              setUpdates
+            );
+          }
+        }
+      }
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: linking program session to library', { programId, moduleId: module.id, sessionId: session.id, librarySessionId });
+      await programService.updateSession(programId, module.id, session.id, {
+        librarySessionRef: librarySessionId,
+      });
+      console.log('[ProgramDetailScreen] navigateToSessionEdit: navigating to session edit screen', { librarySessionId, returnTo: location.pathname });
+      navigate(`/content/sessions/${librarySessionId}`, { state: { returnTo: location.pathname } });
+    } catch (err) {
+      console.error('[ProgramDetailScreen] navigateToSessionEdit: error migrating session to library', err);
+      console.error('[ProgramDetailScreen] navigateToSessionEdit: error stack', err?.stack);
+      alert(err?.message || 'Error al abrir la sesión para editar.');
+    } finally {
+      setIsMigratingSessionToLibrary(false);
+    }
+  }, [programId, user, navigate, location.pathname, libraryService, programService]);
+
+  const handleSessionClickFromGrid = (mod, sess) => {
+    const tabKey = effectiveTabConfig[currentTabIndex]?.key;
+    console.log('[ProgramDetailScreen] handleSessionClickFromGrid called', {
+      tabKey,
+      currentTabIndex,
+      isContenido: tabKey === 'contenido',
+      moduleId: mod?.id,
+      sessionId: sess?.id,
+      sessionTitle: sess?.title || sess?.name,
+      sessionLibraryRef: sess?.librarySessionRef,
+    });
+    if (tabKey === 'contenido') {
+      console.log('[ProgramDetailScreen] handleSessionClickFromGrid: Contenido tab, calling navigateToSessionEdit');
+      navigateToSessionEdit(sess, mod);
+      return;
+    }
+    console.log('[ProgramDetailScreen] handleSessionClickFromGrid: not Contenido, setting selected module/session');
+    setSelectedModule(mod);
+    setSelectedSession(sess);
+    setSessions(mod?.sessions ?? []);
+  };
+
   // Load modules with React Query (use counts for initial load)
   const { data: modulesData = [], isLoading: isLoadingModules } = useModules(programId, {
     isActive: isActivelyEditing,
     useCounts: true, // Use optimized version with counts
   });
+
+  const isContenidoTab = effectiveTabConfig[currentTabIndex]?.key === 'contenido';
+  const showContenidoGrid = isLowTicket && isContenidoTab && !contentPlanId && !selectedModule && !selectedSession;
+  const { data: gridModulesData = [], isLoading: isLoadingGridModules } = useModules(programId, {
+    useCounts: false,
+    enabled: !!programId && showContenidoGrid,
+  });
+
+  const weekVolumeWeekOptions = React.useMemo(
+    () =>
+      (gridModulesData || []).map((mod, i) => ({
+        value: mod.id,
+        label: `Semana ${i + 1}`,
+      })),
+    [gridModulesData]
+  );
+
+  useEffect(() => {
+    if (!weekVolumeDrawerOpen || !selectedWeekModuleIdForVolume || !user?.uid || !programId) {
+      if (!weekVolumeDrawerOpen) setWeekVolumeMuscleVolumes({});
+      return;
+    }
+    const mod = (gridModulesData || []).find((m) => m.id === selectedWeekModuleIdForVolume);
+    const sessions = mod?.sessions ?? [];
+    if (sessions.length === 0) {
+      setWeekVolumeMuscleVolumes({});
+      return;
+    }
+    let cancelled = false;
+    setWeekVolumeLoading(true);
+    (async () => {
+      try {
+        const allExercises = [];
+        const libraryIds = new Set();
+        for (const session of sessions) {
+          const ref = session.librarySessionRef;
+          if (ref) {
+            const libSession = await libraryService.getLibrarySessionById(user.uid, ref);
+            if (cancelled) return;
+            if (libSession?.exercises?.length) {
+              libSession.exercises.forEach((ex) => {
+                allExercises.push(ex);
+                getPrimaryReferences(ex).forEach(({ libraryId }) => {
+                  if (libraryId) libraryIds.add(libraryId);
+                });
+              });
+            }
+          } else {
+            const programExercises = await programService.getExercisesBySession(programId, mod.id, session.id);
+            if (cancelled) return;
+            for (const ex of programExercises || []) {
+              const setsData = await programService.getSetsByExercise(programId, mod.id, session.id, ex.id);
+              if (cancelled) return;
+              allExercises.push({ ...ex, sets: setsData || [] });
+              getPrimaryReferences(ex).forEach(({ libraryId }) => {
+                if (libraryId) libraryIds.add(libraryId);
+              });
+            }
+          }
+        }
+        if (cancelled) return;
+        const libraryDataCache = {};
+        for (const libraryId of libraryIds) {
+          const lib = await libraryService.getLibraryById(libraryId);
+          if (cancelled) return;
+          if (lib) libraryDataCache[libraryId] = lib;
+        }
+        if (cancelled) return;
+        const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
+        setWeekVolumeMuscleVolumes(volumes);
+      } catch (err) {
+        console.warn('[ProgramDetail] Week volume load failed:', err);
+        if (!cancelled) setWeekVolumeMuscleVolumes({});
+      } finally {
+        if (!cancelled) setWeekVolumeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    weekVolumeDrawerOpen,
+    selectedWeekModuleIdForVolume,
+    user?.uid,
+    programId,
+    gridModulesData,
+  ]);
+
+  const openWeekVolumeDrawer = useCallback(() => {
+    if ((gridModulesData || []).length > 0) {
+      const currentExists = (gridModulesData || []).some((m) => m.id === selectedWeekModuleIdForVolume);
+      if (!currentExists) setSelectedWeekModuleIdForVolume(gridModulesData[0].id);
+    }
+    setWeekVolumeDrawerOpen(true);
+  }, [gridModulesData, selectedWeekModuleIdForVolume]);
   
   // Sort and set modules (maintain local state for drag-and-drop)
   const [modules, setModules] = useState([]);
@@ -2969,14 +3196,29 @@ const ProgramDetailScreen = () => {
   }, [programId, selectedModule?.id, selectedSession?.id, exercises]);
 
   const handleSessionClick = useCallback((session) => {
+    const tabKey = effectiveTabConfig[currentTabIndex]?.key;
+    console.log('[ProgramDetailScreen] handleSessionClick called', {
+      isSessionEditMode,
+      tabKey,
+      currentTabIndex,
+      hasSelectedModule: !!selectedModule,
+      selectedModuleId: selectedModule?.id,
+      sessionId: session?.id,
+      sessionTitle: session?.title || session?.name,
+      sessionLibraryRef: session?.librarySessionRef,
+    });
     if (isSessionEditMode) {
+      console.log('[ProgramDetailScreen] handleSessionClick: in session edit mode, ignoring');
       return;
     }
-
+    if (tabKey === 'contenido' && selectedModule) {
+      console.log('[ProgramDetailScreen] handleSessionClick: Contenido tab with selectedModule, calling navigateToSessionEdit');
+      navigateToSessionEdit(session, selectedModule);
+      return;
+    }
+    console.log('[ProgramDetailScreen] handleSessionClick: setting selectedSession (Lab or no selectedModule)');
     setSelectedSession(session);
-    // Exercises will be loaded automatically via React Query hook
-    // Completeness checking is now handled via denormalized flags or on-demand
-  }, [isSessionEditMode]);
+  }, [isSessionEditMode, effectiveTabConfig, currentTabIndex, selectedModule, navigateToSessionEdit]);
 
   const handleBackToSessions = () => {
     setSelectedSession(null);
@@ -6137,151 +6379,7 @@ const ProgramDetailScreen = () => {
         );
       }
       case 'contenido':
-        // If a session is selected, show exercises view
-        if (selectedSession && selectedModule) {
-          return (
-            <div className="program-tab-content">
-              <div className="exercises-content">
-                <div className="exercises-header">
-                  <h2 className="page-section-title">Ejercicios</h2>
-                  {!contentPlanId && (
-                  <div className="exercises-actions">
-                  <button 
-                    className={`exercise-action-pill ${isExerciseEditMode ? 'exercise-action-pill-disabled' : ''}`}
-                    disabled={isExerciseEditMode}
-                    onClick={() => {
-                      if (!isExerciseEditMode) {
-                        // Create a new empty exercise draft
-                        const newExercise = {
-                          id: 'new', // Temporary ID
-                          primary: null,
-                          alternatives: {},
-                          measures: [],
-                          objectives: []
-                        };
-                        setSelectedExercise(newExercise);
-                        setExerciseDraft(JSON.parse(JSON.stringify(newExercise)));
-                        setSelectedExerciseTab('general');
-                        setIsCreatingExercise(true);
-                        setExerciseSets([]);
-                        setOriginalExerciseSets([]);
-                        setUnsavedSetChanges({});
-                        setIsExerciseModalOpen(true);
-                      }
-                    }}
-                  >
-                    <span className="exercise-action-icon">+</span>
-                  </button>
-                  <button 
-                    className="exercise-action-pill"
-                    onClick={handleEditExercises}
-                  >
-                    <span className="exercise-action-text">{isExerciseEditMode ? 'Guardar' : 'Editar'}</span>
-                  </button>
-                  </div>
-                  )}
-                </div>
-                
-                {/* Exercises List */}
-                {isLoadingExercises ? (
-                  <div className="exercises-loading">
-                    <p>Cargando ejercicios...</p>
-                  </div>
-                ) : exercises.length === 0 ? (
-                  <div className="exercises-empty">
-                    <p>No hay ejercicios en esta sesión aún.</p>
-                  </div>
-                ) : (
-                  <>
-                    {isExerciseEditMode ? (
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEndExercises}
-                      >
-                        <SortableContext
-                          items={exercises.map((exercise) => exercise.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <div className="exercises-list">
-                            {exercises.map((exercise, index) => (
-                              <SortableExerciseCard
-                                key={exercise.id}
-                                exercise={exercise}
-                                isExerciseEditMode={isExerciseEditMode}
-                                onDeleteExercise={handleDeleteExercise}
-                                exerciseIndex={index}
-                                isExerciseIncomplete={isExerciseIncomplete}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
-                    ) : (
-                      <div className="exercises-list">
-                        {exercises.map((exercise, index) => {
-                          // Extract title from primary field (map of library IDs to titles)
-                          const getExerciseTitle = () => {
-                            if (exercise.primary && typeof exercise.primary === 'object') {
-                              // Get the first value from the primary map
-                              const primaryValues = Object.values(exercise.primary);
-                              if (primaryValues.length > 0 && primaryValues[0]) {
-                                return primaryValues[0];
-                              }
-                            }
-                            // Fallback to name, title, or id
-                            return exercise.name || exercise.title || `Ejercicio ${exercise.id?.slice(0, 8) || ''}`;
-                          };
-
-                          // Get exercise number from order field, fallback to index + 1
-                          const exerciseNumber = (exercise.order !== undefined && exercise.order !== null) ? exercise.order + 1 : index + 1;
-
-                          return (
-                            <div 
-                              key={exercise.id} 
-                              className="exercise-card"
-                              onClick={() => handleExerciseClick(exercise)}
-                              style={{ cursor: 'pointer' }}
-                            >
-                              <div className="exercise-card-number">{exerciseNumber}</div>
-                              {!isExerciseEditMode && isExerciseIncomplete(exercise) && (
-                                <div className="exercise-incomplete-icon">
-                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                </div>
-                              )}
-                              <div className="exercise-card-header">
-                                <div className="exercise-card-title-row">
-                                <h3 className="exercise-card-title">
-                                  {getExerciseTitle()}
-                                </h3>
-                                </div>
-                              </div>
-                              {exercise.description && (
-                                <p className="exercise-card-description">{exercise.description}</p>
-                              )}
-                              {exercise.video_url && (
-                                <div className="exercise-card-video">
-                                  <video
-                                    src={exercise.video_url}
-                                    controls
-                                    className="exercise-card-video-player"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        }
-        
+        // Session edit opens LibrarySessionDetailScreen (inline sessions migrated to library first)
         // If a module is selected, show sessions view
         if (selectedModule) {
           const moduleName = selectedModule.title || selectedModule.name || `Módulo ${selectedModule.id?.slice(0, 8) || ''}`;
@@ -6389,39 +6487,86 @@ const ProgramDetailScreen = () => {
           );
         }
         
-        // Otherwise, show modules list
+        // Low-ticket: content from plan → message + link to edit plan
+        if (isLowTicket && contentPlanId) {
+          const linkedPlan = plans.find((p) => p.id === contentPlanId);
+          return (
+            <div className="program-tab-content">
+              <h1 className="program-page-title">Contenido</h1>
+              <div className="program-section" style={{ padding: 24, background: 'rgba(255,255,255,0.04)', borderRadius: 12 }}>
+                <p style={{ margin: 0, marginBottom: 16 }}>El contenido de este programa viene del plan de la biblioteca. Edita semanas y sesiones en el plan.</p>
+                <button
+                  type="button"
+                  className="program-page__tab"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={() => navigate(`/plans/${contentPlanId}`, { state: { returnTo: location.pathname } })}
+                >
+                  Ir al plan {linkedPlan?.title ? `"${linkedPlan.title}"` : ''}
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        // Low-ticket inline: weeks grid + library sidebar (planificación-style)
+        if (showContenidoGrid) {
+          return (
+            <div className="program-tab-content">
+              <h1 className="program-page-title">Contenido</h1>
+              <div className="plan-structure-layout client-program-planning-layout">
+                <div className="plan-structure-sidebars client-program-planning-left">
+                  <PlanningLibrarySidebar
+                    creatorId={user?.uid}
+                    searchQuery={structureSearchQuery}
+                    onSearchChange={setStructureSearchQuery}
+                  />
+                </div>
+                <div className="plan-structure-main client-program-planning-main">
+                  {isLoadingGridModules ? (
+                    <div className="modules-loading"><p>Cargando semanas...</p></div>
+                  ) : (
+                    <ProgramWeeksGrid
+                      programId={programId}
+                      modules={gridModulesData}
+                      onAddWeek={handleAddWeekForGrid}
+                      onDeleteWeek={() => {
+                        queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+                        queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+                      }}
+                      onSessionClick={handleSessionClickFromGrid}
+                      onOpenWeekVolume={openWeekVolumeDrawer}
+                      libraryService={libraryService}
+                      plansService={plansService}
+                      creatorId={user?.uid}
+                      isAddingWeek={isAddingWeek}
+                      queryClient={queryClient}
+                      queryKeys={queryKeys}
+                    />
+                  )}
+                </div>
+              </div>
+              <WeekVolumeDrawer
+                isOpen={weekVolumeDrawerOpen}
+                onClose={() => setWeekVolumeDrawerOpen(false)}
+                title="Volumen de la semana"
+                subtitle="Series efectivas por músculo (intensidad ≥7) para esta semana."
+                weekOptions={weekVolumeWeekOptions}
+                selectedWeekValue={selectedWeekModuleIdForVolume}
+                onWeekChange={setSelectedWeekModuleIdForVolume}
+                loading={weekVolumeLoading}
+                plannedMuscleVolumes={weekVolumeMuscleVolumes}
+                emptyMessage="Añade sesiones con ejercicios (e intensidad ≥7) a esta semana para ver el volumen por músculo."
+                variant="card"
+                weekSelectorStyle="list"
+              />
+            </div>
+          );
+        }
+
+        // Otherwise, show modules list (drill-down)
         return (
           <div className="program-tab-content">
             <h1 className="program-page-title">Contenido</h1>
-            {isLowTicket && (
-              <div className="program-content-source-bar" style={{ marginBottom: 24, padding: '12px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 12 }}>
-                <span style={{ fontWeight: 600, fontSize: 14, marginRight: 12 }}>Fuente del contenido:</span>
-                <select
-                  value={contentPlanId ?? ''}
-                  onChange={(e) => handleContentPlanChange(e.target.value || null)}
-                  disabled={isSavingContentPlan}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'rgba(255,255,255,0.9)',
-                    fontSize: 14,
-                    minWidth: 220,
-                    marginRight: 12,
-                  }}
-                >
-                  <option value="">Crear contenido aquí (inline)</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>{p.title || `Plan ${p.id?.slice(0, 8)}`}</option>
-                  ))}
-                </select>
-                {isSavingContentPlan && <span style={{ fontSize: 13, opacity: 0.7 }}>Guardando...</span>}
-                <span style={{ display: 'block', fontSize: 12, opacity: 0.6, marginTop: 8 }}>
-                  {contentPlanId ? 'El contenido viene del plan seleccionado.' : 'Crea módulos, sesiones y ejercicios directamente en este programa.'}
-                </span>
-              </div>
-            )}
             <div className="program-section">
               <div className="program-section__header program-section__header--row">
                 <h2 className="program-section__title">Módulos</h2>
@@ -6538,38 +6683,68 @@ const ProgramDetailScreen = () => {
   const getBackPath = () => {
     if (selectedSession) return null;
     if (selectedModule) return null;
-    return '/products';
+    return location.state?.returnTo || '/products';
   };
 
-  const isContenidoTab = effectiveTabConfig[currentTabIndex]?.key === 'contenido';
+  const backState = location.state?.returnState ?? {};
+
   const showBreadcrumb = isContenidoTab && (selectedModule || selectedSession);
 
   return (
     <DashboardLayout 
       screenName={getScreenName()}
-      headerBackgroundImage={selectedSession?.image_url || program?.image_url || null}
+      headerBackgroundImage={isLowTicket ? null : (selectedSession?.image_url || program?.image_url || null)}
       onHeaderEditClick={selectedSession ? handleEditSessionClick : handleEditProgramClick}
       onBack={selectedSession ? handleBackToSessions : selectedModule ? handleBackToModules : null}
       showBackButton={shouldShowBackButton}
       backPath={getBackPath()}
+      backState={backState}
     >
-      <div className="program-page">
+      <div className={`program-page ${isLowTicket ? 'program-page--compact-header' : ''}`}>
         <main className="program-page__main">
-          {/* Top menu */}
-          <nav className="program-page__top-nav" aria-label="Secciones del programa">
-            {effectiveTabConfig.map((tab, index) => (
-              <button
-                key={tab.key}
-                type="button"
-                className={`program-page__tab ${currentTabIndex === index ? 'program-page__tab--active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-page__tab--disabled' : ''}`}
-                onClick={() => handleTabClick(index)}
-                disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
-              >
-                <span className="program-page__tab-icon">{tab.icon}</span>
-                <span className="program-page__tab-label">{tab.navLabel || tab.title}</span>
-              </button>
-            ))}
-          </nav>
+          {/* Top menu: one-on-one style (sliding pill) for low-ticket, legacy style for 1-on-1 */}
+          {isLowTicket ? (
+            <div className="program-detail-tab-bar program-detail-tab-bar--client-style" aria-label="Secciones del programa">
+              <div className="program-detail-tab-bar__container">
+                <div className="program-detail-tab-bar__indicator-wrapper">
+                  {effectiveTabConfig.map((tab, index) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      className={`program-detail-tab-bar__button ${currentTabIndex === index ? 'program-detail-tab-bar__button--active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-detail-tab-bar__button--disabled' : ''}`}
+                      onClick={() => handleTabClick(index)}
+                      disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
+                    >
+                      <span className="program-detail-tab-bar__label">{tab.navLabel || tab.title}</span>
+                    </button>
+                  ))}
+                  <div
+                    className="program-detail-tab-bar__indicator"
+                    style={{
+                      width: `${100 / effectiveTabConfig.length}%`,
+                      transform: `translateX(${currentTabIndex * 100}%)`,
+                    }}
+                    aria-hidden
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <nav className="program-page__top-nav" aria-label="Secciones del programa">
+              {effectiveTabConfig.map((tab, index) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`program-page__tab ${currentTabIndex === index ? 'program-page__tab--active' : ''} ${isModuleEditMode || isSessionEditMode || isExerciseEditMode ? 'program-page__tab--disabled' : ''}`}
+                  onClick={() => handleTabClick(index)}
+                  disabled={isModuleEditMode || isSessionEditMode || isExerciseEditMode}
+                >
+                  <span className="program-page__tab-icon">{tab.icon}</span>
+                  <span className="program-page__tab-label">{tab.navLabel || tab.title}</span>
+                </button>
+              ))}
+            </nav>
+          )}
 
           {/* Breadcrumb when in Contenido and drilled in */}
           {showBreadcrumb && (
@@ -6624,6 +6799,20 @@ const ProgramDetailScreen = () => {
           </div>
         </main>
       </div>
+
+      {/* Migration overlay: preparing inline session for library edit */}
+      {isMigratingSessionToLibrary && (
+        <div
+          className="program-detail-migrating-overlay"
+          role="alert"
+          aria-busy="true"
+        >
+          <div className="program-detail-migrating-content">
+            <div className="program-detail-migrating-spinner" aria-hidden />
+            <p className="program-detail-migrating-text">Preparando sesión para editar...</p>
+          </div>
+        </div>
+      )}
 
       {/* Status Change Modal */}
       <Modal

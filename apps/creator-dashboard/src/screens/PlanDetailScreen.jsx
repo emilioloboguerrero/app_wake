@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import PlanStructureSidebar from '../components/PlanStructureSidebar';
 import PlanWeeksGrid from '../components/PlanWeeksGrid';
+import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import propagationService from '../services/propagationService';
+import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import './PlanDetailScreen.css';
@@ -34,6 +36,11 @@ const PlanDetailScreen = () => {
   const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
   const [isPropagating, setIsPropagating] = useState(false);
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
+  const [isAddingWeek, setIsAddingWeek] = useState(false);
+  const [weekVolumeDrawerOpen, setWeekVolumeDrawerOpen] = useState(false);
+  const [selectedWeekModuleIdForVolume, setSelectedWeekModuleIdForVolume] = useState('');
+  const [weekVolumeLoading, setWeekVolumeLoading] = useState(false);
+  const [weekVolumeMuscleVolumes, setWeekVolumeMuscleVolumes] = useState({});
 
   const isNew = planId === 'new';
 
@@ -83,6 +90,7 @@ const PlanDetailScreen = () => {
 
   const handleAddWeek = async () => {
     if (!planId) return;
+    setIsAddingWeek(true);
     try {
       const maxOrder = modulesWithSessions.length === 0
         ? -1
@@ -94,6 +102,8 @@ const PlanDetailScreen = () => {
       setHasMadeChanges(true);
     } catch (err) {
       alert(err.message || 'Error al añadir semana');
+    } finally {
+      setIsAddingWeek(false);
     }
   };
 
@@ -143,11 +153,90 @@ const PlanDetailScreen = () => {
     loadModulesWithSessions();
   };
 
+  const weekVolumeWeekOptions = React.useMemo(
+    () =>
+      (modulesWithSessions || []).map((mod, i) => ({
+        value: mod.id,
+        label: `Semana ${i + 1}`,
+      })),
+    [modulesWithSessions]
+  );
+
+  useEffect(() => {
+    if (!weekVolumeDrawerOpen || !selectedWeekModuleIdForVolume || !user?.uid || !planId) {
+      if (!weekVolumeDrawerOpen) setWeekVolumeMuscleVolumes({});
+      return;
+    }
+    const mod = modulesWithSessions.find((m) => m.id === selectedWeekModuleIdForVolume);
+    const sessions = mod?.sessions ?? [];
+    if (sessions.length === 0) {
+      setWeekVolumeMuscleVolumes({});
+      return;
+    }
+    let cancelled = false;
+    setWeekVolumeLoading(true);
+    (async () => {
+      try {
+        const allExercises = [];
+        const libraryIds = new Set();
+        for (const session of sessions) {
+          const ref = session.librarySessionRef;
+          if (!ref) continue;
+          const libSession = await libraryService.getLibrarySessionById(user.uid, ref);
+          if (cancelled) return;
+          if (libSession?.exercises?.length) {
+            libSession.exercises.forEach((ex) => {
+              allExercises.push(ex);
+              getPrimaryReferences(ex).forEach(({ libraryId }) => {
+                if (libraryId) libraryIds.add(libraryId);
+              });
+            });
+          }
+        }
+        if (cancelled) return;
+        const libraryDataCache = {};
+        for (const libraryId of libraryIds) {
+          const lib = await libraryService.getLibraryById(libraryId);
+          if (cancelled) return;
+          if (lib) libraryDataCache[libraryId] = lib;
+        }
+        if (cancelled) return;
+        const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
+        setWeekVolumeMuscleVolumes(volumes);
+      } catch (err) {
+        console.warn('[PlanDetail] Week volume load failed:', err);
+        if (!cancelled) setWeekVolumeMuscleVolumes({});
+      } finally {
+        if (!cancelled) setWeekVolumeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    weekVolumeDrawerOpen,
+    selectedWeekModuleIdForVolume,
+    user?.uid,
+    planId,
+    modulesWithSessions,
+    libraryService,
+  ]);
+
+  const openWeekVolumeDrawer = useCallback(() => {
+    if (modulesWithSessions.length > 0) {
+      const currentExists = modulesWithSessions.some((m) => m.id === selectedWeekModuleIdForVolume);
+      if (!currentExists) setSelectedWeekModuleIdForVolume(modulesWithSessions[0].id);
+    }
+    setWeekVolumeDrawerOpen(true);
+  }, [modulesWithSessions, selectedWeekModuleIdForVolume]);
+
+  const contentReturnState = { activeTab: 'contenido' };
+
   const handleBack = () => {
     if (hasMadeChanges && propagateAffectedCount > 0) {
       setIsNavigateModalOpen(true);
     } else {
-      navigate('/content');
+      navigate('/content', { state: contentReturnState });
     }
   };
 
@@ -220,13 +309,13 @@ const PlanDetailScreen = () => {
   const handleNavigatePropagate = async () => {
     await handlePropagatePlan();
     setIsNavigateModalOpen(false);
-    navigate('/content');
+    navigate('/content', { state: contentReturnState });
   };
 
   const handleNavigateLeaveWithoutPropagate = () => {
     setIsNavigateModalOpen(false);
     setHasMadeChanges(false);
-    navigate('/content');
+    navigate('/content', { state: contentReturnState });
   };
 
   if (!user) {
@@ -350,6 +439,8 @@ const PlanDetailScreen = () => {
               plansService={plansService}
               libraryService={libraryService}
               creatorId={user.uid}
+              isAddingWeek={isAddingWeek}
+              onOpenWeekVolume={openWeekVolumeDrawer}
             />
           </div>
         </div>
@@ -374,6 +465,20 @@ const PlanDetailScreen = () => {
           isPropagating={isPropagating}
           onPropagate={handleNavigatePropagate}
           onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
+        />
+        <WeekVolumeDrawer
+          isOpen={weekVolumeDrawerOpen}
+          onClose={() => setWeekVolumeDrawerOpen(false)}
+          title="Volumen de la semana"
+          subtitle="Series efectivas por músculo (intensidad ≥7) para esta semana."
+          weekOptions={weekVolumeWeekOptions}
+          selectedWeekValue={selectedWeekModuleIdForVolume}
+          onWeekChange={setSelectedWeekModuleIdForVolume}
+          loading={weekVolumeLoading}
+          plannedMuscleVolumes={weekVolumeMuscleVolumes}
+          emptyMessage="Añade sesiones con ejercicios (e intensidad ≥7) a esta semana para ver el volumen por músculo."
+          variant="card"
+          weekSelectorStyle="list"
         />
         <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Editar plan">
           <div className="plan-modal-body">

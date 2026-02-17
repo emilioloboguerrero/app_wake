@@ -13,6 +13,7 @@ import WarmupScreen from '../screens/WarmupScreen';
 import WorkoutCompletionScreen from '../screens/WorkoutCompletionScreen';
 import CourseStructureScreen from '../screens/CourseStructureScreen';
 import CreatorProfileScreen from '../screens/CreatorProfileScreen';
+import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -39,6 +40,7 @@ const MainStackNavigator = () => {
       <Stack.Screen name="WorkoutExecution" component={withErrorBoundary(WorkoutExecutionScreen, 'WorkoutExecution')} />
       <Stack.Screen name="WorkoutCompletion" component={withErrorBoundary(WorkoutCompletionScreen, 'WorkoutCompletion')} />
       <Stack.Screen name="CourseStructure" component={withErrorBoundary(CourseStructureScreen, 'CourseStructure')} />
+      <Stack.Screen name="UpcomingCallDetail" component={withErrorBoundary(UpcomingCallDetailScreen, 'UpcomingCallDetail')} />
     </Stack.Navigator>
   );
 };

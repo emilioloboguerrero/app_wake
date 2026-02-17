@@ -1,0 +1,577 @@
+/* Week volume drawer: slide-out from right, same content as session volume panel */
+
+.week-volume-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 900;
+  animation: week-volume-drawer-fade-in 0.2s ease;
+}
+
+.week-volume-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 100%;
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+  animation: week-volume-drawer-slide-in 0.25s ease;
+}
+
+/* Card variant: same size/shape as session volume card, does not go all the way up */
+.week-volume-drawer--card {
+  top: 80px;
+  bottom: auto;
+  height: auto;
+  max-height: calc(100vh - 160px);
+  border-radius: 16px;
+  right: 24px;
+  overflow: hidden;
+}
+
+@keyframes week-volume-drawer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes week-volume-drawer-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.week-volume-drawer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #1a1a1a;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.week-volume-drawer-panel--card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  min-height: 400px;
+}
+
+.week-volume-drawer-header {
+  flex-shrink: 0;
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.week-volume-drawer-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.week-volume-drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.week-volume-drawer-close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.week-volume-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.week-volume-drawer-week-selector {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.week-volume-drawer-week-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+
+.week-volume-drawer-week-select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.week-volume-drawer-week-select:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.week-volume-drawer-week-select:focus {
+  outline: none;
+  border-color: rgba(191, 168, 77, 0.5);
+  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.15);
+}
+
+.week-volume-drawer-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 10px 0 0 0;
+  font-family: inherit;
+}
+
+.week-volume-drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.week-volume-drawer-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.week-volume-drawer-content::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.week-volume-drawer-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.week-volume-drawer-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.week-volume-drawer-loading,
+.week-volume-drawer-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.week-volume-drawer-svg-wrap {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 200px;
+}
+
+.week-volume-drawer-cards-wrapper {
+  flex: 1;
+  min-height: 220px;
+  position: relative;
+  width: 100%;
+}
+
+.week-volume-drawer-cards-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  scroll-snap-type: x mandatory;
+}
+
+.week-volume-drawer-card {
+  flex: 0 0 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.week-volume-drawer-pie-card {
+  min-height: 180px;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.week-volume-drawer-pie-chart-wrap {
+  flex: 0 0 auto;
+  width: 140px;
+  min-height: 160px;
+}
+
+.week-volume-drawer-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+}
+
+.week-volume-drawer-pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.week-volume-drawer-pie-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.week-volume-drawer-pie-legend-name {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.week-volume-drawer-pie-legend-sets {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.week-volume-drawer-sets-card {
+  min-height: 180px;
+  justify-content: flex-start;
+  padding: 0;
+  overflow: hidden;
+}
+
+.week-volume-drawer-sets-card-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.week-volume-drawer-sets-card-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.week-volume-drawer-sets-card-scroll::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.week-volume-drawer-sets-card-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.week-volume-drawer-sets-card-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.week-volume-drawer-muscle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.week-volume-drawer-muscle-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+.week-volume-drawer-muscle-sets {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.week-volume-drawer-desliza {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 8px 12px;
+}
+
+.week-volume-drawer-desliza-lateral {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 6px 0 0 0;
+}
+
+.week-volume-drawer-pie-chart .recharts-pie text {
+  font-size: 6px !important;
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.week-volume-drawer-pie-tooltip {
+  background: rgba(30, 30, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-volume-drawer-pie-tooltip-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.week-volume-drawer-pie-tooltip-sets {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.week-volume-drawer-cards-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.week-volume-drawer-cards-row::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.week-volume-drawer-cards-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.week-volume-drawer-cards-row::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Bottom replica: mini calendar */
+.week-volume-drawer-replica {
+  flex-shrink: 0;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.week-volume-drawer-replica-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 12px 0;
+  font-family: inherit;
+}
+
+.week-volume-drawer-replica-weeks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.week-volume-drawer-replica-week-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  font-family: inherit;
+}
+
+.week-volume-drawer-replica-week-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.week-volume-drawer-replica-week-btn--selected {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.week-volume-drawer-mini-calendar {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.week-volume-drawer-mini-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+
+.week-volume-drawer-mini-calendar-month {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+  text-align: center;
+}
+
+.week-volume-drawer-mini-calendar-nav {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.week-volume-drawer-mini-calendar-nav:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.week-volume-drawer-mini-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.week-volume-drawer-mini-calendar-weekday {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.week-volume-drawer-mini-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.week-volume-drawer-mini-calendar-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: default;
+  font-family: inherit;
+  padding: 0;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.week-volume-drawer-mini-calendar-day--other {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.week-volume-drawer-mini-calendar-day--selectable {
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.week-volume-drawer-mini-calendar-day--selectable:hover,
+.week-volume-drawer-mini-calendar-day--hovered-week {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.week-volume-drawer-mini-calendar-day--hovered-week {
+  background: rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(191, 168, 77, 0.55);
+  border-bottom: 1px solid rgba(191, 168, 77, 0.55);
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+}
+
+.week-volume-drawer-mini-calendar-day--hovered-week.week-volume-drawer-mini-calendar-day--week-start {
+  border-left: 1px solid rgba(191, 168, 77, 0.6);
+}
+
+.week-volume-drawer-mini-calendar-day--hovered-week.week-volume-drawer-mini-calendar-day--week-end {
+  border-right: 1px solid rgba(191, 168, 77, 0.6);
+}
+
+.week-volume-drawer-mini-calendar-day--selectable:disabled {
+  cursor: not-allowed;
+}
+
+.week-volume-drawer-mini-calendar-day--selected {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.week-volume-drawer-mini-calendar-day--selected.week-volume-drawer-mini-calendar-day--other {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}

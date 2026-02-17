@@ -205,6 +205,8 @@
 .plan-page-toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 0 0 12px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

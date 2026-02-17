@@ -22,6 +22,12 @@ const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
 
+const fatSecretClientId = functions.params.defineSecret(
+  "FATSECRET_CLIENT_ID"
+);
+const fatSecretClientSecret = functions.params.defineSecret(
+  "FATSECRET_CLIENT_SECRET"
+);
 
 // Simple Mercado Pago client
 const getClient = () => {
@@ -2139,3 +2145,318 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
     };
   }
 );
+
+// ============================================
+// NUTRITION (FatSecret proxy) — Step 2
+// ============================================
+// Optional: set this only if FatSecret requires a single whitelisted IP (then use
+// Serverless VPC connector + Cloud NAT). With 0.0.0.0/0 and ::/0 in FatSecret, leave empty.
+const NUTRITION_VPC_CONNECTOR = "";
+
+const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
+const fatSecretTokenCache = new Map<
+  string,
+  { token: string; expiresAt: number }
+>();
+
+async function getFatSecretToken(
+  clientId: string,
+  clientSecret: string,
+  scope: string = "basic"
+): Promise<string> {
+  const cached = fatSecretTokenCache.get(scope);
+  if (
+    cached &&
+    Date.now() < cached.expiresAt - FATSECRET_TOKEN_BUFFER_MS
+  ) {
+    return cached.token;
+  }
+
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    scope,
+  }).toString();
+
+  const res = await fetch("https://oauth.fatsecret.com/connect/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": `Basic ${auth}`,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    functions.logger.error("FatSecret token request failed", {
+      status: res.status,
+      body: text,
+    });
+    throw new Error("FatSecret auth failed");
+  }
+
+  const data = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+  };
+
+  if (!data?.access_token) {
+    functions.logger.error("FatSecret token response missing access_token");
+    throw new Error("FatSecret auth failed");
+  }
+
+  const expiresAt =
+    Date.now() + (typeof data.expires_in === "number" ? data.expires_in : 86400) * 1000;
+  fatSecretTokenCache.set(scope, { token: data.access_token, expiresAt });
+  return data.access_token;
+}
+
+function setNutritionCors(res: Response): void {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+}
+
+const nutritionRunOptions: functions.RuntimeOptions = {
+  secrets: [fatSecretClientId, fatSecretClientSecret],
+  ...(NUTRITION_VPC_CONNECTOR
+    ? {
+        vpcConnector: NUTRITION_VPC_CONNECTOR,
+        vpcConnectorEgressSettings: "ALL_TRAFFIC" as const,
+      }
+    : {}),
+};
+
+export const nutritionFoodSearch = functions
+  .runWith(nutritionRunOptions)
+  .https.onRequest(async (request, response) => {
+    setNutritionCors(response);
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+    if (request.method !== "POST") {
+      response.status(405).json({success: false, error: "Method not allowed"});
+      return;
+    }
+
+    try {
+      const clientId = fatSecretClientId.value();
+      const clientSecret = fatSecretClientSecret.value();
+      if (!clientId || !clientSecret) {
+        response.status(502).json({
+          success: false,
+          error: "Nutrition service not configured",
+        });
+        return;
+      }
+
+      const {search_expression, page_number, max_results} = request.body || {};
+      if (!search_expression || typeof search_expression !== "string") {
+        response.status(400).json({
+          success: false,
+          error: "search_expression is required",
+        });
+        return;
+      }
+
+      const token = await getFatSecretToken(clientId, clientSecret, "premier");
+      const params = new URLSearchParams({
+        search_expression: search_expression.trim(),
+        page_number: String(typeof page_number === "number" ? page_number : 0),
+        max_results: String(
+          typeof max_results === "number" ? Math.min(50, max_results) : 20
+        ),
+        format: "json",
+      });
+
+      const url = `https://platform.fatsecret.com/rest/foods/search/v4?${params}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        functions.logger.error("FatSecret foods.search failed", {
+          status: res.status,
+          body: text,
+        });
+        response.status(502).json({
+          success: false,
+          error: "Food search failed",
+        });
+        return;
+      }
+
+      const json = await res.json();
+      response.json(json);
+    } catch (error: unknown) {
+      const message = toErrorMessage(error);
+      functions.logger.error("nutritionFoodSearch error", error);
+      response.status(502).json({
+        success: false,
+        error: message || "Food search failed",
+      });
+    }
+  });
+
+export const nutritionFoodGet = functions
+  .runWith(nutritionRunOptions)
+  .https.onRequest(async (request, response) => {
+    setNutritionCors(response);
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+    if (request.method !== "POST") {
+      response.status(405).json({success: false, error: "Method not allowed"});
+      return;
+    }
+
+    try {
+      const clientId = fatSecretClientId.value();
+      const clientSecret = fatSecretClientSecret.value();
+      if (!clientId || !clientSecret) {
+        response.status(502).json({
+          success: false,
+          error: "Nutrition service not configured",
+        });
+        return;
+      }
+
+      const {food_id} = request.body || {};
+      if (food_id === undefined || food_id === null || food_id === "") {
+        response.status(400).json({
+          success: false,
+          error: "food_id is required",
+        });
+        return;
+      }
+
+      const token = await getFatSecretToken(clientId, clientSecret, "basic");
+      const params = new URLSearchParams({
+        food_id: String(food_id),
+        format: "json",
+      });
+      const url = `https://platform.fatsecret.com/rest/food/v5?${params}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          response.status(404).json({success: false, error: "Food not found"});
+          return;
+        }
+        const text = await res.text();
+        functions.logger.error("FatSecret food.get failed", {
+          status: res.status,
+          body: text,
+        });
+        response.status(502).json({
+          success: false,
+          error: "Food details failed",
+        });
+        return;
+      }
+
+      const json = await res.json();
+      response.json(json);
+    } catch (error: unknown) {
+      const message = toErrorMessage(error);
+      functions.logger.error("nutritionFoodGet error", error);
+      response.status(502).json({
+        success: false,
+        error: message || "Food details failed",
+      });
+    }
+  });
+
+export const nutritionBarcodeLookup = functions
+  .runWith(nutritionRunOptions)
+  .https.onRequest(async (request, response) => {
+    setNutritionCors(response);
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+    if (request.method !== "POST") {
+      response.status(405).json({success: false, error: "Method not allowed"});
+      return;
+    }
+
+    try {
+      const clientId = fatSecretClientId.value();
+      const clientSecret = fatSecretClientSecret.value();
+      if (!clientId || !clientSecret) {
+        response.status(502).json({
+          success: false,
+          error: "Nutrition service not configured",
+        });
+        return;
+      }
+
+      const {barcode} = request.body || {};
+      if (!barcode || typeof barcode !== "string") {
+        response.status(400).json({
+          success: false,
+          error: "barcode is required",
+        });
+        return;
+      }
+
+      const token = await getFatSecretToken(
+        clientId,
+        clientSecret,
+        "basic barcode"
+      );
+      const params = new URLSearchParams({
+        barcode: barcode.trim(),
+        format: "json",
+      });
+      const url = `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as {error?: {code?: number}};
+        if (res.status === 404 || errBody?.error?.code === 211) {
+          response.status(404).json({success: false, error: "No food found for barcode"});
+          return;
+        }
+        functions.logger.error("FatSecret barcode failed", {
+          status: res.status,
+          body: errBody,
+        });
+        response.status(502).json({
+          success: false,
+          error: "Barcode lookup failed",
+        });
+        return;
+      }
+
+      const json = await res.json();
+      response.json(json);
+    } catch (error: unknown) {
+      const message = toErrorMessage(error);
+      functions.logger.error("nutritionBarcodeLookup error", error);
+      response.status(502).json({
+        success: false,
+        error: message || "Barcode lookup failed",
+      });
+    }
+  });

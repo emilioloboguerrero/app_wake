@@ -696,6 +696,37 @@ class ProgramService {
           standaloneModule.title = `Semana ${moduleOrder + 1}`;
         }
         
+        // Load sessions subcollection for standalone modules (inline/old-format programs)
+        try {
+          const sessionsRef = collection(firestore, 'courses', programId, 'modules', docSnapshot.id, 'sessions');
+          const sessionsSnap = await getDocs(query(sessionsRef, orderBy('order', 'asc')));
+          let sessions = sessionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (sessions.length > 0 && creatorId) {
+            const { default: libraryService } = await import('./libraryService');
+            sessions = await Promise.all(
+              sessions.map(async (sess) => {
+                if (sess.librarySessionRef) {
+                  try {
+                    const lib = await libraryService.getLibrarySessionById(creatorId, sess.librarySessionRef);
+                    if (lib) {
+                      return {
+                        ...sess,
+                        title: sess.title ?? lib.title ?? lib.name ?? 'Sesión',
+                        image_url: sess.image_url ?? lib.image_url ?? null,
+                      };
+                    }
+                  } catch (_) {}
+                }
+                return sess;
+              })
+            );
+          }
+          standaloneModule.sessions = sessions;
+        } catch (e) {
+          console.warn('[getModulesByProgram] Could not load sessions for standalone module', docSnapshot.id, e);
+          standaloneModule.sessions = [];
+        }
+        
         modules.push(standaloneModule);
       }
       
@@ -1200,23 +1231,18 @@ class ProgramService {
     }
   }
 
-  // Create a new session
+  // Create a new session. Always appends (order = max+1) so the UI can then call updateSessionOrder to place it.
   async createSession(programId, moduleId, sessionName, order = null, imageUrl = null, librarySessionRef = null) {
     try {
-      // If order is not provided, calculate it by getting the max order from existing sessions
-      let sessionOrder = order;
-      if (sessionOrder === null) {
-        const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
-        const q = query(sessionsRef, orderBy('order', 'desc'), limit(1));
-        const querySnapshot = await getDocs(q);
-        sessionOrder = 0;
-        if (!querySnapshot.empty) {
-          const lastSession = querySnapshot.docs[0].data();
-          sessionOrder = (lastSession.order !== undefined && lastSession.order !== null) ? lastSession.order + 1 : 0;
-        }
-      }
-      
       const sessionsRef = collection(firestore, 'courses', programId, 'modules', moduleId, 'sessions');
+      const q = query(sessionsRef, orderBy('order', 'desc'), limit(1));
+      const querySnapshot = await getDocs(q);
+      let sessionOrder = 0;
+      if (!querySnapshot.empty) {
+        const lastSession = querySnapshot.docs[0].data();
+        sessionOrder = (lastSession.order !== undefined && lastSession.order !== null) ? lastSession.order + 1 : 0;
+      }
+
       const newSession = {
         order: sessionOrder,
         created_at: serverTimestamp(),
@@ -1448,6 +1474,44 @@ class ProgramService {
       console.error('Error updating session order:', error);
       throw error;
     }
+  }
+
+  /**
+   * Move a session from one module (week) to another. Copies session doc (title, image_url, librarySessionRef)
+   * into the target module at the given slot, then deletes from source. Inline exercises/sets are not copied.
+   */
+  async moveSession(programId, fromModuleId, toModuleId, sessionId, toSlotIndex) {
+    if (!programId || !fromModuleId || !toModuleId || !sessionId) {
+      throw new Error('Missing required parameters for moveSession');
+    }
+    if (fromModuleId === toModuleId) {
+      throw new Error('Source and target module must be different');
+    }
+    if (toSlotIndex < 0 || toSlotIndex > 6) {
+      throw new Error('toSlotIndex must be 0-6');
+    }
+    const sessionRef = doc(firestore, 'courses', programId, 'modules', fromModuleId, 'sessions', sessionId);
+    const sessionSnap = await getDoc(sessionRef);
+    if (!sessionSnap.exists()) {
+      throw new Error('Session not found');
+    }
+    const data = sessionSnap.data();
+    const title = data.title || data.name || null;
+    const imageUrl = data.image_url ?? null;
+    const librarySessionRef = data.librarySessionRef ?? null;
+    const created = await this.createSession(
+      programId,
+      toModuleId,
+      title,
+      null,
+      imageUrl,
+      librarySessionRef
+    );
+    await this.updateSessionOrder(programId, toModuleId, [
+      { sessionId: created.id, order: toSlotIndex },
+    ]);
+    await this.deleteSession(programId, fromModuleId, sessionId);
+    return created;
   }
 
   // Get exercises for a session

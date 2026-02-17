@@ -52,7 +52,22 @@ const CalendarView = ({
   assignedPrograms = [],
   selectedProgramId = null,
   planWeeksCount = {}, // optional: { [planId]: number } for "Plan name (N semanas)"
-  onVerDesempeno = null
+  onVerDesempeno = null,
+  // Loading states from parent (planificación tab) - disable actions and show feedback
+  isAddingSessionToPlanDay = false,
+  isPersonalizingPlanWeek = false,
+  isResettingPlanWeek = false,
+  isDeletingPlanSession = false,
+  isMovingPlanSession = false,
+  isAssigningPlan = false,
+  assigningPlanWeekKey = null,
+  isRemovingPlanFromWeek = false,
+  removingPlanWeekKey = null,
+  isAssigningSession = false,
+  isDeletingSessionAssignment = false,
+  showVolumeButton = false,
+  onVolumeClick,
+  onWeekClick
 }) => {
   const PLAN_BAR_COLOR = 'rgba(78, 64, 44, 0.96)'; // rich bronze/amber (más llamativo)
   const PLAN_BAR_ACCENT = 'rgba(191, 168, 77, 0.65)'; // visible gold accent
@@ -478,6 +493,8 @@ const CalendarView = ({
     }
     console.log('[CalendarView] handleDrop rawData', rawData ? rawData.substring(0, 120) : '(empty)');
     if (!rawData) return;
+    // Prevent double drop while a previous action is in progress
+    if (isAddingSessionToPlanDay || isMovingPlanSession || isAssigningPlan || isAssigningSession) return;
 
     try {
       const dragData = JSON.parse(rawData);
@@ -581,9 +598,19 @@ const CalendarView = ({
     return plan?.title ?? `Plan ${planId?.slice(0, 8)}` ?? 'Plan';
   };
 
+  const isPlanificationBusy = isAddingSessionToPlanDay || isPersonalizingPlanWeek || isResettingPlanWeek ||
+    isDeletingPlanSession || isMovingPlanSession || isAssigningPlan || isRemovingPlanFromWeek ||
+    isAssigningSession || isDeletingSessionAssignment;
+
   return (
-    <div className="calendar-view">
+    <div className={`calendar-view ${isPlanificationBusy ? 'calendar-view-busy' : ''}`}>
       {/* Month/Year Selector */}
+      {isPlanificationBusy && (
+        <div className="calendar-saving-bar" role="status" aria-live="polite">
+          <span className="calendar-saving-bar-spinner" aria-hidden />
+          Guardando...
+        </div>
+      )}
       <div className="calendar-header-controls">
         <div className="calendar-month-year-selector">
           <select 
@@ -598,25 +625,41 @@ const CalendarView = ({
             ))}
           </select>
         </div>
-        <div className="calendar-nav-buttons">
-          <button 
-            className="calendar-nav-button"
-            onClick={handlePrevMonth}
-            aria-label="Mes anterior"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <button 
-            className="calendar-nav-button"
-            onClick={handleNextMonth}
-            aria-label="Mes siguiente"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+        <div className="calendar-header-right">
+          {showVolumeButton && onVolumeClick && (
+            <button
+              type="button"
+              className="calendar-volume-button"
+              onClick={onVolumeClick}
+              aria-label="Ver volumen de la semana"
+              title="Volumen"
+            >
+              <svg className="calendar-volume-button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12M12 3C16.9706 3 21 7.02944 21 12M12 3V12M21 12H12M18 18.5L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="calendar-volume-button-label">Volumen</span>
+            </button>
+          )}
+          <div className="calendar-nav-buttons">
+            <button 
+              className="calendar-nav-button"
+              onClick={handlePrevMonth}
+              aria-label="Mes anterior"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <button 
+              className="calendar-nav-button"
+              onClick={handleNextMonth}
+              aria-label="Mes siguiente"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -668,13 +711,25 @@ const CalendarView = ({
             const planBar = planId ? (
               <div
                 key={`plan-${weekKey}`}
-                className="calendar-week-plan-bar"
+                className={`calendar-week-plan-bar ${onWeekClick ? 'calendar-week-plan-bar-clickable' : ''}`}
                 style={{
                   backgroundColor: PLAN_BAR_COLOR,
                   borderLeftColor: PLAN_BAR_ACCENT,
                   '--calendar-plan-gradient-start': PLAN_BAR_COLOR,
                 }}
-                title={planTitle}
+                title={onWeekClick ? `${planTitle}. Clic para ver volumen de la semana.` : planTitle}
+                onClick={onWeekClick ? (e) => {
+                  if (e.target.closest('.calendar-week-plan-bar-actions')) return;
+                  onWeekClick(weekKey);
+                } : undefined}
+                role={onWeekClick ? 'button' : undefined}
+                tabIndex={onWeekClick ? 0 : undefined}
+                onKeyDown={onWeekClick ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (!e.target.closest('.calendar-week-plan-bar-actions')) onWeekClick(weekKey);
+                  }
+                } : undefined}
               >
                 <span className="calendar-week-plan-bar-label">{planBarLabel}</span>
                 {onRemovePlanFromWeek && (
@@ -995,8 +1050,9 @@ const CalendarView = ({
                 setPlanBarMenuContext(null);
                 onRemovePlanFromWeek(planBarMenuContext.weekKey);
               }}
+              disabled={isRemovingPlanFromWeek}
             >
-              Quitar plan de esta semana
+              {isRemovingPlanFromWeek && removingPlanWeekKey === planBarMenuContext.weekKey ? 'Quitando...' : 'Quitar plan de esta semana'}
             </button>
           </div>,
           document.body
@@ -1071,8 +1127,9 @@ const CalendarView = ({
                         weekContent: sessionMenuContext.weekContent
                       });
                     }}
+                    disabled={isDeletingPlanSession}
                   >
-                    Eliminar de esta semana
+                    {isDeletingPlanSession ? 'Eliminando...' : 'Eliminar de esta semana'}
                   </button>
                 )}
               </>
@@ -1197,16 +1254,18 @@ const CalendarView = ({
                                   type="button"
                                   className="calendar-day-info-plan-btn calendar-day-info-plan-btn-reset"
                                   onClick={() => onResetPlanWeek?.({ assignment, weekKey: selectedDayInfo.weekKey })}
+                                  disabled={isResettingPlanWeek}
                                 >
-                                  Restablecer al plan original
+                                  {isResettingPlanWeek ? 'Restableciendo...' : 'Restablecer al plan original'}
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   className="calendar-day-info-plan-btn calendar-day-info-plan-btn-personalize"
                                   onClick={() => onPersonalizePlanWeek?.({ assignment, weekKey: selectedDayInfo.weekKey })}
+                                  disabled={isPersonalizingPlanWeek}
                                 >
-                                  Personalizar esta semana
+                                  {isPersonalizingPlanWeek ? 'Personalizando...' : 'Personalizar esta semana'}
                                 </button>
                               )}
                             </div>

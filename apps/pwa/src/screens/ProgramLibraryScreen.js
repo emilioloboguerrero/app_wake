@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
+  PanResponder,
   useWindowDimensions,
   Image,
   Modal,
@@ -17,6 +18,7 @@ import TextInput from '../components/TextInput';
 // import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
+import profilePictureService from '../services/profilePictureService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { auth } from '../config/firebase';
 import hybridDataService from '../services/hybridDataService';
@@ -30,9 +32,48 @@ import { KeyboardAvoidingView, Keyboard, TouchableWithoutFeedback } from 'react-
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
+import SvgFilter from '../components/icons/vectors_fig/Interface/FilterIcon';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgInfo from '../components/icons/SvgInfo';
 import logger from '../utils/logger.js';
+const LIBRARY_TAB_CONFIG = [
+  { key: 'creators', title: 'Creadores' },
+  { key: 'programs', title: 'Programas' },
+];
+
+const CreatorCard = React.memo(({ creator, onPress, styles }) => {
+  const [imageUrl, setImageUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    profilePictureService.getProfilePictureUrl(creator.id).then((url) => {
+      if (!cancelled && url) setImageUrl(url);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [creator.id]);
+  return (
+    <TouchableOpacity style={styles.creatorCardContainer} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.creatorCard}>
+        <View style={styles.creatorImagePlaceholder}>
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.creatorImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.creatorImageFallback}>
+              <SvgCloudOff width={32} height={32} stroke="#ffffff" strokeWidth={1.5} />
+            </View>
+          )}
+        </View>
+        <View style={styles.creatorContent}>
+          <Text style={styles.creatorName}>{creator.name || 'Creador'}</Text>
+          {creator.discipline ? (
+            <Text style={styles.creatorInfo}>{creator.discipline}</Text>
+          ) : null}
+        </View>
+        <SvgChevronRight width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.creatorArrow} />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 const ProgramLibraryScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
@@ -86,6 +127,58 @@ const ProgramLibraryScreen = ({ navigation }) => {
     [screenWidth, screenHeight],
   );
   
+  // Library top menu: 0 = Creatores, 1 = Programas
+  const [libraryTabIndex, setLibraryTabIndex] = useState(0);
+  const libraryPagerRef = useRef(null);
+  const lastScrollIndexRef = useRef(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollOffsetXRef = useRef(0);
+  const swipeStartXRef = useRef(0);
+
+  // Keep scroll offset ref in sync for PanResponder-driven scroll
+  useEffect(() => {
+    const listenerId = scrollX.addListener(({ value }) => {
+      scrollOffsetXRef.current = value;
+    });
+    return () => scrollX.removeListener(listenerId);
+  }, [scrollX]);
+
+  // Capture horizontal swipes anywhere below search (tab bar + pager) to scroll between pages
+  const librarySwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onPanResponderGrant: () => {
+          swipeStartXRef.current = scrollOffsetXRef.current;
+        },
+        onMoveShouldSetResponderCapture: (_, gestureState) => {
+          const { dx, dy } = gestureState;
+          const threshold = 12;
+          return Math.abs(dx) > threshold && Math.abs(dx) > Math.abs(dy);
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const pager = libraryPagerRef.current;
+          if (!pager) return;
+          const { dx } = gestureState;
+          const x = Math.max(0, Math.min(screenWidth, swipeStartXRef.current - dx));
+          pager.scrollTo({ x, animated: false });
+          scrollOffsetXRef.current = x;
+        },
+        onPanResponderRelease: () => {
+          const pager = libraryPagerRef.current;
+          if (!pager) return;
+          const x = scrollOffsetXRef.current;
+          const page = Math.round(x / screenWidth);
+          const target = Math.max(0, Math.min(page, LIBRARY_TAB_CONFIG.length - 1)) * screenWidth;
+          pager.scrollTo({ x: target, animated: true });
+          scrollOffsetXRef.current = target;
+          const index = Math.round(target / screenWidth);
+          lastScrollIndexRef.current = index;
+          setLibraryTabIndex(index);
+        },
+      }),
+    [screenWidth]
+  );
+
   // Consolidated state management
   const [state, setState] = useState({
     courses: [],
@@ -115,6 +208,31 @@ const ProgramLibraryScreen = ({ navigation }) => {
   
   // Debounced search timer
   const searchTimeoutRef = useRef(null);
+
+  // Tab bar content width (screen minus margins) for gradual indicator
+  const tabBarMargin = useMemo(() => Math.max(24, screenWidth * 0.06), [screenWidth]);
+  const tabIndicatorStep = useMemo(
+    () => (screenWidth - 2 * tabBarMargin) / LIBRARY_TAB_CONFIG.length,
+    [screenWidth, tabBarMargin]
+  );
+
+  // Unique creators derived from courses (for Creatores tab)
+  const creatorsList = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    (state.courses || []).forEach((course) => {
+      const id = course.creator_id || course.creatorId;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push({
+          id,
+          name: course.creatorName || course.creator_name || 'Creador',
+          discipline: course.discipline || null,
+        });
+      }
+    });
+    return list;
+  }, [state.courses]);
 
   // Check for tutorials to show (defined before fetchCourses since fetchCourses calls it)
   const checkForTutorials = useCallback(async () => {
@@ -348,6 +466,10 @@ const ProgramLibraryScreen = ({ navigation }) => {
     navigation.navigate('CourseDetail', { course });
   }, [navigation]);
 
+  const handleCreatorPress = useCallback((creator) => {
+    navigation.navigate('CreatorProfile', { creatorId: creator.id });
+  }, [navigation]);
+
   const handleImageLoadStart = useCallback((courseId) => {
     // Use ref to avoid triggering re-renders
     imageLoadingStatesRef.current[courseId] = true;
@@ -409,6 +531,17 @@ const ProgramLibraryScreen = ({ navigation }) => {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
   };
+
+  const renderCreatorCard = useCallback((creator, index) => {
+    return (
+      <CreatorCard
+        key={creator.id}
+        creator={creator}
+        onPress={() => handleCreatorPress(creator)}
+        styles={styles}
+      />
+    );
+  }, [handleCreatorPress]);
 
   const renderModulesView = useCallback((course) => {
     const modules = state.courseModules[course.id] || [];
@@ -523,8 +656,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
       />
       
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+          <View style={styles.libraryOuterContainer}>
         <WakeHeaderContent style={styles.content}>
           {/* Spacer for fixed header */}
           <WakeHeaderSpacer />
@@ -545,72 +678,181 @@ const ProgramLibraryScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Search Bar */}
-          {state.courses.length > 0 && (
-            <View style={styles.searchContainer}>
-              <View style={styles.searchInputContainer}>
-                <SvgSearchMagnifyingGlass 
-                  width={18} 
-                  height={18} 
-                  stroke="#ffffff" 
-                  strokeWidth={1} 
-                  style={styles.searchIcon}
+          {/* Search bar + Filter button (above tab menu) */}
+          <View style={styles.searchRowContainer}>
+            <View style={styles.searchInputContainer}>
+              <SvgSearchMagnifyingGlass
+                width={18}
+                height={18}
+                stroke="#ffffff"
+                strokeWidth={1}
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar programas"
+                placeholderTextColor="#ffffff"
+                value={state.searchQuery}
+                onChangeText={handleSearchChange}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+                blurOnSubmit={true}
+                editable={state.courses.length > 0}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.filterButton}
+              onPress={() => { /* Filter functionality to be implemented */ }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.filterIconWrapper}>
+                <SvgFilter width={20} height={20} stroke="#ffffff" strokeWidth={1.5} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Wrapper: horizontal swipe anywhere (tab bar + content) scrolls between pages */}
+          <View style={styles.librarySwipeArea} {...librarySwipeResponder.panHandlers}>
+            {/* Library top menu: names only + subtle indicator */}
+            <View style={styles.libraryTabBar}>
+              <View style={styles.libraryTabHeaderContainer}>
+                <Animated.View
+                  style={[
+                    styles.libraryTabIndicator,
+                    {
+                      width: tabIndicatorStep,
+                      transform: [
+                        {
+                          translateX: scrollX.interpolate({
+                            inputRange: [0, screenWidth],
+                            outputRange: [0, tabIndicatorStep],
+                            extrapolate: 'clamp',
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                 />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Buscar programas"
-                  placeholderTextColor="#ffffff"
-                  value={state.searchQuery}
-                  onChangeText={handleSearchChange}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  blurOnSubmit={true}
-                  editable={state.courses.length > 0}
-                />
+                {LIBRARY_TAB_CONFIG.map((tab, index) => {
+                  const tabOpacity = scrollX.interpolate({
+                    inputRange: [0, screenWidth],
+                    outputRange: index === 0 ? [1, 0.45] : [0.45, 1],
+                    extrapolate: 'clamp',
+                  });
+                  return (
+                    <TouchableOpacity
+                      key={tab.key}
+                      style={styles.libraryTabButton}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        lastScrollIndexRef.current = index;
+                        setLibraryTabIndex(index);
+                        if (libraryPagerRef.current) {
+                          libraryPagerRef.current.scrollTo({ x: index * screenWidth, animated: true });
+                        }
+                      }}
+                    >
+                      <Animated.Text style={[styles.libraryTabTitle, { opacity: tabOpacity }]}>
+                        {tab.title}
+                      </Animated.Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
-          )}
 
-          {/* Programs Section */}
-          <View style={styles.recentSection}>
-            
-            {state.loading ? (
-              <LoadingSpinner 
-                size="large" 
-                text="Cargando programas..." 
-                containerStyle={styles.programsLoadingContainer}
-              />
-            ) : state.error ? (
-              <View style={styles.programsErrorContainer}>
-                <Text style={styles.programsErrorText}>{state.error}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                  <Text style={styles.retryButtonText}>Reintentar</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
+            {/* Horizontal pager: Creatores first, then Programas */}
+            <Animated.ScrollView
+              ref={libraryPagerRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                { useNativeDriver: false }
+              )}
+              onMomentumScrollEnd={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+                const clamped = Math.max(0, Math.min(index, LIBRARY_TAB_CONFIG.length - 1));
+                lastScrollIndexRef.current = clamped;
+                setLibraryTabIndex(clamped);
+              }}
+              style={styles.libraryPager}
+              contentContainerStyle={styles.libraryPagerContent}
+            >
+            {/* Page 0: Creatores */}
+            <ScrollView
+              style={[styles.libraryPage, { width: screenWidth }]}
+              contentContainerStyle={styles.libraryPageContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {state.loading ? (
+                <LoadingSpinner
+                  size="large"
+                  text="Cargando..."
+                  containerStyle={styles.programsLoadingContainer}
+                />
+              ) : state.error ? (
+                <View style={styles.programsErrorContainer}>
+                  <Text style={styles.programsErrorText}>{state.error}</Text>
+                  <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                    <Text style={styles.retryButtonText}>Reintentar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : creatorsList.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No hay creadores disponibles.</Text>
+                  <Text style={styles.emptySubtext}>Los creadores aparecen cuando publican programas.</Text>
+                </View>
+              ) : (
+                <View style={styles.creatorsContainer}>
+                  {creatorsList.map((creator, index) => renderCreatorCard(creator, index))}
+                </View>
+              )}
+              <BottomSpacer />
+            </ScrollView>
+
+            {/* Page 1: Programas */}
+            <ScrollView
+              style={[styles.libraryPage, { width: screenWidth }]}
+              contentContainerStyle={styles.libraryPageContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {state.loading ? (
+                <LoadingSpinner
+                  size="large"
+                  text="Cargando programas..."
+                  containerStyle={styles.programsLoadingContainer}
+                />
+              ) : state.error ? (
+                <View style={styles.programsErrorContainer}>
+                  <Text style={styles.programsErrorText}>{state.error}</Text>
+                  <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                    <Text style={styles.retryButtonText}>Reintentar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
                 <View style={styles.coursesContainer}>
                   {state.filteredCourses.map((course, index) => renderCourseCard(course, index))}
                 </View>
-
-              </>
-            )}
-
-            {/* Empty State */}
-            {!state.loading && !state.error && state.filteredCourses.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  {state.searchQuery ? `No se encontraron programas para "${state.searchQuery}"` : 'No hay programas disponibles en este momento.'}
-                </Text>
-                <Text style={styles.emptySubtext}>
-                  {state.searchQuery ? 'Intenta con otros términos de búsqueda' : '¡Pronto agregaremos más contenido!'}
-                </Text>
-              </View>
-            )}
+              )}
+              {!state.loading && !state.error && state.filteredCourses.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>
+                    {state.searchQuery ? `No se encontraron programas para "${state.searchQuery}"` : 'No hay programas disponibles en este momento.'}
+                  </Text>
+                  <Text style={styles.emptySubtext}>
+                    {state.searchQuery ? 'Intenta con otros términos de búsqueda' : '¡Pronto agregaremos más contenido!'}
+                  </Text>
+                </View>
+              )}
+              <BottomSpacer />
+            </ScrollView>
+          </Animated.ScrollView>
           </View>
-          <BottomSpacer />
         </WakeHeaderContent>
-      </ScrollView>
+          </View>
       </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
       
@@ -672,13 +914,32 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  libraryOuterContainer: {
+    flex: 1,
+  },
+  libraryPager: {
+    flex: 1,
+  },
+  libraryPagerContent: {
+    flexGrow: 0,
+  },
+  libraryPage: {
+    width: undefined,
+    flexGrow: 0,
+    minHeight: screenHeight,
+  },
+  libraryPageContent: {
+    paddingBottom: 20,
+    flexGrow: 1,
+    minHeight: screenHeight,
+  },
   content: {
     paddingBottom: 20, // Normal padding
   },
   titleSection: {
     paddingTop: 0,
     marginTop: 0,
-    marginBottom: Math.max(20, screenHeight * 0.03), // Match ProfileScreen
+    marginBottom: Math.max(10, screenHeight * 0.015),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -690,7 +951,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
     textAlign: 'left',
     paddingLeft: screenWidth * 0.12, // Match ProfileScreen padding
-    marginBottom: 20,
+    marginBottom: 10,
     flex: 1,
   },
   infoIconButton: {
@@ -698,16 +959,111 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
   },
-  searchContainer: {
+  librarySwipeArea: {
+    flex: 1,
+  },
+  libraryTabBar: {
     marginBottom: 15,
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  libraryTabHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    paddingVertical: 8,
+    minHeight: 44,
+  },
+  // Subtle tab indicator: thin underline (alternatives: dot, softer line, gold tint – tweak below)
+  libraryTabIndicator: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  libraryTabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    zIndex: 1,
+  },
+  libraryTabTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  creatorsContainer: {
+    gap: 15,
+  },
+  creatorCardContainer: {
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  creatorCard: {
+    flexDirection: 'row',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    minHeight: Math.max(55, screenHeight * 0.07),
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  creatorImagePlaceholder: {
+    width: 70,
+    height: 70,
+    backgroundColor: '#555555',
+    borderRadius: 8,
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  creatorImage: {
+    width: '100%',
+    height: '100%',
+  },
+  creatorImageFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#555555',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  creatorContent: {
+    flex: 1,
+  },
+  creatorName: {
+    fontSize: 15,
+    color: '#ffffff',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  creatorInfo: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#ffffff',
+    opacity: 0.8,
+  },
+  creatorArrow: {
+    marginLeft: 2,
+    marginRight: 10,
+  },
+  searchRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+    gap: 12,
   },
   searchInputContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
+    borderRadius: Math.max(12, screenWidth * 0.04),
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     shadowColor: 'rgba(255, 255, 255, 0.4)',
@@ -715,9 +1071,30 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-    paddingVertical: Math.max(16, screenHeight * 0.02), // Responsive padding
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Match ProfileScreen margins
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    paddingVertical: Math.max(10, screenHeight * 0.014),
+  },
+  filterButton: {
+    alignSelf: 'stretch',
+    width: Math.max(44, screenWidth * 0.11),
+    minHeight: Math.max(44, screenHeight * 0.052),
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterIconWrapper: {
+    opacity: 0.65,
+  },
+  searchContainer: {
+    marginBottom: 15,
   },
   searchIcon: {
     marginRight: 12,

@@ -1,6 +1,23 @@
 {
   "indexes": [
     {
+      "collectionGroup": "call_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "call_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "plans",
       "queryScope": "COLLECTION",
       "fields": [
@@ -23,6 +40,38 @@
       "fields": [
         {"fieldPath": "client_id", "order": "ASCENDING"},
         {"fieldPath": "date_timestamp", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "meals",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "nutrition_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "startDate", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "nutrition_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "assignedBy", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "diary",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "date", "order": "ASCENDING"},
+        {"fieldPath": "meal", "order": "ASCENDING"}
       ]
     }
   ],

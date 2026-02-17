@@ -545,7 +545,7 @@ export default function InstallScreen() {
                   <span className="install-card-pill-icon">
                     <AñadirIcon className="install-card-pill-plus" />
                   </span>
-                  <span className="install-card-pill-text">Añadir a pantalla de inicio</span>
+                  <span className="install-card-pill-text">Añadir a inicio</span>
                 </div>
                 <p className="install-card-note">¿No la ves? Toca «Editar acciones» y actívala.</p>
                 <button type="button" className="install-ver-imagen" onClick={() => setExpandedMainStep((s) => (s === 3 ? null : 3))} aria-expanded={expandedMainStep === 3}>

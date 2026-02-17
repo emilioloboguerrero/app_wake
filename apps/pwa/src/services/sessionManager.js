@@ -95,6 +95,12 @@ class SessionManager {
         });
       });
     }
+    // Low-ticket: do not tie sessions to a calendar day (no "Hoy" by weekday, no sort by day)
+    if (courseData.deliveryType === 'low_ticket') {
+      allSessions.forEach(s => {
+        delete s.dayIndex;
+      });
+    }
     // One-on-one week: sort by dayIndex (0=Mon, 1=Tue, ...) so list order = weekday order and "Hoy" can use calendar index
     const hasDayIndex = allSessions.some(s => s.dayIndex != null);
     if (hasDayIndex) {

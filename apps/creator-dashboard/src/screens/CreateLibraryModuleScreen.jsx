@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
@@ -9,7 +9,10 @@ import './ProgramDetailScreen.css';
 
 const CreateLibraryModuleScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  const backPath = location.state?.returnTo || '/content';
+  const backState = location.state?.returnState ?? {};
   const [moduleName, setModuleName] = useState('');
   const [isCreatingModule, setIsCreatingModule] = useState(false);
 
@@ -27,8 +30,7 @@ const CreateLibraryModuleScreen = () => {
         sessionRefs: []
       });
       
-      // Navigate back to content hub
-      navigate('/content');
+      navigate(backPath, { state: backState });
     } catch (err) {
       console.error('Error creating library module:', err);
       alert(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
@@ -38,14 +40,15 @@ const CreateLibraryModuleScreen = () => {
   };
 
   const handleCancel = () => {
-    navigate(-1);
+    navigate(backPath, { state: backState });
   };
 
   return (
     <DashboardLayout
       screenName="Nuevo Módulo"
       showBackButton={true}
-      backPath="/content"
+      backPath={backPath}
+      backState={backState}
     >
       <div style={{ 
         minHeight: '100vh', 

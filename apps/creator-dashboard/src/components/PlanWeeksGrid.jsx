@@ -23,6 +23,8 @@ const PlanWeeksGrid = ({
   plansService,
   libraryService = null,
   creatorId = null,
+  isAddingWeek = false,
+  onOpenWeekVolume = null,
 }) => {
   const navigate = useNavigate();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
@@ -38,6 +40,7 @@ const PlanWeeksGrid = ({
   const [menuAnchorEl, setMenuAnchorEl] = useState(null); // DOM element for portal positioning
   const [openWeekMenu, setOpenWeekMenu] = useState(null); // moduleId
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null); // { type: 'week'|'session', mod, modIndex?, session?, moduleId? }
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!openMenuSession) return;
@@ -176,7 +179,7 @@ const PlanWeeksGrid = ({
   const handleConfirmDelete = async () => {
     if (!deleteConfirmTarget) return;
     const { type, mod, modIndex, session, moduleId } = deleteConfirmTarget;
-    setDeleteConfirmTarget(null);
+    setIsDeleting(true);
     try {
       if (type === 'week') {
         await plansService.deleteModule(planId, mod.id);
@@ -187,8 +190,11 @@ const PlanWeeksGrid = ({
         await plansService.deleteSession(planId, moduleId, session.id);
       }
       await refreshModules();
+      setDeleteConfirmTarget(null);
     } catch (err) {
       alert(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -215,11 +221,35 @@ const PlanWeeksGrid = ({
   return (
     <div className="plan-weeks-grid">
       <div className="plan-weeks-grid-header">
-        <button type="button" className="plan-weeks-add-week-btn" onClick={onAddWeek}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          Añadir semana
+        {onOpenWeekVolume && (
+          <button
+            type="button"
+            className="plan-weeks-volume-btn"
+            onClick={onOpenWeekVolume}
+            disabled={modules.length === 0}
+            title="Ver volumen por músculo de la semana"
+            aria-label="Volumen"
+          >
+            <svg className="plan-weeks-volume-btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12M12 3C16.9706 3 21 7.02944 21 12M12 3V12M21 12H12M18 18.5L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Volumen
+          </button>
+        )}
+        <button type="button" className="plan-weeks-add-week-btn" onClick={onAddWeek} disabled={isAddingWeek}>
+          {isAddingWeek ? (
+            <>
+              <span className="plan-weeks-add-week-spinner" aria-hidden />
+              Añadiendo...
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              Añadir semana
+            </>
+          )}
         </button>
       </div>
 
@@ -401,6 +431,7 @@ const PlanWeeksGrid = ({
               type="button"
               className="plan-btn plan-btn--secondary"
               onClick={() => setDeleteConfirmTarget(null)}
+              disabled={isDeleting}
             >
               Cancelar
             </button>
@@ -408,8 +439,9 @@ const PlanWeeksGrid = ({
               type="button"
               className="plan-btn plan-btn--danger"
               onClick={handleConfirmDelete}
+              disabled={isDeleting}
             >
-              Eliminar
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
             </button>
           </div>
         </div>

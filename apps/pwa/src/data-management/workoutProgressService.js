@@ -489,6 +489,21 @@ class WorkoutProgressService {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
         }
       }
+      // For non-one-on-one programs, merge fresh modules from Firestore so creator dashboard changes (reorder, move sessions) are visible without re-downloading
+      if (!courseData?.courseData?.isOneOnOne && courseData?.courseData) {
+        try {
+          const freshModules = await firestoreService.getCourseModules(courseId, effectiveUserId);
+          if (freshModules && Array.isArray(freshModules)) {
+            courseData = {
+              ...courseData,
+              courseData: { ...courseData.courseData, modules: freshModules },
+            };
+            logger.log('📦 [getCourseDataForWorkout] merged fresh modules from Firestore:', freshModules.length);
+          }
+        } catch (e) {
+          logger.warn('Could not refresh modules for workout, using cache:', e?.message);
+        }
+      }
       // One-on-one: keep full week module; only attach today's planned session id for initial selection (no longer replace modules)
       if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
         const today = new Date();

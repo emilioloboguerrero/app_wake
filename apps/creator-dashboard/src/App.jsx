@@ -22,6 +22,8 @@ import ContentHubScreen from './screens/ContentHubScreen';
 import PlanDetailScreen from './screens/PlanDetailScreen';
 import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
 import ProgramsAndClientsScreen from './screens/ProgramsAndClientsScreen';
+import AvailabilityCalendarScreen from './screens/AvailabilityCalendarScreen';
+import NutritionScreen from './screens/NutritionScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -169,10 +171,26 @@ function AppContent() {
                 <ProtectedRoute>
                   <ClientProgramScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route 
-              path="/profile" 
+              path="/availability" 
+              element={
+                <ProtectedRoute>
+                  <AvailabilityCalendarScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route 
+              path="/nutrition" 
+              element={
+                <ProtectedRoute>
+                  <NutritionScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route 
+              path="/profile"
               element={
                 <ProtectedRoute>
                   <ProfileScreen />

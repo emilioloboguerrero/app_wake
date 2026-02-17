@@ -440,16 +440,17 @@ const ProgramsScreen = () => {
       }
       
       handleCloseModal();
+      const productTypeState = { productType: searchParams.get('type') || deliveryType || 'low_ticket' };
       // Navigate to the new program page
       if (newProgram?.id && !newProgram.id.startsWith('temp-')) {
-        navigate(`/programs/${newProgram.id}`);
+        navigate(`/programs/${newProgram.id}`, { state: { returnTo: '/products', returnState: productTypeState } });
       } else {
         // Wait a bit for cache to update
       setTimeout(() => {
         const programs = queryClient.getQueryData(queryKeys.programs.byCreator(user.uid)) || [];
           const foundProgram = programs.find(p => p.title === programName.trim());
           if (foundProgram && foundProgram.id && !foundProgram.id.startsWith('temp-')) {
-            navigate(`/programs/${foundProgram.id}`);
+            navigate(`/programs/${foundProgram.id}`, { state: { returnTo: '/products', returnState: productTypeState } });
         }
       }, 500);
       }
@@ -547,7 +548,8 @@ const ProgramsScreen = () => {
                   className={`program-card ${isEditMode ? 'program-card-edit-mode' : ''}`}
                   onClick={() => {
                     if (!isEditMode) {
-                      navigate(`/programs/${program.id}`);
+                      const productTypeState = { productType: programDeliveryType || 'low_ticket' };
+                      navigate(`/programs/${program.id}`, { state: { returnTo: '/products', returnState: productTypeState } });
                     }
                   }}
                 >

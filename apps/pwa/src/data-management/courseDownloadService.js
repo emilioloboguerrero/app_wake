@@ -177,7 +177,11 @@ class CourseDownloadService {
         imageUrl: courseData.image_url || courseData.imageUrl,
         currentWeek,
         libraryVersions,
-        courseData: { ...courseData, modules: modules || [] }
+        courseData: {
+          ...courseData,
+          modules: modules || [],
+          deliveryType: courseData.deliveryType ?? 'low_ticket'
+        }
       };
       await this.storeCourseLocally(courseId, {
         ...basicCourseData,
@@ -329,7 +333,11 @@ class CourseDownloadService {
         currentWeek,
         libraryVersions,
         clientProgramVersion,
-        courseData: { ...courseData, modules: modules || [] },
+        courseData: {
+          ...courseData,
+          modules: modules || [],
+          deliveryType: courseData.deliveryType ?? 'low_ticket'
+        },
         clientProgram: clientProgram || null
       };
       

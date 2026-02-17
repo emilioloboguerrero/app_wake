@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback } from 'react-native';
-import { collection, getDocs, query, where, orderBy, limit, collectionGroup } from 'firebase/firestore';
+import { View, StyleSheet, ActivityIndicator, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
-import { ImageBackground } from 'expo-image';
+import { ImageBackground, Image as ExpoImage } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import SvgPlay from '../components/icons/SvgPlay';
@@ -23,15 +23,21 @@ import logger from '../utils/logger';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgInfo from '../components/icons/SvgInfo';
+import SvgListChecklist from '../components/icons/SvgListChecklist';
+import SvgChat from '../components/icons/vectors_fig/Communication/Chat';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import { getMuscleDisplayName } from '../constants/muscles';
 import { getMuscleColorForText } from '../utils/muscleColorUtils';
 import { creatorProfileCache } from '../utils/cache';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
+import { isAdmin, isCreator } from '../utils/roleHelper';
+// Only load on native — react-native-linear-gradient uses requireNativeComponent and breaks on web
+const NativeLinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 
 const TAB_CONFIG = [
-  { key: 'profile', title: 'Perfil' },
-  { key: 'lab', title: 'Lab' },
   { key: 'programs', title: 'Programas' },
+  { key: 'profile', title: 'Perfil' },
 ];
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
@@ -230,6 +236,7 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
             source={{ uri: item.value }}
             style={styles.storyMedia}
             imageStyle={styles.storyMediaImage}
+            contentFit="cover"
           />
         )}
 
@@ -248,9 +255,26 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
   );
 });
 
+// Filter programs by viewer role (same logic as ProgramLibraryScreen)
+function filterProgramsByViewer(programs, viewerUid, viewerRole) {
+  if (!programs || programs.length === 0) return programs;
+  return programs.filter((course) => {
+    const courseStatus = course.status || course.estado;
+    const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
+    if (isAdmin(viewerRole)) return true;
+    if (isCreator(viewerRole)) {
+      const isOwnDraft = !isPublished && course.creator_id === viewerUid;
+      return isPublished || isOwnDraft;
+    }
+    return isPublished;
+  });
+}
+
 const CreatorProfileScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { creatorId, imageUrl: initialImageUrl } = route.params || {};
+  const { user: contextUser } = useAuth();
+  const effectiveViewer = contextUser || auth.currentUser;
   const [imageUrl, setImageUrl] = useState(initialImageUrl || null);
   const [loading, setLoading] = useState(!initialImageUrl && !!creatorId);
   const [displayName, setDisplayName] = useState('');
@@ -261,51 +285,64 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const STORY_CARD_HEIGHT = screenHeight * 0.6;
   const STORY_CARD_SPACING = 4;
   const STORY_CARD_SNAP = STORY_CARD_WIDTH + STORY_CARD_SPACING;
-  
+
+  // Carousel dimensions — match Perfil story cards so Programas and Perfil feel consistent
+  const CARD_MARGIN = screenWidth * 0.1;
+  const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // same as STORY_CARD_WIDTH (0.8 * screenWidth)
+  const CARD_HEIGHT = STORY_CARD_HEIGHT; // same size as story cards on Perfil tab
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
-    () => createStyles(screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT),
-    [screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT],
+    () => createStyles(screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT, CARD_WIDTH, CARD_HEIGHT),
+    [screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT, CARD_WIDTH, CARD_HEIGHT],
   );
   const tabsScrollRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
-  const [tabWidth, setTabWidth] = useState(0);
+  const tabBarMargin = 24;
+  const tabIndicatorStep = useMemo(
+    () => (screenWidth - 2 * tabBarMargin) / TAB_CONFIG.length,
+    [screenWidth]
+  );
   // Refs for each tab's ScrollView
   const perfilScrollRef = useRef(null);
-  const labScrollRef = useRef(null);
   const programasScrollRef = useRef(null);
   // Track scroll positions per tab
-  const tabScrollPositions = useRef({ 0: 0, 1: 0, 2: 0 });
+  const tabScrollPositions = useRef({ 0: 0, 1: 0 });
+  // Programas tab: snap to 3 positions (0, general section, one-on-one section) via JS
+  const [generalSectionHeight, setGeneralSectionHeight] = useState(0);
+  const [oneOnOneSectionHeight, setOneOnOneSectionHeight] = useState(0);
   const [creatorPrograms, setCreatorPrograms] = useState([]);
   const [programsLoading, setProgramsLoading] = useState(true);
   const [programsError, setProgramsError] = useState(null);
-  const [programStats, setProgramStats] = useState({
-    uniqueUsers: 0,
-    mostPopularProgram: null,
-    loading: true,
-  });
   const [creatorCards, setCreatorCards] = useState([]);
   const [creatorDoc, setCreatorDoc] = useState(null); // Store creator document for reuse
   const storyScrollX = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
   const [creatorAge, setCreatorAge] = useState(null);
   const [creatorLocation, setCreatorLocation] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('month'); // month, 3months, 6months, year, alltime
-  const [isPeriodModalVisible, setIsPeriodModalVisible] = useState(false);
-  const [isExerciseModalVisible, setIsExerciseModalVisible] = useState(false);
-  const [isMuscleVolumeInfoModalVisible, setIsMuscleVolumeInfoModalVisible] = useState(false);
-  const [selectedMuscleVolumeInfo, setSelectedMuscleVolumeInfo] = useState(null);
-  const [isPRInfoModalVisible, setIsPRInfoModalVisible] = useState(false);
   const muscleScrollX = useRef(new Animated.Value(0)).current;
-  const [labStats, setLabStats] = useState({
-    totalSessions: 0,
-    favoriteProgram: null,
-    topExercises: [],
-    recentPRs: [],
-    prHistoryData: [], // Array of { exerciseName, exerciseKey, history: [] }
-    lastMonthVolume: {},
-    loading: true,
-  });
+
+  // General programs carousel (same style as MainScreen active programs)
+  const generalPrograms = useMemo(
+    () => creatorPrograms.filter(
+      (p) => (p.deliveryType || p.delivery_type || 'low_ticket') !== 'one_on_one'
+    ),
+    [creatorPrograms]
+  );
+  const scrollXGeneral = useRef(new Animated.Value(0)).current;
+  const [currentIndexGeneral, setCurrentIndexGeneral] = useState(0);
+  const generalCarouselRef = useRef(null);
+
+  // One-on-one programs carousel (same style as general)
+  const oneOnOnePrograms = useMemo(
+    () => creatorPrograms.filter(
+      (p) => (p.deliveryType || p.delivery_type || 'low_ticket') === 'one_on_one'
+    ),
+    [creatorPrograms]
+  );
+  const scrollXOneOnOne = useRef(new Animated.Value(0)).current;
+  const [currentIndexOneOnOne, setCurrentIndexOneOnOne] = useState(0);
+  const oneOnOneCarouselRef = useRef(null);
 
   // OPTIMIZATION: Parallelize independent data loading with caching
   useEffect(() => {
@@ -321,10 +358,20 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Check cache first
-      const cacheKey = `creator_${creatorId}`;
+      // Resolve viewer uid and role for Library-style program filtering (admin: all, creator: published + own drafts, user: published only)
+      const viewerUid = effectiveViewer?.uid || null;
+      let viewerRole = 'user';
+      if (viewerUid) {
+        try {
+          const viewerDoc = await firestoreService.getUser(viewerUid);
+          viewerRole = viewerDoc?.role || 'user';
+        } catch {
+          viewerRole = 'user';
+        }
+      }
+      const cacheKey = `creator_${creatorId}_viewer_${viewerUid || 'anon'}`;
       const cachedData = creatorProfileCache.get(cacheKey);
-      
+
       if (cachedData) {
         logger.log('📦 Using cached creator data');
         if (isMounted) {
@@ -371,6 +418,9 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         if (!isMounted) {
           return;
         }
+
+        // Filter programs by viewer role (same as ProgramLibraryScreen)
+        const filteredPrograms = filterProgramsByViewer(programsResult, viewerUid, viewerRole);
 
         // Process creator data
         const creatorDoc = creatorDocResult;
@@ -462,10 +512,10 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         }));
         setCreatorCards(parsedCards);
 
-        // Set programs from parallel query
-        setCreatorPrograms(programsResult);
-        
-        // Cache the results (5 minute TTL)
+        // Set programs after filtering by viewer role (same as Library)
+        setCreatorPrograms(filteredPrograms);
+
+        // Cache the results (5 minute TTL); cache filtered programs for this viewer
         creatorProfileCache.set(cacheKey, {
           imageUrl: resolvedImage,
           displayName: composedName ||
@@ -479,7 +529,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
           location: locationParts.length > 0 ? locationParts.join(', ') : null,
           cards: parsedCards,
           creatorDoc: creatorDoc,
-          programs: programsResult,
+          programs: filteredPrograms,
         }, 5 * 60 * 1000); // 5 minutes TTL
         
         if (isMounted) {
@@ -503,7 +553,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     return () => {
       isMounted = false;
     };
-  }, [creatorId, initialImageUrl]);
+  }, [creatorId, initialImageUrl, effectiveViewer?.uid]);
 
   const detectCardType = (rawValue) => {
     if (!rawValue || typeof rawValue !== 'string') {
@@ -528,240 +578,6 @@ const CreatorProfileScreen = ({ navigation, route }) => {
 
   // Note: loadPrograms is now handled in loadAllData above (parallelized with creator data)
 
-  // Load program statistics (sessions, users, most popular)
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadProgramStats = async () => {
-      if (!creatorId || creatorPrograms.length === 0) {
-        if (isMounted) {
-          setProgramStats({
-            uniqueUsers: 0,
-            mostPopularProgram: null,
-            loading: false,
-          });
-        }
-        return;
-      }
-
-      // Check cache first
-      const cacheKey = `creator_program_stats_${creatorId}`;
-      const cachedStats = creatorProfileCache.get(cacheKey);
-      
-      if (cachedStats) {
-        logger.log('📦 Using cached program stats');
-        if (isMounted) {
-          setProgramStats(cachedStats);
-        }
-        return;
-      }
-
-      try {
-        if (isMounted) {
-          setProgramStats(prev => ({ ...prev, loading: true }));
-        }
-
-        const programIds = creatorPrograms.map(p => p.id).filter(Boolean);
-        
-        logger.log('📊 Program Stats - Creator programs:', creatorPrograms.map(p => ({ id: p.id, title: p.title })));
-        logger.log('📊 Program Stats - Extracted program IDs:', programIds);
-        
-        if (programIds.length === 0) {
-          logger.log('📊 Program Stats - No program IDs found, returning empty stats');
-          if (isMounted) {
-            setProgramStats({
-              uniqueUsers: 0,
-              mostPopularProgram: null,
-              loading: false,
-            });
-          }
-          return;
-        }
-
-        // Use Collection Group Query to get sessionHistory from all users
-        // This queries the sessionHistory subcollection across all users
-        // Firestore 'in' query supports max 10 items, so we need to batch if >10 programs
-        const sessionHistoryQueries = [];
-        for (let i = 0; i < programIds.length; i += 10) {
-          const batch = programIds.slice(i, i + 10);
-          logger.log(`📊 Program Stats - Querying batch ${Math.floor(i / 10) + 1} with ${batch.length} program IDs:`, batch);
-          try {
-            const q = query(
-              collectionGroup(firestore, 'sessionHistory'),
-              where('courseId', 'in', batch)
-            );
-            sessionHistoryQueries.push(getDocs(q));
-          } catch (error) {
-            logger.error('📊 Program Stats - Collection group query failed, trying alternative:', error);
-            // If collection group query fails, we'll use the users collection approach
-            throw error;
-          }
-        }
-
-        // Execute all queries
-        let allSessionDocs = [];
-        try {
-          const allSnapshots = await Promise.all(sessionHistoryQueries);
-          
-          logger.log('📊 Program Stats - Number of query snapshots:', allSnapshots.length);
-          
-          // Combine all results
-          allSnapshots.forEach((snapshot, index) => {
-            logger.log(`📊 Program Stats - Snapshot ${index + 1} size:`, snapshot.size);
-            snapshot.forEach(doc => {
-              const data = doc.data();
-              // Extract userId from document path: users/{userId}/sessionHistory/{sessionId}
-              const pathParts = doc.ref.path.split('/');
-              const userId = pathParts[1]; // users/{userId}/sessionHistory/...
-              
-              allSessionDocs.push({
-                id: doc.id,
-                userId: userId,
-                ...data
-              });
-            });
-          });
-
-          logger.log('📊 Program Stats - Total session docs found:', allSessionDocs.length);
-          if (allSessionDocs.length > 0) {
-            logger.log('📊 Program Stats - Sample session doc:', JSON.stringify(allSessionDocs[0], null, 2));
-            logger.log('📊 Program Stats - Sample session doc courseId:', allSessionDocs[0].courseId);
-            logger.log('📊 Program Stats - Sample session doc userId:', allSessionDocs[0].userId);
-          } else {
-            logger.log('📊 Program Stats - No session documents found!');
-          }
-        } catch (collectionGroupError) {
-          logger.log('📊 Program Stats - Collection group query not available, using users collection approach');
-          
-          // Fallback: Query all users and check their courses object
-          const usersSnapshot = await getDocs(collection(firestore, 'users'));
-          const uniqueUserIds = new Set();
-          const programSessionCounts = {};
-          
-          // For each user, check if they have any of the creator's programs
-          usersSnapshot.forEach(userDoc => {
-            const userData = userDoc.data();
-            const userCourses = userData.courses || {};
-            const userId = userDoc.id;
-            
-            // Check if user has any of the creator's programs
-            let hasCreatorProgram = false;
-            Object.keys(userCourses).forEach(courseId => {
-              if (programIds.includes(courseId)) {
-                hasCreatorProgram = true;
-                // Count this as an enrollment (not a session completion)
-                programSessionCounts[courseId] = (programSessionCounts[courseId] || 0) + 1;
-              }
-            });
-            
-            if (hasCreatorProgram) {
-              uniqueUserIds.add(userId);
-            }
-          });
-          
-          const uniqueUsers = uniqueUserIds.size;
-          logger.log('📊 Program Stats - Unique users (from courses):', uniqueUsers);
-          
-          // Get most popular program
-          let mostPopularProgram = null;
-          let maxEnrollments = 0;
-          Object.entries(programSessionCounts).forEach(([courseId, count]) => {
-            if (count > maxEnrollments) {
-              maxEnrollments = count;
-              const program = creatorPrograms.find(p => p.id === courseId);
-              if (program) {
-                mostPopularProgram = {
-                  id: program.id,
-                  title: program.title || 'Programa sin título',
-                  sessions: count, // Actually enrollments, not sessions
-                };
-              }
-            }
-          });
-
-          if (isMounted) {
-            setProgramStats({
-              uniqueUsers,
-              mostPopularProgram,
-              loading: false,
-            });
-          }
-          return;
-        }
-
-        // Get unique users from sessionHistory
-        const uniqueUserIds = new Set();
-        allSessionDocs.forEach(doc => {
-          if (doc.userId) {
-            uniqueUserIds.add(doc.userId);
-          }
-        });
-        const uniqueUsers = uniqueUserIds.size;
-
-        logger.log('📊 Program Stats - Unique users found:', uniqueUsers);
-
-        // Find most popular program (by session count)
-        const programSessionCounts = {};
-        allSessionDocs.forEach(doc => {
-          const courseId = doc.courseId;
-          if (courseId) {
-            programSessionCounts[courseId] = (programSessionCounts[courseId] || 0) + 1;
-          }
-        });
-
-        logger.log('📊 Program Stats - Session counts per program:', programSessionCounts);
-
-        // Get program with most sessions
-        let mostPopularProgram = null;
-        let maxSessions = 0;
-        Object.entries(programSessionCounts).forEach(([courseId, count]) => {
-          if (count > maxSessions) {
-            maxSessions = count;
-            const program = creatorPrograms.find(p => p.id === courseId);
-            if (program) {
-              mostPopularProgram = {
-                id: program.id,
-                title: program.title || 'Programa sin título',
-                sessions: count,
-              };
-            }
-          }
-        });
-
-        const stats = {
-          uniqueUsers,
-          mostPopularProgram,
-          loading: false,
-        };
-        
-        // Cache the results (15 minute TTL - stats change less frequently)
-        creatorProfileCache.set(cacheKey, stats, 15 * 60 * 1000);
-        
-        if (isMounted) {
-          setProgramStats(stats);
-        }
-      } catch (error) {
-        logger.error('Error loading program stats:', error);
-        if (isMounted) {
-          setProgramStats({
-            uniqueUsers: 0,
-            mostPopularProgram: null,
-            loading: false,
-          });
-        }
-      }
-    };
-
-    // Only load stats if we have programs
-    if (creatorPrograms.length > 0 && !programsLoading) {
-      loadProgramStats();
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [creatorId, creatorPrograms, programsLoading]);
-
   // Helper function to get time period date range
   const getTimePeriodDateRange = (period) => {
     const now = new Date();
@@ -784,289 +600,6 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     return { startDate, endDate: now };
   };
 
-  // Load Lab Stats
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLabStats = async () => {
-      if (!creatorId) {
-        if (isMounted) {
-          setLabStats({
-            totalSessions: 0,
-            favoriteProgram: null,
-            topExercises: [],
-            recentPRs: [],
-            lastMonthVolume: {},
-            weeksWithData: 1,
-            loading: false,
-          });
-        }
-        return;
-      }
-
-      // Check cache first (cache key includes period since stats are period-dependent)
-      const cacheKey = `creator_lab_${creatorId}_${selectedPeriod}`;
-      const cachedStats = creatorProfileCache.get(cacheKey);
-      
-      if (cachedStats) {
-        logger.log('📦 Using cached lab stats');
-        if (isMounted) {
-          setLabStats(cachedStats);
-        }
-        return;
-      }
-
-      try {
-        if (isMounted) {
-          setLabStats(prev => ({ ...prev, loading: true }));
-        }
-
-        // Get session history - query directly without orderBy to avoid index requirement
-        const sessionHistoryRef = collection(firestore, 'users', creatorId, 'sessionHistory');
-        const q = query(sessionHistoryRef); // No orderBy - avoids index requirement
-        const querySnapshot = await getDocs(q);
-        
-        // Convert to array and properly handle Firestore Timestamps
-        let sessions = [];
-        querySnapshot.forEach((doc) => {
-          const sessionData = doc.data();
-          
-          // Properly convert completedAt from Firestore Timestamp or ISO string
-          let completedAt = null;
-          if (sessionData.completedAt) {
-            // Handle Firestore Timestamp
-            if (sessionData.completedAt.toDate && typeof sessionData.completedAt.toDate === 'function') {
-              completedAt = sessionData.completedAt.toDate();
-            } 
-            // Handle ISO string
-            else if (typeof sessionData.completedAt === 'string') {
-              completedAt = new Date(sessionData.completedAt);
-            }
-            // Handle if already a Date object
-            else if (sessionData.completedAt instanceof Date) {
-              completedAt = sessionData.completedAt;
-            }
-          }
-          
-          // Only include sessions with valid completedAt
-          if (completedAt && !isNaN(completedAt.getTime())) {
-            sessions.push({
-              ...sessionData,
-              completedAt: completedAt
-            });
-          }
-        });
-        
-        logger.log('📊 Total sessions retrieved:', sessions.length);
-
-        // Filter sessions by selected time period
-        const { startDate, endDate } = getTimePeriodDateRange(selectedPeriod);
-        const filteredSessions = sessions.filter(session => {
-          const sessionDate = session.completedAt; // Already converted to Date
-          return sessionDate >= startDate && sessionDate <= endDate;
-        });
-
-        // Calculate total sessions
-        const totalSessions = filteredSessions.length;
-        
-        logger.log('📊 Sessions in period:', totalSessions, 'out of', sessions.length);
-
-        // Calculate favorite program (most sessions) - use filtered sessions
-        const programCounts = {};
-        filteredSessions.forEach(session => {
-          const programName = session.courseName || 'Unknown';
-          programCounts[programName] = (programCounts[programName] || 0) + 1;
-        });
-        const favoriteProgram = Object.entries(programCounts)
-          .sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-
-        // Calculate all exercises (for pie chart) - use filtered sessions
-        const exerciseCounts = {};
-        filteredSessions.forEach(session => {
-          if (session.exercises) {
-            Object.keys(session.exercises).forEach(exerciseKey => {
-              const exerciseName = session.exercises[exerciseKey]?.exerciseName || exerciseKey;
-              exerciseCounts[exerciseName] = (exerciseCounts[exerciseName] || 0) + 1;
-            });
-          }
-        });
-        // Store all exercises (not just top 5) for pie chart
-        const allExercises = Object.entries(exerciseCounts)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, count]) => ({ name, count }));
-
-        // OPTIMIZATION: Reuse creator document from state instead of fetching again
-        const userDoc = creatorDoc || await firestoreService.getUser(creatorId);
-        const currentEstimates = userDoc?.oneRepMaxEstimates || {};
-        const weeklyMuscleVolume = userDoc?.weeklyMuscleVolume || {};
-        
-        // Get PRs from history subcollections
-        // PRs are stored in: users/{userId}/oneRepMaxHistory/{exerciseKey}/records
-        // A PR is when the estimate increases from the previous entry
-        const allPRs = [];
-        
-        // Get all exercises with current estimates
-        const exerciseKeys = Object.keys(currentEstimates);
-        
-        // OPTIMIZATION: Batch PR history queries in parallel instead of sequential
-        const prHistoryPromises = exerciseKeys.map(async (exerciseKey) => {
-          try {
-            const historyRef = collection(
-              firestore,
-              'users',
-              creatorId,
-              'oneRepMaxHistory',
-              exerciseKey,
-              'records'
-            );
-            
-            const historyQuery = query(historyRef, orderBy('date', 'asc'));
-            const historySnapshot = await getDocs(historyQuery);
-            
-            if (historySnapshot.empty) {
-              return [];
-            }
-            
-            const historyEntries = historySnapshot.docs.map(doc => ({
-              ...doc.data(),
-              date: doc.data().date?.toDate?.() || doc.data().date || new Date(),
-            })).sort((a, b) => a.date - b.date);
-            
-            // Find entries where estimate increased (indicating a PR)
-            // Skip the first entry as it's not a PR (first time doing the exercise)
-            const prs = [];
-            if (historyEntries.length > 1) {
-              let previousEstimate = historyEntries[0]?.estimate || 0;
-              for (let i = 1; i < historyEntries.length; i++) {
-                const entry = historyEntries[i];
-                if (entry.estimate && entry.estimate > previousEstimate) {
-                  const exerciseName = exerciseKey.split('_').slice(1).join('_') || exerciseKey;
-                  prs.push({
-                    exerciseName,
-                    exerciseKey,
-                    value: entry.estimate,
-                    date: entry.date,
-                  });
-                  previousEstimate = entry.estimate;
-                } else if (entry.estimate) {
-                  previousEstimate = entry.estimate;
-                }
-              }
-            }
-            return prs;
-          } catch (error) {
-            // Skip exercises without history subcollection or query errors
-            logger.log('Error getting history for exercise:', exerciseKey, error.message);
-            return [];
-          }
-        });
-        
-        // Execute all PR history queries in parallel
-        const allPRsArrays = await Promise.all(prHistoryPromises);
-        allPRs.push(...allPRsArrays.flat());
-        
-        // Group PRs by exercise and keep only the latest one per exercise
-        const prsByExercise = {};
-        allPRs.forEach(pr => {
-          const exerciseKey = pr.exerciseKey;
-          if (!prsByExercise[exerciseKey] || pr.date > prsByExercise[exerciseKey].date) {
-            prsByExercise[exerciseKey] = pr;
-          }
-        });
-        
-        // Convert to array, sort by date, and get latest 3
-        const recentPRs = Object.values(prsByExercise)
-          .sort((a, b) => {
-            const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-            const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-            return dateB - dateA;
-          })
-          .slice(0, 3);
-
-        // OPTIMIZATION: Batch PR history loading for top 3 exercises in parallel
-        const prHistoryDataPromises = recentPRs.map(async (pr) => {
-          try {
-            const [libraryId, ...exerciseNameParts] = pr.exerciseKey.split('_');
-            const exerciseName = exerciseNameParts.join('_');
-            
-            const history = await oneRepMaxService.getHistoryForExercise(
-              creatorId,
-              libraryId,
-              exerciseName
-            );
-            
-            if (history && history.length > 0) {
-              return {
-                exerciseName: pr.exerciseName,
-                exerciseKey: pr.exerciseKey,
-                history: history.sort((a, b) => {
-                  const dateA = a.date?.toDate?.() || a.date || new Date(0);
-                  const dateB = b.date?.toDate?.() || b.date || new Date(0);
-                  return dateA - dateB;
-                }),
-              };
-            }
-            return null;
-          } catch (error) {
-            logger.log('Error loading PR history for exercise:', pr.exerciseKey, error.message);
-            return null;
-          }
-        });
-        
-        const prHistoryDataResults = await Promise.all(prHistoryDataPromises);
-        const prHistoryData = prHistoryDataResults.filter(Boolean); // Remove nulls
-
-        // Calculate volume for selected time period
-        const periodWeeks = getWeeksBetween(startDate, endDate);
-        const periodVolume = {};
-        let weeksWithData = 0; // Count only weeks that actually have data
-        
-        periodWeeks.forEach(weekKey => {
-          const weekVolume = weeklyMuscleVolume[weekKey] || {};
-          
-          // Check if this week has any data
-          const hasData = Object.values(weekVolume).some(volume => volume > 0);
-          if (hasData) {
-            weeksWithData++; // Only count weeks with actual data
-          }
-          
-          Object.entries(weekVolume).forEach(([muscle, volume]) => {
-            periodVolume[muscle] = (periodVolume[muscle] || 0) + (volume || 0);
-          });
-        });
-
-        const stats = {
-          totalSessions,
-          favoriteProgram,
-          topExercises: allExercises, // Now contains all exercises, not just top 5
-          recentPRs,
-          prHistoryData,
-          lastMonthVolume: periodVolume,
-          weeksWithData: weeksWithData || 1, // Default to 1 to avoid division by zero
-          loading: false,
-        };
-        
-        // Cache the results (5 minute TTL)
-        creatorProfileCache.set(cacheKey, stats, 5 * 60 * 1000);
-        
-        if (isMounted) {
-          setLabStats(stats);
-        }
-      } catch (error) {
-        logger.error('Error loading lab stats:', error);
-        if (isMounted) {
-          setLabStats(prev => ({ ...prev, loading: false }));
-        }
-      }
-    };
-
-    loadLabStats();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [creatorId, selectedPeriod, creatorDoc]); // Add creatorDoc as dependency to reuse cached document
-
   const storyCardsWithFallback = useMemo(() => {
     if (creatorCards.length === 0) {
       return [];
@@ -1084,7 +617,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
 
   // Sync scroll position when tab changes (for header animation)
   useEffect(() => {
-    const scrollRefs = [perfilScrollRef, labScrollRef, programasScrollRef];
+    const scrollRefs = [programasScrollRef, perfilScrollRef];
     const currentScrollRef = scrollRefs[currentTabIndex];
     
     if (currentScrollRef?.current) {
@@ -1159,7 +692,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     Animated.timing(prTooltipOpacity, {
       toValue: 1,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
 
@@ -1167,7 +700,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     Animated.timing(prTooltipOpacity, {
       toValue: 0,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
 
@@ -1686,11 +1219,32 @@ const CreatorProfileScreen = ({ navigation, route }) => {
 
     if (imageUrl) {
       return (
-        <ImageBackground
-          source={{ uri: imageUrl }}
-          style={styles.heroImage}
-          imageStyle={styles.heroImageStyle}
-        />
+        <View style={styles.heroImage}>
+          <ExpoImage
+            source={{ uri: imageUrl }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+          />
+          {Platform.OS === 'web' ? (
+            <View
+              style={[
+                { pointerEvents: 'none' },
+                styles.heroGradientBottom,
+                {
+                  backgroundImage: 'linear-gradient(to top, #1a1a1a 0%, rgba(26,26,26,0.7) 45%, transparent 100%)',
+                },
+              ]}
+            />
+          ) : (
+            <NativeLinearGradient
+              colors={['transparent', 'rgba(26, 26, 26, 0.7)', '#1a1a1a']}
+              locations={[0, 0.45, 1]}
+              style={[styles.heroGradientBottom, { pointerEvents: 'none' }]}
+              start={{ x: 0.5, y: 1 }}
+              end={{ x: 0.5, y: 0 }}
+            />
+          )}
+        </View>
       );
     }
 
@@ -1703,10 +1257,40 @@ const CreatorProfileScreen = ({ navigation, route }) => {
 
   const MAX_HERO_HEIGHT = 320;
   const MIN_HERO_HEIGHT = 100;
-  const TAB_BAR_HEIGHT = 60;
+  // Must fit: fixedTabBar paddingTop (16) + tabHeaderContainer (paddingVertical 8*2 + minHeight 44) + underline (2) = 78
+  const TAB_BAR_HEIGHT = 80;
   const MAX_HEADER_HEIGHT = MAX_HERO_HEIGHT + TAB_BAR_HEIGHT;
   const MIN_HEADER_HEIGHT = MIN_HERO_HEIGHT + TAB_BAR_HEIGHT;
   const SCROLL_THRESHOLD = 200; // Distance to scroll before fully shrunk (increased for smoother animation)
+  // Tuned so (1) at scrollY=0 card top is 72px below header bottom; (2) at first snap cards stay at same viewport position
+  const PROGRAMAS_SNAP_TOP_OFFSET = -200;
+  // Minimum scroll when at "top" — higher value = card fixates higher (no size changes, just scroll position)
+  const PROGRAMAS_SNAP_TOP_MIN = 0;
+  // Reduce scroll to "one on one" snap — higher value = less space between generales and one-on-one fixations (one on one cards sit higher)
+  const PROGRAMAS_SNAP_SECOND_OFFSET = -70;
+  // Indicator-only: shift when it switches relative to card snap (tune so indicator matches what you see)
+  const PROGRAMAS_INDICATOR_FIRST_OFFSET = 0; // add to first: positive = indicator switches to one-on-one later
+  const PROGRAMAS_INDICATOR_SECOND_OFFSET = 0; // add to second: positive = need to scroll more before indicator shows one-on-one
+  const PROGRAMAS_INDICATOR_SEGMENT_HEIGHT = 44;
+  const PROGRAMAS_INDICATOR_PADDING = 8;
+  const PROGRAMAS_INDICATOR_PEEK = 28;
+  const PROGRAMAS_INDICATOR_SLIDE_DISTANCE = PROGRAMAS_INDICATOR_PADDING + PROGRAMAS_INDICATOR_SEGMENT_HEIGHT - PROGRAMAS_INDICATOR_PEEK;
+  const hasGeneralPrograms = generalPrograms.length > 0;
+  const hasOneOnOnePrograms = oneOnOnePrograms.length > 0;
+  const showProgramasScrollIndicator = hasGeneralPrograms && hasOneOnOnePrograms;
+
+  const programasSnapOffsets = useMemo(() => {
+    const first = MAX_HEADER_HEIGHT + PROGRAMAS_SNAP_TOP_OFFSET;
+    if (hasGeneralPrograms) {
+      const second = first + generalSectionHeight - PROGRAMAS_SNAP_SECOND_OFFSET;
+      return [PROGRAMAS_SNAP_TOP_MIN, first, second];
+    }
+    if (hasOneOnOnePrograms && oneOnOneSectionHeight > 0) {
+      const second = first + oneOnOneSectionHeight - PROGRAMAS_SNAP_SECOND_OFFSET;
+      return [PROGRAMAS_SNAP_TOP_MIN, first, second];
+    }
+    return [PROGRAMAS_SNAP_TOP_MIN, first];
+  }, [hasGeneralPrograms, hasOneOnOnePrograms, generalSectionHeight, oneOnOneSectionHeight]);
 
   const heroHeight = scrollY.interpolate({
     inputRange: [0, SCROLL_THRESHOLD],
@@ -1719,6 +1303,316 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     outputRange: [MAX_HEADER_HEIGHT, MIN_HEADER_HEIGHT],
     extrapolate: 'clamp',
   });
+
+  const handleGeneralCarouselScroll = (e) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CARD_WIDTH);
+    const clamped = Math.max(0, Math.min(index, generalPrograms.length - 1));
+    if (clamped !== currentIndexGeneral) setCurrentIndexGeneral(clamped);
+  };
+
+  const renderGeneralProgramCard = ({ item: program, index }) => {
+    const cardWidth = CARD_WIDTH;
+    const inputRange = [
+      (index - 1) * cardWidth,
+      index * cardWidth,
+      (index + 1) * cardWidth,
+    ];
+    const scale = scrollXGeneral.interpolate({
+      inputRange,
+      outputRange: [0.85, 1.0, 0.85],
+      extrapolate: 'clamp',
+    });
+    const opacity = scrollXGeneral.interpolate({
+      inputRange,
+      outputRange: [0.5, 1.0, 0.5],
+      extrapolate: 'clamp',
+    });
+    const distanceFromCenter = Math.abs(index - currentIndexGeneral);
+    const cardZIndex = distanceFromCenter === 0 ? 10 : distanceFromCenter === 1 ? 5 : 0;
+    const imageUrl = program.image_url || program.imageUrl || null;
+
+    const cardStyle = {
+      transform: [{ scale }],
+      opacity,
+      alignSelf: 'center',
+      elevation: cardZIndex,
+      zIndex: cardZIndex,
+    };
+
+    const onPress = () => navigation.navigate('CourseDetail', { course: program });
+
+    if (imageUrl) {
+      return (
+        <Animated.View style={[styles.generalCarouselCard, cardStyle]}>
+          <View style={styles.generalCarouselCardContentWithImage}>
+            <ExpoImage
+              source={{ uri: imageUrl }}
+              style={styles.generalCarouselCardBackgroundImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+            <TouchableOpacity style={styles.generalCarouselCardOverlay} onPress={onPress} activeOpacity={1}>
+              <Text style={styles.generalCarouselCardTitle} numberOfLines={2}>
+                {program.title || 'Programa'}
+              </Text>
+              <Text style={styles.generalCarouselCardSubtitle}>
+                {program.discipline || 'Disciplina general'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      );
+    }
+    return (
+      <Animated.View style={[styles.generalCarouselCard, cardStyle]}>
+        <TouchableOpacity style={styles.generalCarouselCardContent} onPress={onPress} activeOpacity={0.9}>
+          <SvgCloudOff width={40} height={40} stroke="#ffffff" strokeWidth={1.5} />
+          <Text style={styles.generalCarouselCardTitle} numberOfLines={2}>
+            {program.title || 'Programa'}
+          </Text>
+          <Text style={styles.generalCarouselCardSubtitle}>
+            {program.discipline || 'Disciplina general'}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // Same pagination indicators as MainScreen (dots below cards)
+  const renderGeneralCarouselPagination = () => {
+    const cardWidth = CARD_WIDTH;
+    return (
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+        {generalPrograms.map((_, index) => {
+          const inputRange = [
+            (index - 1) * cardWidth,
+            index * cardWidth,
+            (index + 1) * cardWidth,
+          ];
+          const opacity = scrollXGeneral.interpolate({
+            inputRange,
+            outputRange: [0.3, 1.0, 0.3],
+            extrapolate: 'clamp',
+          });
+          const scale = scrollXGeneral.interpolate({
+            inputRange,
+            outputRange: [0.8, 1.3, 0.8],
+            extrapolate: 'clamp',
+          });
+          return (
+            <Animated.View
+              key={index}
+              style={{
+                width: 8,
+                height: 8,
+                backgroundColor: '#ffffff',
+                borderRadius: 4,
+                marginHorizontal: 4,
+                opacity,
+                transform: [{ scale }],
+              }}
+            />
+          );
+        })}
+      </View>
+    );
+  };
+
+  const handleOneOnOneCarouselScroll = (e) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CARD_WIDTH);
+    const clamped = Math.max(0, Math.min(index, oneOnOnePrograms.length - 1));
+    if (clamped !== currentIndexOneOnOne) setCurrentIndexOneOnOne(clamped);
+  };
+
+  // Snap Programas scroll to one of 3 positions. Indicator: full size while scrolling or not snapped, smaller and closer to right when settled at a snap.
+  const PROGRAMAS_SCROLL_SETTLE_MS = 300;
+  const PROGRAMAS_SNAP_THRESHOLD_PX = 6;
+
+  const programasSnappingRef = useRef(false);
+  const programasScrollEndTimeoutRef = useRef(null);
+  const lastProgramasScrollYRef = useRef(0);
+  const programasIndicatorIsSmallRef = useRef(true);
+
+  const programasIndicatorScaleRef = useRef(new Animated.Value(0)).current;
+
+  const isAtProgramasSnapPoint = useCallback((y) => {
+    const points = programasSnapOffsets;
+    return points.length > 0 && points.some((p) => Math.abs(p - y) < PROGRAMAS_SNAP_THRESHOLD_PX);
+  }, [programasSnapOffsets]);
+
+  const applyProgramasSnap = useCallback((y) => {
+    if (programasSnappingRef.current) return;
+    const points = programasSnapOffsets;
+    if (points.length === 0) return;
+    const nearest = points.reduce((prev, curr) =>
+      Math.abs(curr - y) < Math.abs(prev - y) ? curr : prev
+    );
+    if (Math.abs(nearest - y) < 2) return;
+    programasSnappingRef.current = true;
+    tabScrollPositions.current[0] = nearest;
+    if (currentTabIndex === 0) scrollY.setValue(nearest);
+    programasScrollRef.current?.scrollTo({
+      y: nearest,
+      animated: Platform.OS !== 'web',
+    });
+    setTimeout(() => { programasSnappingRef.current = false; }, 400);
+  }, [programasSnapOffsets, currentTabIndex]);
+
+  const handleProgramasScrollEnd = useCallback((e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    lastProgramasScrollYRef.current = y;
+    applyProgramasSnap(y);
+  }, [applyProgramasSnap]);
+
+  const handleProgramasScrollBeginDrag = useCallback(() => {
+    if (programasScrollEndTimeoutRef.current) {
+      clearTimeout(programasScrollEndTimeoutRef.current);
+      programasScrollEndTimeoutRef.current = null;
+    }
+    if (programasIndicatorIsSmallRef.current) {
+      programasIndicatorIsSmallRef.current = false;
+      Animated.timing(programasIndicatorScaleRef, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [programasIndicatorScaleRef]);
+
+  const handleProgramasScroll = useCallback((e) => {
+    const offsetY = e.nativeEvent.contentOffset.y;
+    lastProgramasScrollYRef.current = offsetY;
+    tabScrollPositions.current[0] = offsetY;
+    if (currentTabIndex === 0) scrollY.setValue(offsetY);
+
+    if (programasIndicatorIsSmallRef.current) {
+      programasIndicatorIsSmallRef.current = false;
+      Animated.timing(programasIndicatorScaleRef, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+
+    if (programasScrollEndTimeoutRef.current) clearTimeout(programasScrollEndTimeoutRef.current);
+    programasScrollEndTimeoutRef.current = setTimeout(() => {
+      programasScrollEndTimeoutRef.current = null;
+      const y = lastProgramasScrollYRef.current;
+      if (isAtProgramasSnapPoint(y)) {
+        programasIndicatorIsSmallRef.current = true;
+        Animated.timing(programasIndicatorScaleRef, { toValue: 0, duration: 250, useNativeDriver: true }).start();
+      } else {
+        applyProgramasSnap(y);
+      }
+    }, PROGRAMAS_SCROLL_SETTLE_MS);
+  }, [currentTabIndex, applyProgramasSnap, isAtProgramasSnapPoint, programasIndicatorScaleRef]);
+
+  useEffect(() => {
+    return () => {
+      if (programasScrollEndTimeoutRef.current) clearTimeout(programasScrollEndTimeoutRef.current);
+    };
+  }, []);
+
+  const renderOneOnOneProgramCard = ({ item: program, index }) => {
+    const cardWidth = CARD_WIDTH;
+    const inputRange = [
+      (index - 1) * cardWidth,
+      index * cardWidth,
+      (index + 1) * cardWidth,
+    ];
+    const scale = scrollXOneOnOne.interpolate({
+      inputRange,
+      outputRange: [0.85, 1.0, 0.85],
+      extrapolate: 'clamp',
+    });
+    const opacity = scrollXOneOnOne.interpolate({
+      inputRange,
+      outputRange: [0.5, 1.0, 0.5],
+      extrapolate: 'clamp',
+    });
+    const distanceFromCenter = Math.abs(index - currentIndexOneOnOne);
+    const cardZIndex = distanceFromCenter === 0 ? 10 : distanceFromCenter === 1 ? 5 : 0;
+    const imageUrl = program.image_url || program.imageUrl || null;
+
+    const cardStyle = {
+      transform: [{ scale }],
+      opacity,
+      alignSelf: 'center',
+      elevation: cardZIndex,
+      zIndex: cardZIndex,
+    };
+
+    const onPress = () => navigation.navigate('CourseDetail', { course: program });
+
+    if (imageUrl) {
+      return (
+        <Animated.View style={[styles.generalCarouselCard, cardStyle]}>
+          <View style={styles.generalCarouselCardContentWithImage}>
+            <ExpoImage
+              source={{ uri: imageUrl }}
+              style={styles.generalCarouselCardBackgroundImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+            <TouchableOpacity style={styles.generalCarouselCardOverlay} onPress={onPress} activeOpacity={1}>
+              <Text style={styles.generalCarouselCardTitle} numberOfLines={2}>
+                {program.title || 'Programa'}
+              </Text>
+              <Text style={styles.generalCarouselCardSubtitle}>
+                {program.discipline || 'Disciplina general'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      );
+    }
+    return (
+      <Animated.View style={[styles.generalCarouselCard, cardStyle]}>
+        <TouchableOpacity style={styles.generalCarouselCardContent} onPress={onPress} activeOpacity={0.9}>
+          <SvgCloudOff width={40} height={40} stroke="#ffffff" strokeWidth={1.5} />
+          <Text style={styles.generalCarouselCardTitle} numberOfLines={2}>
+            {program.title || 'Programa'}
+          </Text>
+          <Text style={styles.generalCarouselCardSubtitle}>
+            {program.discipline || 'Disciplina general'}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  const renderOneOnOneCarouselPagination = () => {
+    const cardWidth = CARD_WIDTH;
+    return (
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+        {oneOnOnePrograms.map((_, index) => {
+          const inputRange = [
+            (index - 1) * cardWidth,
+            index * cardWidth,
+            (index + 1) * cardWidth,
+          ];
+          const opacity = scrollXOneOnOne.interpolate({
+            inputRange,
+            outputRange: [0.3, 1.0, 0.3],
+            extrapolate: 'clamp',
+          });
+          const scale = scrollXOneOnOne.interpolate({
+            inputRange,
+            outputRange: [0.8, 1.3, 0.8],
+            extrapolate: 'clamp',
+          });
+          return (
+            <Animated.View
+              key={index}
+              style={{
+                width: 8,
+                height: 8,
+                backgroundColor: '#ffffff',
+                borderRadius: 4,
+                marginHorizontal: 4,
+                opacity,
+                transform: [{ scale }],
+              }}
+            />
+          );
+        })}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1741,99 +1635,62 @@ const CreatorProfileScreen = ({ navigation, route }) => {
           ]}
         >
           {renderHeroContent()}
-          <View style={styles.heroGradient}>
-            <Svg
-              style={StyleSheet.absoluteFillObject}
-              viewBox="0 0 1 1"
-              preserveAspectRatio="none"
-            >
-              <Defs>
-                <SvgLinearGradient id="heroGradientFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor="#1a1a1a" stopOpacity={0} />
-                  <Stop offset="0.6" stopColor="#1a1a1a" stopOpacity={0.2} />
-                  <Stop offset="1" stopColor="#1a1a1a" stopOpacity={1} />
-                </SvgLinearGradient>
-              </Defs>
-              <Rect x="0" y="0" width="1" height="1" fill="url(#heroGradientFill)" />
-            </Svg>
-          </View>
         </Animated.View>
         <View style={styles.fixedTabBar}>
-          <View
-            style={styles.tabHeaderContainer}
-            onLayout={(event) => {
-              const { width } = event.nativeEvent.layout;
-              setTabWidth(width / TAB_CONFIG.length);
-            }}
-          >
-              {tabWidth > 0 && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.tabIndicator,
+          <View style={styles.tabHeaderContainer}>
+            {/* Thin underline indicator (Library style) */}
+            <Animated.View
+              style={[
+                styles.tabIndicatorUnderline,
+                {
+                  width: tabIndicatorStep,
+                  transform: [
                     {
-                      width: Math.max(tabWidth - 12, 0),
-                      transform: [
-                        {
-                          translateX: scrollX.interpolate({
-                            inputRange: TAB_CONFIG.map((_, index) => index * screenWidth),
-                            outputRange: TAB_CONFIG.map(
-                              (_, index) => index * tabWidth + 6
-                            ),
-                            extrapolate: 'clamp',
-                          }),
-                        },
-                      ],
+                      translateX: scrollX.interpolate({
+                        inputRange: [0, screenWidth],
+                        outputRange: [0, tabIndicatorStep],
+                        extrapolate: 'clamp',
+                      }),
                     },
-                  ]}
-                />
-              )}
-              {TAB_CONFIG.map((tab, index) => {
-                const isActive = currentTabIndex === index;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={styles.tabButton}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      setCurrentTabIndex(index);
-                      if (tabsScrollRef.current) {
-                        tabsScrollRef.current.scrollTo({ x: index * screenWidth, animated: true });
-                      }
-                      // Restore scroll position for the new tab
-                      const scrollRefs = [perfilScrollRef, labScrollRef, programasScrollRef];
-                      const newScrollRef = scrollRefs[index];
-                      if (newScrollRef?.current) {
-                        // Small delay to ensure tab switch completes
-                        setTimeout(() => {
-                          newScrollRef.current.scrollTo({
-                            y: tabScrollPositions.current[index],
-                            animated: false,
-                          });
-                          // Update scrollY to match the new tab's position
-                          scrollY.setValue(tabScrollPositions.current[index]);
-                        }, 50);
-                      }
-                    }}
-                  >
-                    <Animated.Text
-                      style={[
-                        styles.tabTitle,
-                        {
-                          opacity: scrollX.interpolate({
-                            inputRange: TAB_CONFIG.map((_, tabIndex) => tabIndex * screenWidth),
-                            outputRange: TAB_CONFIG.map((_, tabIndex) => (tabIndex === index ? 1 : 0.45)),
-                            extrapolate: 'clamp',
-                          }),
-                        },
-                        isActive && styles.tabTitleActive,
-                      ]}
-                    >
-                      {tab.title}
-                    </Animated.Text>
-                  </TouchableOpacity>
-                );
-              })}
+                  ],
+                },
+              ]}
+            />
+            {TAB_CONFIG.map((tab, index) => {
+              const tabOpacity = scrollX.interpolate({
+                inputRange: [0, screenWidth],
+                outputRange: index === 0 ? [1, 0.45] : [0.45, 1],
+                extrapolate: 'clamp',
+              });
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={styles.tabButton}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setCurrentTabIndex(index);
+                    if (tabsScrollRef.current) {
+                      tabsScrollRef.current.scrollTo({ x: index * screenWidth, animated: true });
+                    }
+                    const scrollRefs = [programasScrollRef, perfilScrollRef];
+                    const newScrollRef = scrollRefs[index];
+                    if (newScrollRef?.current) {
+                      setTimeout(() => {
+                        newScrollRef.current.scrollTo({
+                          y: tabScrollPositions.current[index],
+                          animated: false,
+                        });
+                        scrollY.setValue(tabScrollPositions.current[index]);
+                      }, 50);
+                    }
+                  }}
+                >
+                  <Animated.Text style={[styles.tabTitle, { opacity: tabOpacity }]}>
+                    {tab.title}
+                  </Animated.Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </Animated.View>
@@ -1850,7 +1707,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
             if (newIndex !== currentTabIndex) {
               setCurrentTabIndex(newIndex);
               // Restore scroll position for the new tab
-              const scrollRef = [perfilScrollRef, labScrollRef, programasScrollRef][newIndex];
+              const scrollRef = [programasScrollRef, perfilScrollRef][newIndex];
               if (scrollRef?.current) {
                 scrollRef.current.scrollTo({
                   y: tabScrollPositions.current[newIndex],
@@ -1867,7 +1724,155 @@ const CreatorProfileScreen = ({ navigation, route }) => {
           )}
           scrollEventThrottle={16}
         >
-          {/* Tab 0: Perfil */}
+          {/* Tab 0: Programas */}
+          <ScrollView
+            ref={programasScrollRef}
+            style={[styles.tabScrollView, { width: screenWidth }]}
+            contentContainerStyle={[
+              styles.tabScrollContent,
+              { paddingTop: MAX_HEADER_HEIGHT },
+            ]}
+            showsVerticalScrollIndicator={false}
+            decelerationRate="fast"
+            onScroll={handleProgramasScroll}
+            onScrollBeginDrag={handleProgramasScrollBeginDrag}
+            onScrollEndDrag={handleProgramasScrollEnd}
+            onMomentumScrollEnd={handleProgramasScrollEnd}
+            scrollEventThrottle={16}
+          >
+            <View style={[styles.tabPageContent, { paddingTop: 8 }]}>
+              {programsLoading ? (
+                <View style={styles.programsLoadingContainer}>
+                  <ActivityIndicator size="large" color="#ffffff" />
+                  <Text style={styles.programsLoadingText}>Cargando programas...</Text>
+                </View>
+              ) : programsError ? (
+                <Text style={styles.programsErrorText}>{programsError}</Text>
+              ) : creatorPrograms.length === 0 ? (
+                <Text style={styles.programsEmptyText}>
+                  Este creador no tiene programas disponibles actualmente.
+                </Text>
+              ) : (
+                <>
+                  {hasGeneralPrograms && (
+                    <View
+                      style={[styles.generalCarouselSection, styles.programSectionFirst]}
+                      onLayout={(e) => {
+                        const h = e.nativeEvent.layout.height;
+                        if (h > 0) setGeneralSectionHeight(h);
+                      }}
+                    >
+                      <View style={styles.programSectionTitleWrapper}>
+                        <Text style={styles.programSectionTitleText}>Programas generales</Text>
+                        <SvgListChecklist width={16} height={16} color="#ffffff" style={styles.programSectionTitleIcon} />
+                      </View>
+                      <View style={styles.generalCarouselFullBleed}>
+                        <View style={styles.generalCarouselSwipeableContainer}>
+                          <View style={styles.generalCarouselInner}>
+                            <View style={styles.generalCarouselWrapper}>
+                              <Animated.FlatList
+                                ref={generalCarouselRef}
+                                data={generalPrograms}
+                                renderItem={renderGeneralProgramCard}
+                                keyExtractor={(item, index) => item.id || `gen-${index}`}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                snapToInterval={CARD_WIDTH}
+                                snapToAlignment="center"
+                                decelerationRate="fast"
+                                contentContainerStyle={styles.generalCarouselListContent}
+                                ItemSeparatorComponent={() => <View style={styles.generalCarouselCardSeparator} />}
+                                onScroll={Animated.event(
+                                  [{ nativeEvent: { contentOffset: { x: scrollXGeneral } } }],
+                                  { useNativeDriver: false }
+                                )}
+                                onScrollEndDrag={handleGeneralCarouselScroll}
+                                onMomentumScrollEnd={handleGeneralCarouselScroll}
+                                scrollEventThrottle={16}
+                                style={styles.generalCarouselListStyle}
+                                getItemLayout={(_, index) => ({
+                                  length: CARD_WIDTH,
+                                  offset: CARD_WIDTH * index,
+                                  index,
+                                })}
+                                initialNumToRender={2}
+                                maxToRenderPerBatch={3}
+                                windowSize={5}
+                                removeClippedSubviews={true}
+                                updateCellsBatchingPeriod={50}
+                              />
+                              <View style={styles.generalCarouselPagination}>
+                                {renderGeneralCarouselPagination()}
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  {hasOneOnOnePrograms && (
+                    <View
+                      style={[styles.generalCarouselSection, hasGeneralPrograms ? styles.programSectionNext : styles.programSectionFirst]}
+                      onLayout={(e) => {
+                        const h = e.nativeEvent.layout.height;
+                        if (h > 0) setOneOnOneSectionHeight(h);
+                      }}
+                    >
+                      <View style={styles.programSectionTitleWrapper}>
+                        <Text style={styles.programSectionTitleText}>Asesorías</Text>
+                        <SvgChat width={16} height={16} stroke="#ffffff" strokeWidth={2} style={styles.programSectionTitleIcon} />
+                      </View>
+                      <View style={styles.generalCarouselFullBleed}>
+                        <View style={styles.generalCarouselSwipeableContainer}>
+                          <View style={styles.generalCarouselInner}>
+                            <View style={styles.generalCarouselWrapper}>
+                              <Animated.FlatList
+                                ref={oneOnOneCarouselRef}
+                                data={oneOnOnePrograms}
+                                renderItem={renderOneOnOneProgramCard}
+                                keyExtractor={(item, index) => item.id || `1on1-${index}`}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                snapToInterval={CARD_WIDTH}
+                                snapToAlignment="center"
+                                decelerationRate="fast"
+                                contentContainerStyle={styles.generalCarouselListContent}
+                                ItemSeparatorComponent={() => <View style={styles.generalCarouselCardSeparator} />}
+                                onScroll={Animated.event(
+                                  [{ nativeEvent: { contentOffset: { x: scrollXOneOnOne } } }],
+                                  { useNativeDriver: false }
+                                )}
+                                onScrollEndDrag={handleOneOnOneCarouselScroll}
+                                onMomentumScrollEnd={handleOneOnOneCarouselScroll}
+                                scrollEventThrottle={16}
+                                style={styles.generalCarouselListStyle}
+                                getItemLayout={(_, index) => ({
+                                  length: CARD_WIDTH,
+                                  offset: CARD_WIDTH * index,
+                                  index,
+                                })}
+                                initialNumToRender={2}
+                                maxToRenderPerBatch={3}
+                                windowSize={5}
+                                removeClippedSubviews={true}
+                                updateCellsBatchingPeriod={50}
+                              />
+                              <View style={styles.generalCarouselPagination}>
+                                {renderOneOnOneCarouselPagination()}
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </>
+              )}
+              <BottomSpacer />
+            </View>
+          </ScrollView>
+
+          {/* Tab 1: Perfil */}
           <ScrollView
             ref={perfilScrollRef}
             style={[styles.tabScrollView, { width: screenWidth }]}
@@ -1878,9 +1883,8 @@ const CreatorProfileScreen = ({ navigation, route }) => {
             showsVerticalScrollIndicator={false}
             onScroll={(event) => {
               const offsetY = event.nativeEvent.contentOffset.y;
-              tabScrollPositions.current[0] = offsetY;
-              // Only update scrollY if this is the active tab
-              if (currentTabIndex === 0) {
+              tabScrollPositions.current[1] = offsetY;
+              if (currentTabIndex === 1) {
                 scrollY.setValue(offsetY);
               }
             }}
@@ -1922,7 +1926,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                         contentContainerStyle={styles.storyScrollContent}
                         onScroll={Animated.event(
                           [{ nativeEvent: { contentOffset: { x: storyScrollX } } }],
-                          { useNativeDriver: true }
+                          { useNativeDriver: Platform.OS !== 'web' }
                         )}
                         scrollEventThrottle={16}
                         onMomentumScrollEnd={handleStoryMomentumEnd}
@@ -1940,7 +1944,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                             storyCardSpacing={STORY_CARD_SPACING}
                             styles={styles}
                             isActive={index === storyActiveIndex}
-                            isPerfilTabActive={currentTabIndex === 0}
+                            isPerfilTabActive={currentTabIndex === 1}
                           />
                         )}
                         getItemLayout={(_, index) => ({
@@ -1986,567 +1990,136 @@ const CreatorProfileScreen = ({ navigation, route }) => {
               <BottomSpacer />
             </View>
           </ScrollView>
-
-          {/* Tab 1: Lab */}
-          <ScrollView
-            ref={labScrollRef}
-            style={[styles.tabScrollView, { width: screenWidth }]}
-            contentContainerStyle={[
-              styles.tabScrollContent,
-              { paddingTop: MAX_HEADER_HEIGHT },
-            ]}
-            showsVerticalScrollIndicator={false}
-            onScroll={(event) => {
-              const offsetY = event.nativeEvent.contentOffset.y;
-              tabScrollPositions.current[1] = offsetY;
-              // Only update scrollY if this is the active tab
-              if (currentTabIndex === 1) {
-                scrollY.setValue(offsetY);
-              }
-            }}
-            scrollEventThrottle={8}
-          >
-            <View style={styles.tabPageContent}>
-              {/* Time Period Selector Header */}
-                  <View style={styles.labHeaderContainer}>
-                    <View style={styles.labHeaderSpacer} />
-                    <TouchableOpacity
-                      style={styles.periodSelectorButton}
-                      onPress={() => setIsPeriodModalVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.periodSelectorButtonText}>
-                        {getPeriodLabel(selectedPeriod)}
-                      </Text>
-                      <View style={styles.periodSelectorArrow}>
-                        <SvgChevronRight 
-                          width={16} 
-                          height={16} 
-                          stroke="#ffffff" 
-                          strokeWidth={2}
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
-                  {labStats.loading ? (
-                    <View style={styles.labLoadingContainer}>
-                      <ActivityIndicator size="large" color="#ffffff" />
-                      <Text style={styles.labLoadingText}>Cargando estadísticas...</Text>
-                    </View>
-                  ) : (
-                    <>
-                      {/* Total Sessions and Favorite Program - Side by Side */}
-                      <View style={styles.labStatRow}>
-                        {/* Total Sessions */}
-                        <View style={styles.labStatCardHalf}>
-                          <Text style={styles.labStatLabel}>Sesiones Completadas</Text>
-                          <Text style={styles.labStatValueLarge}>{labStats.totalSessions}</Text>
-                        </View>
-
-                        {/* Favorite Program */}
-                        {labStats.favoriteProgram && (
-                          <View style={[styles.labStatCardHalf, { marginRight: 0, marginLeft: 6 }]}>
-                            <Text style={styles.labStatLabel}>Programa Favorito</Text>
-                            <Text style={styles.labStatValue}>{labStats.favoriteProgram}</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Exercises Distribution - Pie Chart */}
-                      {labStats.topExercises.length > 0 && (
-                        <View style={styles.labStatCard}>
-                          <Text style={styles.labStatLabel}>Ejercicios Realizados</Text>
-                          {/* Info icon indicator */}
-                          <View style={styles.exerciseInfoIconContainer}>
-                            <SvgInfo width={14} height={14} color="rgba(255, 255, 255, 0.6)" />
-                          </View>
-                          {renderTopExercisesChart()}
-                        </View>
-                      )}
-
-                      {/* PR Progression Chart */}
-                      {labStats.prHistoryData.length > 0 && (
-                        <TouchableOpacity
-                          style={styles.labStatCard}
-                          onPress={() => setIsPRInfoModalVisible(true)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.labStatCardHeader}>
-                            <Text style={styles.labStatLabel}>Progresión de PRs</Text>
-                            <View style={styles.prInfoIconContainer}>
-                              <SvgInfo width={16} height={16} color="rgba(255, 255, 255, 0.6)" />
-                            </View>
-                          </View>
-                          {renderPRProgressionChart()}
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Period Volume - Muscle Silhouette and List */}
-                      {Object.keys(labStats.lastMonthVolume).length > 0 && (
-                        <View style={styles.muscleVolumeSectionWrapper}>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            snapToInterval={screenWidth - Math.max(40, screenWidth * 0.1) + 15}
-                            snapToAlignment="start"
-                            decelerationRate="fast"
-                            contentContainerStyle={styles.muscleCardsScrollContainer}
-                            style={styles.muscleVolumeSection}
-                            onScroll={Animated.event(
-                              [{ nativeEvent: { contentOffset: { x: muscleScrollX } } }],
-                              { useNativeDriver: false }
-                            )}
-                            scrollEventThrottle={16}
-                          >
-                            {/* CARD 1: Muscle Silhouette */}
-                            <View style={styles.muscleCardFirst}>
-                              <MuscleSilhouette
-                                muscleVolumes={labStats.lastMonthVolume}
-                                numberOfWeeks={labStats.weeksWithData || 1}
-                                weekDisplayName={getPeriodLabel(selectedPeriod)}
-                                showCurrentWeekLabel={false}
-                                availableWeeks={[]}
-                                selectedWeek={null}
-                                currentWeek={getMondayWeek()}
-                                isReadOnly={true}
-                                onInfoPress={handleMuscleVolumeInfoPress}
-                                showWeeklyAverageNote={true}
-                              />
-                            </View>
-                            
-                            {/* CARD 2: Muscle Sets List */}
-                            <View style={styles.muscleCardSecond}>
-                              {renderMuscleVolumeList()}
-                            </View>
-                          </ScrollView>
-                          
-                          {/* Pagination Indicators */}
-                          <View style={styles.musclePaginationContainer}>
-                            {[0, 1].map((index) => {
-                              const cardWidth = screenWidth - Math.max(40, screenWidth * 0.1) + 15;
-                              const inputRange = [
-                                (index - 1) * cardWidth,
-                                index * cardWidth,
-                                (index + 1) * cardWidth,
-                              ];
-                              
-                              const opacity = muscleScrollX.interpolate({
-                                inputRange,
-                                outputRange: [0.3, 1.0, 0.3],
-                                extrapolate: 'clamp',
-                              });
-                              
-                              const scale = muscleScrollX.interpolate({
-                                inputRange,
-                                outputRange: [0.8, 1.3, 0.8],
-                                extrapolate: 'clamp',
-                              });
-                              
-                              return (
-                                <Animated.View
-                                  key={index}
-                                  style={{
-                                    width: 8,
-                                    height: 8,
-                                    backgroundColor: '#ffffff',
-                                    borderRadius: 4,
-                                    marginHorizontal: 4,
-                                    opacity: opacity,
-                                    transform: [{ scale: scale }],
-                                  }}
-                                />
-                              );
-                            })}
-                          </View>
-                        </View>
-                      )}
-                    </>
-                  )}
-              <BottomSpacer />
-            </View>
-          </ScrollView>
-
-          {/* Tab 2: Programas */}
-          <ScrollView
-            ref={programasScrollRef}
-            style={[styles.tabScrollView, { width: screenWidth }]}
-            contentContainerStyle={[
-              styles.tabScrollContent,
-              { paddingTop: MAX_HEADER_HEIGHT },
-            ]}
-            showsVerticalScrollIndicator={false}
-            onScroll={(event) => {
-              const offsetY = event.nativeEvent.contentOffset.y;
-              tabScrollPositions.current[2] = offsetY;
-              // Only update scrollY if this is the active tab
-              if (currentTabIndex === 2) {
-                scrollY.setValue(offsetY);
-              }
-            }}
-            scrollEventThrottle={8}
-          >
-            <View style={styles.tabPageContent}>
-              {programsLoading ? (
-                    <View style={styles.programsLoadingContainer}>
-                      <ActivityIndicator size="large" color="#ffffff" />
-                      <Text style={styles.programsLoadingText}>Cargando programas...</Text>
-                    </View>
-                  ) : programsError ? (
-                    <Text style={styles.programsErrorText}>{programsError}</Text>
-                  ) : creatorPrograms.length === 0 ? (
-                    <Text style={styles.programsEmptyText}>
-                      Este creador no tiene programas disponibles actualmente.
-                    </Text>
-                  ) : (
-                    <>
-                      {/* Program Statistics */}
-                      {programStats.loading ? (
-                        <View style={styles.programStatsLoadingContainer}>
-                          <ActivityIndicator size="small" color="#ffffff" />
-                        </View>
-                      ) : (
-                        <View style={styles.programStatsContainer}>
-                          {/* Unique Users */}
-                          <View style={styles.programStatCard}>
-                            <Text style={styles.programStatLabel}>Usuarios Únicos</Text>
-                            <Text style={styles.programStatValue}>{programStats.uniqueUsers}</Text>
-                          </View>
-
-                          {/* Most Popular Program */}
-                          {programStats.mostPopularProgram && (
-                            <View style={styles.programStatCard}>
-                              <Text style={styles.programStatLabel}>Programa Más Popular</Text>
-                              <Text style={styles.programStatProgramName} numberOfLines={1}>
-                                {programStats.mostPopularProgram.title}
-                              </Text>
-                              <Text style={styles.programStatSubValue}>
-                                {programStats.mostPopularProgram.sessions} sesiones
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-
-                      {/* Programs List */}
-                      <View style={styles.programsContainer}>
-                        {creatorPrograms.map((program, index) => (
-                          <TouchableOpacity
-                            key={program.id || index}
-                            style={[
-                              styles.programCard,
-                              program.image_url && { borderWidth: 0 },
-                            ]}
-                            activeOpacity={0.85}
-                            onPress={() => navigation.navigate('CourseDetail', { course: program })}
-                          >
-                            {program.image_url ? (
-                              <ImageBackground
-                                source={{ uri: program.image_url }}
-                                style={styles.programImageBackground}
-                                imageStyle={styles.programImage}
-                                resizeMode="cover"
-                              >
-                                <View style={styles.programImageOverlay}>
-                                  <View style={styles.programOverlayInfo}>
-                                    <Text style={styles.programTitle} numberOfLines={1}>
-                                      {program.title || `Programa ${index + 1}`}
-                                    </Text>
-                                    <Text style={styles.programDiscipline}>
-                                      {program.discipline || 'Disciplina general'}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </ImageBackground>
-                            ) : (
-                              <View style={styles.programFallback}>
-                                <SvgCloudOff
-                                  width={40}
-                                  height={40}
-                                  stroke="#ffffff"
-                                  strokeWidth={1.5}
-                                />
-                                <Text style={styles.programTitle} numberOfLines={1}>
-                                  {program.title || `Programa ${index + 1}`}
-                                </Text>
-                                <Text style={styles.programDiscipline}>
-                                  {program.discipline || 'Disciplina general'}
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  )}
-              <BottomSpacer />
-            </View>
-          </ScrollView>
         </Animated.ScrollView>
       </View>
 
-      {/* Period Selector Modal */}
-      <Modal
-        visible={isPeriodModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setIsPeriodModalVisible(false)}
-      >
-        <Pressable 
-          style={styles.periodModalOverlay}
-          onPress={() => setIsPeriodModalVisible(false)}
-        >
-          <View style={styles.periodModalContent}>
-            <View style={styles.periodModalHeader}>
-              <Text style={styles.periodModalTitle}>Seleccionar Período</Text>
-              <TouchableOpacity 
-                style={styles.periodModalCloseButton}
-                onPress={() => setIsPeriodModalVisible(false)}
-              >
-                <Text style={styles.periodModalCloseButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.periodModalScrollView} showsVerticalScrollIndicator={false}>
-              {[
-                { key: 'month', label: '1 Mes' },
-                { key: '3months', label: '3 Meses' },
-                { key: '6months', label: '6 Meses' },
-                { key: 'year', label: '1 Año' },
-                { key: 'alltime', label: 'Todo el historial' }
-              ].map((period, index) => (
-                <TouchableOpacity
-                  key={period.key}
+      {/* Programas vertical scroll indicator: visible only when both sections exist and Programas tab is in view */}
+      {showProgramasScrollIndicator && programasSnapOffsets.length >= 3 && (() => {
+        const snapTop = programasSnapOffsets[0];
+        const snapFirstCard = programasSnapOffsets[1];
+        const snapSecondCard = programasSnapOffsets.length >= 3 ? programasSnapOffsets[2] : programasSnapOffsets[1];
+        // Indicator uses same snap logic + optional offsets so it can be tuned to match visual without changing card snap
+        const snapFirst = snapFirstCard + PROGRAMAS_INDICATOR_FIRST_OFFSET;
+        const snapSecond = snapSecondCard + PROGRAMAS_INDICATOR_SECOND_OFFSET;
+        // Three-point range so segment 0 stays focused from top through first; only first→second transitions
+        const inputRange = [snapTop, snapFirst, snapSecond];
+        const scaleFocused = 1.15;
+        const scaleUnfocused = 0.82;
+        const opacityFocused = 1;
+        const opacityUnfocused = 0.35;
+        return (
+          <Animated.View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: scrollX.interpolate({
+                inputRange: [0, screenWidth * 0.4, screenWidth],
+                outputRange: [1, 0, 0],
+                extrapolate: 'clamp',
+              }),
+            }}
+            pointerEvents="none"
+          >
+          <Animated.View
+            style={[
+              styles.programasScrollIndicatorContainer,
+              {
+                right: programasIndicatorScaleRef.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-5, 12],
+                  extrapolate: 'clamp',
+                }),
+                transform: [
+                  {
+                    scale: programasIndicatorScaleRef.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.6, 1],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View style={[styles.programasScrollIndicatorCard, Platform.OS === 'web' && styles.programasScrollIndicatorCardWeb]}>
+              <View style={styles.programasScrollIndicatorWindow}>
+                <Animated.View
                   style={[
-                    styles.periodModalItem,
-                    selectedPeriod === period.key && styles.periodModalItemSelected,
-                    index === 4 && styles.periodModalItemLast
+                    styles.programasScrollIndicatorContent,
+                    {
+                      transform: [
+                        {
+                          translateY: scrollY.interpolate({
+                            inputRange,
+                            outputRange: [0, 0, -PROGRAMAS_INDICATOR_SLIDE_DISTANCE],
+                            extrapolate: 'clamp',
+                          }),
+                        },
+                      ],
+                    },
                   ]}
-                  onPress={() => {
-                    setSelectedPeriod(period.key);
-                    setIsPeriodModalVisible(false);
-                  }}
-                  activeOpacity={0.7}
                 >
-                  <Text style={[
-                    styles.periodModalItemText,
-                    selectedPeriod === period.key && styles.periodModalItemTextSelected
-                  ]}>
-                    {period.label}
-                  </Text>
-                  {selectedPeriod === period.key && (
-                    <Text style={styles.periodModalCheckmark}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Exercise Breakdown Modal */}
-      <Modal
-        visible={isExerciseModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setIsExerciseModalVisible(false)}
-      >
-        <View style={styles.exerciseModalContainer}>
-          {/* Header */}
-          <View style={styles.exerciseModalHeader}>
-            <Text style={styles.exerciseModalTitle}>
-              {getPeriodLabel(selectedPeriod)}
-            </Text>
-            
-            <TouchableOpacity 
-              style={styles.exerciseModalBackButton}
-              onPress={() => setIsExerciseModalVisible(false)}
-            >
-              <Text style={styles.exerciseModalBackText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Content */}
-          <ScrollView style={styles.exerciseModalContent} showsVerticalScrollIndicator={false}>
-            {labStats.topExercises && labStats.topExercises.length > 0 ? (
-              (() => {
-                const total = labStats.topExercises.reduce((sum, ex) => sum + ex.count, 0);
-                const pieChartData = prepareExercisePieChartData(labStats.topExercises);
-                
-                return pieChartData.map((exercise, index) => {
-                  const percentage = total > 0 ? ((exercise.population / total) * 100).toFixed(1) : 0;
-                  return (
-                    <View key={exercise.name} style={styles.exerciseModalLegendItem}>
-                      <View 
-                        style={[
-                          styles.exerciseModalColorIndicator, 
-                          { backgroundColor: exercise.color }
-                        ]} 
-                      />
-                      <Text style={styles.exerciseModalExerciseName}>
-                        {exercise.name}
-                      </Text>
-                      <Text style={styles.exerciseModalPercentage}>
-                        {percentage}%
-                      </Text>
+                  <View style={styles.programasScrollIndicatorSpacer} />
+                  <Animated.View
+                    style={[
+                      styles.programasScrollIndicatorSegment,
+                      {
+                        opacity: scrollY.interpolate({
+                          inputRange,
+                          outputRange: [opacityFocused, opacityFocused, opacityUnfocused],
+                          extrapolate: 'clamp',
+                        }),
+                        transform: [
+                          {
+                            scale: scrollY.interpolate({
+                              inputRange,
+                              outputRange: [scaleFocused, scaleFocused, scaleUnfocused],
+                              extrapolate: 'clamp',
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <SvgListChecklist width={20} height={20} color="rgba(255,255,255,0.95)" />
+                  </Animated.View>
+                  <Animated.View
+                    style={[
+                      styles.programasScrollIndicatorSegment,
+                      {
+                        opacity: scrollY.interpolate({
+                          inputRange,
+                          outputRange: [opacityUnfocused, opacityUnfocused, opacityFocused],
+                          extrapolate: 'clamp',
+                        }),
+                        transform: [
+                          {
+                            scale: scrollY.interpolate({
+                              inputRange,
+                              outputRange: [scaleUnfocused, scaleUnfocused, scaleFocused],
+                              extrapolate: 'clamp',
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <View style={styles.programasScrollIndicatorIconWrap}>
+                      <SvgChat width={20} height={20} stroke="rgba(255,255,255,0.95)" strokeWidth={2} />
                     </View>
-                  );
-                });
-              })()
-            ) : (
-              <View style={styles.exerciseModalEmptyContainer}>
-                <Text style={styles.exerciseModalEmptyText}>No hay datos de ejercicios disponibles</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* PR Info Modal */}
-      <Modal
-        visible={isPRInfoModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setIsPRInfoModalVisible(false)}
-      >
-        <View style={styles.infoModalOverlay}>
-          <TouchableOpacity 
-            style={styles.infoModalBackdrop}
-            activeOpacity={1}
-            onPress={() => setIsPRInfoModalVisible(false)}
-          />
-          <View style={styles.infoModalContent}>
-            <View style={styles.infoModalHeader}>
-              <Text style={styles.infoModalTitle}>Cómo calculamos tus pesos</Text>
-              <TouchableOpacity 
-                style={styles.infoModalCloseButton}
-                onPress={() => setIsPRInfoModalVisible(false)}
-              >
-                <Text style={styles.infoModalCloseButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.infoModalScrollContainer}>
-              <ScrollView 
-                style={styles.infoModalScrollView}
-                showsVerticalScrollIndicator={true}
-              >
-                <Text style={styles.infoModalDescription}>
-                  Tu 1RM (una repetición máxima) es el peso máximo que podrías levantar una sola vez con perfecta técnica.{'\n\n'}
-                  
-                  ¿Cómo lo calculamos?{'\n\n'}
-                  
-                  Usamos una fórmula científica derivada de la fórmula de Epley, pero desarrollada específicamente por nosotros para considerar:{'\n'}
-                  • El peso que levantaste{'\n'}
-                  • Las repeticiones que completaste{'\n'}
-                  • La intensidad del esfuerzo (escala del 1 al 10){'\n\n'}
-                  
-                  Fórmula:{'\n'}
-                  1RM = Peso × (1 + 0.0333 × Reps) / (1 - 0.025 × (10 - Intensidad)){'\n\n'}
-                  
-                  Ejemplo práctico:{'\n'}
-                  Si hiciste 80kg × 8 reps a intensidad 8/10:{'\n'}
-                  → Tu 1RM estimado sería: 100kg{'\n\n'}
-                  
-                  ¿Por qué es útil?{'\n\n'}
-                  
-                  • Te sugiere pesos personalizados para cada entrenamiento{'\n'}
-                  • Rastrea tu progreso real en fuerza{'\n'}
-                  • Se actualiza automáticamente después de cada sesión{'\n'}
-                  • Te ayuda a entrenar en el rango correcto de intensidad{'\n\n'}
-                  
-                  Nota: El sistema redondea las sugerencias a 5kg o 2,5kg dependiendo del ejercicio para facilitar el uso de discos estándar.
-                </Text>
-                
-                {/* Disclaimers Section */}
-                <View style={styles.disclaimersSection}>
-                  <Text style={styles.disclaimersTitle}>Importante:</Text>
-                  <Text style={styles.disclaimerText}>
-                    • Estas son solo estimaciones y sugerencias
-                  </Text>
-                  <Text style={styles.disclaimerText}>
-                    • Cada persona debe usar pesos con los que se sienta cómoda
-                  </Text>
-                  <Text style={styles.disclaimerText}>
-                    • Busca ayuda profesional para cada ejercicio
-                  </Text>
-                  <Text style={styles.disclaimerText}>
-                    • No nos hacemos responsables de lesiones
-                  </Text>
-                  <Text style={styles.disclaimerText}>
-                    • Siempre usa técnica perfecta
-                  </Text>
-                  <Text style={styles.disclaimerText}>
-                    • Consulta nuestros términos y condiciones
-                  </Text>
-                </View>
-              </ScrollView>
-              
-              {/* Scroll indicator */}
-              <View style={styles.scrollIndicator}>
-                <Text style={styles.scrollIndicatorText}>Desliza</Text>
+                  </Animated.View>
+                  <View style={styles.programasScrollIndicatorSpacer} />
+                </Animated.View>
               </View>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Muscle Volume Info Modal */}
-      <Modal
-        visible={isMuscleVolumeInfoModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setIsMuscleVolumeInfoModalVisible(false)}
-      >
-        <View style={styles.muscleVolumeInfoModalOverlay}>
-          <TouchableOpacity 
-            style={styles.muscleVolumeInfoModalBackdrop}
-            activeOpacity={1}
-            onPress={() => setIsMuscleVolumeInfoModalVisible(false)}
-          />
-          <View style={styles.muscleVolumeInfoModalContent}>
-            <View style={styles.muscleVolumeInfoModalHeader}>
-              <Text style={styles.muscleVolumeInfoModalTitle}>
-                {selectedMuscleVolumeInfo?.title || ''}
-              </Text>
-              <TouchableOpacity 
-                style={styles.muscleVolumeInfoCloseButton}
-                onPress={() => setIsMuscleVolumeInfoModalVisible(false)}
-              >
-                <Text style={styles.muscleVolumeInfoCloseButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.muscleVolumeInfoScrollContainer}>
-              <ScrollView 
-                style={styles.muscleVolumeInfoScrollView}
-                showsVerticalScrollIndicator={false}
-              >
-                <Text style={styles.muscleVolumeInfoModalDescription}>
-                  {selectedMuscleVolumeInfo?.description || ''}
-                </Text>
-                
-                {/* Disclaimers Section */}
-                {selectedMuscleVolumeInfo?.disclaimers && selectedMuscleVolumeInfo.disclaimers.length > 0 && (
-                  <View style={styles.disclaimersSection}>
-                    <Text style={styles.disclaimersTitle}>Importante:</Text>
-                    {selectedMuscleVolumeInfo.disclaimers.map((disclaimer, index) => (
-                      <Text key={index} style={styles.disclaimerText}>
-                        • {disclaimer}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </ScrollView>
-              
-              {/* Scroll indicator */}
-              <View style={styles.scrollIndicator}>
-                <Text style={styles.scrollIndicatorText}>Desliza</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
+          </Animated.View>
+          </Animated.View>
+        );
+      })()}
 
       <FixedWakeHeader
         showBackButton={true}
@@ -2557,7 +2130,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   );
 };
 
-const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT) => StyleSheet.create({
+const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HEIGHT, CARD_WIDTH = screenWidth * 0.8, CARD_HEIGHT = 320) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -2571,10 +2144,67 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     backgroundColor: '#1a1a1a',
     overflow: 'hidden',
   },
+  programasScrollIndicatorContainer: {
+    position: 'absolute',
+    top: '50%',
+    right: 12,
+    marginTop: -60,
+    zIndex: 8,
+  },
+  programasScrollIndicatorCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    overflow: 'hidden',
+  },
+  programasScrollIndicatorCardWeb: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+  },
+  programasScrollIndicatorWindow: {
+    height: 88,
+    width: 40,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingBottom: 4,
+  },
+  programasScrollIndicatorContent: {
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  programasScrollIndicatorSpacer: {
+    height: 8,
+    width: 40,
+  },
+  programasScrollIndicatorSegment: {
+    height: 44,
+    width: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  programasScrollIndicatorIconWrap: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fixedTabBar: {
     backgroundColor: '#1a1a1a',
     paddingHorizontal: 24,
     paddingTop: 16,
+    marginBottom: 15,
   },
   scrollContent: {
     paddingBottom: 32,
@@ -2583,6 +2213,15 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     width: '100%',
     backgroundColor: '#1f1f1f',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  heroImageLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 0,
   },
   heroImage: {
     flex: 1,
@@ -2600,40 +2239,30 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   },
   tabHeaderContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 0,
     position: 'relative',
+    paddingVertical: 8,
+    minHeight: 44,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    zIndex: 1,
   },
   tabTitle: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '500',
   },
-  tabTitleActive: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  tabIndicator: {
+  tabIndicatorUnderline: {
     position: 'absolute',
-    top: 2,
-    bottom: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
+    left: 0,
+    bottom: 0,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
   },
   tabPagerContainer: {
     flex: 1,
@@ -3136,12 +2765,13 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     position: 'relative',
   },
   storyMedia: {
-    flex: 1,
     width: '100%',
-    height: '100%',
+    height: STORY_CARD_HEIGHT,
   },
   storyMediaImage: {
     borderRadius: 16,
+    width: '100%',
+    height: '100%',
   },
   storyVideoDimmingLayer: {
     position: 'absolute',
@@ -3201,51 +2831,14 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     fontSize: 14,
     marginTop: 24,
   },
-  programStatsLoadingContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
+  programsSection: {
+    marginBottom: 24,
   },
-  programStatsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-  },
-  programStatCard: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 16,
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  programStatLabel: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  programStatValue: {
-    fontSize: 24,
-    color: '#ffffff',
+  programsSectionTitle: {
+    fontSize: 16,
     fontWeight: '600',
-  },
-  programStatProgramName: {
-    fontSize: 14,
-    color: '#ffffff',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  programStatSubValue: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 12,
   },
   programsContainer: {
     gap: 15,
@@ -3258,6 +2851,30 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     borderColor: '#3a3a3a',
     height: 170,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  programTypeBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  programTypeBadgeStandalone: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  programTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   programImageBackground: {
     flex: 1,
@@ -3294,12 +2911,140 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     color: '#cccccc',
     marginTop: 4,
   },
-  heroGradient: {
+  // General programs carousel — align with Perfil story cards: same title position/style, same card spacing
+  generalCarouselSection: {
+    minHeight: CARD_HEIGHT + 80,
+    marginBottom: 28,
+  },
+  programSectionFirst: {
+    marginTop: 32, // tuned with paddingTop 8 on Programas so top fixation matches bottom (72px below header)
+  },
+  programSectionNext: {
+    marginTop: 28,
+  },
+  // Section title: same position and style as Perfil story card titles (storyCardTitleWrapper + storyCardTitleOutside)
+  programSectionTitleWrapper: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 4,
+  },
+  programSectionTitleIcon: {
+    marginLeft: 0,
+  },
+  programSectionTitleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  // Break out of tabPageContent padding so carousel is full-width and centering matches MainScreen
+  generalCarouselFullBleed: {
+    marginHorizontal: -24,
+  },
+  generalCarouselSwipeableContainer: {
+    overflow: 'visible',
+  },
+  generalCarouselInner: {
+    position: 'relative',
+    overflow: 'visible',
+  },
+  generalCarouselWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    overflow: 'visible',
+    marginTop: 0,
+  },
+  generalCarouselListContent: {
+    paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
+    alignItems: 'center',
+  },
+  generalCarouselListStyle: {
+    height: CARD_HEIGHT,
+    width: '100%',
+  },
+  generalCarouselCard: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+  },
+  generalCarouselCardContentWithImage: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    borderWidth: 0,
+    overflow: 'hidden',
+    width: '100%',
+    height: '100%',
+  },
+  generalCarouselCardBackgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+    opacity: 1,
+  },
+  generalCarouselCardOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    position: 'relative',
+  },
+  generalCarouselCardTitle: {
+    fontSize: 30,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  generalCarouselCardSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginTop: 25,
+  },
+  generalCarouselCardContent: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    padding: Math.max(16, screenWidth * 0.05),
+    paddingBottom: 24,
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  generalCarouselCardSeparator: {
+    width: 0,
+  },
+  generalCarouselPagination: {
+    width: '100%',
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    paddingBottom: 24,
+    zIndex: 1000,
+    backgroundColor: 'transparent',
+  },
+  heroGradientBottom: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 160,
+    width: '100%',
+    height: 140,
+    zIndex: 1,
+    elevation: 2,
   },
   placeholderText: {
     color: '#ffffff',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import MediaPickerModal from '../components/MediaPickerModal';
@@ -10,7 +10,10 @@ import './ProgramDetailScreen.css';
 
 const CreateLibrarySessionScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  const backPath = location.state?.returnTo || '/content';
+  const backState = location.state?.returnState ?? {};
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
   const [sessionImagePreview, setSessionImagePreview] = useState(null);
@@ -99,7 +102,7 @@ const CreateLibrarySessionScreen = () => {
         }
       }
       
-      navigate('/content');
+      navigate(backPath, { state: backState });
     } catch (err) {
       console.error('Error creating library session:', err);
       alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
@@ -109,14 +112,15 @@ const CreateLibrarySessionScreen = () => {
   };
 
   const handleCancel = () => {
-    navigate('/content');
+    navigate(backPath, { state: backState });
   };
 
   return (
     <DashboardLayout
       screenName="Nueva Sesión"
       showBackButton={true}
-      backPath="/content"
+      backPath={backPath}
+      backState={backState}
     >
       <div style={{ 
         minHeight: '100vh', 

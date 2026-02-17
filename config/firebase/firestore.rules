@@ -228,6 +228,58 @@ service cloud.firestore {
     }
 
     // ============================================
+    // CALL BOOKING: Creator availability (time slots)
+    // ============================================
+    match /creator_availability/{creatorId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == creatorId;
+      allow delete: if isSignedIn() && request.auth.uid == creatorId;
+    }
+
+    // Call bookings (sales call / one-on-one slot)
+    match /call_bookings/{bookingId} {
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.clientUserId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if false;
+    }
+
+    // ============================================
+    // NUTRITION (creator library, assignments, user diary)
+    // ============================================
+    match /creator_nutrition_library/{creatorId}/meals/{mealId} {
+      allow read, write: if isSignedIn() && request.auth.uid == creatorId;
+    }
+    match /creator_nutrition_library/{creatorId}/plans/{planId} {
+      allow read, write: if isSignedIn() && request.auth.uid == creatorId;
+    }
+
+    match /nutrition_assignments/{assignmentId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.assignedBy == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && isCreator() && request.resource.data.assignedBy == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.assignedBy == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /users/{userId}/nutrition/diary/{entryId} {
+      allow read, write: if isOwner(userId);
+      allow read: if creatorHasClientAccess(userId);
+    }
+
+    // ============================================
     // DEFAULT RULE (Fallback for any other collections)
     // ============================================
     

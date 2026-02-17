@@ -35,6 +35,8 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EpaycoWebView from '../components/EpaycoWebView';
+import BookCallSlotModal from '../components/BookCallSlotModal';
+import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
 import { firestore, auth } from '../config/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -86,6 +88,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [videoUri, setVideoUri] = useState(null);
   const [isVideoPaused, setIsVideoPaused] = useState(false);
   const [creatorProfileImage, setCreatorProfileImage] = useState(null);
+  const [creatorDisplayName, setCreatorDisplayName] = useState('');
   const [userCourseEntry, setUserCourseEntry] = useState(null);
   const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
@@ -94,6 +97,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [mercadoPagoEmail, setMercadoPagoEmail] = useState('');
   const [emailModalError, setEmailModalError] = useState('');
+  const [showBookCallModal, setShowBookCallModal] = useState(false);
+  const [userCallBooking, setUserCallBooking] = useState(null);
 
   const trialConfig = course?.free_trial || {};
   const trialDurationDays = trialConfig?.duration_days || 0;
@@ -146,6 +151,11 @@ const CourseDetailScreen = ({ navigation, route }) => {
       null
     );
   }, [course]);
+
+  const isOneOnOne = useMemo(
+    () => (course?.deliveryType || course?.delivery_type) === 'one_on_one',
+    [course?.deliveryType, course?.delivery_type]
+  );
   
   // Initialize video player
   const videoPlayer = useVideoPlayer(videoUri, (player) => {
@@ -472,6 +482,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       if (!creatorId) {
         if (isMounted) {
           setCreatorProfileImage(null);
+          setCreatorDisplayName('');
         }
         return;
       }
@@ -497,6 +508,12 @@ const CourseDetailScreen = ({ navigation, route }) => {
         }
 
         setCreatorProfileImage(imageUrl);
+        const name =
+          creatorDoc?.displayName ||
+          creatorDoc?.display_name ||
+          creatorDoc?.name ||
+          '';
+        setCreatorDisplayName(name);
       } catch (error) {
         if (isMounted) {
           logger.error('❌ Error fetching creator profile image:', {
@@ -504,6 +521,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
             error: error?.message || error
           });
           setCreatorProfileImage(null);
+          setCreatorDisplayName('');
           // Mark as failed to prevent retry attempts
           if (creatorId) {
             setFailedImages(prev => new Set(prev).add(`creator-${creatorId}`));
@@ -518,6 +536,24 @@ const CourseDetailScreen = ({ navigation, route }) => {
       isMounted = false;
     };
   }, [creatorId]);
+
+  // Fetch user's call booking for this course (one-on-one, user doesn't own yet) to show "Manejar reserva" vs "Agendar"
+  const clientUserId = user?.uid || auth.currentUser?.uid;
+  useEffect(() => {
+    if (!isOneOnOne || userOwnsCourse || !creatorId || !course?.id || !clientUserId) {
+      setUserCallBooking(null);
+      return;
+    }
+    let isMounted = true;
+    getBookingForUser(creatorId, clientUserId, course.id)
+      .then((booking) => {
+        if (isMounted) setUserCallBooking(booking);
+      })
+      .catch(() => {
+        if (isMounted) setUserCallBooking(null);
+      });
+    return () => { isMounted = false; };
+  }, [isOneOnOne, userOwnsCourse, creatorId, course?.id, clientUserId]);
 
 useEffect(() => {
   readyNotificationSentRef.current = false;
@@ -1255,6 +1291,19 @@ useEffect(() => {
 
     if (canShowTrialCta) return null;
 
+    if (isOneOnOne) {
+      const hasUpcomingBooking = userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date();
+      return (
+        <TouchableOpacity
+          style={[styles.primaryButton, purchasing && styles.disabledButton]}
+          onPress={() => setShowBookCallModal(true)}
+          disabled={purchasing}
+        >
+          <Text style={styles.primaryButtonText}>{hasUpcomingBooking ? 'Manejar reserva' : 'Agendar llamada'}</Text>
+        </TouchableOpacity>
+      );
+    }
+
     const purchaseButtonText = course.price ? `Comprar - ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(course.price)}` : 'Comprar';
     return (
       <TouchableOpacity 
@@ -1694,6 +1743,21 @@ useEffect(() => {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Book call slot modal (one-on-one) */}
+      <BookCallSlotModal
+        visible={showBookCallModal}
+        onClose={() => setShowBookCallModal(false)}
+        creatorId={creatorId}
+        creatorName={creatorDisplayName || undefined}
+        courseId={course?.id}
+        clientUserId={clientUserId}
+        existingBooking={userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date() ? userCallBooking : undefined}
+        onSuccess={() => {
+          getBookingForUser(creatorId, clientUserId, course?.id).then(setUserCallBooking);
+          Alert.alert('¡Listo!', 'Tu reserva ha sido actualizada.');
+        }}
+      />
 
       {/* Payment Modal */}
       <EpaycoWebView

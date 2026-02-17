@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import './DashboardLayout.css';
 
-const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, headerIcon = null, headerImageIcon = null }) => {
+const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, backState = null, headerIcon = null, headerImageIcon = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -102,6 +102,34 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
             </svg>
             {isSidebarVisible && <span className="menu-label">Programas y clientes</span>}
           </button>
+          <button
+            className={`menu-item ${location.pathname === '/availability' ? 'active' : ''}`}
+            onClick={() => {
+              navigate('/availability');
+              if (isMobile) {
+                setIsSidebarVisible(false);
+              }
+            }}
+          >
+            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {isSidebarVisible && <span className="menu-label">Disponibilidad</span>}
+          </button>
+          <button
+            className={`menu-item ${location.pathname === '/nutrition' || location.pathname.startsWith('/nutrition') ? 'active' : ''}`}
+            onClick={() => {
+              navigate('/nutrition');
+              if (isMobile) {
+                setIsSidebarVisible(false);
+              }
+            }}
+          >
+            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" fill="currentColor"/>
+            </svg>
+            {isSidebarVisible && <span className="menu-label">Nutrición</span>}
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -159,6 +187,7 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
           screenName={screenName}
           showBackButton={showBackButton}
           backPath={backPath}
+          backState={backState}
           backgroundImage={headerBackgroundImage}
           onEditClick={onHeaderEditClick}
           onBack={onBack}

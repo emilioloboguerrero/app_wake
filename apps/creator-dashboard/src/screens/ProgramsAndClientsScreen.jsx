@@ -42,7 +42,11 @@ const ProgramsAndClientsScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="Programas y clientes">
+    <DashboardLayout
+      screenName="Programas y clientes"
+      showBackButton={true}
+      backPath="/lab"
+    >
       <div className="programs-clients-screen">
         <div className="programs-clients-tabs">
           {SUB_TABS.map((tab) => (

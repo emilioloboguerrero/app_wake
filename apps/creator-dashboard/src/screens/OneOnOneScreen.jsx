@@ -183,7 +183,9 @@ const OneOnOneScreen = ({ noLayout = false }) => {
 
   const handleViewClient = (clientId) => {
     handleCloseFindUserModal();
-    navigate(`/one-on-one/${clientId}`);
+    navigate(`/one-on-one/${clientId}`, {
+      state: { returnTo: '/products?tab=clientes' },
+    });
   };
 
   const handleCreateProgram = () => {
@@ -246,7 +248,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
               <div 
                 key={client.id} 
                 className="one-on-one-client-box"
-                onClick={() => navigate(`/one-on-one/${client.id}`)}
+                onClick={() => navigate(`/one-on-one/${client.id}`, { state: { returnTo: '/products?tab=clientes' } })}
                 onMouseEnter={() => loadClientPrograms(client.clientUserId)}
               >
                 <div className="one-on-one-client-header">

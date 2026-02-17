@@ -5,7 +5,6 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
-import appleAuthService from '../services/appleAuthService';
 import { handleAutoLoginFromToken } from '../utils/autoLogin';
 import { ASSET_BASE } from '../config/assets';
 import './LoginScreen.css';
@@ -307,29 +306,6 @@ const LoginScreen = () => {
     }
   };
 
-  const handleAppleLogin = async () => {
-    setIsLoading(true);
-    console.log('[LoginScreen] Apple: attempting sign-in');
-    try {
-      const result = await appleAuthService.signIn();
-      console.log('[LoginScreen] Apple: result', { success: result.success, error: result?.error });
-      if (result.success) {
-        // AuthContext will automatically fetch user role and handle redirect
-        // Wait a moment for AuthContext to update, then let useEffect handle redirect
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 100);
-      } else {
-        alert(result.error || 'Error al iniciar sesión con Apple');
-        setIsLoading(false);
-      }
-    } catch (error) {
-      console.error('Apple Sign-In Error:', error);
-      alert('Error al iniciar sesión con Apple');
-      setIsLoading(false);
-    }
-  };
-
   const handleForgotPassword = async () => {
     if (!email.trim()) {
       alert('Por favor ingresa tu correo electrónico primero');
@@ -487,16 +463,6 @@ const LoginScreen = () => {
           onClick={handleGoogleLogin}
           variant="social"
           icon={`${ASSET_BASE}google-icon.png`}
-          loading={isLoading}
-          disabled={isLoading}
-        />
-
-        {/* Apple Sign-In Button */}
-        <Button
-          title="Continua con Apple"
-          onClick={handleAppleLogin}
-          variant="social"
-          icon={`${ASSET_BASE}apple-icon.png`}
           loading={isLoading}
           disabled={isLoading}
         />

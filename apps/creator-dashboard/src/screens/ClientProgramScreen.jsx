@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
 import CalendarView from '../components/CalendarView';
+import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
 import SessionAssignmentModal from '../components/SessionAssignmentModal';
 import SessionPerformanceModal from '../components/SessionPerformanceModal';
 import PlanningLibrarySidebar from '../components/PlanningLibrarySidebar';
@@ -14,9 +15,13 @@ import clientProgramService from '../services/clientProgramService';
 import clientPlanContentService from '../services/clientPlanContentService';
 import programService from '../services/programService';
 import libraryService from '../services/libraryService';
+import * as nutritionDb from '../services/nutritionFirestoreService';
 import { getUser } from '../services/firestoreService';
-import { getWeeksBetween, getMondayWeek } from '../utils/weekCalculation';
+import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
+import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import './ClientProgramScreen.css';
+
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 const TAB_CONFIG = [
   { key: 'lab', title: 'Lab' },
@@ -30,6 +35,7 @@ const ClientProgramScreen = () => {
   const { clientId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -70,6 +76,31 @@ const ClientProgramScreen = () => {
   const [infoNoEndDate, setInfoNoEndDate] = useState(true);
   const [isSavingAccessEndDate, setIsSavingAccessEndDate] = useState(false);
   const [accessEndDateError, setAccessEndDateError] = useState(null);
+  // Planificación tab: loading states for async actions (prevent double-submit, show feedback)
+  const [isAddingSessionToPlanDay, setIsAddingSessionToPlanDay] = useState(false);
+  const [addingSessionIdInModal, setAddingSessionIdInModal] = useState(null); // which session id is being added in modal
+  const [isPersonalizingPlanWeek, setIsPersonalizingPlanWeek] = useState(false);
+  const [isResettingPlanWeek, setIsResettingPlanWeek] = useState(false);
+  const [isDeletingPlanSession, setIsDeletingPlanSession] = useState(false);
+  const [isMovingPlanSession, setIsMovingPlanSession] = useState(false);
+  const [weekVolumeDrawerOpen, setWeekVolumeDrawerOpen] = useState(false);
+  const [selectedWeekKeyForVolume, setSelectedWeekKeyForVolume] = useState('');
+  const [weekVolumeLoading, setWeekVolumeLoading] = useState(false);
+  const [weekVolumeMuscleVolumes, setWeekVolumeMuscleVolumes] = useState({});
+  const [isAssigningPlan, setIsAssigningPlan] = useState(false);
+  const [assigningPlanWeekKey, setAssigningPlanWeekKey] = useState(null);
+  const [isRemovingPlanFromWeek, setIsRemovingPlanFromWeek] = useState(false);
+  const [removingPlanWeekKey, setRemovingPlanWeekKey] = useState(null);
+  const [isAssigningSession, setIsAssigningSession] = useState(false);
+  const [isDeletingSessionAssignment, setIsDeletingSessionAssignment] = useState(false);
+  // Nutrition tab: creator's plans, client's assignment, assign form
+  const [nutritionPlans, setNutritionPlans] = useState([]);
+  const [clientNutritionAssignments, setClientNutritionAssignments] = useState([]);
+  const [nutritionAssignPlanId, setNutritionAssignPlanId] = useState('');
+  const [nutritionAssignStartDate, setNutritionAssignStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [isNutritionLoading, setIsNutritionLoading] = useState(false);
+  const [isAssigningNutrition, setIsAssigningNutrition] = useState(false);
+  const [isEndingNutrition, setIsEndingNutrition] = useState(false);
 
   useEffect(() => {
     const loadClient = async () => {
@@ -105,6 +136,14 @@ const ClientProgramScreen = () => {
 
     loadClient();
   }, [clientId, user]);
+
+  // Restore tab when returning from session edit (back button passed returnState.tab)
+  useEffect(() => {
+    const tab = location.state?.tab;
+    if (typeof tab === 'number' && tab >= 0 && tab < TAB_CONFIG.length) {
+      setCurrentTabIndex(tab);
+    }
+  }, [location.pathname, location.state?.tab]);
 
   // Load assigned programs when client loads (for program selector and plan/session assignment)
   useEffect(() => {
@@ -166,6 +205,67 @@ const ClientProgramScreen = () => {
       });
     return () => { cancelled = true; };
   }, [isInfoTab, client?.clientUserId]);
+
+  const isNutricionTab = TAB_CONFIG[currentTabIndex]?.key === 'nutricion';
+  useEffect(() => {
+    if (!isNutricionTab || !user?.uid) return;
+    let cancelled = false;
+    setIsNutritionLoading(true);
+    nutritionDb.getPlansByCreator(user.uid).then((list) => {
+      if (!cancelled) setNutritionPlans(list);
+    }).catch((e) => {
+      if (!cancelled) setNutritionPlans([]);
+    }).finally(() => {
+      if (!cancelled) setIsNutritionLoading(false);
+    });
+  }, [isNutricionTab, user?.uid]);
+
+  useEffect(() => {
+    if (!isNutricionTab || !client?.clientUserId) return;
+    let cancelled = false;
+    nutritionDb.getAssignmentsByUser(client.clientUserId).then((list) => {
+      if (!cancelled) setClientNutritionAssignments(list);
+    }).catch(() => {
+      if (!cancelled) setClientNutritionAssignments([]);
+    });
+  }, [isNutricionTab, client?.clientUserId]);
+
+  async function handleAssignNutritionPlan() {
+    if (!client?.clientUserId || !nutritionAssignPlanId || !user?.uid) return;
+    setIsAssigningNutrition(true);
+    try {
+      await nutritionDb.createAssignment({
+        userId: client.clientUserId,
+        planId: nutritionAssignPlanId,
+        assignedBy: user.uid,
+        source: 'one_on_one',
+        startDate: nutritionAssignStartDate || null,
+      });
+      setNutritionAssignPlanId('');
+      const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
+      setClientNutritionAssignments(list);
+    } catch (e) {
+      console.error(e);
+      alert(e?.message || 'Error al asignar plan');
+    } finally {
+      setIsAssigningNutrition(false);
+    }
+  }
+
+  async function handleEndNutritionAssignment(assignmentId) {
+    if (!assignmentId) return;
+    setIsEndingNutrition(true);
+    try {
+      await nutritionDb.deleteAssignment(assignmentId);
+      const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
+      setClientNutritionAssignments(list);
+    } catch (e) {
+      console.error(e);
+      alert(e?.message || 'Error al quitar asignación');
+    } finally {
+      setIsEndingNutrition(false);
+    }
+  }
 
   // Sync info program selector when assignedPrograms loads (so Planificación uses same program as Info)
   useEffect(() => {
@@ -438,6 +538,75 @@ const ClientProgramScreen = () => {
     return () => { cancelled = true; };
   }, [planAssignments]);
 
+  const weekVolumeWeekOptions = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const lastOfMonth = new Date(year, month + 1, 0);
+    const daysInMonth = lastOfMonth.getDate();
+    const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7;
+    const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+    const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+    const startDate = new Date(year, month, 1 - startingDayOfWeek);
+    const endDate = new Date(year, month, daysInMonth + trailingCount);
+    const weekKeys = getWeeksBetween(startDate, endDate);
+    return weekKeys.map((weekKey) => {
+      const { start, end } = getWeekDates(weekKey);
+      const d = (date) => `${date.getDate()} ${MONTH_NAMES[date.getMonth()]}`;
+      const label = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()
+        ? `${start.getDate()}–${end.getDate()} ${MONTH_NAMES[end.getMonth()]} ${end.getFullYear()}`
+        : `${d(start)} – ${d(end)} ${end.getFullYear()}`;
+      return { value: weekKey, label };
+    });
+  }, [currentDate]);
+
+  useEffect(() => {
+    if (!weekVolumeDrawerOpen || !selectedWeekKeyForVolume || !user?.uid) {
+      if (!weekVolumeDrawerOpen) setWeekVolumeMuscleVolumes({});
+      return;
+    }
+    const weekContent = weekContentByWeekKey[selectedWeekKeyForVolume];
+    const sessions = weekContent?.sessions ?? [];
+    const allExercises = sessions.flatMap((s) => s.exercises || []);
+    if (allExercises.length === 0) {
+      setWeekVolumeMuscleVolumes({});
+      setWeekVolumeLoading(false);
+      return;
+    }
+    const libraryIds = new Set();
+    allExercises.forEach((ex) => {
+      getPrimaryReferences(ex).forEach(({ libraryId }) => {
+        if (libraryId) libraryIds.add(libraryId);
+      });
+    });
+    let cancelled = false;
+    setWeekVolumeLoading(true);
+    (async () => {
+      try {
+        const libraryDataCache = {};
+        for (const libraryId of libraryIds) {
+          const lib = await libraryService.getLibraryById(libraryId);
+          if (cancelled) return;
+          if (lib) libraryDataCache[libraryId] = lib;
+        }
+        if (cancelled) return;
+        const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
+        setWeekVolumeMuscleVolumes(volumes);
+      } catch (err) {
+        console.warn('[ClientProgramScreen] Week volume load failed:', err);
+        if (!cancelled) setWeekVolumeMuscleVolumes({});
+      } finally {
+        if (!cancelled) setWeekVolumeLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [weekVolumeDrawerOpen, selectedWeekKeyForVolume, user?.uid, weekContentByWeekKey]);
+
+  const openWeekVolumeDrawer = useCallback(() => {
+    setSelectedWeekKeyForVolume('');
+    setWeekVolumeDrawerOpen(true);
+  }, []);
+
   // Load completed session IDs for this client+program (from users.courseProgress) - for calendar completion indicator
   useEffect(() => {
     if (!client?.clientUserId || !selectedProgramId) {
@@ -606,6 +775,8 @@ const ClientProgramScreen = () => {
       alert('Por favor, selecciona un programa primero');
       return;
     }
+    setIsAssigningPlan(true);
+    setAssigningPlanWeekKey(weekKey);
     try {
       const clientProgram = await clientProgramService.getClientProgram(selectedProgramId, client.clientUserId);
       if (!clientProgram) {
@@ -662,11 +833,16 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error assigning plan to week:', error);
       alert(`Error al asignar el plan a la semana: ${error.message || 'Error desconocido'}`);
+    } finally {
+      setIsAssigningPlan(false);
+      setAssigningPlanWeekKey(null);
     }
   };
 
   const handleRemovePlanFromWeek = async (weekKey) => {
     if (!client?.clientUserId || !selectedProgramId || !weekKey) return;
+    setIsRemovingPlanFromWeek(true);
+    setRemovingPlanWeekKey(weekKey);
     try {
       await clientProgramService.removePlanFromWeek(selectedProgramId, client.clientUserId, weekKey);
       const assignments = await clientProgramService.getPlanAssignments(selectedProgramId, client.clientUserId);
@@ -689,6 +865,9 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error removing plan from week:', error);
       alert(`Error al quitar el plan de la semana: ${error.message || 'Error desconocido'}`);
+    } finally {
+      setIsRemovingPlanFromWeek(false);
+      setRemovingPlanWeekKey(null);
     }
   };
 
@@ -702,6 +881,7 @@ const ClientProgramScreen = () => {
       alert('Por favor, selecciona un programa primero');
       return;
     }
+    setIsAssigningSession(true);
     try {
       await clientSessionService.assignSessionToDate(
         client.clientUserId,
@@ -726,14 +906,19 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('[ClientProgramScreen] handleSessionAssignment error:', error);
       alert('Error al asignar la sesión');
+    } finally {
+      setIsAssigningSession(false);
     }
   };
 
   const handleEditSessionAssignment = ({ session, date }) => {
     if (!client?.clientUserId || !session?.session_id) return;
+    const returnState = { tab: currentTabIndex };
     if (session.plan_id) {
       navigate(`/content/sessions/${session.session_id}`, {
         state: {
+          returnTo: location.pathname,
+          returnState,
           editScope: 'client_plan',
           clientId: client.clientUserId,
           programId: selectedProgramId,
@@ -745,6 +930,8 @@ const ClientProgramScreen = () => {
     }
     navigate(`/content/sessions/${session.session_id}`, {
       state: {
+        returnTo: location.pathname,
+        returnState,
         editScope: 'client',
         clientSessionId: session.id,
         clientId: client.clientUserId,
@@ -756,6 +943,7 @@ const ClientProgramScreen = () => {
   const handleDeleteSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId) return;
     if (!window.confirm('¿Eliminar esta sesión del día?')) return;
+    setIsDeletingSessionAssignment(true);
     try {
       await clientSessionService.removeSessionFromDate(
         client.clientUserId,
@@ -775,6 +963,8 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
       alert('Error al eliminar la sesión');
+    } finally {
+      setIsDeletingSessionAssignment(false);
     }
   };
 
@@ -813,6 +1003,7 @@ const ClientProgramScreen = () => {
 
   const handlePersonalizePlanWeek = async ({ assignment, weekKey }) => {
     if (!client?.clientUserId || !selectedProgramId || !assignment?.planId || weekKey == null) return;
+    setIsPersonalizingPlanWeek(true);
     try {
       const modules = await plansService.getModulesByPlan(assignment.planId);
       const moduleIndex = assignment.moduleIndex ?? 0;
@@ -833,12 +1024,15 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error personalizando plan:', error);
       alert(error.message || 'Error al personalizar la semana');
+    } finally {
+      setIsPersonalizingPlanWeek(false);
     }
   };
 
   const handleResetPlanWeek = async ({ assignment, weekKey }) => {
     if (!client?.clientUserId || !selectedProgramId || weekKey == null || !assignment?.planId) return;
     if (!window.confirm('¿Restablecer esta semana al plan original? Se usará de nuevo el contenido del plan para todos.')) return;
+    setIsResettingPlanWeek(true);
     try {
       await clientPlanContentService.deleteClientPlanContent(client.clientUserId, selectedProgramId, weekKey);
       setHasClientPlanCopy(false);
@@ -851,6 +1045,8 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error restableciendo plan:', error);
       alert(error.message || 'Error al restablecer');
+    } finally {
+      setIsResettingPlanWeek(false);
     }
   };
 
@@ -887,12 +1083,13 @@ const ClientProgramScreen = () => {
       }
       navigate(`/content/sessions/${session.id}`, {
         state: {
+          returnTo: location.pathname,
+          returnState: { tab: currentTabIndex },
           editScope: 'client_plan',
           clientId: client.clientUserId,
           programId: selectedProgramId,
           weekKey,
-          clientName: client?.clientName || client?.name || client?.displayName || 'Cliente',
-          returnTo: `/clients/${clientId}`
+          clientName: client?.clientName || client?.name || client?.displayName || 'Cliente'
         }
       });
     } catch (error) {
@@ -904,8 +1101,9 @@ const ClientProgramScreen = () => {
   const handleDeletePlanSession = async ({ session, weekKey, weekContent }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id || !weekKey) return;
     if (!window.confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.')) return;
+    setIsDeletingPlanSession(true);
     try {
-      if (!weekContent.fromClientCopy) {
+      if (!weekContent?.fromClientCopy) {
         await clientPlanContentService.copyFromPlan(
           client.clientUserId,
           selectedProgramId,
@@ -932,11 +1130,14 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error deleting plan session:', error);
       alert(error.message || 'Error al quitar la sesión');
+    } finally {
+      setIsDeletingPlanSession(false);
     }
   };
 
   const handleMovePlanSessionDay = async ({ session, weekKey, weekContent, targetDayIndex }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id || weekKey == null || targetDayIndex == null) return;
+    setIsMovingPlanSession(true);
     try {
       if (!weekContent.fromClientCopy) {
         await clientPlanContentService.copyFromPlan(
@@ -971,6 +1172,8 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error moving plan session day:', error);
       alert(error.message || 'Error al mover');
+    } finally {
+      setIsMovingPlanSession(false);
     }
   };
 
@@ -982,6 +1185,7 @@ const ClientProgramScreen = () => {
     targetPlanAssignment
   }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id) return;
+    setIsMovingPlanSession(true);
     try {
       let targetAssignment = targetPlanAssignment;
       if (targetPlanAssignment && !targetPlanAssignment.moduleId) {
@@ -1023,6 +1227,8 @@ const ClientProgramScreen = () => {
     } catch (error) {
       console.error('Error moving plan session to week:', error);
       alert(error.message || 'Error al mover la sesión');
+    } finally {
+      setIsMovingPlanSession(false);
     }
   };
 
@@ -1080,11 +1286,14 @@ const ClientProgramScreen = () => {
   };
 
   const handleAddLibrarySessionToPlanDay = async ({ weekKey, dayIndex, librarySessionId }) => {
+    setIsAddingSessionToPlanDay(true);
     try {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
       console.error('Error adding library session to plan day:', error);
       alert(error.message || 'Error al añadir la sesión');
+    } finally {
+      setIsAddingSessionToPlanDay(false);
     }
   };
 
@@ -1099,12 +1308,17 @@ const ClientProgramScreen = () => {
 
   const handleConfirmAddPlanSession = async (librarySessionId) => {
     if (!addPlanSessionTarget || !librarySessionId) return;
+    setAddingSessionIdInModal(librarySessionId);
+    setIsAddingSessionToPlanDay(true);
     try {
       await addLibrarySessionToPlanWeek(addPlanSessionTarget.weekKey, addPlanSessionTarget.dayIndex, librarySessionId);
       setAddPlanSessionTarget(null);
     } catch (error) {
       console.error('Error adding session:', error);
       alert(error.message || 'Error al añadir');
+    } finally {
+      setIsAddingSessionToPlanDay(false);
+      setAddingSessionIdInModal(null);
     }
   };
 
@@ -1234,6 +1448,38 @@ const ClientProgramScreen = () => {
                   assignedPrograms={assignedPrograms}
                   selectedProgramId={selectedProgramId}
                   onVerDesempeno={setPerformanceModalContext}
+                  isAddingSessionToPlanDay={isAddingSessionToPlanDay}
+                  isPersonalizingPlanWeek={isPersonalizingPlanWeek}
+                  isResettingPlanWeek={isResettingPlanWeek}
+                  isDeletingPlanSession={isDeletingPlanSession}
+                  isMovingPlanSession={isMovingPlanSession}
+                  isAssigningPlan={isAssigningPlan}
+                  assigningPlanWeekKey={assigningPlanWeekKey}
+                  isRemovingPlanFromWeek={isRemovingPlanFromWeek}
+                  removingPlanWeekKey={removingPlanWeekKey}
+                  isAssigningSession={isAssigningSession}
+                  isDeletingSessionAssignment={isDeletingSessionAssignment}
+                  showVolumeButton
+                  onVolumeClick={openWeekVolumeDrawer}
+                  onWeekClick={(weekKey) => {
+                    setSelectedWeekKeyForVolume(weekKey);
+                    setWeekVolumeDrawerOpen(true);
+                  }}
+                />
+                <WeekVolumeDrawer
+                  isOpen={weekVolumeDrawerOpen}
+                  onClose={() => setWeekVolumeDrawerOpen(false)}
+                  title="Volumen de la semana"
+                  subtitle="Series efectivas por músculo (intensidad ≥7) para esta semana."
+                  weekOptions={weekVolumeWeekOptions}
+                  selectedWeekValue={selectedWeekKeyForVolume}
+                  onWeekChange={setSelectedWeekKeyForVolume}
+                  loading={weekVolumeLoading}
+                  plannedMuscleVolumes={weekVolumeMuscleVolumes}
+                  emptyMessage="Esta semana no tiene sesiones con ejercicios (e intensidad ≥7), o el contenido aún no se ha cargado."
+                  promptWhenNoWeek="Haz clic en una semana del calendario para ver el volumen."
+                  variant="card"
+                  displayMonth={currentDate}
                 />
                 <SessionAssignmentModal
                   isOpen={isSessionAssignmentModalOpen}
@@ -1251,7 +1497,7 @@ const ClientProgramScreen = () => {
                   }}
                 />
                 {addPlanSessionTarget && (
-                  <div className="client-program-modal-overlay" onClick={() => setAddPlanSessionTarget(null)}>
+                  <div className="client-program-modal-overlay" onClick={() => !isAddingSessionToPlanDay && setAddPlanSessionTarget(null)}>
                     <div className="client-program-add-plan-session-modal" onClick={(e) => e.stopPropagation()}>
                       <h3>Añadir sesión a este día (solo este cliente)</h3>
                       <p className="client-program-add-plan-session-hint">Elige una sesión de tu biblioteca para añadirla a la semana del plan.</p>
@@ -1261,20 +1507,32 @@ const ClientProgramScreen = () => {
                         <p>No hay sesiones en la biblioteca. Crea una en Contenido.</p>
                       ) : (
                         <ul className="client-program-add-plan-session-list">
-                          {librarySessionsForAdd.map((s) => (
-                            <li key={s.id}>
-                              <button
-                                type="button"
-                                className="client-program-add-plan-session-item"
-                                onClick={() => handleConfirmAddPlanSession(s.id)}
-                              >
-                                {s.title || s.name || 'Sesión'}
-                              </button>
-                            </li>
-                          ))}
+                          {librarySessionsForAdd.map((s) => {
+                            const isThisAdding = addingSessionIdInModal === s.id;
+                            return (
+                              <li key={s.id}>
+                                <button
+                                  type="button"
+                                  className="client-program-add-plan-session-item"
+                                  onClick={() => handleConfirmAddPlanSession(s.id)}
+                                  disabled={isAddingSessionToPlanDay}
+                                  aria-busy={isThisAdding}
+                                >
+                                  {isThisAdding ? (
+                                    <span className="client-program-add-plan-session-item-loading">
+                                      <span className="client-program-add-plan-session-spinner" aria-hidden />
+                                      Añadiendo...
+                                    </span>
+                                  ) : (
+                                    (s.title || s.name || 'Sesión')
+                                  )}
+                                </button>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
-                      <button type="button" className="client-program-add-plan-session-cancel" onClick={() => setAddPlanSessionTarget(null)}>
+                      <button type="button" className="client-program-add-plan-session-cancel" onClick={() => setAddPlanSessionTarget(null)} disabled={isAddingSessionToPlanDay}>
                         Cancelar
                       </button>
                     </div>
@@ -1285,10 +1543,60 @@ const ClientProgramScreen = () => {
           </div>
         );
       case 'nutricion':
+        const currentNutritionAssignment = clientNutritionAssignments[0] || null;
         return (
-          <div className="client-program-tab-content client-program-tab-empty">
-            <p className="client-program-tab-empty-title">Nutrición</p>
-            <p className="client-program-tab-empty-message">Próximamente podrás gestionar el plan nutricional de este cliente.</p>
+          <div className="client-program-tab-content client-program-nutricion-tab">
+            <div className="client-program-nutricion-header">
+              <p className="client-program-tab-empty-title">Plan nutricional</p>
+              <p className="client-program-tab-empty-message">Asigna o cambia el plan de nutrición de este cliente.</p>
+            </div>
+            {isNutritionLoading ? (
+              <p className="client-program-nutricion-loading">Cargando planes…</p>
+            ) : (
+              <>
+                {currentNutritionAssignment && (
+                  <div className="client-program-nutricion-current">
+                    <h3>Asignación actual</h3>
+                    <p>Plan ID: {currentNutritionAssignment.planId}. Inicio: {currentNutritionAssignment.startDate?.toDate ? currentNutritionAssignment.startDate.toDate().toLocaleDateString('es-ES') : String(currentNutritionAssignment.startDate ?? '')}</p>
+                    <button
+                      type="button"
+                      className="client-program-nutricion-end-btn"
+                      onClick={() => handleEndNutritionAssignment(currentNutritionAssignment.id)}
+                      disabled={isEndingNutrition}
+                    >
+                      {isEndingNutrition ? 'Quitando…' : 'Quitar asignación'}
+                    </button>
+                  </div>
+                )}
+                <div className="client-program-nutricion-assign">
+                  <h3>{currentNutritionAssignment ? 'Asignar otro plan' : 'Asignar plan'}</h3>
+                  <select
+                    value={nutritionAssignPlanId}
+                    onChange={(e) => setNutritionAssignPlanId(e.target.value)}
+                    className="client-program-nutricion-select"
+                  >
+                    <option value="">— Selecciona un plan —</option>
+                    {nutritionPlans.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={nutritionAssignStartDate}
+                    onChange={(e) => setNutritionAssignStartDate(e.target.value)}
+                    className="client-program-nutricion-date"
+                  />
+                  <button
+                    type="button"
+                    className="client-program-nutricion-assign-btn"
+                    onClick={handleAssignNutritionPlan}
+                    disabled={!nutritionAssignPlanId || isAssigningNutrition}
+                  >
+                    {isAssigningNutrition ? 'Asignando…' : 'Asignar plan'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         );
       case 'info':
@@ -1507,13 +1815,14 @@ const ClientProgramScreen = () => {
   }
 
   if (error || !client) {
+    const errorBackPath = location.state?.returnTo || '/products?tab=clientes';
     return (
       <DashboardLayout screenName="Cliente">
         <div className="client-program-error">
           <p>{error || 'Cliente no encontrado'}</p>
           <button 
             className="client-program-back-button"
-            onClick={() => navigate('/products?tab=clientes')}
+            onClick={() => navigate(errorBackPath)}
           >
             Volver
           </button>
@@ -1529,7 +1838,7 @@ const ClientProgramScreen = () => {
     <DashboardLayout 
       screenName={clientName}
       showBackButton={true}
-      backPath="/products?tab=clientes"
+      backPath={location.state?.returnTo || '/products?tab=clientes'}
     >
       <div className="client-program-container">
         {/* Tab Bar */}

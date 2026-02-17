@@ -412,6 +412,11 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Create Library modal: propagate-style layout with single card, no min-height */
+.create-library-modal-wrap .propagate-modal-layout {
+  min-height: auto;
+}
+
 .content-hub-modal-content {
   display: flex;
   flex-direction: column;

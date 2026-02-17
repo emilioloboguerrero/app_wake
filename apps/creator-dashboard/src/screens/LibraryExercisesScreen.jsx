@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -10,6 +10,7 @@ import libraryService from '../services/libraryService';
 import { firestore } from '../config/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { LIBRARY_ICONS, getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
+import './LibraryExercisesScreen.css';
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
   pecs: 'Pectorales',
@@ -188,7 +189,10 @@ const EXERCISE_PRESETS = {
 const LibraryExercisesScreen = () => {
   const { libraryId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  const backPath = location.state?.returnTo || '/content';
+  const backState = location.state?.returnState ?? {};
   const [library, setLibrary] = useState(null);
   const [allExercises, setAllExercises] = useState([]); // Store all exercises
   const [exercises, setExercises] = useState([]); // Filtered exercises
@@ -198,6 +202,8 @@ const LibraryExercisesScreen = () => {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState(new Set()); // Applied filter
   const [tempSelectedMuscles, setTempSelectedMuscles] = useState(new Set()); // Temporary selection in modal
+  const [filterSelectedImplements, setFilterSelectedImplements] = useState(new Set()); // Applied implement filter
+  const [tempFilterSelectedImplements, setTempFilterSelectedImplements] = useState(new Set()); // Temporary in filter modal
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [exerciseToDelete, setExerciseToDelete] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -205,7 +211,6 @@ const LibraryExercisesScreen = () => {
   const [isAddExerciseModalOpen, setIsAddExerciseModalOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
-  const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [exerciseViewMode, setExerciseViewMode] = useState('video'); // 'video' or 'muscles'
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
@@ -213,13 +218,16 @@ const LibraryExercisesScreen = () => {
   const [isVideoEditMode, setIsVideoEditMode] = useState(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isMuscleEditMode, setIsMuscleEditMode] = useState(false);
+  const [isSavingMuscles, setIsSavingMuscles] = useState(false);
   const [editingMuscles, setEditingMuscles] = useState(new Set());
   const [muscleEffectiveSets, setMuscleEffectiveSets] = useState({});
   const [isEffectiveSetsInfoModalOpen, setIsEffectiveSetsInfoModalOpen] = useState(false);
+  const [isSavingImplements, setIsSavingImplements] = useState(false);
   const [muscleLabelsScrollProgress, setMuscleLabelsScrollProgress] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
   const [selectedImplements, setSelectedImplements] = useState(new Set());
   const [isImplementsEditMode, setIsImplementsEditMode] = useState(false);
   const [isIconSelectorModalOpen, setIsIconSelectorModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const muscleLabelsContainerRef = useRef(null);
 
   useEffect(() => {
@@ -313,16 +321,16 @@ const LibraryExercisesScreen = () => {
         setAllExercises(exercisesList);
         setExercises(exercisesList);
 
-        // Find the newly created exercise and open it
+        // Find the newly created exercise and select it (detail shows in right panel)
         const newExercise = exercisesList.find(ex => ex.name === newExerciseName.trim());
         if (newExercise) {
           setSelectedExercise(newExercise);
-          setIsExerciseModalOpen(true);
-          setExerciseViewMode('video'); // Default to video view
-          setIsVideoPlaying(false); // Reset video playing state
-          setIsMuscleEditMode(false); // Reset muscle edit mode
-          setEditingMuscles(new Set()); // Reset editing muscles
-          setMuscleEffectiveSets({}); // Reset effective sets
+          setExerciseViewMode('video');
+          setIsVideoPlaying(false);
+          setIsMuscleEditMode(false);
+          setEditingMuscles(new Set());
+          setMuscleEffectiveSets({});
+          setSelectedImplements(new Set(newExercise.data?.implements || []));
         }
       }
 
@@ -338,14 +346,14 @@ const LibraryExercisesScreen = () => {
   };
 
   const handleFilter = () => {
-    // Initialize temp selection with current applied filter
     setTempSelectedMuscles(new Set(selectedMuscles));
+    setTempFilterSelectedImplements(new Set(filterSelectedImplements));
     setIsFilterModalOpen(true);
   };
 
   const handleCloseFilterModal = () => {
-    // Reset temp selection when closing without applying
     setTempSelectedMuscles(new Set(selectedMuscles));
+    setTempFilterSelectedImplements(new Set(filterSelectedImplements));
     setIsFilterModalOpen(false);
   };
 
@@ -363,12 +371,22 @@ const LibraryExercisesScreen = () => {
 
   const handleClearFilter = () => {
     setTempSelectedMuscles(new Set());
+    setTempFilterSelectedImplements(new Set());
   };
 
   const handleApplyFilter = () => {
-    // Apply the temporary selection to the actual filter
     setSelectedMuscles(new Set(tempSelectedMuscles));
+    setFilterSelectedImplements(new Set(tempFilterSelectedImplements));
     setIsFilterModalOpen(false);
+  };
+
+  const handleToggleImplementFilter = (implement) => {
+    setTempFilterSelectedImplements(prev => {
+      const next = new Set(prev);
+      if (next.has(implement)) next.delete(implement);
+      else next.add(implement);
+      return next;
+    });
   };
 
   const handleDeleteExercise = (exercise) => {
@@ -414,8 +432,9 @@ const LibraryExercisesScreen = () => {
       exerciseList.sort((a, b) => a.name.localeCompare(b.name));
       setAllExercises(exerciseList);
       setExercises(exerciseList);
-      
-      // Close modal and exit edit mode if no exercises left
+      if (exerciseToDelete && selectedExercise?.name === exerciseToDelete.name) {
+        handleClearSelection();
+      }
       handleCloseDeleteModal();
       if (exerciseList.length === 0) {
         setIsEditMode(false);
@@ -442,21 +461,19 @@ const LibraryExercisesScreen = () => {
   const handleExerciseClick = (exercise) => {
     if (!isEditMode) {
       setSelectedExercise(exercise);
-      setIsExerciseModalOpen(true);
-      setExerciseViewMode('video'); // Default to video view
-      setIsVideoPlaying(false); // Reset video playing state
-      setIsMuscleEditMode(false); // Reset muscle edit mode
-      setEditingMuscles(new Set()); // Reset editing muscles
-      setMuscleEffectiveSets({}); // Reset effective sets
-      setIsImplementsEditMode(false); // Reset implements edit mode
-      // Load existing implements
+      setExerciseViewMode('video');
+      setIsVideoPlaying(false);
+      setIsMuscleEditMode(false);
+      setEditingMuscles(new Set());
+      setMuscleEffectiveSets({});
+      setIsImplementsEditMode(false);
       const existingImplements = exercise.data?.implements || [];
       setSelectedImplements(new Set(existingImplements));
+      setMuscleLabelsScrollProgress({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
     }
   };
 
-  const handleCloseExerciseModal = () => {
-    setIsExerciseModalOpen(false);
+  const handleClearSelection = () => {
     setSelectedExercise(null);
     setIsVideoEditMode(false);
     setIsVideoPlaying(false);
@@ -465,7 +482,6 @@ const LibraryExercisesScreen = () => {
     setMuscleEffectiveSets({});
     setIsImplementsEditMode(false);
     setSelectedImplements(new Set());
-    // Reset scroll progress when closing modal
     setMuscleLabelsScrollProgress({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
   };
 
@@ -840,6 +856,7 @@ const LibraryExercisesScreen = () => {
       return;
     }
 
+    setIsSavingMuscles(true);
     try {
       // Convert Set to object with activation values
       // Store effective sets (0.0-1.0) as muscle_activation values (0-100)
@@ -896,6 +913,8 @@ const LibraryExercisesScreen = () => {
     } catch (err) {
       console.error('Error saving muscles:', err);
       alert('Error al guardar los músculos. Por favor, intenta de nuevo.');
+    } finally {
+      setIsSavingMuscles(false);
     }
   };
 
@@ -904,6 +923,7 @@ const LibraryExercisesScreen = () => {
       return;
     }
 
+    setIsSavingImplements(true);
     try {
       // Convert Set to array
       const implementsArray = Array.from(selectedImplements);
@@ -951,6 +971,8 @@ const LibraryExercisesScreen = () => {
     } catch (err) {
       console.error('Error saving implements:', err);
       alert('Error al guardar los implementos. Por favor, intenta de nuevo.');
+    } finally {
+      setIsSavingImplements(false);
     }
   };
 
@@ -1064,29 +1086,49 @@ const LibraryExercisesScreen = () => {
     return Array.from(musclesSet).sort();
   }, [allExercises]);
 
-  // Filter exercises based on selected muscles
-  useEffect(() => {
-    if (selectedMuscles.size === 0) {
-      setExercises(allExercises);
-      return;
-    }
-
-    const filtered = allExercises.filter(exercise => {
-      if (!exercise.data?.muscle_activation) return false;
-      const exerciseMuscles = Object.keys(exercise.data.muscle_activation);
-      // Check if any selected muscle is in the exercise's muscle_activation
-      return Array.from(selectedMuscles).some(muscle => exerciseMuscles.includes(muscle));
+  // All unique implements from library exercises (for filter modal)
+  const allUniqueImplements = useMemo(() => {
+    const set = new Set();
+    allExercises.forEach(ex => {
+      const impl = ex.data?.implements;
+      if (Array.isArray(impl)) impl.forEach(i => set.add(i));
     });
-    
-    setExercises(filtered);
-  }, [selectedMuscles, allExercises]);
+    return Array.from(set).sort();
+  }, [allExercises]);
+
+  // Filter exercises based on selected muscles and selected implements
+  useEffect(() => {
+    let list = allExercises;
+    if (selectedMuscles.size > 0) {
+      list = list.filter(exercise => {
+        if (!exercise.data?.muscle_activation) return false;
+        const exerciseMuscles = Object.keys(exercise.data.muscle_activation);
+        return Array.from(selectedMuscles).some(muscle => exerciseMuscles.includes(muscle));
+      });
+    }
+    if (filterSelectedImplements.size > 0) {
+      list = list.filter(exercise => {
+        if (!exercise.data?.implements || !Array.isArray(exercise.data.implements)) return false;
+        return Array.from(filterSelectedImplements).some(impl => exercise.data.implements.includes(impl));
+      });
+    }
+    setExercises(list);
+  }, [selectedMuscles, filterSelectedImplements, allExercises]);
+
+  // Sidebar list: exercises filtered by search query (name)
+  const sidebarExercises = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return exercises;
+    return exercises.filter(ex => (ex.name || '').toLowerCase().includes(q));
+  }, [exercises, searchQuery]);
 
   if (loading) {
     return (
       <DashboardLayout 
         screenName={library?.title || 'Biblioteca'}
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
+        backState={backState}
       >
         <div className="library-exercises-content">
           <div className="library-exercises-loading">
@@ -1102,12 +1144,13 @@ const LibraryExercisesScreen = () => {
       <DashboardLayout 
         screenName="Biblioteca"
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
+        backState={backState}
       >
         <div className="library-exercises-content">
           <div className="library-exercises-error">
             <p>{error || 'Biblioteca no encontrada'}</p>
-            <button onClick={() => navigate('/content')} className="back-button">
+            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
               Volver a Contenido
             </button>
           </div>
@@ -1122,7 +1165,8 @@ const LibraryExercisesScreen = () => {
     <DashboardLayout 
       screenName={library.title}
       showBackButton={true}
-      backPath="/content"
+      backPath={backPath}
+      backState={backState}
       headerIcon={currentIcon ? (
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d={currentIcon.path} fill="currentColor"/>
@@ -1131,119 +1175,692 @@ const LibraryExercisesScreen = () => {
       onHeaderEditClick={() => setIsIconSelectorModalOpen(true)}
     >
       <div className="library-exercises-content">
-        <div className="library-exercises-legend">
-          <div className="library-exercises-legend-item">
-            <div className="exercise-incomplete-icon-small">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+        <div className="library-exercises-body">
+          {/* Left sidebar - exercise list (same style as session edit / planificación) */}
+          <div className="library-exercises-sidebar">
+            <div className="library-exercises-sidebar-header">
+              <h3 className="library-exercises-sidebar-title">Ejercicios</h3>
+              <div className="library-exercises-sidebar-actions">
+                <button
+                  className={`library-exercises-sidebar-pill ${isEditMode ? 'library-exercises-sidebar-pill-disabled' : ''}`}
+                  onClick={handleAddExercise}
+                  disabled={isEditMode}
+                  title="Nuevo ejercicio"
+                >
+                  <span className="library-exercises-sidebar-pill-icon">+</span>
+                </button>
+                <button
+                  className={`library-exercises-sidebar-pill ${isEditMode ? 'library-exercises-sidebar-pill-disabled' : ''}`}
+                  onClick={handleFilter}
+                  disabled={isEditMode}
+                >
+                  <span className="library-exercises-sidebar-pill-text">Filtrar</span>
+                </button>
+                <button
+                  className="library-exercises-sidebar-pill"
+                  onClick={handleToggleEditMode}
+                >
+                  <span className="library-exercises-sidebar-pill-text">{isEditMode ? 'Guardar' : 'Editar'}</span>
+                </button>
+              </div>
             </div>
-            <span className="library-exercises-legend-text">Ejercicio incompleto</span>
-          </div>
-        </div>
-        <div className="library-exercises-actions">
-          <button
-            className={`library-action-pill ${isEditMode ? 'library-action-pill-disabled' : ''}`}
-            onClick={handleAddExercise}
-            disabled={isEditMode}
-          >
-            <span className="library-action-icon">+</span>
-          </button>
-          <button
-            className={`library-action-pill ${isEditMode ? 'library-action-pill-disabled' : ''}`}
-            onClick={handleFilter}
-            disabled={isEditMode}
-          >
-            <span className="library-action-text">Filtrar</span>
-          </button>
-          <button
-            className="library-action-pill"
-            onClick={handleToggleEditMode}
-          >
-            <span className="library-action-text">{isEditMode ? 'Guardar' : 'Editar'}</span>
-          </button>
-        </div>
 
-        {exercises.length === 0 ? (
-          <div className="library-exercises-empty">
-            <p>No hay ejercicios en esta biblioteca. Agrega un ejercicio para comenzar.</p>
-          </div>
-        ) : (
-          <div className="library-exercises-list">
-            {exercises.map((exercise, index) => (
-              <div
-                key={exercise.name || index}
-                className={`exercise-card ${isEditMode ? 'exercise-card-edit-mode' : ''}`}
-                onClick={() => handleExerciseClick(exercise)}
-                style={{ cursor: isEditMode ? 'default' : 'pointer' }}
-              >
-                {isEditMode && (
-                  <button
-                    className="exercise-delete-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteExercise(exercise);
-                    }}
-                  >
-                    <span className="exercise-delete-icon">−</span>
+            <div className="library-exercises-search-container">
+              <div className="library-exercises-search-input-container">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="library-exercises-search-icon">
+                  <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <input
+                  type="text"
+                  className="library-exercises-search-input"
+                  placeholder="Buscar ejercicios..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {(selectedMuscles.size > 0 || filterSelectedImplements.size > 0) && (
+              <div className="library-exercises-active-filters">
+                <div className="library-exercises-active-filters-scroll">
+                  {Array.from(selectedMuscles).sort().map(muscle => (
+                    <div key={`m-${muscle}`} className="library-exercises-filter-chip" onClick={handleFilter}>
+                      <span>{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
+                    </div>
+                  ))}
+                  {Array.from(filterSelectedImplements).sort().map(implement => (
+                    <div key={`i-${implement}`} className="library-exercises-filter-chip" onClick={handleFilter}>
+                      <span>{implement}</span>
+                    </div>
+                  ))}
+                  <button type="button" className="library-exercises-clear-filters" onClick={() => { setSelectedMuscles(new Set()); setTempSelectedMuscles(new Set()); setFilterSelectedImplements(new Set()); setTempFilterSelectedImplements(new Set()); }}>
+                    Limpiar
                   </button>
-                )}
-                {!isEditMode && isExerciseIncomplete(exercise) && (
-                  <div className="exercise-incomplete-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                )}
-                <div className="exercise-card-header">
-                  <h3 className="exercise-card-title">{exercise.name}</h3>
                 </div>
               </div>
-            ))}
+            )}
+
+            <div className="library-exercises-sidebar-content">
+              {sidebarExercises.length === 0 ? (
+                <div className="library-exercises-sidebar-empty">
+                  <p>
+                    {searchQuery.trim() || selectedMuscles.size > 0 || filterSelectedImplements.size > 0
+                      ? 'No se encontraron ejercicios'
+                      : 'No hay ejercicios. Agrega uno para comenzar.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="library-exercises-sidebar-list">
+                  {sidebarExercises.map((exercise) => (
+                    <button
+                      key={exercise.name}
+                      type="button"
+                      className={`library-exercises-sidebar-item ${selectedExercise?.name === exercise.name ? 'library-exercises-sidebar-item-selected' : ''} ${isEditMode ? 'library-exercises-sidebar-item-edit' : ''}`}
+                      onClick={() => {
+                        if (isEditMode) return;
+                        handleExerciseClick(exercise);
+                      }}
+                    >
+                      {isEditMode && (
+                        <span
+                          className="library-exercises-sidebar-item-delete"
+                          onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteExercise(exercise); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDeleteExercise(exercise); } }}
+                          aria-label="Eliminar"
+                        >
+                          −
+                        </span>
+                      )}
+                      {!isEditMode && isExerciseIncomplete(exercise) && (
+                        <span className="library-exercises-sidebar-item-incomplete" title="Ejercicio incompleto">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18.9199 17.1583L19.0478 15.5593C19.08 15.1564 19.2388 14.7743 19.5009 14.4667L20.541 13.2449C21.1527 12.527 21.1526 11.4716 20.5409 10.7538L19.5008 9.53271C19.2387 9.2251 19.0796 8.84259 19.0475 8.43972L18.9204 6.84093C18.8453 5.9008 18.0986 5.15403 17.1585 5.07901L15.5594 4.95108C15.1566 4.91893 14.7746 4.76143 14.467 4.49929L13.246 3.45879C12.5282 2.84707 11.4718 2.84707 10.754 3.45879L9.53285 4.49883C9.22525 4.76097 8.84274 4.91981 8.43987 4.95196L6.84077 5.07957M18.9208 17.159C18.8458 18.0991 18.0993 18.8457 17.1591 18.9207M17.1586 18.9197L15.5595 19.0473C15.1567 19.0795 14.7744 19.2376 14.4667 19.4997L13.246 20.5407C12.5282 21.1525 11.4717 21.1525 10.7539 20.5408L9.53316 19.5008C9.22555 19.2386 8.84325 19.0798 8.44038 19.0477L6.84077 18.9197M6.84173 18.9207C5.90159 18.8457 5.15505 18.0991 5.08003 17.159L4.9521 15.5594C4.91995 15.1565 4.76111 14.7742 4.49898 14.4666L3.45894 13.2459C2.84721 12.5281 2.84693 11.4715 3.45865 10.7537L4.49963 9.53301C4.76176 9.22541 4.91908 8.84311 4.95122 8.44024L5.07915 6.84063M5.08003 6.84158C5.15505 5.90145 5.9016 5.15491 6.84173 5.07989" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </span>
+                      )}
+                      <span className="library-exercises-sidebar-item-name">{exercise.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+
+          {/* Right main - exercise detail (video, muscles, implements) */}
+          <div className="library-exercises-main">
+            {!selectedExercise ? (
+              <div className="library-exercises-main-empty">
+                <svg className="library-exercises-main-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
+                  <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
+                </svg>
+                <p className="library-exercises-main-empty-text">Selecciona un ejercicio de la lista para ver y editar su contenido</p>
+                <button type="button" className="library-exercises-main-empty-button" onClick={handleAddExercise}>
+                  + Nuevo ejercicio
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="library-exercises-main-header">
+                  <div className="library-exercises-main-header-title-wrap">
+                    <h2 className="library-exercises-main-title">{selectedExercise.name}</h2>
+                    {isExerciseIncomplete(selectedExercise) && (
+                      <span className="library-exercises-main-incomplete-tag" title="Falta video, músculos o implementos">Incompleto</span>
+                    )}
+                  </div>
+                  <button type="button" className="library-exercises-main-close" onClick={handleClearSelection} title="Cerrar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="library-exercises-main-content">
+                  {/* Same structure as former exercise modal body: implements + video/muscles */}
+                  <div className="exercise-modal-content exercise-modal-content-inline">
+                    <div className="exercise-modal-body">
+                      <div className="exercise-modal-left">
+                        {/* Implements card - same as before */}
+                        <div className="exercise-implements-card">
+                          <div className="exercise-implements-header">
+                            <label className="exercise-section-title">Implementos</label>
+                          </div>
+                          {!isImplementsEditMode ? (
+                            <div className="exercise-implements-actions-overlay">
+                              <button
+                                className="exercise-video-action-pill"
+                                onClick={() => {
+                                  const currentImplements = selectedExercise?.data?.implements || [];
+                                  setSelectedImplements(new Set(currentImplements));
+                                  setIsImplementsEditMode(true);
+                                }}
+                              >
+                                <span className="exercise-video-action-text">Editar</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="exercise-implements-actions-overlay">
+                              <button
+                                className="exercise-video-action-pill exercise-video-save-pill"
+                                onClick={handleSaveImplements}
+                                disabled={isSavingImplements}
+                              >
+                                <span className="exercise-video-action-text">{isSavingImplements ? 'Guardando...' : 'Guardar'}</span>
+                              </button>
+                            </div>
+                          )}
+                          <div className="exercise-implements-content">
+                            {isImplementsEditMode ? (
+                              <div className="exercise-implements-grid">
+                                {IMPLEMENTS_LIST.map(implement => (
+                                  <button
+                                    key={implement}
+                                    type="button"
+                                    className={`exercise-implement-chip ${selectedImplements.has(implement) ? 'exercise-implement-chip-selected' : ''}`}
+                                    onClick={() => handleToggleImplement(implement)}
+                                  >
+                                    {implement}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="exercise-implements-display">
+                                {selectedImplements.size > 0 ? (
+                                  <div className="exercise-implements-list">
+                                    {Array.from(selectedImplements).map(implement => (
+                                      <span key={implement} className="exercise-implement-tag">
+                                        {implement}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="exercise-implements-empty">No hay implementos seleccionados</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Effective sets card - always visible (read-only when not editing) */}
+                        <div className="exercise-effective-sets-card">
+                          <div className="exercise-effective-sets-header">
+                            <label className="exercise-section-title">Series Efectivas por Grupo Muscular</label>
+                            <button
+                              className="exercise-effective-sets-info-button"
+                              onClick={() => setIsEffectiveSetsInfoModalOpen(true)}
+                              aria-label="Información sobre series efectivas"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none"/>
+                                <path d="M12 16V12" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" strokeLinecap="round"/>
+                                <circle cx="12" cy="8" r="1" fill="rgba(255, 255, 255, 0.6)"/>
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="exercise-effective-sets-scroll">
+                            {isMuscleEditMode ? (
+                              <>
+                              {Array.from(editingMuscles).sort().map(muscle => (
+                                <div key={muscle} className="exercise-effective-sets-item">
+                                  <span className="exercise-effective-sets-muscle-name">
+                                    {MUSCLE_DISPLAY_NAMES[muscle] || muscle}
+                                  </span>
+                                  <div className="exercise-effective-sets-input-wrapper">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0"
+                                      max="1"
+                                      className="exercise-effective-sets-input"
+                                      placeholder="0"
+                                      value={muscleEffectiveSets[muscle] || ''}
+                                      onChange={(e) => handleEffectiveSetsChange(muscle, e.target.value)}
+                                    />
+                                    <div className="exercise-effective-sets-arrows">
+                                      <button
+                                        type="button"
+                                        className="exercise-effective-sets-spinner-button exercise-effective-sets-spinner-up"
+                                        disabled={(() => {
+                                          const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
+                                          if (currentValue >= 1.0) return true;
+                                          const newValue = parseFloat((currentValue + 0.1).toFixed(1));
+                                          if (newValue >= 1.0) {
+                                            let hasOtherOne = false;
+                                            editingMuscles.forEach(m => {
+                                              if (m !== muscle) {
+                                                const mValue = parseFloat(muscleEffectiveSets[m] || 0);
+                                                if (mValue === 1.0) hasOtherOne = true;
+                                              }
+                                            });
+                                            return hasOtherOne;
+                                          }
+                                          return false;
+                                        })()}
+                                        onClick={() => {
+                                          const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
+                                          const newValue = parseFloat((currentValue + 0.1).toFixed(1));
+                                          if (newValue >= 1.0) {
+                                            let hasOtherOne = false;
+                                            editingMuscles.forEach(m => {
+                                              if (m !== muscle && parseFloat(muscleEffectiveSets[m] || 0) === 1.0) hasOtherOne = true;
+                                            });
+                                            if (hasOtherOne) return;
+                                          }
+                                          handleEffectiveSetsChange(muscle, String(Math.min(1.0, newValue).toFixed(1)));
+                                        }}
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="exercise-effective-sets-spinner-button exercise-effective-sets-spinner-down"
+                                        disabled={parseFloat(muscleEffectiveSets[muscle] || 0) <= 0}
+                                        onClick={() => {
+                                          const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
+                                          if (currentValue > 0) handleEffectiveSetsChange(muscle, String(Math.max(0, (currentValue - 0.1).toFixed(1))));
+                                        }}
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              {editingMuscles.size === 0 && (
+                                <div className="exercise-no-muscles-selected">
+                                  <p>Haz clic en el cuerpo para seleccionar músculos</p>
+                                </div>
+                              )}
+                              </>
+                            ) : (
+                              <>
+                              {selectedExercise?.data?.muscle_activation && Object.keys(selectedExercise.data.muscle_activation).length > 0 ? (
+                                Object.keys(selectedExercise.data.muscle_activation).sort().map(muscle => {
+                                  const dbValue = selectedExercise.data.muscle_activation[muscle];
+                                  const displayValue = dbValue != null ? (dbValue / 100).toFixed(1) : '—';
+                                  return (
+                                    <div key={muscle} className="exercise-effective-sets-item exercise-effective-sets-item-readonly">
+                                      <span className="exercise-effective-sets-muscle-name">
+                                        {MUSCLE_DISPLAY_NAMES[muscle] || muscle}
+                                      </span>
+                                      <span className="exercise-effective-sets-value-readonly">{displayValue}</span>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="exercise-no-muscles-selected">
+                                  <p>No hay series efectivas definidas. Haz clic en &quot;Músculos&quot; y luego en &quot;Editar&quot; para configurarlas.</p>
+                                </div>
+                              )}
+                              </>
+                            )}
+                          </div>
+                          {isMuscleEditMode && (
+                            <div className="exercise-presets-section">
+                              <label className="exercise-section-title">Predeterminados</label>
+                              <div className="exercise-presets-wrapper">
+                                <div className="exercise-presets-container">
+                                  <div className="exercise-presets-scroll">
+                                    {Object.keys(EXERCISE_PRESETS).map(presetKey => {
+                                      const preset = EXERCISE_PRESETS[presetKey];
+                                      return (
+                                        <button
+                                          key={presetKey}
+                                          type="button"
+                                          className="exercise-preset-item"
+                                          onClick={() => handleApplyPreset(presetKey)}
+                                        >
+                                          <span className="exercise-preset-name">{preset.name}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="exercise-modal-right">
+                        <div className="exercise-tab-header">
+                          <div className="exercise-tab-indicator-container">
+                            <div
+                              className="exercise-tab-indicator"
+                              style={{
+                                transform: exerciseViewMode === 'video' ? 'translateX(0)' : 'translateX(calc(100% + 2px))',
+                              }}
+                            />
+                          </div>
+                          <button
+                            className={`exercise-tab-button ${exerciseViewMode === 'video' ? 'exercise-tab-button-active' : ''}`}
+                            onClick={() => setExerciseViewMode('video')}
+                          >
+                            Video
+                          </button>
+                          <button
+                            className={`exercise-tab-button ${exerciseViewMode === 'muscles' ? 'exercise-tab-button-active' : ''}`}
+                            onClick={() => setExerciseViewMode('muscles')}
+                          >
+                            Músculos
+                          </button>
+                        </div>
+
+                        <div className={`exercise-modal-right-content ${exerciseViewMode === 'video' ? 'exercise-modal-right-content-video' : ''}`}>
+                          {exerciseViewMode === 'video' ? (
+                            <div className="exercise-video-view">
+                              {selectedExercise?.data?.video_url || selectedExercise?.data?.video ? (
+                                <div className="exercise-video-container">
+                                  <video
+                                    className="exercise-video-player"
+                                    src={selectedExercise.data.video_url || selectedExercise.data.video}
+                                    controls={!isVideoEditMode}
+                                    style={{ pointerEvents: isVideoEditMode ? 'none' : 'auto' }}
+                                    onPlay={() => setIsVideoPlaying(true)}
+                                    onPause={() => setIsVideoPlaying(false)}
+                                    onEnded={() => setIsVideoPlaying(false)}
+                                  />
+                                  {!isVideoEditMode && !isVideoPlaying ? (
+                                    <div className="exercise-video-actions-overlay">
+                                      <button
+                                        className="exercise-video-action-pill"
+                                        onClick={() => setIsVideoEditMode(true)}
+                                        disabled={isUploadingVideo}
+                                      >
+                                        <span className="exercise-video-action-text">Editar</span>
+                                      </button>
+                                    </div>
+                                  ) : !isVideoEditMode ? null : (
+                                    <div className="exercise-video-edit-overlay">
+                                      <div className="exercise-video-edit-buttons">
+                                        <div className="exercise-video-edit-row">
+                                          <div className="exercise-video-action-group">
+                                            <label className="exercise-video-action-pill">
+                                              <input
+                                                type="file"
+                                                accept="video/*"
+                                                onChange={handleVideoUpload}
+                                                disabled={isUploadingVideo}
+                                                style={{ display: 'none' }}
+                                              />
+                                              <span className="exercise-video-action-text">
+                                                {isUploadingVideo ? 'Subiendo...' : 'Cambiar'}
+                                              </span>
+                                            </label>
+                                            {isUploadingVideo && (
+                                              <div className="exercise-video-progress">
+                                                <div className="exercise-video-progress-bar">
+                                                  <div className="exercise-video-progress-fill" style={{ width: `${videoUploadProgress}%` }} />
+                                                </div>
+                                                <span className="exercise-video-progress-text">{videoUploadProgress}%</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <button
+                                            className="exercise-video-action-pill exercise-video-delete-pill"
+                                            onClick={handleVideoDelete}
+                                            disabled={isUploadingVideo}
+                                          >
+                                            <span className="exercise-video-action-text">Eliminar</span>
+                                          </button>
+                                        </div>
+                                        <button
+                                          className="exercise-video-action-pill exercise-video-save-pill"
+                                          onClick={() => setIsVideoEditMode(false)}
+                                          disabled={isUploadingVideo}
+                                        >
+                                          <span className="exercise-video-action-text">Guardar</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="exercise-no-video">
+                                  <p>No hay video disponible para este ejercicio</p>
+                                  <div className="exercise-video-upload-group">
+                                    <label className="exercise-video-upload-button">
+                                      <input
+                                        type="file"
+                                        accept="video/*"
+                                        onChange={handleVideoUpload}
+                                        disabled={isUploadingVideo}
+                                        style={{ display: 'none' }}
+                                      />
+                                      {isUploadingVideo ? 'Subiendo...' : 'Subir Video'}
+                                    </label>
+                                    {isUploadingVideo && (
+                                      <div className="exercise-video-progress">
+                                        <div className="exercise-video-progress-bar">
+                                          <div className="exercise-video-progress-fill" style={{ width: `${videoUploadProgress}%` }} />
+                                        </div>
+                                        <span className="exercise-video-progress-text">{videoUploadProgress}%</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="exercise-muscles-view">
+                              {!isMuscleEditMode ? (
+                                <>
+                                  {selectedExercise?.data?.muscle_activation ? (
+                                    <>
+                                      <div className="exercise-muscle-silhouette-wrapper">
+                                        <MuscleSilhouetteSVG
+                                          selectedMuscles={new Set(Object.keys(selectedExercise.data.muscle_activation))}
+                                          onMuscleClick={() => {}}
+                                        />
+                                      </div>
+                                      <div className="exercise-muscles-labels-wrapper">
+                                        <div
+                                          className="exercise-muscles-labels-container"
+                                          ref={muscleLabelsContainerRef}
+                                          onScroll={(e) => {
+                                            const el = e.target;
+                                            if (el) setMuscleLabelsScrollProgress({ scrollLeft: el.scrollLeft || 0, scrollWidth: el.scrollWidth || 0, clientWidth: el.clientWidth || 0 });
+                                          }}
+                                        >
+                                          <div className="exercise-muscles-labels-scroll">
+                                            {Object.keys(selectedExercise.data.muscle_activation).sort().map(muscle => (
+                                              <div key={muscle} className="exercise-muscle-label-item">
+                                                <span className="exercise-muscle-label-name">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (
+                                          <div className="exercise-muscles-labels-scroll-indicator">
+                                            <div
+                                              className="exercise-muscles-labels-scroll-indicator-bar"
+                                              style={{
+                                                width: `${Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100)}%`,
+                                                left: `${(muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth) > 0
+                                                  ? (muscleLabelsScrollProgress.scrollLeft / (muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth)) * (100 - Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100))
+                                                  : 0}%`
+                                              }}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="exercise-muscles-actions-overlay">
+                                        <button className="exercise-muscle-edit-button" onClick={handleStartMuscleEdit}>
+                                          <span className="exercise-video-action-text">Editar</span>
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="exercise-no-muscles">
+                                      <p>No hay información de músculos disponible</p>
+                                      <div className="exercise-muscles-actions-overlay">
+                                        <button className="exercise-muscle-edit-button" onClick={handleStartMuscleEdit}>
+                                          <span className="exercise-video-action-text">Editar</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <div className="exercise-muscle-silhouette-wrapper">
+                                    <MuscleSilhouetteSVG
+                                      selectedMuscles={editingMuscles}
+                                      onMuscleClick={handleToggleEditingMuscle}
+                                    />
+                                  </div>
+                                  <div className="exercise-muscles-labels-wrapper">
+                                    <div
+                                      className="exercise-muscles-labels-container"
+                                      ref={muscleLabelsContainerRef}
+                                      onScroll={(e) => {
+                                        const el = e.target;
+                                        if (el) setMuscleLabelsScrollProgress({ scrollLeft: el.scrollLeft || 0, scrollWidth: el.scrollWidth || 0, clientWidth: el.clientWidth || 0 });
+                                      }}
+                                    >
+                                      <div className="exercise-muscles-labels-scroll">
+                                        {Array.from(editingMuscles).sort().map(muscle => (
+                                          <div key={muscle} className="exercise-muscle-label-item">
+                                            <span className="exercise-muscle-label-name">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
+                                            <button
+                                              type="button"
+                                              className="exercise-muscle-remove-button"
+                                              onClick={() => handleToggleEditingMuscle(muscle)}
+                                              aria-label="Eliminar músculo"
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
+                                        ))}
+                                        {editingMuscles.size === 0 && (
+                                          <div className="exercise-no-muscles-selected">
+                                            <p>Haz clic en el cuerpo para seleccionar músculos</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (() => {
+                                      const scrollableWidth = muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth;
+                                      const barWidth = Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100);
+                                      const maxLeft = 100 - barWidth;
+                                      const leftPosition = scrollableWidth > 0 ? Math.max(0, Math.min(maxLeft, (muscleLabelsScrollProgress.scrollLeft / scrollableWidth) * maxLeft)) : 0;
+                                      return (
+                                        <div className="exercise-muscles-labels-scroll-indicator">
+                                          <div className="exercise-muscles-labels-scroll-indicator-bar" style={{ width: `${barWidth}%`, left: `${leftPosition}%` }} />
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                  <div className="exercise-muscles-actions-overlay">
+                                    <button className="exercise-video-action-pill exercise-video-cancel-pill" onClick={handleCancelMuscleEdit}>
+                                      <span className="exercise-video-action-text">Cancelar</span>
+                                    </button>
+                                    <button className="exercise-video-action-pill exercise-video-save-pill" onClick={handleSaveMuscles} disabled={isSavingMuscles}>
+                                      <span className="exercise-video-action-text">{isSavingMuscles ? 'Guardando...' : 'Guardar'}</span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Filter Modal */}
+      {/* Filter Modal - same structure as PWA WorkoutExecutionScreen filter modal */}
       <Modal
         isOpen={isFilterModalOpen}
         onClose={handleCloseFilterModal}
-        title="Filtrar por Músculos"
+        title="Filtrar Ejercicios"
+        containerClassName="filter-modal-modal"
       >
-        <div className="filter-modal-content">
-          <div className="filter-modal-body">
-            <div className="filter-muscle-silhouette-container">
-              <MuscleSilhouetteSVG
-                selectedMuscles={tempSelectedMuscles}
-                onMuscleClick={handleToggleMuscle}
-              />
-            </div>
-            <div className="filter-selected-muscles-list">
-              <ul className="filter-muscles-list">
-                {Array.from(tempSelectedMuscles).sort().map(muscle => (
-                  <li key={muscle} className="filter-muscle-item">
-                    <span className="filter-muscle-name">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
-                    <button
-                      className="filter-muscle-remove"
-                      onClick={() => handleToggleMuscle(muscle)}
-                      aria-label="Eliminar músculo"
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
+        <div className="filter-modal-container">
+          <div className="filter-modal-content">
+            <div className="filter-modal-body">
+              {/* Left: Muscle silhouette (same height as the two right cards combined) */}
+              <div className="filter-modal-column filter-muscles-column">
+                <div className="filter-muscle-silhouette-container">
+                  <MuscleSilhouetteSVG
+                    selectedMuscles={tempSelectedMuscles}
+                    onMuscleClick={handleToggleMuscle}
+                  />
+                </div>
+              </div>
+
+              {/* Right: Two cards for selected músculos and implementos */}
+              <div className="filter-modal-column filter-cards-column">
+                {/* Músculos card - selected values, fixed size and scrollable */}
+                <div className="filter-card filter-card-muscles-selected">
+                  <h3 className="filter-card-title">Músculos seleccionados</h3>
+                  <div className="filter-card-scroll">
+                    {tempSelectedMuscles.size > 0 ? (
+                      Array.from(tempSelectedMuscles).sort().map(muscle => (
+                        <button
+                          key={muscle}
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => handleToggleMuscle(muscle)}
+                        >
+                          <span className="filter-chip-text">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
+                          <span className="filter-chip-remove" aria-hidden>×</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="filter-card-empty">Ningún músculo seleccionado</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Implementos card - selectable chips, scrollable */}
+                <div className="filter-card">
+                  <h3 className="filter-card-title">Implementos</h3>
+                  <div className="filter-card-scroll">
+                    {allUniqueImplements.length > 0 ? (
+                      allUniqueImplements.map(implement => {
+                        const isSelected = tempFilterSelectedImplements.has(implement);
+                        return (
+                          <button
+                            key={implement}
+                            type="button"
+                            className={`filter-implement-chip ${isSelected ? 'filter-implement-chip-selected' : ''}`}
+                            onClick={() => handleToggleImplementFilter(implement)}
+                          >
+                            <span className={isSelected ? 'filter-implement-chip-text-selected' : 'filter-implement-chip-text'}>
+                              {implement}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="filter-card-empty">No hay implementos en la biblioteca</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div className="filter-modal-actions">
             <button
+              type="button"
               className="filter-clear-button"
               onClick={handleClearFilter}
-              disabled={tempSelectedMuscles.size === 0}
+              disabled={tempSelectedMuscles.size === 0 && tempFilterSelectedImplements.size === 0}
             >
               Limpiar
             </button>
             <button
+              type="button"
               className="filter-apply-button"
               onClick={handleApplyFilter}
             >
@@ -1282,530 +1899,6 @@ const LibraryExercisesScreen = () => {
           <p className="delete-warning-text">
             Esta acción es irreversible. El ejercicio se eliminará permanentemente de esta biblioteca.
           </p>
-        </div>
-      </Modal>
-
-      {/* Exercise Detail Modal */}
-      <Modal
-        isOpen={isExerciseModalOpen}
-        onClose={handleCloseExerciseModal}
-        title={selectedExercise?.name || 'Ejercicio'}
-      >
-        <div className="exercise-modal-content">
-          <div className="exercise-modal-body">
-            {/* Left Side - Inputs */}
-            <div className="exercise-modal-left">
-              {/* Implements Selection Card */}
-              <div className="exercise-implements-card">
-                <div className="exercise-implements-header">
-                  <label className="exercise-section-title">Implementos</label>
-                </div>
-                {!isImplementsEditMode ? (
-                  <div className="exercise-implements-actions-overlay">
-                    <button
-                      className="exercise-video-action-pill"
-                      onClick={() => {
-                        // Ensure we have the latest implements from the exercise data
-                        const currentImplements = selectedExercise?.data?.implements || [];
-                        setSelectedImplements(new Set(currentImplements));
-                        setIsImplementsEditMode(true);
-                      }}
-                    >
-                      <span className="exercise-video-action-text">Editar</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="exercise-implements-actions-overlay">
-                    <div className="exercise-implements-edit-buttons">
-                      <button
-                        className="exercise-video-action-pill exercise-video-cancel-pill"
-                        onClick={() => {
-                          // Reset to original values
-                          const existingImplements = selectedExercise?.data?.implements || [];
-                          setSelectedImplements(new Set(existingImplements));
-                          setIsImplementsEditMode(false);
-                        }}
-                      >
-                        <span className="exercise-video-action-text">Cancelar</span>
-                      </button>
-                      <button
-                        className="exercise-video-action-pill exercise-video-save-pill"
-                        onClick={handleSaveImplements}
-                      >
-                        <span className="exercise-video-action-text">Guardar</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div className="exercise-implements-content">
-                  {isImplementsEditMode ? (
-                    <div className="exercise-implements-grid">
-                      {IMPLEMENTS_LIST.map(implement => (
-                        <button
-                          key={implement}
-                          type="button"
-                          className={`exercise-implement-chip ${selectedImplements.has(implement) ? 'exercise-implement-chip-selected' : ''}`}
-                          onClick={() => handleToggleImplement(implement)}
-                        >
-                          {implement}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="exercise-implements-display">
-                      {selectedImplements.size > 0 ? (
-                        <div className="exercise-implements-list">
-                          {Array.from(selectedImplements).map(implement => (
-                            <span key={implement} className="exercise-implement-tag">
-                              {implement}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="exercise-implements-empty">No hay implementos seleccionados</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {isMuscleEditMode && (
-                <div className="exercise-effective-sets-card">
-                  <div className="exercise-effective-sets-header">
-                    <label className="exercise-section-title">Series Efectivas por Grupo Muscular</label>
-                    <button
-                      className="exercise-effective-sets-info-button"
-                      onClick={() => setIsEffectiveSetsInfoModalOpen(true)}
-                      aria-label="Información sobre series efectivas"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none"/>
-                        <path d="M12 16V12" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" strokeLinecap="round"/>
-                        <circle cx="12" cy="8" r="1" fill="rgba(255, 255, 255, 0.6)"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="exercise-effective-sets-scroll">
-                    {Array.from(editingMuscles).sort().map(muscle => (
-                      <div key={muscle} className="exercise-effective-sets-item">
-                        <span className="exercise-effective-sets-muscle-name">
-                          {MUSCLE_DISPLAY_NAMES[muscle] || muscle}
-                        </span>
-                        <div className="exercise-effective-sets-input-wrapper">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="1"
-                            className="exercise-effective-sets-input"
-                            placeholder="0"
-                            value={muscleEffectiveSets[muscle] || ''}
-                            onChange={(e) => handleEffectiveSetsChange(muscle, e.target.value)}
-                          />
-                          <div className="exercise-effective-sets-arrows">
-                            <button
-                              type="button"
-                              className="exercise-effective-sets-spinner-button exercise-effective-sets-spinner-up"
-                              disabled={(() => {
-                                const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
-                                if (currentValue >= 1.0) return true;
-                                
-                                // Check if trying to reach 1.0 and another muscle is already 1.0
-                                const newValue = parseFloat((currentValue + 0.1).toFixed(1));
-                                if (newValue >= 1.0) {
-                                  let hasOtherOne = false;
-                                  editingMuscles.forEach(m => {
-                                    if (m !== muscle) {
-                                      const mValue = parseFloat(muscleEffectiveSets[m] || 0);
-                                      if (mValue === 1.0) {
-                                        hasOtherOne = true;
-                                      }
-                                    }
-                                  });
-                                  return hasOtherOne;
-                                }
-                                return false;
-                              })()}
-                              onClick={() => {
-                                const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
-                                
-                                // Calculate new value
-                                const newValue = parseFloat((currentValue + 0.1).toFixed(1));
-                                
-                                // If trying to set to 1.0, check if another muscle is already 1.0
-                                if (newValue >= 1.0) {
-                                  let hasOtherOne = false;
-                                  editingMuscles.forEach(m => {
-                                    if (m !== muscle) {
-                                      const mValue = parseFloat(muscleEffectiveSets[m] || 0);
-                                      if (mValue === 1.0) {
-                                        hasOtherOne = true;
-                                      }
-                                    }
-                                  });
-                                  
-                                  if (hasOtherOne) {
-                                    // Can't set to 1.0 if another muscle is already 1.0
-                                    return;
-                                  }
-                                }
-                                
-                                // Increment by 0.1, cap at 1.0
-                                const finalValue = Math.min(1.0, newValue);
-                                handleEffectiveSetsChange(muscle, String(finalValue.toFixed(1)));
-                              }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              className="exercise-effective-sets-spinner-button exercise-effective-sets-spinner-down"
-                              disabled={(() => {
-                                const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
-                                return currentValue <= 0;
-                              })()}
-                              onClick={() => {
-                                const currentValue = parseFloat(muscleEffectiveSets[muscle] || 0);
-                                if (currentValue > 0) {
-                                  handleEffectiveSetsChange(muscle, String(Math.max(0, (currentValue - 0.1).toFixed(1))));
-                                }
-                              }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {editingMuscles.size === 0 && (
-                      <div className="exercise-no-muscles-selected">
-                        <p>Haz clic en el cuerpo para seleccionar músculos</p>
-                      </div>
-                    )}
-                  </div>
-                  {/* Presets Section */}
-                  <div className="exercise-presets-section">
-                    <label className="exercise-section-title">Predeterminados</label>
-                    <div className="exercise-presets-wrapper">
-                      <div className="exercise-presets-container">
-                        <div className="exercise-presets-scroll">
-                          {Object.keys(EXERCISE_PRESETS).map(presetKey => {
-                            const preset = EXERCISE_PRESETS[presetKey];
-                            return (
-                              <button
-                                key={presetKey}
-                                className="exercise-preset-item"
-                                onClick={() => handleApplyPreset(presetKey)}
-                              >
-                                <span className="exercise-preset-name">{preset.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right Side - Toggle between Muscles and Video */}
-            <div className="exercise-modal-right">
-              {/* Tab Indicator Header */}
-              <div className="exercise-tab-header">
-                <div className="exercise-tab-indicator-container">
-                  <div 
-                    className="exercise-tab-indicator"
-                    style={{
-                      transform: exerciseViewMode === 'video' ? 'translateX(0)' : 'translateX(calc(100% + 2px))',
-                    }}
-                  />
-                </div>
-                <button
-                  className={`exercise-tab-button ${exerciseViewMode === 'video' ? 'exercise-tab-button-active' : ''}`}
-                  onClick={() => setExerciseViewMode('video')}
-                >
-                  Video
-                </button>
-                <button
-                  className={`exercise-tab-button ${exerciseViewMode === 'muscles' ? 'exercise-tab-button-active' : ''}`}
-                  onClick={() => setExerciseViewMode('muscles')}
-                >
-                  Músculos
-                </button>
-              </div>
-
-              {/* Content Area */}
-              <div className={`exercise-modal-right-content ${exerciseViewMode === 'video' ? 'exercise-modal-right-content-video' : ''}`}>
-                {exerciseViewMode === 'video' ? (
-                  <div className="exercise-video-view">
-                    {selectedExercise?.data?.video_url || selectedExercise?.data?.video ? (
-                      <div className="exercise-video-container">
-                        <video
-                          className="exercise-video-player"
-                          src={selectedExercise.data.video_url || selectedExercise.data.video}
-                          controls={!isVideoEditMode}
-                          style={{ pointerEvents: isVideoEditMode ? 'none' : 'auto' }}
-                          onPlay={() => setIsVideoPlaying(true)}
-                          onPause={() => setIsVideoPlaying(false)}
-                          onEnded={() => setIsVideoPlaying(false)}
-                        />
-                        {!isVideoEditMode && !isVideoPlaying ? (
-                        <div className="exercise-video-actions-overlay">
-                            <button
-                              className="exercise-video-action-pill"
-                              onClick={() => setIsVideoEditMode(true)}
-                              disabled={isUploadingVideo}
-                            >
-                              <span className="exercise-video-action-text">Editar</span>
-                            </button>
-                          </div>
-                        ) : !isVideoEditMode ? null : (
-                          <div className="exercise-video-edit-overlay">
-                            <div className="exercise-video-edit-buttons">
-                              <div className="exercise-video-edit-row">
-                                <div className="exercise-video-action-group">
-                          <label className="exercise-video-action-pill">
-                            <input
-                              type="file"
-                              accept="video/*"
-                              onChange={handleVideoUpload}
-                              disabled={isUploadingVideo}
-                              style={{ display: 'none' }}
-                            />
-                            <span className="exercise-video-action-text">
-                              {isUploadingVideo ? 'Subiendo...' : 'Cambiar'}
-                            </span>
-                          </label>
-                        {isUploadingVideo && (
-                          <div className="exercise-video-progress">
-                            <div className="exercise-video-progress-bar">
-                              <div 
-                                className="exercise-video-progress-fill"
-                                style={{ width: `${videoUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="exercise-video-progress-text">
-                              {videoUploadProgress}%
-                            </span>
-                                    </div>
-                                  )}
-                                </div>
-                                <button
-                                  className="exercise-video-action-pill exercise-video-delete-pill"
-                                  onClick={handleVideoDelete}
-                                  disabled={isUploadingVideo}
-                                >
-                                  <span className="exercise-video-action-text">Eliminar</span>
-                                </button>
-                              </div>
-                              <button
-                                className="exercise-video-action-pill exercise-video-save-pill"
-                                onClick={() => setIsVideoEditMode(false)}
-                                disabled={isUploadingVideo}
-                              >
-                                <span className="exercise-video-action-text">Guardar</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="exercise-no-video">
-                        <p>No hay video disponible para este ejercicio</p>
-                        <div className="exercise-video-upload-group">
-                        <label className="exercise-video-upload-button">
-                          <input
-                            type="file"
-                            accept="video/*"
-                            onChange={handleVideoUpload}
-                            disabled={isUploadingVideo}
-                            style={{ display: 'none' }}
-                          />
-                          {isUploadingVideo ? 'Subiendo...' : 'Subir Video'}
-                        </label>
-                        {isUploadingVideo && (
-                          <div className="exercise-video-progress">
-                            <div className="exercise-video-progress-bar">
-                              <div 
-                                className="exercise-video-progress-fill"
-                                style={{ width: `${videoUploadProgress}%` }}
-                              />
-                            </div>
-                            <span className="exercise-video-progress-text">
-                              {videoUploadProgress}%
-                            </span>
-                          </div>
-                        )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="exercise-muscles-view">
-                    {!isMuscleEditMode ? (
-                      <>
-                    {selectedExercise?.data?.muscle_activation ? (
-                      <>
-                        <div className="exercise-muscle-silhouette-wrapper">
-                          <MuscleSilhouetteSVG
-                            selectedMuscles={new Set(Object.keys(selectedExercise.data.muscle_activation))}
-                            onMuscleClick={() => {}} // Read-only
-                          />
-                        </div>
-                            <div className="exercise-muscles-labels-wrapper">
-                              <div 
-                                className="exercise-muscles-labels-container"
-                                ref={muscleLabelsContainerRef}
-                                onScroll={(e) => {
-                                  const element = e.target;
-                                  if (element) {
-                                    setMuscleLabelsScrollProgress({
-                                      scrollLeft: element.scrollLeft || 0,
-                                      scrollWidth: element.scrollWidth || 0,
-                                      clientWidth: element.clientWidth || 0
-                                    });
-                                  }
-                                }}
-                              >
-                          <div className="exercise-muscles-labels-scroll">
-                            {Object.keys(selectedExercise.data.muscle_activation).sort().map(muscle => (
-                              <div key={muscle} className="exercise-muscle-label-item">
-                                <span className="exercise-muscle-label-name">
-                                  {MUSCLE_DISPLAY_NAMES[muscle] || muscle}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                              </div>
-                              {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (
-                                <div className="exercise-muscles-labels-scroll-indicator">
-                                  <div 
-                                    className="exercise-muscles-labels-scroll-indicator-bar"
-                                    style={{
-                                      width: `${Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100)}%`,
-                                      left: `${Math.max(0, Math.min(100 - (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100, 
-                                        ((muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth) > 0 
-                                          ? (muscleLabelsScrollProgress.scrollLeft / (muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth)) * (100 - (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100)
-                                          : 0)))}%`
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                            <div className="exercise-muscles-actions-overlay">
-                              <button
-                                className="exercise-muscle-edit-button"
-                                onClick={handleStartMuscleEdit}
-                              >
-                                <span className="exercise-video-action-text">Editar</span>
-                              </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="exercise-no-muscles">
-                        <p>No hay información de músculos disponible</p>
-                            <div className="exercise-muscles-actions-overlay">
-                              <button
-                                className="exercise-muscle-edit-button"
-                                onClick={handleStartMuscleEdit}
-                              >
-                                <span className="exercise-video-action-text">Editar</span>
-                              </button>
-                            </div>
-                      </div>
-                    )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="exercise-muscle-silhouette-wrapper">
-                          <MuscleSilhouetteSVG
-                            selectedMuscles={editingMuscles}
-                            onMuscleClick={handleToggleEditingMuscle}
-                          />
-                        </div>
-                        <div className="exercise-muscles-labels-wrapper">
-                          <div 
-                            className="exercise-muscles-labels-container"
-                            ref={muscleLabelsContainerRef}
-                            onScroll={(e) => {
-                              const element = e.target;
-                              if (element) {
-                                setMuscleLabelsScrollProgress({
-                                  scrollLeft: element.scrollLeft || 0,
-                                  scrollWidth: element.scrollWidth || 0,
-                                  clientWidth: element.clientWidth || 0
-                                });
-                              }
-                            }}
-                          >
-                            <div className="exercise-muscles-labels-scroll">
-                              {Array.from(editingMuscles).sort().map(muscle => (
-                                <div key={muscle} className="exercise-muscle-label-item">
-                                  <span className="exercise-muscle-label-name">
-                                    {MUSCLE_DISPLAY_NAMES[muscle] || muscle}
-                                  </span>
-                                  <button
-                                    className="exercise-muscle-remove-button"
-                                    onClick={() => handleToggleEditingMuscle(muscle)}
-                                    aria-label="Eliminar músculo"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                              {editingMuscles.size === 0 && (
-                                <div className="exercise-no-muscles-selected">
-                                  <p>Haz clic en el cuerpo para seleccionar músculos</p>
-                  </div>
-                )}
-              </div>
-            </div>
-                          {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (() => {
-                            const scrollableWidth = muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth;
-                            const barWidth = Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100);
-                            const maxLeft = 100 - barWidth;
-                            const leftPosition = scrollableWidth > 0 
-                              ? Math.max(0, Math.min(maxLeft, (muscleLabelsScrollProgress.scrollLeft / scrollableWidth) * maxLeft))
-                              : 0;
-                            
-                            return (
-                              <div className="exercise-muscles-labels-scroll-indicator">
-                                <div 
-                                  className="exercise-muscles-labels-scroll-indicator-bar"
-                                  style={{
-                                    width: `${barWidth}%`,
-                                    left: `${leftPosition}%`
-                                  }}
-                                />
-                              </div>
-                            );
-                          })()}
-                        </div>
-                        <div className="exercise-muscles-actions-overlay">
-                          <button
-                            className="exercise-video-action-pill exercise-video-cancel-pill"
-                            onClick={handleCancelMuscleEdit}
-                          >
-                            <span className="exercise-video-action-text">Cancelar</span>
-                          </button>
-                          <button
-                            className="exercise-video-action-pill exercise-video-save-pill"
-                            onClick={handleSaveMuscles}
-                          >
-                            <span className="exercise-video-action-text">Guardar</span>
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </Modal>
 

@@ -1,9 +1,16 @@
+/* No image header: compact layout (32px padding + 120px header = 152px). */
 .programs-clients-screen {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 32px;
   box-sizing: border-box;
+  min-height: calc(100vh - 152px);
+  background-color: #1a1a1a;
+}
+
+body.header-scrolled .programs-clients-screen {
+  min-height: calc(100vh - 120px);
 }
 
 .programs-clients-tabs {

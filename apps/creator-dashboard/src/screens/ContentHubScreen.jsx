@@ -11,14 +11,28 @@ import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
 import { getUser } from '../services/firestoreService';
 import './ContentHubScreen.css';
+import '../components/PropagateChangesModal.css';
 
 const ContentHubScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('libraries'); // 'libraries' | 'sessions' | 'contenido'
-  
+  const CONTENT_TAB_IDS = ['libraries', 'sessions', 'contenido'];
+  const [activeTab, setActiveTab] = useState(() => {
+    const fromState = location.state?.activeTab;
+    return fromState && CONTENT_TAB_IDS.includes(fromState) ? fromState : 'libraries';
+  });
+
+  // Restore tab when returning to Content (e.g. back from session edit or plan detail)
+  useEffect(() => {
+    if (location.pathname !== '/content') return;
+    const fromState = location.state?.activeTab;
+    if (fromState && CONTENT_TAB_IDS.includes(fromState)) {
+      setActiveTab(fromState);
+    }
+  }, [location.pathname, location.key, location.state]);
+
   // Library management state
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [libraryName, setLibraryName] = useState('');
@@ -45,6 +59,7 @@ const ContentHubScreen = () => {
   const [isSessionDeleteModalOpen, setIsSessionDeleteModalOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [sessionDeleteConfirmation, setSessionDeleteConfirmation] = useState('');
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   // Plans (Contenido) state
   const [plans, setPlans] = useState([]);
@@ -374,6 +389,7 @@ const ContentHubScreen = () => {
 
     if (sessionDeleteConfirmation.trim() !== sessionToDelete.title) return;
 
+    setIsDeletingSession(true);
     try {
       const usageCheck = await libraryService.checkLibrarySessionUsage(user.uid, sessionToDelete.id);
       
@@ -396,12 +412,16 @@ const ContentHubScreen = () => {
     } catch (err) {
       console.error('Error deleting session:', err);
       alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
   const handleLibraryClick = (libraryId) => {
     if (!isEditMode) {
-      navigate(`/libraries/${libraryId}`);
+      navigate(`/libraries/${libraryId}`, {
+        state: { returnTo: '/content', returnState: { activeTab } },
+      });
     }
   };
 
@@ -684,7 +704,9 @@ const ContentHubScreen = () => {
                     className={`content-hub-card content-hub-card--session ${isSessionEditMode ? 'content-hub-card-edit-mode' : ''}`}
                     onClick={() => {
                       if (!isSessionEditMode) {
-                        navigate(`/content/sessions/${session.id}`);
+                        navigate(`/content/sessions/${session.id}`, {
+                          state: { returnTo: '/content', returnState: { activeTab } },
+                        });
                       }
                     }}
                   >
@@ -757,37 +779,53 @@ const ContentHubScreen = () => {
         </div>
       </div>
 
-      {/* Create Library Modal */}
+      {/* Create Library Modal - same design as Propagate / Exercise modals */}
       <Modal
         isOpen={isLibraryModalOpen}
         onClose={handleCloseLibraryModal}
         title="Nueva Biblioteca"
+        containerClassName="propagate-modal-container"
+        contentClassName="propagate-modal-content-wrapper"
       >
-        <div className="content-hub-modal-content">
-          <div className="content-hub-modal-input-group">
-            <label className="content-hub-modal-label">
-              Nombre de la Biblioteca <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
-            </label>
-            <Input
-              placeholder="Ej: Ejercicios de Fuerza"
-              value={libraryName}
-              onChange={(e) => setLibraryName(e.target.value)}
-              type="text"
-              light={true}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && libraryName.trim()) {
-                  handleSubmitLibrary();
-                }
-              }}
-            />
+        <div className="propagate-modal-content create-library-modal-wrap">
+          <div className="propagate-modal-layout">
+            <div className="propagate-modal-card propagate-modal-left">
+              <div className="content-hub-modal-input-group">
+                <label className="content-hub-modal-label">
+                  Nombre de la Biblioteca <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                </label>
+                <Input
+                  placeholder="Ej: Ejercicios de Fuerza"
+                  value={libraryName}
+                  onChange={(e) => setLibraryName(e.target.value)}
+                  type="text"
+                  light={true}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && libraryName.trim()) {
+                      handleSubmitLibrary();
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          <div className="content-hub-modal-actions">
-            <Button
-              title={isCreatingLibrary ? 'Creando...' : 'Crear Biblioteca'}
+          <div className="propagate-modal-footer">
+            <button
+              type="button"
+              className="propagate-modal-btn propagate-modal-btn-dont"
+              onClick={handleCloseLibraryModal}
+              disabled={isCreatingLibrary}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="propagate-modal-btn propagate-modal-btn-propagate"
               onClick={handleSubmitLibrary}
               disabled={!libraryName.trim() || isCreatingLibrary}
-              loading={isCreatingLibrary}
-            />
+            >
+              {isCreatingLibrary ? 'Creando…' : 'Crear Biblioteca'}
+            </button>
           </div>
         </div>
       </Modal>
@@ -963,9 +1001,9 @@ const ContentHubScreen = () => {
             <button
               className={`content-hub-delete-button ${sessionDeleteConfirmation.trim() !== sessionToDelete?.title ? 'content-hub-delete-button-disabled' : ''}`}
               onClick={handleConfirmDeleteSession}
-              disabled={sessionDeleteConfirmation.trim() !== sessionToDelete?.title}
+              disabled={sessionDeleteConfirmation.trim() !== sessionToDelete?.title || isDeletingSession}
             >
-              Eliminar
+              {isDeletingSession ? 'Eliminando...' : 'Eliminar'}
             </button>
           </div>
           <p className="content-hub-modal-warning">

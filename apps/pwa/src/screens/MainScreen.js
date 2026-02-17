@@ -37,6 +37,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
 import assetBundleService from '../services/assetBundleService';
+import { getUpcomingBookingsForUser } from '../services/callBookingService';
 
 import logger from '../utils/logger.js';
 import { trackScreenView } from '../services/monitoringService';
@@ -327,6 +328,81 @@ const MainScreen = ({ navigation, route }) => {
       textTransform: 'uppercase',
       letterSpacing: 0.5,
     },
+    // Upcoming call card (same style as DailyWorkoutScreen "no session today")
+    upcomingCallRoot: {
+      flex: 1,
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    upcomingCallBgImage: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    upcomingCallBgFallback: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#1a1a2e',
+    },
+    upcomingCallOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    },
+    upcomingCallGlassWrap: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 28,
+    },
+    upcomingCallGlassCard: {
+      position: 'relative',
+      overflow: 'hidden',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      maxWidth: '100%',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+      shadowColor: 'rgba(255, 255, 255, 0.4)',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+      elevation: 2,
+      padding: 12,
+      gap: 4,
+    },
+    upcomingCallGlassCardWeb: {
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+    },
+    upcomingCallGlassCardInner: {
+      paddingVertical: 20,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      gap: 6,
+    },
+    upcomingCallLabel: {
+      fontSize: 22,
+      fontWeight: '400',
+      color: 'rgba(255, 255, 255, 0.95)',
+      textAlign: 'center',
+    },
+    upcomingCallCreatorName: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: '#ffffff',
+      textAlign: 'center',
+      letterSpacing: 0.2,
+    },
+    upcomingCallDate: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: 'rgba(255, 255, 255, 0.9)',
+      textAlign: 'center',
+    },
+    upcomingCallDaysLeft: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: 'rgba(255, 255, 255, 0.85)',
+      textAlign: 'center',
+    },
     // Navigation buttons
   }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT, heightForBottomPadding]);
   
@@ -365,6 +441,7 @@ const MainScreen = ({ navigation, route }) => {
   const [cachedCourseData, setCachedCourseData] = useState(null);
   const [libraryImageUri, setLibraryImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [upcomingCallCards, setUpcomingCallCards] = useState([]);
   // Get the first name from displayName
   const getFirstName = () => {
     // Check auth.currentUser first for most up-to-date data
@@ -442,6 +519,46 @@ const MainScreen = ({ navigation, route }) => {
       logger.error('Error caching course data:', error);
     }
   };
+
+  // Fetch upcoming call bookings and resolve course/creator for cards
+  useEffect(() => {
+    if (!user?.uid) {
+      setUpcomingCallCards([]);
+      return;
+    }
+    let cancelled = false;
+    getUpcomingBookingsForUser(user.uid)
+      .then((bookings) => {
+        if (cancelled || !bookings.length) return bookings;
+        return Promise.all(
+          bookings.map(async (booking) => {
+            let course = purchasedCourses.find(
+              (c) => (c.courseId || c.id) === booking.courseId
+            );
+            if (!course && booking.courseId) {
+              try {
+                course = await firestoreService.getCourse(booking.courseId);
+              } catch {
+                course = null;
+              }
+            }
+            const creatorName =
+              course?.creatorName || course?.creator_name || null;
+            return { booking, course: course || null, creatorName };
+          })
+        );
+      })
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) setUpcomingCallCards(list);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          logger.error('Error loading upcoming call bookings:', err);
+          setUpcomingCallCards([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [user?.uid, purchasedCourses]);
 
   // Load cached course data
   const loadCachedCourseData = async () => {
@@ -1318,7 +1435,17 @@ const MainScreen = ({ navigation, route }) => {
   // Create swipeable card data
   const getSwipeableCards = () => {
     const cards = [];
-    
+
+    // Add upcoming call cards first (one per scheduled call)
+    upcomingCallCards.forEach((item, idx) => {
+      cards.push({
+        id: `upcoming_call_${item.booking.id}`,
+        type: 'upcoming_call',
+        data: item,
+        index: idx,
+      });
+    });
+
     // Add course cards
     purchasedCourses.forEach((courseData, index) => {
       // Ensure we have a valid courseId
@@ -1330,10 +1457,10 @@ const MainScreen = ({ navigation, route }) => {
           courseDetails: courseData, // Wrap course data in courseDetails
           downloadedCourse: downloadedCourses[courseId]
         },
-        index: index
+        index: cards.length
       });
     });
-    
+
     // Add library card at the end
     cards.push({
       id: 'library',
@@ -1355,12 +1482,18 @@ const MainScreen = ({ navigation, route }) => {
         if (index < cards.length) {
           const card = cards[index];
           if (card.type === 'course' && card.data?.downloadedCourse?.imageUrl) {
-            // Preload next 2 images
             preloadPromises.push(
               ExpoImage.prefetch(card.data.downloadedCourse.imageUrl, {
                 cachePolicy: 'memory-disk'
               })
             );
+          } else if (card.type === 'upcoming_call' && card.data?.course) {
+            const uri = card.data.course?.image_url || card.data.course?.imageUrl;
+            if (uri) {
+              preloadPromises.push(
+                ExpoImage.prefetch(uri, { cachePolicy: 'memory-disk' })
+              );
+            }
           }
         }
       });
@@ -1696,6 +1829,81 @@ const MainScreen = ({ navigation, route }) => {
               </Text>
             </TouchableOpacity>
           )}
+        </Animated.View>
+      );
+    } else if (item.type === 'upcoming_call') {
+      const { booking, course, creatorName } = item.data || {};
+      const imageUrl = course?.image_url || course?.imageUrl;
+      const displayCreator = creatorName || 'Tu entrenador';
+      const slotStart = booking?.slotStartUtc
+        ? new Date(booking.slotStartUtc).toLocaleString('es-CO', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+      const daysLeftText = (() => {
+        if (!booking?.slotStartUtc) return null;
+        const start = new Date(booking.slotStartUtc);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        start.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((start - today) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return null;
+        if (diffDays === 0) return 'Hoy';
+        if (diffDays === 1) return 'Mañana';
+        return `En ${diffDays} días`;
+      })();
+
+      return (
+        <Animated.View style={[styles.swipeableCard, cardStyle, { borderWidth: 0 }]}>
+          <TouchableOpacity
+            style={[styles.cardContentWithImage, styles.upcomingCallRoot]}
+            onPress={() =>
+              navigation.navigate('UpcomingCallDetail', {
+                booking,
+                course: course || undefined,
+                creatorName: creatorName || undefined,
+              })
+            }
+            activeOpacity={0.95}
+          >
+            <View style={StyleSheet.absoluteFill}>
+              {imageUrl ? (
+                <ExpoImage
+                  source={{ uri: imageUrl }}
+                  style={styles.upcomingCallBgImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+              ) : (
+                <View style={styles.upcomingCallBgFallback} />
+              )}
+              <View style={styles.upcomingCallOverlay} />
+            </View>
+            <View style={styles.upcomingCallGlassWrap}>
+              <View
+                style={[
+                  styles.upcomingCallGlassCard,
+                  isWeb && styles.upcomingCallGlassCardWeb,
+                ]}
+              >
+                <View style={styles.upcomingCallGlassCardInner}>
+                  <Text style={styles.upcomingCallLabel}>
+                    Llamada con <Text style={styles.upcomingCallCreatorName}>{displayCreator}</Text>
+                  </Text>
+                  {slotStart ? (
+                    <Text style={styles.upcomingCallDate}>{slotStart}</Text>
+                  ) : null}
+                  {daysLeftText ? (
+                    <Text style={styles.upcomingCallDaysLeft}>{daysLeftText}</Text>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
         </Animated.View>
       );
     } else if (item.type === 'library') {

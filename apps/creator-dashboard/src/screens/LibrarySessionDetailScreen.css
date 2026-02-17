@@ -8,6 +8,11 @@
   margin: 0 auto;
 }
 
+/* When client-edit banner is shown, give container more height so the body below keeps the same usable space */
+.library-session-detail-container.library-session-detail-container-has-banner {
+  height: calc(100vh - 100px);
+}
+
 .library-session-detail-body {
   display: flex;
   flex: 1;
@@ -432,13 +437,19 @@
 }
 
 .draggable-exercise.exercise-in-session {
-  background: rgba(191, 168, 77, 0.1);
-  border-color: rgba(191, 168, 77, 0.3);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 4px solid rgba(255, 255, 255, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
 }
 
 .draggable-exercise.exercise-in-session:hover {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.07) 20%, rgba(255, 255, 255, 0.08) 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+  border-left-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
 .draggable-exercise.exercise-available {
@@ -483,8 +494,9 @@
 }
 
 .draggable-exercise.exercise-in-session .draggable-exercise-icon {
-  background: rgba(191, 168, 77, 0.2);
-  color: rgba(191, 168, 77, 1);
+  background: radial-gradient(ellipse 80% 70% at 50% 30%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .draggable-exercise-info {
@@ -547,9 +559,11 @@
 
 .draggable-exercise.dragging-overlay {
   transform: rotate(5deg);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.08) 20%, rgba(255, 255, 255, 0.09) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-left: 4px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
 }
 
 /* Loading and Error States */
@@ -590,25 +604,337 @@
 
 /* Scrollbar Styles */
 .library-session-sidebar-content::-webkit-scrollbar,
+.library-session-sidebar-right-content::-webkit-scrollbar,
+.library-session-volume-sets-card-scroll::-webkit-scrollbar,
 .library-session-exercises-container::-webkit-scrollbar {
   width: 8px;
 }
 
 .library-session-sidebar-content::-webkit-scrollbar-track,
+.library-session-sidebar-right-content::-webkit-scrollbar-track,
+.library-session-volume-sets-card-scroll::-webkit-scrollbar-track,
 .library-session-exercises-container::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.04);
   border-radius: 4px;
 }
 
 .library-session-sidebar-content::-webkit-scrollbar-thumb,
+.library-session-sidebar-right-content::-webkit-scrollbar-thumb,
+.library-session-volume-sets-card-scroll::-webkit-scrollbar-thumb,
 .library-session-exercises-container::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
 
 .library-session-sidebar-content::-webkit-scrollbar-thumb:hover,
+.library-session-sidebar-right-content::-webkit-scrollbar-thumb:hover,
+.library-session-volume-sets-card-scroll::-webkit-scrollbar-thumb:hover,
 .library-session-exercises-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Right sidebar - same proportions as left (Ejercicios disponibles) */
+.library-session-sidebar-right {
+  width: 360px;
+  min-width: 360px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.library-session-sidebar-right-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.library-session-sidebar-right-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.library-session-sidebar-right-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 6px 0 0 0;
+  font-family: inherit;
+}
+
+.library-session-sidebar-right-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.library-session-volume-svg-wrap {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 200px;
+}
+
+/* Wrapper for cards row + hover chevrons (wrapper only reserves space; row fills it like before) */
+.library-session-volume-cards-wrapper {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  width: 100%;
+}
+
+.library-session-volume-chevron {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+  pointer-events: none;
+}
+
+.library-session-volume-cards-wrapper:hover .library-session-volume-chevron {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.library-session-volume-chevron:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.library-session-volume-chevron-left {
+  left: 8px;
+}
+
+.library-session-volume-chevron-right {
+  right: 8px;
+}
+
+.library-session-volume-chevron-inactive,
+.library-session-volume-cards-wrapper:hover .library-session-volume-chevron-inactive {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Bottom section: two full-width cards, scroll laterally to switch (positioned to fill wrapper = same as before) */
+.library-session-volume-cards-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.library-session-volume-card {
+  flex: 0 0 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.library-session-volume-pie-card {
+  min-height: 180px;
+  padding: 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.library-session-pie-chart-wrap {
+  flex: 0 0 auto;
+  width: 140px;
+  min-height: 160px;
+}
+
+/* Legend on the side of the pie: top 3 muscles */
+.library-session-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+}
+
+.library-session-pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.library-session-pie-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.library-session-pie-legend-name {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.library-session-pie-legend-sets {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.library-session-volume-sets-card {
+  min-height: 180px;
+  justify-content: flex-start;
+  padding: 0;
+  overflow: hidden;
+}
+
+.library-session-volume-sets-card-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.library-session-volume-muscle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.library-session-volume-muscle-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+.library-session-volume-muscle-sets {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.library-session-volume-desliza {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 8px 12px;
+}
+
+/* Bottom hint for lateral scroll */
+.library-session-volume-desliza-lateral {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 6px 0 0 0;
+}
+
+/* Pie chart: names only, much smaller (labels that come out) */
+.library-session-pie-chart .recharts-pie-label text,
+.library-session-pie-chart .recharts-label-list text,
+.library-session-volume-pie-card .recharts-pie text {
+  font-size: 6px !important;
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+/* Pie chart tooltip on hover (muscle + sets) */
+.library-session-pie-tooltip {
+  background: rgba(30, 30, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.library-session-pie-tooltip-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.library-session-pie-tooltip-sets {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+/* Horizontal scrollbar for cards row */
+.library-session-volume-cards-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.library-session-volume-cards-row::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.library-session-volume-cards-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.library-session-volume-cards-row::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.library-session-volume-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
 }
 
 /* Filter Modal Styles */
@@ -1243,3 +1569,326 @@
   min-width: 80px;
 }
 
+/* Alternatives section: single "Agregar alternativa" button (no Editar / Guardar steps) */
+.exercise-alternatives-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  font-family: inherit;
+}
+
+.exercise-alternatives-add-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.exercise-alternatives-add-btn-icon {
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.exercise-alternatives-add-btn-text {
+  white-space: nowrap;
+}
+
+/* Library/Exercise Picker Modal - two-panel (propagate/session-edit style) */
+.library-picker-modal-container {
+  max-width: 780px !important;
+}
+
+.library-picker-modal-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  min-height: 0;
+  flex: 1;
+}
+
+.library-picker-modal-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  flex: 1;
+  min-height: 380px;
+  max-height: 65vh;
+  position: relative;
+}
+
+.library-picker-saving-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 0 12px 12px;
+}
+
+.library-picker-saving-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.library-picker-saving-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  animation: library-picker-spin 0.8s linear infinite;
+}
+
+@keyframes library-picker-spin {
+  to { transform: rotate(360deg); }
+}
+
+.library-picker-saving-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+@media (max-width: 640px) {
+  .library-picker-modal-layout {
+    flex-direction: column;
+    min-height: 320px;
+    max-height: 70vh;
+  }
+
+  .library-picker-modal-right {
+    order: -1;
+    min-height: 200px;
+    max-height: 45vh;
+  }
+}
+
+.library-picker-modal-left {
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.03);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .library-picker-modal-left {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 180px;
+  }
+}
+
+.library-picker-modal-left-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.library-picker-modal-left-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.library-picker-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.library-picker-search-wrap:focus-within {
+  border-color: rgba(191, 168, 77, 0.45);
+  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.1);
+}
+
+.library-picker-search-icon {
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+.library-picker-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.library-picker-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.library-picker-modal-libraries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.library-picker-library-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.library-picker-library-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.library-picker-library-item.library-picker-library-item-selected {
+  background: rgba(191, 168, 77, 0.12);
+  border-color: rgba(191, 168, 77, 0.35);
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.library-picker-library-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.library-picker-modal-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+
+.library-picker-modal-right-header {
+  margin-bottom: 16px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.library-picker-modal-right-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 0 0;
+}
+
+.library-picker-modal-right-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+.library-picker-exercises-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.library-picker-exercise-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.library-picker-exercise-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.library-picker-exercise-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.library-picker-empty,
+.library-picker-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.library-picker-empty p,
+.library-picker-loading p {
+  margin: 0;
+}
+
+.library-picker-modal-libraries::-webkit-scrollbar,
+.library-picker-exercises-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.library-picker-modal-libraries::-webkit-scrollbar-track,
+.library-picker-exercises-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.library-picker-modal-libraries::-webkit-scrollbar-thumb,
+.library-picker-exercises-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}

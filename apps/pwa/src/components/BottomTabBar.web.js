@@ -6,7 +6,7 @@ const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { User02 as SvgUser02, House02 as SvgHouse02 } from './icons';
+import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 
 const BottomTabBar = () => {
@@ -20,7 +20,7 @@ const BottomTabBar = () => {
   // Determine if tab bar should be visible based on current route
   const shouldShowTabBar = () => {
     const path = location.pathname;
-    const showTabBarRoutes = ['/', '/profile'];
+    const showTabBarRoutes = ['/', '/profile', '/nutrition'];
     return showTabBarRoutes.includes(path);
   };
 
@@ -29,6 +29,7 @@ const BottomTabBar = () => {
   // Determine which tab is active
   const isMainActive = location.pathname === '/';
   const isProfileActive = location.pathname === '/profile';
+  const isNutritionActive = location.pathname === '/nutrition';
 
   // Icon styling based on focus state
   const getIconProps = (isActive) => {
@@ -64,6 +65,14 @@ const BottomTabBar = () => {
           activeOpacity={0.7}
         >
           <SvgHouse02 {...getIconProps(isMainActive)} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.tabButton}
+          onPress={() => navigate('/nutrition')}
+          activeOpacity={0.7}
+        >
+          <SvgSteak {...getIconProps(isNutritionActive)} />
         </TouchableOpacity>
 
         <TouchableOpacity

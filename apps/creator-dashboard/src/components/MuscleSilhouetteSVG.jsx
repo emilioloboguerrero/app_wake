@@ -1,15 +1,34 @@
 import React from 'react';
-import { getMuscleSelectionColor } from '../utils/muscleColorUtils';
+import { getMuscleSelectionColor, getMuscleColor } from '../utils/muscleColorUtils';
 
-const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick }) => {
+const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscleVolumes = null }) => {
+  const isVolumeMode = muscleVolumes && typeof muscleVolumes === 'object' && !onMuscleClick;
+
   const renderMuscleGroup = (muscleId, paths) => {
+    if (isVolumeMode) {
+      const volume = muscleVolumes[muscleId] ?? 0;
+      const { color, opacity } = getMuscleColor(volume);
+      return (
+        <g key={muscleId} id={muscleId}>
+          {paths.map((pathData, index) => (
+            <path
+              key={`${muscleId}-${index}`}
+              d={pathData}
+              fill={color}
+              fillOpacity={opacity}
+              stroke="none"
+            />
+          ))}
+        </g>
+      );
+    }
     const isSelected = selectedMuscles.has(muscleId);
     const { color, opacity } = getMuscleSelectionColor(isSelected);
     const isClickable = muscleId !== "pantorrilla'nt";
-    
+
     return (
-      <g 
-        key={muscleId} 
+      <g
+        key={muscleId}
         id={muscleId}
         onClick={isClickable ? () => onMuscleClick && onMuscleClick(muscleId) : undefined}
         style={{ cursor: isClickable ? 'pointer' : 'default' }}

@@ -5,6 +5,47 @@
   gap: 24px;
 }
 
+.calendar-view-busy .calendar-grid-container {
+  pointer-events: none;
+  position: relative;
+}
+
+.calendar-view-busy .calendar-grid-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.calendar-saving-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(191, 168, 77, 0.15);
+  border: 1px solid rgba(191, 168, 77, 0.35);
+  border-radius: 8px;
+  color: rgba(191, 168, 77, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.calendar-saving-bar-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(191, 168, 77, 0.35);
+  border-top-color: rgba(191, 168, 77, 0.95);
+  border-radius: 50%;
+  animation: calendar-saving-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes calendar-saving-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Header Controls */
 .calendar-header-controls {
   display: flex;
@@ -46,6 +87,42 @@
   outline: none;
   border-color: rgba(191, 168, 77, 0.5);
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+.calendar-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.calendar-volume-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.calendar-volume-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.calendar-volume-button-icon {
+  flex-shrink: 0;
+}
+
+.calendar-volume-button-label {
+  white-space: nowrap;
 }
 
 .calendar-nav-buttons {
@@ -169,6 +246,15 @@
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-left: 3px solid rgba(191, 168, 77, 0.65);
+}
+
+.calendar-week-plan-bar-clickable {
+  cursor: pointer;
+}
+
+.calendar-week-plan-bar-clickable:hover {
+  background-color: rgba(78, 64, 44, 1);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .calendar-week-plan-bar-label {

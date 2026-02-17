@@ -19,6 +19,7 @@ const MainScreen = () => {
         'CourseDetail': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}`),
         'DailyWorkout': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout`),
         'ProgramLibrary': () => navigate('/library'),
+        'UpcomingCallDetail': () => navigate(`/call/${params?.booking?.id}`, { state: { booking: params?.booking, course: params?.course, creatorName: params?.creatorName } }),
       };
 
       if (routeMap[routeName]) {

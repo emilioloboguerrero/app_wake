@@ -21,6 +21,10 @@ const ProgramLibraryScreen = () => {
           navigate(`/course/${courseId}`, { state: { course: params?.course } });
         },
         'DailyWorkout': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout`),
+        'CreatorProfile': () => {
+          const creatorId = params?.creatorId;
+          if (creatorId) navigate(`/creator/${creatorId}`);
+        },
         'Main': () => navigate('/'),
         'MainScreen': () => navigate('/'),
       };

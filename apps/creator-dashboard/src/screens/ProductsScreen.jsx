@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import programService from '../services/programService';
 import './ProductsScreen.css';
 
+const PRODUCT_TYPES = ['low_ticket', 'one_on_one'];
+
 const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [productType, setProductType] = useState('low_ticket'); // 'low_ticket' | 'one_on_one'
+
+  // Restore Programas sub-tab (Low-ticket vs 1-on-1) when returning from program detail
+  useEffect(() => {
+    if (location.pathname !== '/products') return;
+    const fromState = location.state?.productType;
+    if (fromState && PRODUCT_TYPES.includes(fromState)) {
+      setProductType(fromState);
+    }
+  }, [location.pathname, location.key, location.state]);
 
   // Fetch all programs
   const { data: allPrograms = [], isLoading } = useQuery({
@@ -38,7 +50,9 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
   };
 
   const handleProgramClick = (programId) => {
-    navigate(`/programs/${programId}`);
+    navigate(`/programs/${programId}`, {
+      state: { returnTo: '/products', returnState: { productType } },
+    });
   };
 
   const content = (

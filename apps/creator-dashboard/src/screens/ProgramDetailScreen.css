@@ -1,14 +1,74 @@
+/* ========== Migration overlay (inline session → library) ========== */
+.program-detail-migrating-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.program-detail-migrating-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 32px;
+}
+
+.program-detail-migrating-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(191, 168, 77, 1);
+  border-radius: 50%;
+  animation: program-detail-migrating-spin 0.8s linear infinite;
+}
+
+@keyframes program-detail-migrating-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.program-detail-migrating-text {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 16px;
+  font-weight: 500;
+}
+
 /* ========== Program page layout (top menu + content) ========== */
 .program-page {
   display: flex;
   flex-direction: column;
   width: 100%;
   min-height: calc(100vh - 320px);
-  background: #111;
+  background-color: #1a1a1a;
 }
 
 body.header-scrolled .program-page {
   min-height: calc(100vh - 120px);
+}
+
+/* Low-ticket: no header image, so header area is 32px padding + 120px = 152px */
+.program-page--compact-header {
+  min-height: calc(100vh - 152px);
+}
+
+body.header-scrolled .program-page--compact-header {
+  min-height: calc(100vh - 120px);
+}
+
+@media (max-width: 640px) {
+  .program-page--compact-header {
+    min-height: calc(100vh - 64px);
+  }
+  body.header-scrolled .program-page--compact-header {
+    min-height: calc(100vh - 64px);
+  }
 }
 
 .program-page__main {
@@ -78,6 +138,90 @@ body.header-scrolled .program-page {
   white-space: nowrap;
 }
 
+/* ========== Low-ticket: tab bar in one-on-one style (sliding pill, text-only) ========== */
+/* Tab bar lives inside .program-page__main (overflow: auto), so sticky is relative to that scroll container. Use top: 0 so it sticks to the top of the content area (flush under the header). */
+.program-detail-tab-bar--client-style.program-detail-tab-bar {
+  background-color: #1a1a1a;
+  padding: 16px 32px;
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  flex-shrink: 0;
+  transition: top 0.3s ease-out;
+}
+
+.program-detail-tab-bar__container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.program-detail-tab-bar__indicator-wrapper {
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  align-items: center;
+  gap: 0;
+}
+
+.program-detail-tab-bar__indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  will-change: transform;
+}
+
+.program-detail-tab-bar__button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 20px;
+  height: 32px;
+  min-width: 0;
+  border-radius: 999px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  position: relative;
+  z-index: 1;
+}
+
+.program-detail-tab-bar__button:hover:not(.program-detail-tab-bar__button--active):not(.program-detail-tab-bar__button--disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.program-detail-tab-bar__button--active {
+  background-color: transparent;
+}
+
+.program-detail-tab-bar__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.2s ease;
+}
+
+.program-detail-tab-bar__button--active .program-detail-tab-bar__label {
+  color: rgba(255, 255, 255, 1);
+  font-weight: 600;
+}
+
+.program-detail-tab-bar__button--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .program-page__breadcrumb {
   flex-shrink: 0;
   padding: 10px 32px;
@@ -143,6 +287,36 @@ body.header-scrolled .program-page {
   flex: 1;
   padding: 32px;
   box-sizing: border-box;
+}
+
+/* Contenido tab: weeks grid + library sidebar (low-ticket) */
+.program-tab-content .plan-structure-layout.client-program-planning-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  min-height: calc(100vh - 300px);
+  flex: 1;
+}
+
+.program-tab-content .plan-structure-sidebars.client-program-planning-left {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background-color: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.program-tab-content .plan-structure-main.client-program-planning-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0 24px;
+  min-width: 0;
+  overflow: auto;
 }
 
 .program-page-title {

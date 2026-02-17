@@ -62,6 +62,9 @@ const ContentManager = ({
   const [exerciseToDelete, setExerciseToDelete] = useState(null);
   const [deleteExerciseConfirmation, setDeleteExerciseConfirmation] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isDeletingModule, setIsDeletingModule] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isDeletingExercise, setIsDeletingExercise] = useState(false);
 
   const getModules = () => {
     if (contentType === 'plan') return contentService.getModulesByPlan(contentId);
@@ -262,6 +265,7 @@ const ContentManager = ({
 
   const handleDeleteModule = async () => {
     if (!moduleToDelete || deleteModuleConfirmation !== (moduleToDelete.title || `Semana ${moduleToDelete.id?.slice(0, 8)}`)) return;
+    setIsDeletingModule(true);
     try {
       await deleteModule(moduleToDelete.id);
       const mods = await getModules();
@@ -275,11 +279,14 @@ const ContentManager = ({
       setDeleteModuleConfirmation('');
     } catch (err) {
       alert(err.message || 'Error al eliminar');
+    } finally {
+      setIsDeletingModule(false);
     }
   };
 
   const handleDeleteSession = async () => {
     if (!sessionToDelete || !selectedModule || deleteSessionConfirmation !== (sessionToDelete.title || `Sesión ${sessionToDelete.id?.slice(0, 8)}`)) return;
+    setIsDeletingSession(true);
     try {
       await deleteSession(contentId, selectedModule.id, sessionToDelete.id);
       const sess = await getSessions(selectedModule.id);
@@ -292,11 +299,14 @@ const ContentManager = ({
       setDeleteSessionConfirmation('');
     } catch (err) {
       alert(err.message || 'Error al eliminar');
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
   const handleDeleteExercise = async () => {
     if (!exerciseToDelete || !selectedModule || !selectedSession || deleteExerciseConfirmation !== (exerciseToDelete.title || `Ejercicio ${exerciseToDelete.id?.slice(0, 8)}`)) return;
+    setIsDeletingExercise(true);
     try {
       await deleteExercise(contentId, selectedModule.id, selectedSession.id, exerciseToDelete.id);
       const exs = await getExercises(selectedModule.id, selectedSession.id);
@@ -305,6 +315,8 @@ const ContentManager = ({
       setDeleteExerciseConfirmation('');
     } catch (err) {
       alert(err.message || 'Error al eliminar');
+    } finally {
+      setIsDeletingExercise(false);
     }
   };
 
@@ -554,7 +566,7 @@ const ContentManager = ({
           <p>Escribe &quot;{moduleToDelete?.title || `Semana ${moduleToDelete?.id?.slice(0, 8)}`}&quot; para confirmar:</p>
           <Input value={deleteModuleConfirmation} onChange={(e) => setDeleteModuleConfirmation(e.target.value)} light />
           <div className="content-manager-modal-actions">
-            <Button title="Eliminar" onClick={handleDeleteModule} disabled={deleteModuleConfirmation !== (moduleToDelete?.title || `Semana ${moduleToDelete?.id?.slice(0, 8)}`)} />
+            <Button title={isDeletingModule ? 'Eliminando...' : 'Eliminar'} onClick={handleDeleteModule} disabled={deleteModuleConfirmation !== (moduleToDelete?.title || `Semana ${moduleToDelete?.id?.slice(0, 8)}`) || isDeletingModule} loading={isDeletingModule} />
           </div>
         </div>
       </Modal>
@@ -565,7 +577,7 @@ const ContentManager = ({
           <p>Escribe &quot;{sessionToDelete?.title || `Sesión ${sessionToDelete?.id?.slice(0, 8)}`}&quot; para confirmar:</p>
           <Input value={deleteSessionConfirmation} onChange={(e) => setDeleteSessionConfirmation(e.target.value)} light />
           <div className="content-manager-modal-actions">
-            <Button title="Eliminar" onClick={handleDeleteSession} disabled={deleteSessionConfirmation !== (sessionToDelete?.title || `Sesión ${sessionToDelete?.id?.slice(0, 8)}`)} />
+            <Button title={isDeletingSession ? 'Eliminando...' : 'Eliminar'} onClick={handleDeleteSession} disabled={deleteSessionConfirmation !== (sessionToDelete?.title || `Sesión ${sessionToDelete?.id?.slice(0, 8)}`) || isDeletingSession} loading={isDeletingSession} />
           </div>
         </div>
       </Modal>
@@ -576,7 +588,7 @@ const ContentManager = ({
           <p>Escribe &quot;{exerciseToDelete?.title || exerciseToDelete?.name || `Ejercicio ${exerciseToDelete?.id?.slice(0, 8)}`}&quot; para confirmar:</p>
           <Input value={deleteExerciseConfirmation} onChange={(e) => setDeleteExerciseConfirmation(e.target.value)} light />
           <div className="content-manager-modal-actions">
-            <Button title="Eliminar" onClick={handleDeleteExercise} disabled={deleteExerciseConfirmation !== (exerciseToDelete?.title || exerciseToDelete?.name || `Ejercicio ${exerciseToDelete?.id?.slice(0, 8)}`)} />
+            <Button title={isDeletingExercise ? 'Eliminando...' : 'Eliminar'} onClick={handleDeleteExercise} disabled={deleteExerciseConfirmation !== (exerciseToDelete?.title || exerciseToDelete?.name || `Ejercicio ${exerciseToDelete?.id?.slice(0, 8)}`) || isDeletingExercise} loading={isDeletingExercise} />
           </div>
         </div>
       </Modal>

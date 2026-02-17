@@ -8,7 +8,7 @@ import './StickyHeader.css';
 const COLLAPSE_PX = 120;
 const EXPAND_PX = 60;
 
-const StickyHeader = ({ screenName, showBackButton = false, backPath = null, backgroundImage = null, onEditClick = null, onBack = null, purchaseButton = null, showMenuButton = false, onMenuClick = null, icon = null, headerImageIcon = null }) => {
+const StickyHeader = ({ screenName, showBackButton = false, backPath = null, backState = null, backgroundImage = null, onEditClick = null, onBack = null, purchaseButton = null, showMenuButton = false, onMenuClick = null, icon = null, headerImageIcon = null }) => {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const headerRef = useRef(null);
@@ -89,7 +89,7 @@ const StickyHeader = ({ screenName, showBackButton = false, backPath = null, bac
     if (onBack) {
       onBack();
     } else if (backPath) {
-      navigate(backPath);
+      navigate(backPath, { state: backState ?? {} });
     } else {
       navigate(-1);
     }

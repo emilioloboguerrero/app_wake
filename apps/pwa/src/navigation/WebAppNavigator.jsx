@@ -1,7 +1,7 @@
 // Web App Navigator - React Router based navigation for PWA
 // SIMPLIFIED VERSION - Login route isolated
-// LAZY LOADING: Heavy screens are loaded only when needed
-import React, { lazy, Suspense, createContext, useContext } from 'react';
+// Direct imports for web to avoid Metro "unknown module" errors with lazy chunks
+import React, { Suspense, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,24 +22,26 @@ import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web'
 import SubscriptionsScreen from '../screens/SubscriptionsScreen.web';
 // Import ProgramLibraryScreen directly (not lazy) - using web wrapper for React Router navigation
 import ProgramLibraryScreen from '../screens/ProgramLibraryScreen.web';
-// Lazy load workout-related screens with web wrappers for React Router navigation
-const DailyWorkoutScreen = lazy(() => import('../screens/DailyWorkoutScreen.web'));
-const WorkoutExecutionScreen = lazy(() => import('../screens/WorkoutExecutionScreen.web'));
-const WorkoutCompletionScreen = lazy(() => import('../screens/WorkoutCompletionScreen.web'));
-const WarmupScreen = lazy(() => import('../screens/WarmupScreen.web'));
-const WorkoutExercisesScreen = lazy(() => import('../screens/WorkoutExercisesScreen.web'));
-const CourseStructureScreen = lazy(() => import('../screens/CourseStructureScreen.web'));
+// Import workout-related screens directly to avoid Metro "unknown module" errors with lazy chunks on web
+import DailyWorkoutScreen from '../screens/DailyWorkoutScreen.web';
+import WorkoutExecutionScreen from '../screens/WorkoutExecutionScreen.web';
+import WorkoutCompletionScreen from '../screens/WorkoutCompletionScreen.web';
+import WarmupScreen from '../screens/WarmupScreen.web';
+import WorkoutExercisesScreen from '../screens/WorkoutExercisesScreen.web';
+import CourseStructureScreen from '../screens/CourseStructureScreen.web';
 // Import CourseDetailScreen directly using web wrapper for React Router navigation
 import CourseDetailScreen from '../screens/CourseDetailScreen.web';
 // Import CreatorProfileScreen directly using web wrapper for React Router navigation
 import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
+import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen.web';
+import NutritionTestScreen from '../screens/NutritionTestScreen.web';
 // Import screens with web wrappers directly to avoid Metro bundler issues
 import SessionsScreen from '../screens/SessionsScreen.web';
 import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web';
 import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
-const OnboardingScreen = lazy(() => import('../screens/OnboardingScreen'));
+import OnboardingScreen from '../screens/OnboardingScreen';
 
 import firestoreService from '../services/firestoreService';
 import webStorageService from '../services/webStorageService';
@@ -546,6 +548,15 @@ const WebAppNavigator = () => {
       />
 
       <Route
+        path="/nutrition"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(NutritionTestScreen, 'NutritionTest'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
         path="/library"
         element={
           <AuthenticatedLayout>
@@ -697,6 +708,15 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(AllPurchasedCoursesScreen, 'AllPurchasedCourses'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/call/:bookingId"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(UpcomingCallDetailScreen, 'UpcomingCallDetail'))}
           </AuthenticatedLayout>
         }
       />

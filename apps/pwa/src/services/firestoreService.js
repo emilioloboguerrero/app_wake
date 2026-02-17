@@ -464,12 +464,16 @@ class FirestoreService {
         );
       }
       
-      const modulesSnapshot = await getDocs(modulesQuery);
-      
+      let modulesSnapshot = await getDocs(modulesQuery);
+      // When course is "weekly" but modules don't have a calendar week field (e.g. creator uses program weeks "Semana 1, 2, 3"), the week filter returns nothing. Fall back to all modules so PWA shows creator content.
       if (isWeeklyProgram && modulesSnapshot.empty) {
         const currentWeek = getMondayWeek();
-        logger.warn('⚠️ No modules found for current week:', currentWeek);
-        // Could return empty array or show message to user
+        logger.warn('⚠️ No modules found for current week:', currentWeek, '- falling back to all modules (program weeks)');
+        const fallbackQuery = query(
+          collection(firestore, 'courses', courseId, 'modules'),
+          orderBy('order', 'asc')
+        );
+        modulesSnapshot = await getDocs(fallbackQuery);
       }
       
       // Import library resolution service dynamically to avoid circular dependencies

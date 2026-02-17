@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -120,7 +120,10 @@ const DraggableSession = ({ session, isInModule = false, onDelete, isEditMode, o
 const LibraryModuleDetailScreen = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  const backPath = location.state?.returnTo || '/content';
+  const backState = location.state?.returnState ?? {};
   const [module, setModule] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [availableSessions, setAvailableSessions] = useState([]);
@@ -356,7 +359,8 @@ const LibraryModuleDetailScreen = () => {
       <DashboardLayout 
         screenName={module?.title || 'Módulo'}
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
+        backState={backState}
       >
         <div className="library-session-detail-container">
           <div className="library-session-detail-loading">Cargando...</div>
@@ -370,12 +374,13 @@ const LibraryModuleDetailScreen = () => {
       <DashboardLayout 
         screenName="Módulo"
         showBackButton={true}
-        backPath="/content"
+        backPath={backPath}
+        backState={backState}
       >
         <div className="library-session-detail-container">
           <div className="library-session-detail-error">
             <p>{error || 'Módulo no encontrado'}</p>
-            <button onClick={() => navigate('/content')} className="back-button">
+            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
               Volver a Contenido
             </button>
           </div>
@@ -388,7 +393,8 @@ const LibraryModuleDetailScreen = () => {
     <DashboardLayout 
       screenName={module.title}
       showBackButton={true}
-      backPath="/content"
+      backPath={backPath}
+      backState={backState}
     >
       <DndContext
         sensors={sensors}
@@ -409,7 +415,7 @@ const LibraryModuleDetailScreen = () => {
                   <p>No hay sesiones disponibles</p>
                   <button
                     className="back-button"
-                    onClick={() => navigate('/content', { state: { activeTab: 'sessions' } })}
+                    onClick={() => navigate(backPath, { state: { ...backState, activeTab: 'sessions' } })}
                     style={{ marginTop: '16px' }}
                   >
                     Crear Sesión
@@ -470,7 +476,7 @@ const LibraryModuleDetailScreen = () => {
                       isInModule={true}
                       onDelete={isEditMode ? handleDeleteSession : null}
                       isEditMode={isEditMode}
-                      onClick={(s) => navigate(`/content/sessions/${s.id}`)}
+                      onClick={(s) => navigate(`/content/sessions/${s.id}`, { state: { returnTo: location.pathname, returnState: {} } })}
                     />
                   ))}
                 </SortableContext>

@@ -1,9 +1,457 @@
+/* Layout: same structure as LibrarySessionDetailScreen / planificación (left list, right detail) */
 .library-exercises-content {
   width: 100%;
-  max-width: 1200px;
-  padding: 32px;
+  max-width: 1600px;
+  padding: 24px;
   margin: 0 auto;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 180px);
+}
+
+.library-exercises-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 24px;
+}
+
+/* Left sidebar - exercise list */
+.library-exercises-sidebar {
+  width: 360px;
+  min-width: 360px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.library-exercises-sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.library-exercises-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 16px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.library-exercises-sidebar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.library-exercises-sidebar-pill {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library-exercises-sidebar-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.library-exercises-sidebar-pill:first-child {
+  padding: 8px 12px;
+}
+
+.library-exercises-sidebar-pill-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.library-exercises-sidebar-pill-icon {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.library-exercises-sidebar-pill-text {
+  font-size: 13px;
+}
+
+.library-exercises-search-container {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.library-exercises-search-input-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+}
+
+.library-exercises-search-input-container:focus-within {
+  border-color: rgba(191, 168, 77, 0.5);
+  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+}
+
+.library-exercises-search-icon {
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.library-exercises-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.library-exercises-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.library-exercises-active-filters {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.library-exercises-active-filters-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.library-exercises-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(191, 168, 77, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(191, 168, 77, 0.4);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.library-exercises-filter-chip:hover {
+  background: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.6);
+}
+
+.library-exercises-clear-filters {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.library-exercises-clear-filters:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.library-exercises-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library-exercises-sidebar-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.library-exercises-sidebar-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+
+.library-exercises-sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.library-exercises-sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.library-exercises-sidebar-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.library-exercises-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library-exercises-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: left;
+  position: relative;
+}
+
+.library-exercises-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.library-exercises-sidebar-item-selected {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.4);
+  color: rgba(255, 255, 255, 1);
+}
+
+.library-exercises-sidebar-item-selected:hover {
+  background: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.library-exercises-sidebar-item-edit {
+  cursor: default;
+}
+
+.library-exercises-sidebar-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-exercises-sidebar-item-delete {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 8px;
+  color: rgba(255, 68, 68, 1);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.library-exercises-sidebar-item-delete:hover {
+  background: rgba(255, 68, 68, 0.35);
+  border-color: rgba(255, 68, 68, 0.6);
+}
+
+.library-exercises-sidebar-item-incomplete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 152, 0, 0.8);
+}
+
+.library-exercises-sidebar-item-incomplete svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Right main - exercise detail */
+.library-exercises-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  min-width: 0;
+}
+
+.library-exercises-main-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.library-exercises-main-empty-icon {
+  color: rgba(255, 255, 255, 0.25);
+  margin-bottom: 24px;
+}
+
+.library-exercises-main-empty-text {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 24px 0;
+  max-width: 360px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.library-exercises-main-empty-button {
+  padding: 12px 24px;
+  background: rgba(191, 168, 77, 0.2);
+  border: 1px solid rgba(191, 168, 77, 0.4);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.library-exercises-main-empty-button:hover {
+  background: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.library-exercises-main-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.library-exercises-main-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.library-exercises-main-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-exercises-main-incomplete-tag {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.35);
+  border-radius: 8px;
+  color: rgba(255, 152, 0, 0.95);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.library-exercises-main-close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.library-exercises-main-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 1);
+}
+
+.library-exercises-main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  min-height: 0;
+}
+
+/* Inline exercise detail (no modal) - reuse modal body styles with overflow */
+.exercise-modal-content-inline {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.exercise-modal-content-inline .exercise-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .library-exercises-body {
+    flex-direction: column;
+  }
+
+  .library-exercises-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 40vh;
+  }
 }
 
 /* Icon Selector Modal */
@@ -365,99 +813,235 @@
   line-height: 1;
 }
 
-/* Filter Modal Styles */
-.filter-modal-content {
+/* Filter Modal - size depends on content */
+.filter-modal-modal {
+  width: fit-content;
+  max-width: min(800px, 90vw);
+  height: fit-content;
+  max-height: 90vh;
+}
+
+.filter-modal-modal .modal-content {
+  flex: 0 0 auto;
+}
+
+.filter-modal-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  background-color: #1a1a1a;
+}
+
+.filter-modal-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
 }
 
 .filter-modal-body {
   display: flex;
   flex-direction: row;
   gap: 24px;
-  align-items: flex-start;
+  align-items: stretch;
+  min-height: 400px;
+}
+
+.filter-modal-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.filter-muscles-column {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.filter-cards-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 200px;
+  max-width: 260px;
+}
+
+/* Right-side cards - fill available space */
+.filter-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 0;
+}
+
+/* Músculos seleccionados - fixed height, scrollable */
+.filter-card-muscles-selected {
+  flex: 0 0 auto;
+  height: 200px;
+}
+
+.filter-card-muscles-selected .filter-card-scroll {
+  flex: 0 0 auto;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.filter-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 12px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  flex-shrink: 0;
+}
+
+.filter-card-scroll {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.filter-card-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.filter-card-scroll::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.filter-card-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.filter-card-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.filter-card-empty {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 14px;
+  margin: 0;
+  padding: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.filter-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 .filter-muscle-silhouette-container {
   flex: 1;
+  min-height: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  padding: 24px;
-  min-height: 600px;
-  overflow: hidden; /* Hide any overflow from scaled SVG */
-  position: relative; /* For proper positioning */
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  padding: 28px;
+  overflow: hidden;
+  position: relative;
 }
 
-/* Scale the SVG to make muscles larger while container stays same size */
+/* Scale SVG (SVG default height is 330px) */
 .filter-muscle-silhouette-container svg {
-  transform: scale(1.5); /* Makes SVG 1.5x larger (adjust as needed) */
+  transform: scale(1.12);
   transform-origin: center center;
 }
 
-.filter-selected-muscles-list {
-  width: 180px;
+.filter-selected-items-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(191, 168, 77, 0.2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #BFA84D;
+  color: #BFA84D;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  text-align: left;
+  width: 100%;
   flex-shrink: 0;
 }
 
-.filter-muscles-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.filter-chip:hover {
+  background-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.8);
 }
 
-.filter-muscle-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
-  background-color: rgba(255, 255, 255, 0.08);
+.filter-chip-text {
+  color: #BFA84D;
+}
+
+.filter-chip-remove {
+  color: #BFA84D;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.filter-implement-chip {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  cursor: pointer;
   transition: all 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  width: 100%;
+  flex-shrink: 0;
 }
 
-.filter-muscle-item:hover {
-  background-color: rgba(255, 255, 255, 0.12);
+.filter-implement-chip:hover {
+  background-color: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.filter-muscle-name {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  font-weight: 500;
-  flex: 1;
+.filter-implement-chip-selected {
+  background-color: rgba(191, 168, 77, 0.2);
+  border-color: #BFA84D;
 }
 
-.filter-muscle-remove {
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-  margin-left: 8px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s ease;
+.filter-implement-chip-selected:hover {
+  background-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.8);
 }
 
-.filter-muscle-remove:hover {
-  color: rgba(255, 255, 255, 0.9);
+.filter-implement-chip-text {
+  color: #ffffff;
+}
+
+.filter-implement-chip-text-selected {
+  color: #BFA84D;
 }
 
 .muscle-filter-button {
@@ -502,27 +1086,30 @@
 .filter-modal-actions {
   display: flex;
   flex-direction: row;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  margin-top: 8px;
+  padding: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .filter-clear-button {
-  padding: 10px 20px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
+  flex: 1;
+  padding: 14px 20px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  font-weight: 500;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  text-align: center;
 }
 
 .filter-clear-button:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -532,22 +1119,23 @@
 }
 
 .filter-apply-button {
-  padding: 10px 20px;
-  border-radius: 999px;
+  flex: 1;
+  padding: 14px 20px;
+  border-radius: 12px;
   background-color: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.3);
-  color: rgba(191, 168, 77, 1);
-  font-size: 14px;
-  font-weight: 500;
+  border: 1px solid #BFA84D;
+  color: #BFA84D;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4);
+  text-align: center;
 }
 
 .filter-apply-button:hover {
   background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(191, 168, 77, 0.8);
 }
 
 /* Delete Modal Styles */
@@ -735,6 +1323,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
+  padding-top: 16px;
 }
 
 .exercise-implements-content::-webkit-scrollbar {
@@ -1018,6 +1607,18 @@
   font-size: 14px;
   font-weight: 500;
   flex: 1;
+}
+
+.exercise-effective-sets-item-readonly {
+  padding: 6px 0;
+}
+
+.exercise-effective-sets-value-readonly {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: right;
 }
 
 .exercise-effective-sets-input-wrapper {
@@ -1498,8 +2099,8 @@
   padding: 6px 16px;
   height: 32px;
   border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
   font-weight: 500;
@@ -1511,8 +2112,8 @@
 }
 
 .exercise-video-action-pill:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.25);
   box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
   transform: translateY(-1px);
 }
@@ -1540,16 +2141,7 @@
 }
 
 .exercise-video-save-pill {
-  background-color: rgba(76, 175, 80, 0.2);
-  border-color: rgba(76, 175, 80, 0.3);
-  color: rgba(76, 175, 80, 0.9);
-  box-shadow: 0 0 2px rgba(76, 175, 80, 0.4);
-}
-
-.exercise-video-save-pill:hover:not(:disabled) {
-  background-color: rgba(76, 175, 80, 0.3);
-  border-color: rgba(76, 175, 80, 0.5);
-  box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+  /* Same as default action pill - no distinct color */
 }
 
 .exercise-video-cancel-pill {

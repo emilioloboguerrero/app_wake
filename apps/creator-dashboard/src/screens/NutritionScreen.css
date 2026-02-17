@@ -1,0 +1,548 @@
+/* Nutrition Screen - Creator nutrition library, assignments, client comparison */
+.nutrition-screen {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.nutrition-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0;
+}
+
+.nutrition-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  margin-bottom: -1px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.nutrition-tab:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.nutrition-tab.active {
+  border-bottom-color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.nutrition-tab-content {
+  width: 100%;
+}
+
+.nutrition-sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.nutrition-sub-tabs button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nutrition-sub-tabs button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nutrition-sub-tabs button.active {
+  background: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.4);
+  color: #fff;
+}
+
+.nutrition-section {
+  width: 100%;
+}
+
+.nutrition-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.nutrition-section-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.nutrition-section-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 24px;
+  max-width: 640px;
+}
+
+.nutrition-loading {
+  color: rgba(255, 255, 255, 0.5);
+  padding: 24px;
+}
+
+.nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.nutrition-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.nutrition-card:hover {
+  border-color: rgba(191, 168, 77, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.nutrition-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 8px 0;
+}
+
+.nutrition-card-meta {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.nutrition-card-desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 8px 0 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nutrition-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nutrition-list-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.nutrition-list-client {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  min-width: 140px;
+}
+
+.nutrition-list-plan {
+  color: rgba(255, 255, 255, 0.7);
+  flex: 1;
+}
+
+.nutrition-list-date {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Compare section */
+.nutrition-compare-section {
+  max-width: 720px;
+}
+
+.nutrition-compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 32px;
+}
+
+.nutrition-compare-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nutrition-compare-field label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.nutrition-compare-field select,
+.nutrition-compare-field input {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  min-width: 160px;
+}
+
+.nutrition-compare-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.nutrition-compare-plan,
+.nutrition-compare-actual {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.nutrition-compare-plan h3,
+.nutrition-compare-actual h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 12px 0;
+}
+
+.nutrition-compare-plan p,
+.nutrition-compare-actual p {
+  margin: 0 0 12px 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nutrition-macros-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Program form */
+.nutrition-program-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 560px;
+}
+
+.nutrition-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nutrition-form-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nutrition-form-field select {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+}
+
+.nutrition-textarea {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Modal content */
+.nutrition-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.nutrition-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Meal form */
+.nutrition-meal-add-section {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nutrition-meal-add-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 16px 0;
+}
+
+.nutrition-search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.nutrition-search-row .input-container {
+  flex: 1;
+}
+
+.nutrition-food-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.nutrition-food-picker select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  min-width: 180px;
+}
+
+.nutrition-units-input {
+  width: 70px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+}
+
+.nutrition-manual-toggle {
+  background: none;
+  border: none;
+  color: rgba(191, 168, 77, 0.9);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.nutrition-manual-toggle:hover {
+  text-decoration: underline;
+}
+
+.nutrition-manual-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nutrition-manual-form .input-container {
+  max-width: 120px;
+}
+
+.nutrition-meal-items {
+  margin-top: 16px;
+}
+
+.nutrition-meal-items h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 12px 0;
+}
+
+.nutrition-meal-items ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nutrition-meal-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nutrition-remove-item {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  color: #ff4444;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nutrition-remove-item:hover {
+  background: rgba(255, 68, 68, 0.3);
+}
+
+/* Plan slots */
+.nutrition-macros-inputs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.nutrition-macros-inputs input {
+  width: 90px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+}
+
+.nutrition-plan-slots {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nutrition-plan-slots h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 16px 0;
+}
+
+.nutrition-slot-block {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nutrition-slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.nutrition-slot-header select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+}
+
+.nutrition-remove-slot {
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ff6b6b;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nutrition-slot-option {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.nutrition-slot-option select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  min-width: 180px;
+}
+
+.nutrition-slot-option .input-container {
+  flex: 1;
+  max-width: 200px;
+}
+
+@media (max-width: 640px) {
+  .nutrition-screen {
+    padding: 16px;
+  }
+
+  .nutrition-compare-results {
+    grid-template-columns: 1fr;
+  }
+
+  .nutrition-compare-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nutrition-compare-field select,
+  .nutrition-compare-field input {
+    min-width: unset;
+  }
+}

@@ -1,26 +1,42 @@
+/* No image header: main-content padding (32px) + StickyHeader (120px) = 152px. Mobile: 0 + 64px = 64px. */
 .client-program-container {
   width: 100%;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 320px);
+  min-height: calc(100vh - 152px);
 }
 
 body.header-scrolled .client-program-container {
   min-height: calc(100vh - 120px);
 }
 
-/* Tab Bar */
+/* Tab Bar - sticky relative to viewport; align flush under header (152px / 120px when scrolled / 64px mobile) */
 .client-program-tab-bar {
   background-color: #1a1a1a;
   padding: 16px 32px;
   position: sticky;
-  top: 200px;
+  top: 152px;
   z-index: 99;
   transition: top 0.3s ease-out;
 }
 
 body.header-scrolled .client-program-tab-bar {
-  top: 80px;
+  top: 120px;
+}
+
+@media (max-width: 640px) {
+  .client-program-container {
+    min-height: calc(100vh - 64px);
+  }
+  body.header-scrolled .client-program-container {
+    min-height: calc(100vh - 64px);
+  }
+  .client-program-tab-bar {
+    top: 64px;
+  }
+  body.header-scrolled .client-program-tab-bar {
+    top: 64px;
+  }
 }
 
 .client-program-tab-header-container {
@@ -257,6 +273,89 @@ body.header-scrolled .client-program-tab-bar {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
+}
+
+/* Nutrición tab */
+.client-program-nutricion-tab {
+  padding: 24px;
+  max-width: 560px;
+}
+
+.client-program-nutricion-header {
+  margin-bottom: 20px;
+}
+
+.client-program-nutricion-loading {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.client-program-nutricion-current,
+.client-program-nutricion-assign {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.client-program-nutricion-current h3,
+.client-program-nutricion-assign h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 8px 0;
+}
+
+.client-program-nutricion-current p,
+.client-program-nutricion-assign p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 12px 0;
+}
+
+.client-program-nutricion-end-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+}
+
+.client-program-nutricion-end-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.client-program-nutricion-select,
+.client-program-nutricion-date {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.client-program-nutricion-assign-btn {
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: none;
+  background: var(--primary, #3b82f6);
+  color: #fff;
+  cursor: pointer;
+}
+
+.client-program-nutricion-assign-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Historial tab */
@@ -935,8 +1034,33 @@ body.header-scrolled .client-program-tab-bar {
   cursor: pointer;
 }
 
-.client-program-add-plan-session-item:hover {
+.client-program-add-plan-session-item:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.client-program-add-plan-session-item:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.client-program-add-plan-session-item-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.client-program-add-plan-session-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  animation: client-program-spinner-spin 0.7s linear infinite;
+}
+
+@keyframes client-program-spinner-spin {
+  to { transform: rotate(360deg); }
 }
 
 .client-program-add-plan-session-cancel {
@@ -947,4 +1071,9 @@ body.header-scrolled .client-program-tab-bar {
   color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
   cursor: pointer;
+}
+
+.client-program-add-plan-session-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

@@ -1,0 +1,1165 @@
+/* Three-panel layout: left controls, middle day timeline, right calendar */
+.availability-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 180px);
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.availability-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 24px;
+}
+
+/* Left panel: controls (session-sidebar style) */
+.availability-sidebar-left {
+  width: 360px;
+  min-width: 360px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.availability-sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.availability-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.availability-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.availability-empty-hint {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.availability-selected-day-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(191, 168, 77, 0.95);
+  margin: 0 0 8px 0;
+}
+
+.availability-day-error {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(220, 53, 69, 0.15);
+  border: 1px solid rgba(220, 53, 69, 0.4);
+  border-radius: 8px;
+  color: #f8a0a0;
+  font-size: 13px;
+}
+
+/* ----- Add blocks (single slot + batch) – simple section style like sessions/plans ----- */
+.availability-add-block {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.availability-add-block-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  display: block;
+}
+
+.availability-add-block-single {
+  align-items: center;
+  text-align: center;
+}
+
+.availability-add-block-single .availability-add-block-title {
+  margin-bottom: 8px;
+}
+
+/* Card style matching BookCallSlotModal date cards (before expanding) */
+.availability-slot-drag-card {
+  width: 100%;
+  max-width: 280px;
+  background: #333;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 14px 8px 10px 16px;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.availability-slot-drag-card:active {
+  cursor: grabbing;
+}
+
+.availability-slot-drag-card-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.availability-slot-drag-card-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.availability-slot-drag-card-row .availability-draggable-single {
+  flex: 0 0 auto;
+}
+
+.availability-slot-drag-hint {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.availability-slot-drag-label {
+  font-weight: 500;
+}
+
+.availability-slot-drag-grip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  align-self: center;
+}
+
+.availability-add-block-single .availability-draggable-single {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.availability-slot-chevrons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.availability-slot-chevron {
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.availability-slot-chevron-down {
+  margin-top: -6px;
+}
+
+.availability-slot-chevron:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.availability-slot-chevron:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.availability-add-block-batch {
+  gap: 14px;
+}
+
+.availability-add-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.availability-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.availability-field-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 500;
+}
+
+.availability-input,
+.availability-select {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  min-width: 0;
+}
+
+.availability-input:focus,
+.availability-select:focus {
+  outline: none;
+  border-color: rgba(191, 168, 77, 0.45);
+}
+
+/* Hora de inicio: custom time input wrapper */
+.availability-time-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.availability-time-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Nº de franjas: card with number only, chevrons outside (like Añadir una franja) */
+.availability-num-slots-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.availability-num-slots-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  min-width: 52px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+.availability-num-slots-input {
+  width: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.availability-num-slots-input::-webkit-outer-spin-button,
+.availability-num-slots-input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+  -webkit-appearance: none;
+}
+.availability-num-slots-input:focus {
+  outline: none;
+}
+.availability-num-slots-chevrons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex-shrink: 0;
+}
+.availability-num-slots-chevron {
+  width: 22px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.availability-num-slots-chevron:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.95);
+}
+.availability-num-slots-chevron:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.availability-num-slots-chevron-down {
+  margin-top: -4px;
+}
+
+/* Duración / Pausa: chevron well separated from right border inside the card */
+.availability-select-with-chevron {
+  padding-right: 44px;
+}
+
+.availability-add-block-btn-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.availability-preview {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.4;
+}
+
+.availability-preview strong {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+}
+
+.availability-add-block-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.availability-add-block-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.availability-add-block-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
+.availability-draggable-slot-input {
+  width: 52px;
+  padding: 8px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  text-align: center;
+  user-select: text;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.availability-draggable-slot-input::-webkit-outer-spin-button,
+.availability-draggable-slot-input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.availability-draggable-slot-input:focus {
+  outline: none;
+  border-color: rgba(191, 168, 77, 0.45);
+}
+
+.availability-draggable-slot-unit {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.availability-draggable-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.availability-draggable-slot {
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: grab;
+  transition: background 0.2s, border-color 0.2s;
+  user-select: none;
+}
+
+.availability-draggable-slot:active {
+  cursor: grabbing;
+}
+
+.availability-draggable-slot:hover {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.4);
+}
+
+.availability-draggable-slot-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.availability-timeline-drag-over {
+  outline: 2px dashed rgba(191, 168, 77, 0.6);
+  outline-offset: 2px;
+  background: rgba(191, 168, 77, 0.06);
+}
+
+.availability-slots-list-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.availability-slots-list-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 10px 0;
+}
+
+.availability-loading,
+.availability-no-slots {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.availability-slots-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.availability-slot-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+}
+
+.availability-remove-slot {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.availability-remove-slot:hover:not(:disabled) {
+  background: rgba(220, 53, 69, 0.2);
+  border-color: rgba(220, 53, 69, 0.5);
+  color: #f8a0a0;
+}
+
+.availability-remove-slot:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Middle panel: day timeline (same width as left sidebar) */
+.availability-day-panel {
+  width: 360px;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.availability-day-panel-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.availability-bookings-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: rgba(248, 160, 160, 0.95);
+}
+
+.availability-bookings-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.availability-day-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.availability-day-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.availability-timeline-wrap {
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.availability-timeline {
+  position: relative;
+  width: 100%;
+  min-height: 1152px; /* 24 * 48px */
+}
+
+.availability-timeline-hour {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+}
+
+.availability-timeline-hour-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  min-width: 44px;
+}
+
+.availability-timeline-slots {
+  position: absolute;
+  left: 52px;
+  right: 12px;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.availability-timeline-slot-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-top: 2px;
+  min-height: 24px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  padding: 4px 10px;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.availability-timeline-slot-clickable {
+  cursor: pointer;
+}
+
+/* Reserved by users: gold background and border */
+.availability-timeline-slot-block.availability-timeline-slot-reserved {
+  background: rgba(191, 168, 77, 0.4);
+  border: 1px solid rgba(191, 168, 77, 0.8);
+}
+
+.availability-timeline-slot-block.availability-timeline-slot-reserved:hover {
+  background: rgba(191, 168, 77, 0.5);
+}
+
+/* Reserved but no call link: red - needs attention */
+.availability-timeline-slot-block.availability-timeline-slot-reserved-no-call {
+  background: rgba(220, 53, 69, 0.35);
+  border: 1px solid rgba(220, 53, 69, 0.7);
+}
+
+.availability-timeline-slot-block.availability-timeline-slot-reserved-no-call:hover {
+  background: rgba(220, 53, 69, 0.45);
+}
+
+.availability-timeline-slot-reserved-no-call .availability-timeline-slot-label {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Not reserved: same style as session cards in planificación tab (fff with low opacity) */
+.availability-timeline-slot-block.availability-timeline-slot-available {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.availability-timeline-slot-block.availability-timeline-slot-available:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.availability-timeline-slot-label {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.availability-timeline-slot-reserved .availability-timeline-slot-label {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.availability-timeline-slot-available .availability-timeline-slot-label {
+  color: rgba(255, 255, 255, 0.98);
+}
+
+/* Right panel: calendar (takes remaining space so it's wider) */
+.availability-calendar-panel {
+  flex: 1;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.availability-calendar-panel-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.availability-calendar-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.availability-calendar-panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+.availability-calendar-view .calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.availability-calendar-days .calendar-day {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.availability-calendar-day:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.availability-day-has-slots .calendar-day-number {
+  font-weight: 600;
+}
+
+.availability-day-dots {
+  font-size: 8px;
+  color: rgba(191, 168, 77, 0.9);
+  letter-spacing: 0.5px;
+}
+
+.availability-day-selected {
+  border-color: rgba(191, 168, 77, 0.7) !important;
+  background: rgba(191, 168, 77, 0.15) !important;
+}
+
+.availability-calendar-day.calendar-day-today {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.availability-calendar-day.availability-day-selected.calendar-day-today {
+  border-color: rgba(191, 168, 77, 0.7);
+  background: rgba(191, 168, 77, 0.15);
+}
+
+/* Slot detail modal – two-column layout */
+.slot-detail-modal-container {
+  max-width: 820px !important;
+}
+
+.slot-detail-modal-content {
+  padding: 0 !important;
+  overflow: hidden !important;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+}
+
+.slot-detail-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.slot-detail-modal-body {
+  display: flex;
+  flex-direction: row;
+  gap: 24px;
+  padding: 24px 24px 20px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.slot-detail-modal-left {
+  flex: 0 0 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.slot-detail-modal-right {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 640px) {
+  .slot-detail-modal-body {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .slot-detail-modal-left {
+    flex: 0 0 auto;
+  }
+}
+
+/* Hero – slot summary */
+.slot-detail-hero {
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.slot-detail-hero--ready {
+  background: linear-gradient(135deg, rgba(191, 168, 77, 0.2) 0%, rgba(191, 168, 77, 0.08) 100%);
+  border: 1px solid rgba(191, 168, 77, 0.3);
+}
+
+.slot-detail-hero--pending {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.15) 0%, rgba(220, 53, 69, 0.06) 100%);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+}
+
+.slot-detail-hero--available {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.slot-detail-hero-time {
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.98);
+  letter-spacing: -0.02em;
+}
+
+.slot-detail-hero-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.slot-detail-hero-duration {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.slot-detail-hero-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.slot-detail-hero--ready .slot-detail-hero-status { color: rgba(191, 168, 77, 0.95); }
+.slot-detail-hero--pending .slot-detail-hero-status { color: rgba(220, 53, 69, 0.95); }
+.slot-detail-hero--available .slot-detail-hero-status { color: rgba(255, 255, 255, 0.6); }
+
+/* Cards grid */
+.slot-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.slot-detail-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.slot-detail-card:last-child {
+  margin-bottom: 0;
+}
+
+.slot-detail-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 12px 0;
+}
+
+/* Who card */
+.slot-detail-who-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.98);
+  line-height: 1.3;
+}
+
+.slot-detail-who-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.slot-detail-badge {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.slot-detail-badge--program {
+  color: rgba(191, 168, 77, 0.9);
+  background: rgba(191, 168, 77, 0.15);
+}
+
+/* Contact card */
+.slot-detail-contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slot-detail-contact-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slot-detail-contact-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.slot-detail-contact-value {
+  font-size: 14px;
+  color: rgba(191, 168, 77, 0.95);
+  text-decoration: none;
+}
+
+.slot-detail-contact-value:hover {
+  text-decoration: underline;
+}
+
+/* Context card */
+.slot-detail-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px 20px;
+}
+
+.slot-detail-context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slot-detail-context-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.slot-detail-context-value {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Goals card – fixed height, scrollable inside */
+.slot-detail-card--goals {
+  max-height: 140px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.slot-detail-card--goals .slot-detail-card-title {
+  flex-shrink: 0;
+}
+
+.slot-detail-goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  padding-right: 4px;
+}
+
+.slot-detail-goals-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.slot-detail-goals-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.slot-detail-goals-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+
+.slot-detail-goals-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slot-detail-goals-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.slot-detail-goals-value {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.4;
+}
+
+/* Call link card */
+.slot-detail-modal-left .slot-detail-card--call {
+  flex: 1;
+  min-height: 0;
+}
+
+.slot-detail-call-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.slot-detail-call-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+}
+
+.slot-detail-call-input:focus {
+  outline: none;
+  border-color: rgba(191, 168, 77, 0.5);
+}
+
+.slot-detail-call-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.slot-detail-call-btn {
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.slot-detail-call-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.slot-detail-call-btn--changed {
+  background: rgba(191, 168, 77, 0.25);
+  border-color: rgba(191, 168, 77, 0.5);
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+}
+
+.slot-detail-call-btn--changed:hover:not(:disabled) {
+  background: rgba(191, 168, 77, 0.35);
+}
+
+.slot-detail-call-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty state */
+.slot-detail-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+/* Footer */
+.slot-detail-footer {
+  padding: 16px 24px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.slot-detail-close-btn {
+  width: 100%;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.slot-detail-close-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Error / loading */
+.slot-detail-error {
+  font-size: 13px;
+  color: rgba(248, 160, 160, 0.95);
+  margin: 0;
+}
+
+.slot-detail-loading {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+@media (max-width: 1200px) {
+  .availability-body {
+    flex-wrap: wrap;
+  }
+  .availability-sidebar-left {
+    width: 100%;
+    min-width: 0;
+    max-height: 40vh;
+  }
+  .availability-day-panel {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 360px;
+  }
+  .availability-calendar-panel {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Scrollbars: same color as panel background so they blend in */
+.availability-sidebar-content::-webkit-scrollbar,
+.availability-slots-list::-webkit-scrollbar,
+.availability-day-panel-content::-webkit-scrollbar,
+.availability-timeline-wrap::-webkit-scrollbar,
+.availability-calendar-panel-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.availability-sidebar-content::-webkit-scrollbar-track,
+.availability-slots-list::-webkit-scrollbar-track,
+.availability-day-panel-content::-webkit-scrollbar-track,
+.availability-timeline-wrap::-webkit-scrollbar-track,
+.availability-calendar-panel-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+
+.availability-sidebar-content::-webkit-scrollbar-thumb,
+.availability-slots-list::-webkit-scrollbar-thumb,
+.availability-day-panel-content::-webkit-scrollbar-thumb,
+.availability-timeline-wrap::-webkit-scrollbar-thumb,
+.availability-calendar-panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+
+.availability-sidebar-content::-webkit-scrollbar-thumb:hover,
+.availability-slots-list::-webkit-scrollbar-thumb:hover,
+.availability-day-panel-content::-webkit-scrollbar-thumb:hover,
+.availability-timeline-wrap::-webkit-scrollbar-thumb:hover,
+.availability-calendar-panel-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
