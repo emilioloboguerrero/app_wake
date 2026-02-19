@@ -24,6 +24,8 @@ import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
 import ProgramsAndClientsScreen from './screens/ProgramsAndClientsScreen';
 import AvailabilityCalendarScreen from './screens/AvailabilityCalendarScreen';
 import NutritionScreen from './screens/NutritionScreen';
+import MealEditorScreen from './screens/MealEditorScreen';
+import PlanEditorScreen from './screens/PlanEditorScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -186,6 +188,30 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <NutritionScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route 
+              path="/nutrition/meals/new" 
+              element={
+                <ProtectedRoute>
+                  <MealEditorScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route 
+              path="/nutrition/meals/:mealId" 
+              element={
+                <ProtectedRoute>
+                  <MealEditorScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route 
+              path="/nutrition/plans/:planId" 
+              element={
+                <ProtectedRoute>
+                  <PlanEditorScreen />
                 </ProtectedRoute>
               }
             />

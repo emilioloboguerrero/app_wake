@@ -91,3 +91,19 @@ export const getWeeksBetween = (startDate, endDate) => {
   return [...new Set(weeks)]; // Remove duplicates
 };
 
+/**
+ * Get N consecutive week keys starting from a given week key.
+ * Used when assigning a multi-week plan to the calendar (one module per week).
+ * @param {string} startWeekKey - Week key in format "YYYY-WXX"
+ * @param {number} count - Number of consecutive weeks
+ * @returns {string[]} - Array of week keys (length = count), or empty if count < 1
+ */
+export const getConsecutiveWeekKeys = (startWeekKey, count) => {
+  if (count < 1) return [];
+  if (count === 1) return [startWeekKey];
+  const { start } = getWeekDates(startWeekKey);
+  const endDate = new Date(start);
+  endDate.setDate(start.getDate() + 7 * count - 1); // last day of Nth week
+  return getWeeksBetween(start, endDate);
+};
+

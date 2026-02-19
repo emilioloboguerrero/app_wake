@@ -8,6 +8,7 @@ import progressQueryService from './progressQueryService';
 import storageManagementService from './storageManagementService';
 import firestoreService from '../services/firestoreService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
+import { getMondayWeek } from '../utils/weekCalculation';
 
 import logger from '../utils/logger.js';
 class WorkoutProgressService {
@@ -504,17 +505,19 @@ class WorkoutProgressService {
           logger.warn('Could not refresh modules for workout, using cache:', e?.message);
         }
       }
-      // One-on-one: keep full week module; only attach today's planned session id for initial selection (no longer replace modules)
+      // One-on-one: attach today's planned session id only (lightweight; full content loaded in getCurrentSession)
+      // Use plan slot id (userId_courseId_weekKey_sessionId) when plan session so list match and sessionHistory dedupes in dashboard
       if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
         const today = new Date();
-        const creatorId = courseData.courseData.creator_id ?? courseData.courseData.creatorId ?? null;
-        const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
-        const plannedId = resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null;
+        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
+        const plannedId = planned
+          ? (planned.plan_id && planned.session_id
+            ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : today))}_${planned.session_id}`
+            : planned.id)
+          : null;
         logger.log('🔍 [getCourseDataForWorkout] one-on-one plannedSessionIdForToday:', {
           date: today.toDateString(),
-          plannedId,
-          sessionIdForMatching: resolved?.sessionIdForMatching,
-          resolvedTitle: resolved?.title
+          plannedId
         });
         courseData = {
           ...courseData,
@@ -540,11 +543,14 @@ class WorkoutProgressService {
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
             const today = new Date();
-            const creatorId = hybridCourse.creator_id ?? hybridCourse.creatorId ?? null;
             const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId);
-            const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
+            const plannedHybrid = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
             const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
-            const plannedIdHybrid = isOneOnOne ? (resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null) : undefined;
+            const plannedIdHybrid = isOneOnOne && plannedHybrid
+              ? (plannedHybrid.plan_id && plannedHybrid.session_id
+                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedHybrid.date_timestamp?.toDate?.() || (plannedHybrid.date ? new Date(plannedHybrid.date) : today))}_${plannedHybrid.session_id}`
+                : plannedHybrid.id)
+              : undefined;
             if (plannedIdHybrid != null) logger.log('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdHybrid });
             // sessionService reads courseData.courseData as "inner" and expects inner.modules and inner.isOneOnOne
             const innerCourseData = {
@@ -584,11 +590,14 @@ class WorkoutProgressService {
               logger.error('❌ Background download failed:', error);
             });
             const today = new Date();
-            const creatorId = firestoreCourse.creator_id ?? firestoreCourse.creatorId ?? null;
-            const resolved = await firestoreService.getPlannedSessionContentForDate(effectiveUserId, courseId, today, creatorId);
+            const plannedFirestore = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
             const isOneOnOne = firestoreCourse.deliveryType === 'one_on_one' || firestoreCourse.isOneOnOne === true;
             const modulesToUse = modules || [];
-            const plannedIdFirestore = isOneOnOne ? (resolved?.sessionIdForMatching ?? resolved?.sessionId ?? resolved?.id ?? null) : undefined;
+            const plannedIdFirestore = isOneOnOne && plannedFirestore
+              ? (plannedFirestore.plan_id && plannedFirestore.session_id
+                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedFirestore.date_timestamp?.toDate?.() || (plannedFirestore.date ? new Date(plannedFirestore.date) : today))}_${plannedFirestore.session_id}`
+                : plannedFirestore.id)
+              : undefined;
             if (plannedIdFirestore != null) logger.log('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdFirestore });
             const innerCourseData = {
               ...(firestoreCourse.courseData || firestoreCourse),

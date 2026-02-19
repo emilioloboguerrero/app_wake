@@ -1378,6 +1378,59 @@
   border-color: rgba(150, 130, 60, 1);
 }
 
+.exercise-implements-add-custom {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.exercise-implements-custom-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+}
+
+.exercise-implements-custom-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.exercise-implements-custom-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.exercise-implements-add-custom-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(150, 130, 60, 0.6);
+  background-color: rgba(150, 130, 60, 0.25);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.exercise-implements-add-custom-btn:hover:not(:disabled) {
+  background-color: rgba(150, 130, 60, 0.4);
+  border-color: rgba(150, 130, 60, 0.9);
+}
+
+.exercise-implements-add-custom-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .exercise-implements-display {
   display: flex;
   flex-direction: column;
@@ -1416,7 +1469,7 @@
 .exercise-effective-sets-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -1443,7 +1496,7 @@
   flex-direction: column;
   gap: 8px;
   margin-top: 24px;
-  margin-bottom: -20px;
+  margin-bottom: 0;
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
@@ -1519,12 +1572,94 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* Two-column layout when editing muscles: left = silhouette + labels + Guardar, right = Predeterminados */
+.exercise-muscles-view-edit-row {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.exercise-muscles-view-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+
+/* Predeterminados column on the right of the muscles card */
+.exercise-presets-in-muscles-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  width: 180px;
+  min-height: 0;
+}
+
+.exercise-presets-in-muscles-card .exercise-section-title {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.exercise-presets-scroll-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  min-height: 0;
+  flex: 1;
+}
+
+.exercise-presets-scroll-vertical::-webkit-scrollbar {
+  width: 6px;
+}
+
+.exercise-presets-scroll-vertical::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.exercise-presets-scroll-vertical::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.exercise-presets-scroll-vertical::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.exercise-preset-item-vertical {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  text-align: left;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.exercise-preset-item-vertical:hover {
+  transform: none;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .exercise-effective-sets-header {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .exercise-effective-sets-info-button {
@@ -1565,8 +1700,7 @@
   overflow-x: hidden;
   flex: 1;
   min-height: 0;
-  max-height: 100%;
-  padding-right: 4px;
+  padding: 4px 4px 16px 0;
   box-sizing: border-box;
 }
 

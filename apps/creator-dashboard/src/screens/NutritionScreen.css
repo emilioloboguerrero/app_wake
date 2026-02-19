@@ -85,6 +85,48 @@
   flex-wrap: wrap;
 }
 
+/* Pill buttons (same style and order as library session/exercise actions: + then Editar) */
+.nutrition-header-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.nutrition-pill {
+  padding: 6px 20px;
+  height: 32px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.nutrition-pill:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.nutrition-pill-icon {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.nutrition-pill-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .nutrition-section-title {
   font-size: 20px;
   font-weight: 600;
@@ -104,32 +146,92 @@
   padding: 24px;
 }
 
+/* Search — same style as library exercises (border, focus ring, icon) */
+.nutrition-search-container {
+  padding: 16px 0;
+  margin-bottom: 8px;
+}
+
+.nutrition-search-input-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+}
+
+.nutrition-search-input-container:focus-within {
+  border-color: rgba(191, 168, 77, 0.5);
+  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+}
+
+.nutrition-search-icon {
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.nutrition-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.nutrition-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Grid and cards — same style as library exercises list / exercise-card */
 .nutrition-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
 }
 
 .nutrition-card {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
   transition: all 0.2s ease;
   cursor: default;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
 }
 
 .nutrition-card:hover {
   border-color: rgba(191, 168, 77, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.nutrition-card-clickable {
+  cursor: pointer;
+}
+
+.nutrition-card-clickable:focus,
+.nutrition-card-clickable:active {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: none;
+  box-shadow: none;
 }
 
 .nutrition-card-title {
-  font-size: 16px;
+  font-size: 1.25rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: #ffffff;
   margin: 0 0 8px 0;
+  line-height: 1.4;
 }
 
 .nutrition-card-meta {
@@ -545,4 +647,30 @@
   .nutrition-compare-field input {
     min-width: unset;
   }
+}
+
+/* New meal name modal: full-width input, no inner card */
+.new-meal-modal-content .propagate-modal-layout-single.new-meal-modal-layout {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.new-meal-modal-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.new-meal-modal-field .input-container,
+.new-meal-modal-field .input-container input,
+.new-meal-modal-field input {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }

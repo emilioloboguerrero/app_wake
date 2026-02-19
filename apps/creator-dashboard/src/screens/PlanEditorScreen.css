@@ -1,0 +1,817 @@
+/* Plan editor — reuses library-session + meal-editor layout */
+
+.plan-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Tabs at top (same style as Planes/Sesiones) */
+.plan-editor-sidebar-tabs {
+  display: flex;
+  gap: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.plan-editor-sidebar-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.plan-editor-sidebar-tab:first-child {
+  border-radius: 8px 0 0 8px;
+  border-right: none;
+}
+
+.plan-editor-sidebar-tab:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.plan-editor-sidebar-tab:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-editor-sidebar-tab.active {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.5);
+  color: rgba(191, 168, 77, 0.95);
+}
+
+.plan-editor-sidebar-tab.active:hover {
+  background: rgba(191, 168, 77, 0.2);
+}
+
+/* Panel content below tabs — same structure for Alimentos and Recetas */
+.plan-editor-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plan-editor-sidebar-section-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.plan-editor-sidebar-section-header .plan-editor-sidebar-section-hint {
+  margin: 0 0 8px 0;
+}
+
+.plan-editor-sidebar-section-header .plan-editor-category-select {
+  margin-bottom: 0;
+}
+
+.plan-editor-sidebar-list-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 20px;
+  border-top: none;
+}
+
+.plan-editor-panel-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-editor-panel-card {
+  flex-shrink: 0;
+}
+
+.plan-editor-food-card-readonly {
+  cursor: default;
+}
+
+/* Draggable cards must receive pointer events so drag works */
+.plan-editor-food-card-readonly.plan-editor-recipe-card-draggable {
+  pointer-events: auto;
+  cursor: grab;
+}
+.plan-editor-food-card-readonly.plan-editor-recipe-card-draggable:active {
+  cursor: grabbing;
+}
+
+/* Food item card in center (option item with portion selector on the right) */
+.plan-editor-option-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.plan-editor-option-item-card:last-child {
+  margin-bottom: 0;
+}
+
+.plan-editor-option-item-card-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-editor-option-item-card-left .meal-editor-item-name {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.plan-editor-option-item-card .meal-editor-item-meta {
+  display: block;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.plan-editor-option-item-card-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Portion: inputs row (cards) moved down; labels row below */
+.plan-editor-option-item-portion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.plan-editor-option-item-portion-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-select,
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units {
+  height: 26px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-family: inherit;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-select {
+  width: 120px;
+}
+
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units {
+  width: 44px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Hide number input arrows (spinners) on all number inputs in the plan editor */
+.plan-editor-macros-objectives input[type="number"]::-webkit-inner-spin-button,
+.plan-editor-macros-objectives input[type="number"]::-webkit-outer-spin-button,
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units::-webkit-inner-spin-button,
+.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units::-webkit-outer-spin-button,
+.meal-editor-manual-form-in-modal input[type="number"]::-webkit-inner-spin-button,
+.meal-editor-manual-form-in-modal input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.plan-editor-macros-objectives input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.meal-editor-manual-form-in-modal input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.plan-editor-option-item-portion-labels {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  width: 172px;
+  box-sizing: border-box;
+}
+
+.plan-editor-option-item-portion-labels .plan-editor-option-item-portion-label:first-child {
+  width: 120px;
+  text-align: center;
+}
+
+.plan-editor-option-item-portion-labels .plan-editor-option-item-portion-label:last-child {
+  width: 44px;
+  text-align: center;
+}
+
+.plan-editor-option-item-portion-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.plan-editor-sidebar-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.plan-editor-sidebar-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 8px 0;
+}
+
+.plan-editor-sidebar-section-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 8px 0;
+}
+
+.plan-editor-category-select {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.plan-editor-recipe-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.plan-editor-recipe-search::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.plan-editor-recipes-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.plan-editor-recipe-card {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 0;
+}
+
+.plan-editor-recipe-card-draggable {
+  cursor: grab;
+}
+
+.plan-editor-recipe-card-draggable:active {
+  cursor: grabbing;
+}
+
+.plan-editor-category-block-dropzone-active {
+  outline: 2px dashed rgba(191, 168, 77, 0.6);
+  outline-offset: 2px;
+  background: rgba(191, 168, 77, 0.08);
+}
+
+.plan-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+.plan-editor-macros-objectives {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.plan-editor-macros-objectives-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 14px 0;
+}
+
+.plan-editor-macros-inputs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.plan-editor-macro-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plan-editor-macro-input-wrap label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.plan-editor-macro-input-wrap input {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.plan-editor-macro-input-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.plan-editor-macros-objectives-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: -8px 0 12px 0;
+}
+
+.plan-editor-macro-distribution-wrap {
+  grid-column: span 1;
+}
+
+.plan-editor-distribution-select {
+  padding: 8px 40px 8px 12px;
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  cursor: pointer;
+}
+
+.plan-editor-macros-inputs {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.plan-editor-macros-inputs-gram {
+  margin-top: 12px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.plan-editor-macros-computed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Right sidebar: planned vs objective (smaller, less opaque) */
+.plan-editor-calories-vs-objective {
+  font-size: 0.55em;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: 4px;
+}
+
+.plan-editor-macro-vs-objective {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 4px;
+}
+
+.plan-editor-categories-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.plan-editor-categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.plan-editor-categories-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.plan-editor-add-category-btn {
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.plan-editor-add-category-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.plan-editor-categories-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* Scrollbar inside card: track same as card background */
+  scrollbar-color: rgba(255, 255, 255, 0.25) rgba(255, 255, 255, 0.04);
+  scrollbar-gutter: stable;
+}
+
+.plan-editor-categories-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.plan-editor-categories-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 12px 12px 0;
+}
+
+.plan-editor-categories-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+}
+
+.plan-editor-categories-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.plan-editor-category-block {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.plan-editor-category-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.plan-editor-category-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  flex: 1;
+}
+
+.plan-editor-category-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.plan-editor-category-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(191, 168, 77, 0.95);
+}
+
+.plan-editor-options-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.plan-editor-option-pill-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.plan-editor-option-pill-wrap:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.plan-editor-option-pill-wrap.active {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.plan-editor-option-pill {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.2s;
+}
+
+.plan-editor-option-pill-wrap:hover .plan-editor-option-pill {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.plan-editor-option-pill-wrap.active .plan-editor-option-pill {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.plan-editor-option-pill-delete {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin: 2px 4px 2px 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.plan-editor-option-pill-delete:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.plan-editor-option-pill-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.plan-editor-option-pill-add:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Option pill as drop target: highlight when dragging over so user can drop on a specific option */
+.plan-editor-option-pill-wrap.plan-editor-option-pill-dropzone-active {
+  outline: 2px dashed rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.plan-editor-option-items-wrap {
+  margin-top: 4px;
+}
+
+.plan-editor-option-items-dropzone {
+  min-height: 56px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.plan-editor-option-items-dropzone.empty {
+  border-style: dashed;
+}
+
+.plan-editor-option-items-dropzone.meal-editor-dropzone-active {
+  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(191, 168, 77, 0.08);
+}
+
+.plan-editor-option-items-dropzone .meal-editor-item-row {
+  margin-bottom: 6px;
+}
+
+.plan-editor-option-items-dropzone .meal-editor-item-row:last-child {
+  margin-bottom: 0;
+}
+
+.plan-editor-add-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+}
+
+/* Category edit modal */
+.plan-editor-category-edit-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.plan-editor-category-edit-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.plan-editor-category-edit-input {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.plan-editor-category-edit-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.plan-editor-category-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.plan-editor-category-edit-cancel {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.plan-editor-category-edit-save {
+  padding: 8px 16px;
+  background: rgba(191, 168, 77, 0.3);
+  border: 1px solid rgba(191, 168, 77, 0.5);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.plan-editor-category-edit-save:hover {
+  background: rgba(191, 168, 77, 0.45);
+}
+
+.plan-editor-category-edit-confirm-text {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.4;
+}
+
+.plan-editor-category-edit-delete-row {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.plan-editor-category-edit-delete-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(180, 60, 60, 0.25);
+  border: 1px solid rgba(220, 80, 80, 0.5);
+  border-radius: 8px;
+  color: rgba(255, 200, 200, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.plan-editor-category-edit-delete-btn:hover {
+  background: rgba(200, 70, 70, 0.4);
+  border-color: rgba(220, 80, 80, 0.65);
+}
+
+.plan-editor-category-edit-delete {
+  padding: 8px 16px;
+  background: rgba(180, 60, 60, 0.35);
+  border: 1px solid rgba(220, 80, 80, 0.6);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.plan-editor-category-edit-delete:hover {
+  background: rgba(200, 70, 70, 0.5);
+}
+
+@media (max-width: 1200px) {
+  .plan-editor-macros-inputs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* No focus indicator (border/outline) on inputs and buttons */
+.plan-editor-sidebar input:focus,
+.plan-editor-sidebar input:focus-visible,
+.plan-editor-sidebar button:focus,
+.plan-editor-sidebar button:focus-visible,
+.plan-editor-main input:focus,
+.plan-editor-main input:focus-visible,
+.plan-editor-main button:focus,
+.plan-editor-main button:focus-visible,
+.plan-editor-category-edit-modal input:focus,
+.plan-editor-category-edit-modal input:focus-visible,
+.plan-editor-category-edit-modal button:focus,
+.plan-editor-category-edit-modal button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.plan-editor-category-block input:focus,
+.plan-editor-category-block input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.15);
+}

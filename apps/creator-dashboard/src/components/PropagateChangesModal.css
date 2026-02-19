@@ -29,6 +29,22 @@
   padding: 24px 24px 16px;
 }
 
+.propagate-modal-layout-single {
+  min-height: auto;
+  padding: 24px;
+}
+
+.propagate-modal-layout-single .propagate-modal-card {
+  flex: none;
+}
+
+.propagate-modal-layout-single .propagate-modal-card .input-container,
+.propagate-modal-layout-single .propagate-modal-card input {
+  margin-top: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 @media (max-width: 700px) {
   .propagate-modal-layout {
     flex-direction: column;

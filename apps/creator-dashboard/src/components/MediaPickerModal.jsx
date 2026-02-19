@@ -24,13 +24,13 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
     setError(null);
     setLoading(true);
     listFiles(creatorId)
-      .then(setItems)
+      .then((files) => setItems(files))
       .catch((e) => {
         console.error('Media list error:', e);
         setError(e.message || 'Error al cargar la carpeta');
       })
       .finally(() => setLoading(false));
-  }, [isOpen, creatorId]);
+  }, [isOpen, creatorId, accept]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -57,13 +57,16 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
     }
   };
 
+  const isVideoPicker = accept === 'video/*';
+
   const handleSelect = (item) => {
+    if (isVideoPicker && item.contentType?.startsWith('image/')) return; // images not selectable in video picker
     onSelect({ id: item.id, url: item.url, name: item.name, contentType: item.contentType });
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Tu carpeta de medios" extraWide>
+    <Modal isOpen={isOpen} onClose={onClose} title={isVideoPicker ? 'Vídeo de tu carpeta' : 'Tu carpeta de medios'} extraWide>
       <div className="media-picker-modal">
         <input
           ref={fileInputRef}
@@ -107,31 +110,36 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
               )}
             </button>
 
-            {items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="media-picker-modal-card media-picker-modal-item-card"
-                onClick={() => handleSelect(item)}
-              >
-                {item.contentType?.startsWith('image/') ? (
-                  <img src={item.url} alt={item.name} className="media-picker-modal-thumb" />
-                ) : (
-                  <div className="media-picker-modal-video-placeholder">
-                    <span className="media-picker-modal-video-icon">▶</span>
-                  </div>
-                )}
-                <span className="media-picker-modal-item-name" title={item.name}>
-                  {item.name}
-                </span>
-              </button>
-            ))}
+            {items.map((item) => {
+              const isImage = item.contentType?.startsWith('image/');
+              const disabledInVideoMode = isVideoPicker && isImage;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`media-picker-modal-card media-picker-modal-item-card ${disabledInVideoMode ? 'media-picker-modal-item-card-disabled' : ''}`}
+                  onClick={() => handleSelect(item)}
+                  disabled={disabledInVideoMode}
+                >
+                  {isImage ? (
+                    <img src={item.url} alt={item.name} className="media-picker-modal-thumb" />
+                  ) : (
+                    <div className="media-picker-modal-video-placeholder">
+                      <span className="media-picker-modal-video-icon">▶</span>
+                    </div>
+                  )}
+                  <span className="media-picker-modal-item-name" title={item.name}>
+                    {item.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
         {!loading && items.length === 0 && !uploading && (
           <p className="media-picker-modal-empty">
-            No hay medios todavía. Haz clic en + para subir una imagen o video.
+            {isVideoPicker ? 'No hay vídeos en tu carpeta. Haz clic en + para subir un vídeo.' : 'No hay medios todavía. Haz clic en + para subir una imagen o video.'}
           </p>
         )}
       </div>

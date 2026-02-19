@@ -35,6 +35,9 @@ import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
 
+// Only on native — react-native-linear-gradient can break on web
+const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
+
 // Custom hook for streak data management
 const useStreakData = (userId, courseId) => {
   const [streak, setStreak] = React.useState(0);
@@ -595,6 +598,8 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
     const isDayOrdered = sessionState.allSessions.some(s => s.dayIndex != null);
     const todayWeekdayIndex = getTodayWeekdayIndex();
     const isPlannedForToday = isDayOrdered && session.dayIndex === todayWeekdayIndex;
+    const completedIds = sessionState.progress?.allSessionsCompleted || [];
+    const isCompleted = !!(sessionId && completedIds.includes(sessionId)) || !!(session.id && completedIds.includes(session.id));
 
     if (isLoadingThisCard) {
       logger.log('🔄 Loading overlay should be visible for session:', session.title);
@@ -618,27 +623,49 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
         disabled={isChangingSession}
         activeOpacity={0.7}
       >
-        {/* Session Thumbnail */}
-        {session.image_url && !failedImages.has(`session-${session.id}`) ? (
-          <ExpoImage
-            source={{ uri: session.image_url }}
-            style={styles.sessionThumbnail}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            onError={(error) => {
-              logger.error('❌ Error loading session thumbnail:', {
-                sessionId: session.id,
-                imageUrl: session.image_url,
-                error: error?.message || error
-              });
-              setFailedImages(prev => new Set(prev).add(`session-${session.id}`));
-            }}
-          />
-        ) : (
-          <View style={styles.sessionThumbnailPlaceholder}>
-            <Text style={styles.sessionThumbnailPlaceholderText}>{index + 1}</Text>
-          </View>
-        )}
+        {/* Session Thumbnail with optional completed checkmark */}
+        <View style={styles.sessionThumbnailWrapper}>
+          {session.image_url && !failedImages.has(`session-${session.id}`) ? (
+            <ExpoImage
+              source={{ uri: session.image_url }}
+              style={styles.sessionThumbnail}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              onError={(error) => {
+                logger.error('❌ Error loading session thumbnail:', {
+                  sessionId: session.id,
+                  imageUrl: session.image_url,
+                  error: error?.message || error
+                });
+                setFailedImages(prev => new Set(prev).add(`session-${session.id}`));
+              }}
+            />
+          ) : (
+            <View style={styles.sessionThumbnailPlaceholder}>
+              <Text style={styles.sessionThumbnailPlaceholderText}>{index + 1}</Text>
+            </View>
+          )}
+          {isCompleted && (
+            <View style={styles.sessionCompletedBadge}>
+              {LinearGradient ? (
+                <>
+                  <LinearGradient
+                    colors={['rgba(22,101,52,0.95)', 'rgba(34,139,34,0.9)', 'rgba(21,128,61,0.95)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Text style={styles.sessionCompletedBadgeCheck}>✓</Text>
+                </>
+              ) : (
+                <>
+                  <View style={[StyleSheet.absoluteFill, styles.sessionCompletedBadgeGradientWeb]} />
+                  <Text style={styles.sessionCompletedBadgeCheck}>✓</Text>
+                </>
+              )}
+            </View>
+          )}
+        </View>
         
         {/* Session Info */}
         <View style={styles.sessionInfo}>
@@ -648,10 +675,10 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
         </View>
         
         
-        {/* Current Session Indicator - Only show "Actual" badge */}
+        {/* Current Session Indicator - "Actual" badge (gradient + glass, creator planificación style) */}
         {isCurrentSession && (
-          <TouchableOpacity 
-            style={styles.currentBadge}
+          <TouchableOpacity
+            style={[styles.badgeGlassOuter, styles.badgeGlassActual]}
             onPress={() => {
               if (mainSwipeRef.current) {
                 mainSwipeRef.current.scrollTo({ x: 0, animated: true });
@@ -659,21 +686,66 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
             }}
             activeOpacity={0.7}
           >
-            <Text style={styles.currentBadgeText}>Actual</Text>
+            {LinearGradient ? (
+              <>
+                <LinearGradient
+                  colors={['rgba(191,168,77,0.35)', 'rgba(191,168,77,0.18)', 'rgba(255,255,255,0.14)']}
+                  start={{ x: 1, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text style={styles.badgeGlassText}>Actual</Text>
+              </>
+            ) : (
+              <>
+                <View style={[StyleSheet.absoluteFill, styles.badgeGlassWebActual]} />
+                <Text style={styles.badgeGlassText}>Actual</Text>
+              </>
+            )}
           </TouchableOpacity>
         )}
 
-        {/* Today's planned session indicator (single word: "Hoy") – only when list is day-ordered and this slot is today's weekday */}
+        {/* Today's planned session – "Hoy" badge (gradient + glass) */}
         {isPlannedForToday && !isCurrentSession && (
-          <View style={styles.todayBadge}>
-            <Text style={styles.todayBadgeText}>Hoy</Text>
+          <View style={[styles.badgeGlassOuter, styles.badgeGlassHoy]}>
+            {LinearGradient ? (
+              <>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.08)']}
+                  start={{ x: 1, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text style={styles.badgeGlassText}>Hoy</Text>
+              </>
+            ) : (
+              <>
+                <View style={[StyleSheet.absoluteFill, styles.badgeGlassWebHoy]} />
+                <Text style={styles.badgeGlassText}>Hoy</Text>
+              </>
+            )}
           </View>
         )}
 
-        {/* Preview Session Arrow */}
+        {/* Preview Session Arrow (same gradient + glass as Actual) */}
         {isPreviewSession && !isCurrentSession && (
           <View style={styles.previewBadge}>
-            <Text style={styles.previewBadgeText}>→</Text>
+            {LinearGradient ? (
+              <>
+                <LinearGradient
+                  colors={['rgba(191,168,77,0.35)', 'rgba(191,168,77,0.18)', 'rgba(255,255,255,0.14)']}
+                  start={{ x: 1, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text style={styles.previewBadgeText}>→</Text>
+              </>
+            ) : (
+              <>
+                <View style={[StyleSheet.absoluteFill, styles.badgeGlassWebActual]} />
+                <Text style={styles.previewBadgeText}>→</Text>
+              </>
+            )}
           </View>
         )}
         
@@ -905,6 +977,40 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                     <Text style={styles.noExercisesText}>
                       Esta sesión no tiene ejercicios asignados
                     </Text>
+                  </View>
+                )}
+
+                {/* Overlay when user already completed this session (e.g. one-on-one re-entering after completing today) */}
+                {sessionState.todaySessionAlreadyCompleted && (
+                  <View style={styles.alreadyCompletedOverlay} pointerEvents="box-none">
+                    <View style={StyleSheet.absoluteFill}>
+                      {sessionState.workout?.image_url && !failedImages.has(`workout-${sessionState.workout.id}`) ? (
+                        <ExpoImage
+                          source={{ uri: sessionState.workout.image_url }}
+                          style={StyleSheet.absoluteFillObject}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                        />
+                      ) : (course?.image_url || course?.imageUrl) ? (
+                        <ExpoImage
+                          source={{ uri: course?.image_url || course?.imageUrl }}
+                          style={StyleSheet.absoluteFillObject}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                        />
+                      ) : null}
+                      <View style={styles.noSessionTodayOverlay} />
+                    </View>
+                    <View style={styles.noSessionTodayGlassWrap}>
+                      <View style={[styles.noSessionTodayGlassCard, isWeb && styles.noSessionTodayGlassCardWeb]}>
+                        <View style={styles.noSessionTodayGlassCardInner}>
+                          <Text style={styles.noSessionTodayTitle}>Ya completaste la sesión de hoy</Text>
+                          <Text style={styles.noSessionTodaySubtitle}>
+                            Puedes repetirla si quieres o elegir otra sesión a la derecha.
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 )}
                 </>
@@ -1351,11 +1457,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     zIndex: 1000, // Ensure it's above other elements
     elevation: 10, // Android elevation
   },
+  sessionThumbnailWrapper: {
+    position: 'relative',
+    width: 70,
+    height: 70,
+    marginRight: 12,
+  },
   sessionThumbnail: {
     width: 70,
     height: 70,
     borderRadius: 8,
-    marginRight: 12,
   },
   sessionThumbnailPlaceholder: {
     width: 70,
@@ -1364,7 +1475,26 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: '#555555',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+  },
+  sessionCompletedBadge: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  sessionCompletedBadgeGradientWeb: isWeb ? {
+    backgroundImage: 'linear-gradient(135deg, rgba(22,101,52,0.95) 0%, rgba(34,139,34,0.9) 50%, rgba(21,128,61,0.95) 100%)',
+  } : {},
+  sessionCompletedBadgeCheck: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   sessionThumbnailPlaceholderText: {
     fontSize: 24,
@@ -1387,47 +1517,68 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
     opacity: 0.8,
   },
-  currentBadge: {
-    backgroundColor: 'rgba(191, 168, 77, 0.8)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 24,
-    alignSelf: 'center', // Center vertically in the card
-  },
-  currentBadgeText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  todayBadge: {
-    backgroundColor: 'rgba(100, 100, 100, 0.75)',
-    borderRadius: 10,
+  // Badge glass style (gradient + border, compact – Actual and Hoy only)
+  badgeGlassOuter: {
+    position: 'relative',
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 3,
-    marginRight: 24,
+    marginRight: 12,
     alignSelf: 'center',
+    borderWidth: 1,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
-  todayBadgeText: {
-    color: '#ffffff',
+  badgeGlassText: {
+    color: 'rgba(255, 255, 255, 0.98)',
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
   },
+  badgeGlassActual: {
+    borderColor: 'rgba(191, 168, 77, 0.5)',
+    ...(isWeb && { shadowColor: 'rgba(191, 168, 77, 0.3)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
+  },
+  badgeGlassHoy: {
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    ...(isWeb && { shadowColor: 'rgba(0,0,0,0.2)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
+  },
+  badgeGlassCompletada: {
+    borderColor: 'rgba(34, 139, 34, 0.5)',
+    ...(isWeb && { shadowColor: 'rgba(34, 139, 34, 0.3)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
+  },
+  badgeGlassWebActual: isWeb ? {
+    backgroundImage: 'linear-gradient(to left bottom, rgba(191,168,77,0.35) 0%, rgba(191,168,77,0.18) 50%, rgba(255,255,255,0.14) 100%)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  } : {},
+  badgeGlassWebHoy: isWeb ? {
+    backgroundImage: 'linear-gradient(to left bottom, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.08) 100%)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  } : {},
+  badgeGlassWebCompletada: isWeb ? {
+    backgroundImage: 'linear-gradient(to left bottom, rgba(34,139,34,0.25) 0%, rgba(50,205,50,0.15) 50%, rgba(255,255,255,0.14) 100%)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  } : {},
   previewBadge: {
-    backgroundColor: 'rgba(191, 168, 77, 0.8)',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    position: 'relative',
+    borderRadius: 6,
+    width: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 24,
+    marginRight: 12,
     alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 77, 0.5)',
+    overflow: 'hidden',
   },
   previewBadgeText: {
-    color: '#ffffff',
-    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.98)',
+    fontSize: 14,
     fontWeight: '600',
   },
   selectSessionButton: {
@@ -1815,6 +1966,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 280,
+  },
+  alreadyCompletedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Placeholder cards for one-on-one (no planning this week)
   placeholderCardContainer: {

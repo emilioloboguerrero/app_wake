@@ -2,7 +2,7 @@
 // Using Firebase SDK for Expo
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
+import { getAuth, initializeAuth, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { isWeb } from '../utils/platform';
@@ -21,6 +21,15 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Request persistent storage as early as possible (web). Reduces risk of IndexedDB
+// eviction when user closes the PWA. Must run before auth so storage may be granted
+// before Firebase writes auth state.
+if (isWeb && typeof navigator !== 'undefined' && navigator.storage?.persist) {
+  navigator.storage.persist().then((granted) => {
+    logger.debug('[FIREBASE] Persistent storage:', granted ? 'granted' : 'not granted');
+  }).catch(() => {});
+}
 
 // Initialize Firebase Auth with platform-specific persistence
 // CRITICAL: For web, we MUST use initializeAuth with persistence BEFORE any auth operations
@@ -51,18 +60,11 @@ try {
     });
   }
 } catch (error) {
-  // If already initialized, get the existing instance
+  // If already initialized, get the existing instance. Do NOT call setPersistence
+  // here: it can wipe existing auth state (Firebase SDK behavior).
   if (error.code === 'auth/already-initialized') {
     logger.debug('[FIREBASE] Auth already initialized, using existing instance');
     auth = getAuth(app);
-    // Try to set persistence even if already initialized (for web)
-    if (isWeb) {
-      setPersistence(auth, browserLocalPersistence).then(() => {
-        logger.debug('[FIREBASE] ✅ Persistence set on existing auth instance');
-      }).catch((persistError) => {
-        logger.warn('[FIREBASE] Could not set persistence on existing instance:', persistError.code);
-      });
-    }
   } else {
     throw error;
   }

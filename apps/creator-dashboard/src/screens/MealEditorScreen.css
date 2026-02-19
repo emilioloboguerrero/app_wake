@@ -1,0 +1,598 @@
+/* Meal editor: reuses library-session layout; these are meal-specific overrides */
+
+/* Right panel: big calories on top */
+.meal-editor-calories-hero {
+  text-align: center;
+  padding: 20px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.meal-editor-calories-value {
+  font-size: 42px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.1;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.meal-editor-calories-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+
+/* Right panel: one card with pie on top, macro rows at bottom */
+.meal-editor-macros-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.meal-editor-macros-card-top {
+  flex: 0 0 auto;
+}
+
+.meal-editor-macros-card .meal-editor-macros-list {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Right panel: macro grams list — full width, even spacing only between pie and this block */
+.meal-editor-macros-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-editor-macro-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meal-editor-macro-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+}
+
+.meal-editor-macro-grams {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+/* Left: search result food card (clickable) */
+.meal-editor-food-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.meal-editor-food-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.meal-editor-food-card:focus,
+.meal-editor-food-card:active {
+  outline: none;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.meal-editor-food-card-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  display: block;
+}
+
+.meal-editor-food-card-per100 {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 4px;
+  display: block;
+}
+
+.meal-editor-food-card-per100-label {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+/* Top actions bar (Cancelar / Guardar) */
+.meal-editor-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 0 16px;
+  flex-shrink: 0;
+}
+
+/* Search block: row 1 = input + plus, row 2 = Buscar + filter */
+.meal-editor-search-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meal-editor-search-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meal-editor-search-row-top .meal-editor-search-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.meal-editor-search-row-top .library-session-search-input-container.meal-editor-search-input-wrap {
+  margin-bottom: 0;
+}
+
+.meal-editor-add-own-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0.65;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.meal-editor-add-own-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.meal-editor-search-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meal-editor-search-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.meal-editor-search-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.meal-editor-search-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meal-editor-sort-wrap {
+  position: relative;
+}
+
+.meal-editor-sort-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.meal-editor-sort-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.meal-editor-sort-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.meal-editor-sort-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 160px;
+  padding: 6px;
+  background: rgba(28, 28, 28, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meal-editor-sort-opt {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.meal-editor-sort-opt:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.meal-editor-sort-opt.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* Header: meal name + edit icon */
+.meal-editor-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.meal-editor-edit-name-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.meal-editor-edit-name-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Center column: items container fills remaining space; video card sizes to content */
+.library-session-main .meal-editor-items-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Video card (center column, above ingredients) — height from content */
+.meal-editor-video-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.meal-editor-video-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 8px 0;
+}
+
+.meal-editor-video-card-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 14px 0;
+  line-height: 1.4;
+}
+
+.meal-editor-video-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.meal-editor-video-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.meal-editor-video-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.meal-editor-video-link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.meal-editor-video-link-row .meal-editor-video-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.meal-editor-video-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.meal-editor-video-upload-icon {
+  flex-shrink: 0;
+}
+
+.meal-editor-video-upload-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.meal-editor-video-upload-btn:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.meal-editor-video-preview {
+  margin-top: 12px;
+}
+
+.meal-editor-video-link {
+  font-size: 14px;
+  color: rgba(191, 168, 77, 0.95);
+  text-decoration: none;
+}
+
+.meal-editor-video-link:hover {
+  text-decoration: underline;
+}
+
+/* Empty state (no dropzone graphic) */
+.meal-editor-empty-hint {
+  padding: 32px 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+}
+
+.meal-editor-items-container.empty.meal-editor-dropzone-active {
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.meal-editor-edit-modal-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-editor-manual-form-in-modal {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-editor-manual-form-in-modal label {
+  margin-top: 8px;
+}
+
+.meal-editor-manual-form-in-modal label:first-child {
+  margin-top: 0;
+}
+
+.meal-editor-edit-name-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+/* Expanded serving picker below selected food */
+.meal-editor-serving-picker {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.meal-editor-serving-picker select,
+.meal-editor-serving-picker input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.meal-editor-serving-picker select:last-of-type,
+.meal-editor-serving-picker input:last-of-type {
+  margin-bottom: 12px;
+}
+
+/* "Añadir alimento propio" card in left sidebar */
+.meal-editor-manual-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.meal-editor-manual-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.meal-editor-manual-card:focus,
+.meal-editor-manual-card:active {
+  outline: none;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.meal-editor-manual-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meal-editor-manual-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-editor-manual-form input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+/* Center: meal item row (in session list) - same style as draggable-exercise */
+.meal-editor-item-row {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 4px solid rgba(255, 255, 255, 0.45);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meal-editor-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+  min-width: 0;
+}
+
+.meal-editor-item-meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+}
+
+.meal-editor-item-remove {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  color: #ff4444;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.meal-editor-item-remove:hover {
+  background: rgba(255, 68, 68, 0.3);
+}
+
+.meal-editor-item-row:focus,
+.meal-editor-item-row:active {
+  outline: none;
+}
+
+/* Main header: meal name input inline */
+.meal-editor-main-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.meal-editor-main-title-wrap input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.meal-editor-main-title-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.meal-editor-main-title-wrap input:focus {
+  outline: none;
+  border-color: rgba(191, 168, 77, 0.5);
+}

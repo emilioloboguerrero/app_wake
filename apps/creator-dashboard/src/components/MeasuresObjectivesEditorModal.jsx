@@ -208,6 +208,10 @@ function MeasuresObjectivesEditorModal({
         customObjectiveLabels,
         name: (presetName || '').trim(),
       });
+    } else if (mode === 'exercise') {
+      // Add any typed-but-not-added custom measure/objective before closing so they persist via onChange
+      if ((customMeasureInput || '').trim()) addMeasure('custom:' + customMeasureInput);
+      if ((customObjectiveInput || '').trim()) addObjective('custom:' + customObjectiveInput);
     }
     onClose();
   };

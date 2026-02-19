@@ -8,19 +8,23 @@ import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-n
 import { useLocation, useNavigate } from 'react-router-dom';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
+import { useUserRole } from '../contexts/UserRoleContext';
+import { isAdmin } from '../utils/roleHelper';
 
 const BottomTabBar = () => {
   const { width: screenWidth } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
+  const { role } = useUserRole();
   const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM_PADDING;
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
+  const showNutritionTab = role !== null && isAdmin(role);
 
-  // Determine if tab bar should be visible based on current route
+  // Determine if tab bar should be visible based on current route (nutrition only counts when admin)
   const shouldShowTabBar = () => {
     const path = location.pathname;
-    const showTabBarRoutes = ['/', '/profile', '/nutrition'];
+    const showTabBarRoutes = showNutritionTab ? ['/', '/profile', '/nutrition'] : ['/', '/profile'];
     return showTabBarRoutes.includes(path);
   };
 
@@ -42,6 +46,10 @@ const BottomTabBar = () => {
       style: { opacity: isActive ? 1 : 0.6 }
     };
   };
+  const getSteakIconProps = (isActive) => ({
+    ...getIconProps(isActive),
+    strokeWidth: isActive ? 3.4 : 3,
+  });
 
   if (!show) {
     return null;
@@ -67,13 +75,15 @@ const BottomTabBar = () => {
           <SvgHouse02 {...getIconProps(isMainActive)} />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => navigate('/nutrition')}
-          activeOpacity={0.7}
-        >
-          <SvgSteak {...getIconProps(isNutritionActive)} />
-        </TouchableOpacity>
+        {showNutritionTab && (
+          <TouchableOpacity
+            style={styles.tabButton}
+            onPress={() => navigate('/nutrition')}
+            activeOpacity={0.7}
+          >
+            <SvgSteak {...getSteakIconProps(isNutritionActive)} />
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.tabButton}

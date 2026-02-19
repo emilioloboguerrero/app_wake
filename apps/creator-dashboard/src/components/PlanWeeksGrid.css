@@ -220,6 +220,11 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+.plan-weeks-week-duplicating {
+  font-weight: 500;
+  color: rgba(191, 168, 77, 0.9);
+}
+
 .plan-weeks-week-menu-wrap {
   position: relative;
 }
@@ -307,6 +312,37 @@
 .plan-weeks-day-cell.plan-weeks-cell-drag-over {
   background: rgba(191, 168, 77, 0.1);
   border-radius: 8px;
+}
+
+.plan-weeks-session-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.plan-weeks-cell-adding-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(191, 168, 77, 0.2);
+  border: 1px solid rgba(191, 168, 77, 0.4);
+  border-radius: 6px;
+  color: rgba(191, 168, 77, 0.95);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.plan-weeks-cell-adding-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(191, 168, 77, 0.35);
+  border-top-color: rgba(191, 168, 77, 0.95);
+  border-radius: 50%;
+  animation: plan-weeks-spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 
 /* Session card: single container with title + 3-dots inside */

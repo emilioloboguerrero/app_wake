@@ -2,11 +2,13 @@
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import workoutProgressService from '../data-management/workoutProgressService';
+import firestoreService from './firestoreService';
 import sessionManager from './sessionManager';
 import exerciseLibraryService from './exerciseLibraryService';
 import oneRepMaxService from './oneRepMaxService';
 import exerciseHistoryService from './exerciseHistoryService';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
+import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import logger from '../utils/logger.js';
 
 class SessionService {
@@ -65,9 +67,42 @@ class SessionService {
       }
 
       // Flatten all sessions (may be empty for one-on-one week with no planning)
-      const allSessions = inner && Array.isArray(modules)
+      let allSessions = inner && Array.isArray(modules)
         ? sessionManager.flattenAllSessions({ ...inner, modules })
         : [];
+
+      // One-on-one: only show sessions planned for the current week (never show previous week's incomplete)
+      if (isOneOnOne && allSessions.length > 0) {
+        const currentWeekKey = getMondayWeek();
+        const { start: weekStart, end: weekEnd } = getWeekDates(currentWeekKey);
+        const startMs = new Date(weekStart).setHours(0, 0, 0, 0);
+        const endMs = new Date(weekEnd).setHours(23, 59, 59, 999);
+        const filtered = allSessions.filter((s) => {
+          if (s.plannedDate == null) return true;
+          const ms = new Date(s.plannedDate).getTime();
+          return ms >= startMs && ms <= endMs;
+        });
+        if (filtered.length !== allSessions.length) {
+          logger.log('🔍 [getCurrentSession] one-on-one: filtered to current week only:', { before: allSessions.length, after: filtered.length });
+        }
+        allSessions = filtered;
+        if (allSessions.length === 0) {
+          const sessionState = {
+            session: null,
+            workout: null,
+            index: 0,
+            isManual: false,
+            allSessions: [],
+            progress: await this.getCourseProgress(userId, courseId),
+            isLoading: false,
+            error: null,
+            emptyReason: 'no_planning_this_week'
+          };
+          this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+          logger.log('🔍 [getCurrentSession] one-on-one: no sessions in current week after filter');
+          return sessionState;
+        }
+      }
 
       logger.log('📦 [getCurrentSession] allSessions.length:', allSessions.length, 'isOneOnOne:', isOneOnOne);
       logger.log('🔍 [getCurrentSession] allSessions ids (used for matching plannedSessionIdForToday):', allSessions.map((s, i) => ({ i, id: s.id, sessionId: s.sessionId, title: s.title })));
@@ -192,14 +227,28 @@ class SessionService {
         throw new Error('Current session not found');
       }
 
+      // One-on-one with minimal list: current session may have no exercises yet; fetch full content for this slot only
+      const needsFullContent = isOneOnOne && (!currentSession.exercises || currentSession.exercises.length === 0);
+      if (needsFullContent) {
+        const creatorId = inner?.creator_id ?? inner?.creatorId ?? null;
+        const fullContent = await firestoreService.getPlannedSessionContentBySlotId(userId, courseId, currentSession.id, creatorId);
+        if (fullContent) {
+          Object.assign(currentSession, {
+            title: fullContent.title ?? currentSession.title,
+            description: fullContent.description ?? currentSession.description,
+            exercises: fullContent.exercises ?? [],
+            image_url: fullContent.image_url ?? currentSession.image_url
+          });
+          logger.log('🔍 [getCurrentSession] loaded full content for current slot:', { slotId: currentSession.id, exercisesCount: currentSession.exercises?.length ?? 0 });
+        }
+      }
+
       logger.log('🔍 [getCurrentSession] current session content before buildWorkoutFromSession:', {
         sessionId: currentSession.sessionId || currentSession.id,
         title: currentSession.title,
         hasExercises: !!currentSession.exercises?.length,
         exercisesCount: currentSession.exercises?.length ?? 0,
-        hasImageUrl: !!currentSession.image_url,
-        librarySessionRef: currentSession.librarySessionRef ?? null,
-        note: 'If hasExercises false or hasImageUrl false, workout/detail will show empty - getCourseModules may have returned library ref without resolving'
+        hasImageUrl: !!currentSession.image_url
       });
 
       // Build workout data (resolves each exercise from library - main bottleneck when changing session)
@@ -208,6 +257,13 @@ class SessionService {
       const tAfterBuild = Date.now();
       logger.log('⏱️ [getCurrentSession] buildWorkoutFromSession:', tAfterBuild - tBeforeBuild, 'ms (exercises:', currentSession.exercises?.length ?? 0, ')');
       logger.log('⏱️ [getCurrentSession] TOTAL (uncached):', tAfterBuild - t0, 'ms');
+
+      // Detect if the session we're showing was already completed (e.g. one-on-one user re-entering after completing today)
+      const completedSet = new Set(progress?.allSessionsCompleted || []);
+      const currentSessionId = currentSession.sessionId || currentSession.id;
+      const todaySessionAlreadyCompleted = !!(
+        currentSessionId && (completedSet.has(currentSessionId) || completedSet.has(currentSession.id) || completedSet.has(currentSession.sessionId))
+      );
 
       const sessionState = {
         session: currentSession,
@@ -218,7 +274,8 @@ class SessionService {
         progress: progress,
         isLoading: false,
         error: null,
-        emptyReason: null
+        emptyReason: null,
+        todaySessionAlreadyCompleted
       };
 
       // Cache the result
@@ -899,6 +956,9 @@ class SessionService {
       await updateDoc(userDocRef, {
         [`courseProgress.${courseId}`]: progressData
       });
+
+      // Invalidate session state cache so DailyWorkoutScreen shows "already completed" overlay on next open
+      this.clearCache(userId, courseId);
       
       logger.log('📈 Course progress updated successfully');
       return progressData;

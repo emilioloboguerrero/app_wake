@@ -41,6 +41,10 @@ const PlanWeeksGrid = ({
   const [openWeekMenu, setOpenWeekMenu] = useState(null); // moduleId
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null); // { type: 'week'|'session', mod, modIndex?, session?, moduleId? }
   const [isDeleting, setIsDeleting] = useState(false);
+  const [addingToModuleId, setAddingToModuleId] = useState(null);
+  const [addingToDayIndex, setAddingToDayIndex] = useState(null);
+  const [isDuplicatingWeek, setIsDuplicatingWeek] = useState(false);
+  const [duplicatingWeekModuleId, setDuplicatingWeekModuleId] = useState(null);
 
   useEffect(() => {
     if (!openMenuSession) return;
@@ -140,9 +144,26 @@ const PlanWeeksGrid = ({
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.classList.remove('plan-weeks-cell-drag-over');
+    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+    if (data.type !== DRAG_TYPE_LIBRARY_SESSION || !data.librarySessionRef) return;
+
+    const prevModules = (modules || []).map((m) => ({ ...m, sessions: [...(m.sessions || [])] }));
+    const optimisticSession = {
+      id: `temp-${Date.now()}`,
+      title: data.title || 'Sesión',
+      dayIndex,
+      _optimistic: true,
+    };
+    const optimisticModules = prevModules.map((m) =>
+      m.id === moduleId
+        ? { ...m, sessions: [...(m.sessions || []), optimisticSession] }
+        : m
+    );
+    onModulesChange?.(optimisticModules);
+    setAddingToModuleId(moduleId);
+    setAddingToDayIndex(dayIndex);
+
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-      if (data.type !== DRAG_TYPE_LIBRARY_SESSION || !data.librarySessionRef) return;
       const libSession = await libraryService?.getLibrarySessionById?.(creatorId, data.librarySessionRef);
       const title = libSession?.title || data.title || 'Sesión';
       const imageUrl = libSession?.image_url ?? null;
@@ -157,7 +178,11 @@ const PlanWeeksGrid = ({
       );
       await refreshModules();
     } catch (err) {
+      onModulesChange?.(prevModules);
       alert(err.message || 'Error al asignar la sesión');
+    } finally {
+      setAddingToModuleId(null);
+      setAddingToDayIndex(null);
     }
   };
 
@@ -174,6 +199,23 @@ const PlanWeeksGrid = ({
   const handleDeleteWeekClick = (mod, modIndex) => {
     setOpenWeekMenu(null);
     setDeleteConfirmTarget({ type: 'week', mod, modIndex });
+  };
+
+  const handleDuplicateWeek = async (mod) => {
+    if (!planId || !plansService) return;
+    setOpenWeekMenu(null);
+    setDuplicatingWeekModuleId(mod.id);
+    setIsDuplicatingWeek(true);
+    try {
+      await plansService.duplicateModule(planId, mod.id);
+      await refreshModules();
+    } catch (err) {
+      console.error('Error duplicating week:', err);
+      alert(err.message || 'Error al duplicar la semana');
+    } finally {
+      setIsDuplicatingWeek(false);
+      setDuplicatingWeekModuleId(null);
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -267,7 +309,12 @@ const PlanWeeksGrid = ({
           modules.map((mod, modIndex) => (
             <div key={mod.id} className="plan-weeks-week-block">
               <div className="plan-weeks-week-header">
-                <span className="plan-weeks-week-title">Semana {modIndex + 1}</span>
+                <span className="plan-weeks-week-title">
+                  Semana {modIndex + 1}
+                  {duplicatingWeekModuleId === mod.id && (
+                    <span className="plan-weeks-week-duplicating"> · Duplicando...</span>
+                  )}
+                </span>
                 <div className="plan-weeks-week-menu-wrap">
                   <button
                     type="button"
@@ -275,10 +322,12 @@ const PlanWeeksGrid = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
+                      if (duplicatingWeekModuleId === mod.id) return;
                       setOpenWeekMenu(openWeekMenu === mod.id ? null : mod.id);
                     }}
                     title="Opciones de semana"
                     aria-label="Opciones de semana"
+                    disabled={duplicatingWeekModuleId === mod.id}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z" stroke="currentColor" strokeWidth="2"/>
@@ -290,8 +339,20 @@ const PlanWeeksGrid = ({
                     <div className="plan-weeks-week-menu" role="menu">
                       <button
                         type="button"
+                        className="plan-weeks-session-menu-item"
+                        onClick={() => handleDuplicateWeek(mod)}
+                        disabled={isDuplicatingWeek}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M8 16H6C4.89543 16 4 15.1046 4 14V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6V8M8 16H18C19.1046 16 20 15.1046 20 14V8C20 6.89543 19.1046 6 18 6H8C6.89543 6 6 6.89543 6 8V14C6 15.1046 6.89543 16 8 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        {duplicatingWeekModuleId === mod.id ? 'Duplicando...' : 'Duplicar semana'}
+                      </button>
+                      <button
+                        type="button"
                         className="plan-weeks-session-menu-item plan-weeks-week-menu-item-delete"
                         onClick={() => handleDeleteWeekClick(mod, modIndex)}
+                        disabled={isDuplicatingWeek}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -306,47 +367,58 @@ const PlanWeeksGrid = ({
                 {DAYS.map((_, dayIndex) => {
                   const session = getSessionForDay(mod, dayIndex);
                   const isEmpty = !session;
+                  const isAddingToThisCell = addingToModuleId === mod.id && addingToDayIndex === dayIndex;
                   return (
                     <div
                       key={dayIndex}
-                      className="plan-weeks-day-cell"
+                      className={`plan-weeks-day-cell ${isAddingToThisCell ? 'plan-weeks-day-cell-adding' : ''}`}
                       onDragOver={isEmpty ? handleDragOver : undefined}
                       onDragLeave={isEmpty ? handleDragLeave : undefined}
                       onDrop={isEmpty ? (e) => handleDropLibrarySession(mod.id, dayIndex, e) : undefined}
                     >
                       {session ? (
+                          <div className="plan-weeks-session-card-wrapper">
                           <div className="plan-weeks-session-card">
                             <div className="plan-weeks-session-card-body">
                               <span className="plan-weeks-session-title">
                                 {session.title || `Sesión ${session.id?.slice(0, 8)}`}
                               </span>
                             </div>
-                            <div className="plan-weeks-session-card-menu">
-                              <button
-                                type="button"
-                                className="plan-weeks-session-menu-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  const isOpen = openMenuSession?.moduleId === mod.id && openMenuSession?.sessionId === session.id;
-                                  if (isOpen) {
-                                    setOpenMenuSession(null);
-                                    setMenuAnchorEl(null);
-                                  } else {
-                                    setOpenMenuSession({ moduleId: mod.id, sessionId: session.id });
-                                    setMenuAnchorEl(e.currentTarget);
-                                  }
-                                }}
-                                title="Más opciones"
-                                aria-label="Más opciones"
-                              >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z" stroke="currentColor" strokeWidth="2"/>
-                                  <path d="M12 6C12.5523 6 13 5.55228 13 5C13 4.44772 12.5523 4 12 4C11.4477 4 11 4.44772 11 5C11 5.55228 11.4477 6 12 6Z" stroke="currentColor" strokeWidth="2"/>
-                                  <path d="M12 20C12.5523 20 13 19.5523 13 19C13 18.4477 12.5523 18 12 18C11.4477 18 11 18.4477 11 19C11 19.5523 11.4477 20 12 20Z" stroke="currentColor" strokeWidth="2"/>
-                                </svg>
-                              </button>
-                            </div>
+                            {!session._optimistic && (
+                              <div className="plan-weeks-session-card-menu">
+                                <button
+                                  type="button"
+                                  className="plan-weeks-session-menu-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    const isOpen = openMenuSession?.moduleId === mod.id && openMenuSession?.sessionId === session.id;
+                                    if (isOpen) {
+                                      setOpenMenuSession(null);
+                                      setMenuAnchorEl(null);
+                                    } else {
+                                      setOpenMenuSession({ moduleId: mod.id, sessionId: session.id });
+                                      setMenuAnchorEl(e.currentTarget);
+                                    }
+                                  }}
+                                  title="Más opciones"
+                                  aria-label="Más opciones"
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z" stroke="currentColor" strokeWidth="2"/>
+                                    <path d="M12 6C12.5523 6 13 5.55228 13 5C13 4.44772 12.5523 4 12 4C11.4477 4 11 4.44772 11 5C11 5.55228 11.4477 6 12 6Z" stroke="currentColor" strokeWidth="2"/>
+                                    <path d="M12 20C12.5523 20 13 19.5523 13 19C13 18.4477 12.5523 18 12 18C11.4477 18 11 18.4477 11 19C11 19.5523 11.4477 20 12 20Z" stroke="currentColor" strokeWidth="2"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                            {isAddingToThisCell && (
+                              <div className="plan-weeks-cell-adding-indicator" role="status" aria-live="polite">
+                                <span className="plan-weeks-cell-adding-spinner" aria-hidden />
+                                <span>Guardando...</span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <button

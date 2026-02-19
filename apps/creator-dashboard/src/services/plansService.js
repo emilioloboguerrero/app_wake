@@ -555,6 +555,68 @@ class PlansService {
   }
 
   /**
+   * Duplicate a module (week) with all its sessions, exercises and sets.
+   * New module is appended at the end (order = max + 1). Title is "Semana N" where N = current count + 1.
+   * @param {string} planId - Plan ID
+   * @param {string} sourceModuleId - Module ID to copy
+   * @returns {Promise<Object>} The created module (with id)
+   */
+  async duplicateModule(planId, sourceModuleId) {
+    const existingModules = await this.getModulesByPlan(planId);
+    const sourceMod = existingModules.find((m) => m.id === sourceModuleId);
+    if (!sourceMod) throw new Error('Módulo no encontrado');
+
+    const nextOrder = existingModules.length === 0
+      ? 0
+      : Math.max(...existingModules.map((m) => m.order ?? 0)) + 1;
+    const newTitle = `Semana ${existingModules.length + 1}`;
+
+    const newModule = await this.createModule(planId, newTitle, nextOrder);
+    const newModuleId = newModule.id;
+
+    const sessions = await this.getSessionsByModule(planId, sourceModuleId);
+    for (const session of sessions) {
+      const createdSession = await this.createSession(
+        planId,
+        newModuleId,
+        session.title || 'Sesión',
+        session.order ?? null,
+        session.image_url ?? null,
+        session.librarySessionRef ?? null,
+        session.dayIndex ?? null
+      );
+      const newSessionId = createdSession.id;
+
+      const exercises = await this.getExercisesBySession(planId, sourceModuleId, session.id);
+      for (const exercise of exercises) {
+        const createdEx = await this.createExercise(
+          planId,
+          newModuleId,
+          newSessionId,
+          exercise.title || exercise.name || 'Ejercicio',
+          exercise.order ?? null
+        );
+        const newExerciseId = createdEx.id;
+
+        const sets = await this.getSetsByExercise(planId, sourceModuleId, session.id, exercise.id);
+        for (let i = 0; i < sets.length; i++) {
+          const set = sets[i];
+          const createdSet = await this.createSet(planId, newModuleId, newSessionId, newExerciseId, i);
+          const updates = {};
+          if (set.title != null) updates.title = set.title;
+          if (set.reps != null) updates.reps = set.reps;
+          if (set.intensity != null) updates.intensity = set.intensity;
+          if (Object.keys(updates).length > 0) {
+            await this.updateSet(planId, newModuleId, newSessionId, newExerciseId, createdSet.id, updates);
+          }
+        }
+      }
+    }
+
+    return { ...newModule, id: newModuleId };
+  }
+
+  /**
    * Update a session
    */
   async updateSession(planId, moduleId, sessionId, updates) {

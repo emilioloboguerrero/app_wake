@@ -46,6 +46,31 @@
   to { transform: rotate(360deg); }
 }
 
+.calendar-day-adding {
+  position: relative;
+}
+
+.calendar-day-adding-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  background: rgba(191, 168, 77, 0.2);
+  border: 1px solid rgba(191, 168, 77, 0.4);
+  border-radius: 6px;
+  color: rgba(191, 168, 77, 0.95);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.calendar-day-adding-indicator .calendar-saving-bar-spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
 /* Header Controls */
 .calendar-header-controls {
   display: flex;

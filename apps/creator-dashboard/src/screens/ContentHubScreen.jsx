@@ -759,7 +759,7 @@ const ContentHubScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="Biblioteca">
+    <DashboardLayout screenName="Entrenamiento">
       <div className="content-hub-screen">
         <div className="content-hub-tabs">
           {tabs.map((tab) => (

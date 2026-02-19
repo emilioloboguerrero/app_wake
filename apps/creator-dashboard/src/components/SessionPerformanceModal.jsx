@@ -59,14 +59,11 @@ export default function SessionPerformanceModal({
   const [error, setError] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
 
+  // Slot id: single id for this planned slot (client_sessions doc id or plan-slot id). Load history by this only.
   const sessionIdsToTry = useMemo(() => {
     if (!session) return [];
-    const ids = [
-      session.librarySessionRef,
-      session.session_id,
-      session.id,
-    ].filter(Boolean);
-    return [...new Set(ids)];
+    const slotId = session.slotId || session.id;
+    return slotId ? [slotId] : [];
   }, [session]);
 
   useEffect(() => {

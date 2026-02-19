@@ -19,7 +19,7 @@ import plansService from './plansService';
 import clientSessionService from './clientSessionService';
 import clientPlanContentService from './clientPlanContentService';
 import clientSessionContentService from './clientSessionContentService';
-import { getWeekDates } from '../utils/weekCalculation';
+import { getWeekDates, getConsecutiveWeekKeys } from '../utils/weekCalculation';
 
 // Doc ID for creator_client_access: creatorId_userId (enables Firestore rules for creator → client user read/update)
 const CREATOR_CLIENT_ACCESS_COLLECTION = 'creator_client_access';
@@ -600,6 +600,13 @@ class ClientProgramService {
       const currentData = clientProgramDoc.data() || {};
       const planAssignments = currentData.planAssignments || {};
 
+      // Delete client_plan_content for this week so overwrites show new plan content (not stale personalized copy)
+      try {
+        await clientPlanContentService.deleteClientPlanContent(userId, programId, weekKey);
+      } catch (err) {
+        console.warn('[clientProgramService] assignPlanToWeek: could not delete client_plan_content:', err?.message);
+      }
+
       // Assign the plan to the week (overwrites existing assignment for this week if any)
       planAssignments[weekKey] = {
         planId,
@@ -638,6 +645,83 @@ class ClientProgramService {
       console.error('❌ Error assigning program to week:', error);
       throw error;
     }
+  }
+
+  /**
+   * Assign all weeks of a plan to consecutive calendar weeks starting from startWeekKey.
+   * Plan module 0 → startWeekKey, module 1 → next week, etc.
+   * Deletes client_plan_content for each affected week so overwrites show new plan content.
+   * @param {string} programId - Program ID
+   * @param {string} userId - User ID
+   * @param {string} planId - Plan ID
+   * @param {string} startWeekKey - Week key for the first week (drop target week)
+   * @returns {Promise<{ weekKeys: string[] }>} - The week keys that were assigned
+   */
+  async assignPlanToConsecutiveWeeks(programId, userId, planId, startWeekKey) {
+    const modules = await plansService.getModulesByPlan(planId);
+    if (!modules?.length) {
+      throw new Error('Este plan no tiene semanas.');
+    }
+
+    const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
+    const clientProgramId = `${userId}_${programId}`;
+    const clientProgramRef = doc(firestore, 'client_programs', clientProgramId);
+
+    const clientProgram = await this.getClientProgram(programId, userId);
+    if (!clientProgram) {
+      await this.assignProgramToClient(programId, userId);
+    } else {
+      const program = await programService.getProgramById(programId);
+      if (program) {
+        const creatorId = program.creator_id || program.creatorId || null;
+        await this.addOneOnOneProgramToUserCourses(userId, programId, program, creatorId);
+      }
+    }
+
+    const clientProgramDoc = await getDoc(clientProgramRef);
+    const currentData = clientProgramDoc.data() || {};
+    const planAssignments = { ...(currentData.planAssignments || {}) };
+
+    for (let i = 0; i < weekKeys.length; i++) {
+      const wk = weekKeys[i];
+      try {
+        await clientPlanContentService.deleteClientPlanContent(userId, programId, wk);
+      } catch (err) {
+        console.warn('[clientProgramService] assignPlanToConsecutiveWeeks: could not delete client_plan_content for', wk, err?.message);
+      }
+      planAssignments[wk] = {
+        planId,
+        moduleIndex: i,
+        assignedAt: serverTimestamp()
+      };
+    }
+
+    await updateDoc(clientProgramRef, {
+      planAssignments,
+      updated_at: serverTimestamp()
+    });
+
+    const getWeekdayIndex = (d) => (d.getDay() + 6) % 7;
+    for (let i = 0; i < weekKeys.length; i++) {
+      const weekKey = weekKeys[i];
+      const mod = modules[i];
+      if (!mod) continue;
+      const sessions = await plansService.getSessionsByModule(planId, mod.id);
+      const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
+      for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+        const date = new Date(d);
+        const weekdayIndex = getWeekdayIndex(date);
+        const sessionForDay = sessions.find((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex);
+        if (sessionForDay) {
+          await clientSessionService.assignSessionToDate(userId, programId, planId, sessionForDay.id, date, mod.id, {
+            day_index: sessionForDay.dayIndex != null ? sessionForDay.dayIndex : 0
+          });
+        }
+      }
+    }
+
+    console.log('✅ Plan assigned to consecutive weeks:', { programId, userId, planId, startWeekKey, weekCount: weekKeys.length });
+    return { weekKeys };
   }
 
   /**

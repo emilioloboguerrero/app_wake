@@ -2252,7 +2252,13 @@ export const nutritionFoodSearch = functions
         return;
       }
 
-      const {search_expression, page_number, max_results} = request.body || {};
+      const {
+        search_expression,
+        page_number,
+        max_results,
+        region = "ES",
+        language = "es",
+      } = request.body || {};
       if (!search_expression || typeof search_expression !== "string") {
         response.status(400).json({
           success: false,
@@ -2269,6 +2275,8 @@ export const nutritionFoodSearch = functions
           typeof max_results === "number" ? Math.min(50, max_results) : 20
         ),
         format: "json",
+        region: String(region),
+        language: String(language),
       });
 
       const url = `https://platform.fatsecret.com/rest/foods/search/v4?${params}`;
@@ -2329,7 +2337,11 @@ export const nutritionFoodGet = functions
         return;
       }
 
-      const {food_id} = request.body || {};
+      const {
+        food_id,
+        region = "ES",
+        language = "es",
+      } = request.body || {};
       if (food_id === undefined || food_id === null || food_id === "") {
         response.status(400).json({
           success: false,
@@ -2342,6 +2354,8 @@ export const nutritionFoodGet = functions
       const params = new URLSearchParams({
         food_id: String(food_id),
         format: "json",
+        region: String(region),
+        language: String(language),
       });
       const url = `https://platform.fatsecret.com/rest/food/v5?${params}`;
       const res = await fetch(url, {
@@ -2405,7 +2419,11 @@ export const nutritionBarcodeLookup = functions
         return;
       }
 
-      const {barcode} = request.body || {};
+      const {
+        barcode,
+        region = "ES",
+        language = "es",
+      } = request.body || {};
       if (!barcode || typeof barcode !== "string") {
         response.status(400).json({
           success: false,
@@ -2422,6 +2440,8 @@ export const nutritionBarcodeLookup = functions
       const params = new URLSearchParams({
         barcode: barcode.trim(),
         format: "json",
+        region: String(region),
+        language: String(language),
       });
       const url = `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`;
       const res = await fetch(url, {

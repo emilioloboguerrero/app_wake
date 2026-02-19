@@ -26,7 +26,6 @@ const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Se
 const TAB_CONFIG = [
   { key: 'lab', title: 'Lab' },
   { key: 'planificacion', title: 'Planificación' },
-  { key: 'historial', title: 'Historial' },
   { key: 'nutricion', title: 'Nutrición' },
   { key: 'info', title: 'Info' },
 ];
@@ -65,7 +64,7 @@ const ClientProgramScreen = () => {
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
   const [planWeeksCount, setPlanWeeksCount] = useState({}); // { [planId]: number } for calendar plan bar label
   const [completedSessionIds, setCompletedSessionIds] = useState(new Set()); // session IDs client has completed (for green indicator)
-  const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } or { historyOnlyData } for Historial
+  const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } or { historyOnlyData } from calendar history-only cards
   const [sessionHistory, setSessionHistory] = useState([]); // Completed sessions from sessionHistory (independent of plans)
   const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
   // Info tab: client user doc and access end date form
@@ -78,6 +77,8 @@ const ClientProgramScreen = () => {
   const [accessEndDateError, setAccessEndDateError] = useState(null);
   // Planificación tab: loading states for async actions (prevent double-submit, show feedback)
   const [isAddingSessionToPlanDay, setIsAddingSessionToPlanDay] = useState(false);
+  const [addingToWeekKey, setAddingToWeekKey] = useState(null); // weekKey of day we're adding to (for loading state on cell)
+  const [addingToDayIndex, setAddingToDayIndex] = useState(null); // 0-6 day index
   const [addingSessionIdInModal, setAddingSessionIdInModal] = useState(null); // which session id is being added in modal
   const [isPersonalizingPlanWeek, setIsPersonalizingPlanWeek] = useState(false);
   const [isResettingPlanWeek, setIsResettingPlanWeek] = useState(false);
@@ -636,11 +637,9 @@ const ClientProgramScreen = () => {
     return () => { cancelled = true; };
   }, [client?.clientUserId, selectedProgramId]);
 
-  // Load session history when Historial or Planificación tab is active
-  // Independent of plans - shows completions even after plan deletion
-  const isHistorialTab = TAB_CONFIG[currentTabIndex]?.key === 'historial';
+  // Load session history when Planificación tab is active (for calendar completed indicators and history-only cards)
   const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
-  const needsSessionHistory = isHistorialTab || isPlanificacionTab;
+  const needsSessionHistory = isPlanificacionTab;
 
   // When on Planificación tab, use the program selected in Info (no selector on Planificación)
   useEffect(() => {
@@ -788,51 +787,47 @@ const ClientProgramScreen = () => {
         );
       }
 
-      // Determine which module index to assign (for now, assign module 0)
-      const moduleIndex = 0;
-      
-      // Assign plan to week in the context of the selected program
-      await clientProgramService.assignPlanToWeek(
+      // Assign all weeks of the plan to consecutive calendar weeks starting at weekKey
+      const { weekKeys: assignedWeekKeys } = await clientProgramService.assignPlanToConsecutiveWeeks(
         selectedProgramId,
         client.clientUserId,
         planId,
-        weekKey,
-        moduleIndex
+        weekKey
       );
 
-      // Reload plan assignments to reflect the change
       const assignments = await clientProgramService.getPlanAssignments(
         selectedProgramId,
         client.clientUserId
       );
-      
       setPlanAssignments(assignments || {});
 
-      // Load week content for the newly assigned week so session cards show immediately (no wait for effect)
+      // Preload week content for all assigned weeks so session cards show immediately
       try {
         const modules = await plansService.getModulesByPlan(planId);
-        const mod = modules?.[moduleIndex];
-        if (mod) {
-          const sessions = await plansService.getSessionsByModule(planId, mod.id);
-          setWeekContentByWeekKey((prev) => ({
-            ...prev,
-            [weekKey]: {
+        const next = {};
+        for (let i = 0; i < assignedWeekKeys.length; i++) {
+          const wk = assignedWeekKeys[i];
+          const mod = modules?.[i];
+          if (mod) {
+            const sessions = await plansService.getSessionsByModule(planId, mod.id);
+            next[wk] = {
               sessions: sessions || [],
               title: mod.title,
               fromClientCopy: false,
               planId,
               moduleId: mod.id
-            }
-          }));
+            };
+          }
         }
+        setWeekContentByWeekKey((prev) => ({ ...prev, ...next }));
       } catch (err) {
         console.warn('Could not preload week content for new assignment:', err);
       }
 
-      console.log('✅ Plan assigned to week:', { programId: selectedProgramId, planId, weekKey, moduleIndex });
+      console.log('✅ Plan assigned to consecutive weeks:', { programId: selectedProgramId, planId, weekKey, count: assignedWeekKeys.length });
     } catch (error) {
-      console.error('Error assigning plan to week:', error);
-      alert(`Error al asignar el plan a la semana: ${error.message || 'Error desconocido'}`);
+      console.error('Error assigning plan:', error);
+      alert(error?.message === 'Este plan no tiene semanas.' ? error.message : `Error al asignar el plan: ${error.message || 'Error desconocido'}`);
     } finally {
       setIsAssigningPlan(false);
       setAssigningPlanWeekKey(null);
@@ -1137,7 +1132,20 @@ const ClientProgramScreen = () => {
 
   const handleMovePlanSessionDay = async ({ session, weekKey, weekContent, targetDayIndex }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id || weekKey == null || targetDayIndex == null) return;
-    setIsMovingPlanSession(true);
+    const prevContent = weekContentByWeekKey[weekKey];
+    const optimisticSessions = (weekContent?.sessions || []).map((s) =>
+      s.id === session.id
+        ? { ...s, dayIndex: targetDayIndex, day_index: targetDayIndex }
+        : s
+    );
+    setWeekContentByWeekKey((prev) => ({
+      ...prev,
+      [weekKey]: {
+        ...weekContent,
+        sessions: optimisticSessions,
+        fromClientCopy: weekContent?.fromClientCopy ?? true
+      }
+    }));
     try {
       if (!weekContent.fromClientCopy) {
         await clientPlanContentService.copyFromPlan(
@@ -1156,24 +1164,13 @@ const ClientProgramScreen = () => {
         session.id,
         { dayIndex: targetDayIndex }
       );
-      const content = await clientPlanContentService.getClientPlanContent(client.clientUserId, selectedProgramId, weekKey);
-      if (content?.sessions) {
-        setWeekContentByWeekKey((prev) => ({
-          ...prev,
-          [weekKey]: {
-            sessions: content.sessions,
-            title: content.title,
-            fromClientCopy: true,
-            planId: content.source_plan_id || weekContent.planId,
-            moduleId: content.source_module_id || weekContent.moduleId
-          }
-        }));
-      }
     } catch (error) {
       console.error('Error moving plan session day:', error);
+      setWeekContentByWeekKey((prev) => ({
+        ...prev,
+        ...(prevContent != null && { [weekKey]: prevContent })
+      }));
       alert(error.message || 'Error al mover');
-    } finally {
-      setIsMovingPlanSession(false);
     }
   };
 
@@ -1287,6 +1284,8 @@ const ClientProgramScreen = () => {
 
   const handleAddLibrarySessionToPlanDay = async ({ weekKey, dayIndex, librarySessionId }) => {
     setIsAddingSessionToPlanDay(true);
+    setAddingToWeekKey(weekKey);
+    setAddingToDayIndex(dayIndex);
     try {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
@@ -1294,6 +1293,8 @@ const ClientProgramScreen = () => {
       alert(error.message || 'Error al añadir la sesión');
     } finally {
       setIsAddingSessionToPlanDay(false);
+      setAddingToWeekKey(null);
+      setAddingToDayIndex(null);
     }
   };
 
@@ -1310,6 +1311,8 @@ const ClientProgramScreen = () => {
     if (!addPlanSessionTarget || !librarySessionId) return;
     setAddingSessionIdInModal(librarySessionId);
     setIsAddingSessionToPlanDay(true);
+    setAddingToWeekKey(addPlanSessionTarget.weekKey);
+    setAddingToDayIndex(addPlanSessionTarget.dayIndex);
     try {
       await addLibrarySessionToPlanWeek(addPlanSessionTarget.weekKey, addPlanSessionTarget.dayIndex, librarySessionId);
       setAddPlanSessionTarget(null);
@@ -1319,6 +1322,8 @@ const ClientProgramScreen = () => {
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingSessionIdInModal(null);
+      setAddingToWeekKey(null);
+      setAddingToDayIndex(null);
     }
   };
 
@@ -1345,63 +1350,6 @@ const ClientProgramScreen = () => {
           <div className="client-program-tab-content client-program-tab-empty">
             <p className="client-program-tab-empty-title">Estadísticas del cliente</p>
             <p className="client-program-tab-empty-message">Próximamente podrás ver aquí métricas y progreso de este cliente.</p>
-          </div>
-        );
-      case 'historial':
-        return (
-          <div className="client-program-tab-content client-program-historial-content">
-            <div className="client-program-planning-header">
-              <div className="client-program-planning-header-inner">
-                <label className="client-program-planning-program-label">Programa</label>
-                <select
-                  className="client-program-planning-program-select"
-                  value={selectedProgramId || ''}
-                  onChange={(e) => handleProgramSelect(e.target.value || null)}
-                  title="Selecciona el programa para ver el historial de sesiones completadas"
-                >
-                  <option value="">— Selecciona un programa —</option>
-                  {assignedPrograms.map((program) => (
-                    <option key={program.id} value={program.id}>
-                      {program.title || `Programa ${program.id.slice(0, 8)}`}
-                      {program.isAssigned ? ' ✓' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="client-program-planning-hint">Sesiones completadas por el cliente. Visible aunque se hayan eliminado planes o el programa.</p>
-            </div>
-            <div className="client-program-historial-list-wrap">
-              {!selectedProgramId ? (
-                <p className="client-program-historial-empty">Selecciona un programa para ver el historial.</p>
-              ) : isLoadingSessionHistory ? (
-                <p className="client-program-historial-loading">Cargando historial...</p>
-              ) : sessionHistory.length === 0 ? (
-                <p className="client-program-historial-empty">No hay sesiones completadas para este programa.</p>
-              ) : (
-                <ul className="client-program-historial-list">
-                  {sessionHistory.map((item) => (
-                    <li key={item.sessionId} className="client-program-historial-item">
-                      <div className="client-program-historial-item-main">
-                        <span className="client-program-historial-item-name">{item.sessionName || 'Sesión'}</span>
-                        <span className="client-program-historial-item-date">
-                          {item.completedAt ? new Date(item.completedAt).toLocaleDateString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
-                          {item.duration != null && !Number.isNaN(Number(item.duration)) && (
-                            <> · {Math.round(Number(item.duration))} min</>
-                          )}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="client-program-historial-item-btn"
-                        onClick={() => setPerformanceModalContext({ historyOnlyData: item })}
-                      >
-                        Ver desempeño
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </div>
         );
       case 'planificacion':
@@ -1449,6 +1397,8 @@ const ClientProgramScreen = () => {
                   selectedProgramId={selectedProgramId}
                   onVerDesempeno={setPerformanceModalContext}
                   isAddingSessionToPlanDay={isAddingSessionToPlanDay}
+                  addingToWeekKey={addingToWeekKey}
+                  addingToDayIndex={addingToDayIndex}
                   isPersonalizingPlanWeek={isPersonalizingPlanWeek}
                   isResettingPlanWeek={isResettingPlanWeek}
                   isDeletingPlanSession={isDeletingPlanSession}
@@ -1870,7 +1820,7 @@ const ClientProgramScreen = () => {
           {renderTabContent()}
         </div>
 
-        {/* Session performance modal - shared across Planificación and Historial tabs */}
+        {/* Session performance modal - used from Planificación (calendar cards and history-only cards) */}
         <SessionPerformanceModal
           isOpen={!!performanceModalContext}
           onClose={() => setPerformanceModalContext(null)}

@@ -290,7 +290,7 @@ const LibraryManagementScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="Biblioteca">
+    <DashboardLayout screenName="Entrenamiento">
       <div className="library-management-container">
         {/* Tab Navigation */}
         <div className="library-tab-navigation">

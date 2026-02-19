@@ -669,6 +669,7 @@
 
 .library-session-sidebar-right-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
   display: flex;
@@ -1347,6 +1348,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Right panel: allow shrinking so content can scroll when larger than card */
+.exercise-modal-right-panel {
+  min-height: 0;
 }
 
 /* Scrollbar for sets panel (individual sets view) – match right panel background */

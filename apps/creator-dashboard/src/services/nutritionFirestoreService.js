@@ -103,7 +103,7 @@ export async function createPlan(creatorId, data) {
     daily_protein_g: data.daily_protein_g ?? null,
     daily_carbs_g: data.daily_carbs_g ?? null,
     daily_fat_g: data.daily_fat_g ?? null,
-    slots: data.slots ?? [],
+    categories: data.categories ?? [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

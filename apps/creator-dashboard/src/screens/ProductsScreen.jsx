@@ -70,7 +70,7 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
                 </svg>
               </div>
               <div className="products-type-tab-info">
-                <h3 className="products-type-tab-title">Low-ticket</h3>
+                <h3 className="products-type-tab-title">Generales</h3>
                 <p className="products-type-tab-description">
                   Programas completos con contenido que vendes a múltiples usuarios
                 </p>
@@ -92,7 +92,7 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
                 </svg>
               </div>
               <div className="products-type-tab-info">
-                <h3 className="products-type-tab-title">1-on-1</h3>
+                <h3 className="products-type-tab-title">Asesorías</h3>
                 <p className="products-type-tab-description">
                   Contenedores para organizar clientes. Asigna contenido con Planes
                 </p>
@@ -108,7 +108,7 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
         <div className="products-content">
           <div className="products-header">
             <h2 className="products-title">
-              {productType === 'low_ticket' ? 'Low-ticket' : 'Programas generales (1-on-1)'}
+              {productType === 'low_ticket' ? 'Generales' : 'Asesorías'}
             </h2>
             <button
               className="products-create-button"
@@ -136,17 +136,17 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
                   </svg>
                 )}
               </div>
-              <h3>No hay programas {productType === 'low_ticket' ? 'low-ticket' : 'generales (1-on-1)'}</h3>
+              <h3>No hay programas {productType === 'low_ticket' ? 'generales' : 'de asesorías'}</h3>
               {productType === 'one_on_one' && (
                 <p className="products-empty-description" style={{ marginTop: 8, marginBottom: 16, maxWidth: 360, opacity: 0.85, fontSize: 14 }}>
-                  Crea un programa general (título, imagen, descripción). Luego asigna ese programa a cada cliente y el contenido (semanas y sesiones) lo eliges en la ficha del cliente.
+                  Crea una asesoría (título, imagen, descripción). Luego asigna esa asesoría a cada cliente y el contenido (semanas y sesiones) lo eliges en la ficha del cliente.
                 </p>
               )}
               <button
                 className="products-empty-button"
                 onClick={handleNewProgram}
               >
-                {productType === 'one_on_one' ? 'Crear programa general' : 'Crear Programa'}
+                {productType === 'one_on_one' ? 'Crear asesoría' : 'Crear Programa'}
               </button>
             </div>
           ) : (

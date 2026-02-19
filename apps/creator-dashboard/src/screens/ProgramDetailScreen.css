@@ -5689,6 +5689,49 @@ body.header-scrolled .program-page--compact-header {
   background-color: rgba(255, 255, 255, 0.06);
 }
 
+/* When "Editar por serie" is on: entire right card section scrollable, set cards taller */
+.exercise-modal-right-panel-per-set {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.exercise-modal-right-panel-per-set .exercise-sets-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.exercise-modal-right-panel-per-set .exercise-series-card {
+  min-height: 88px;
+  flex-shrink: 0;
+}
+
+.exercise-modal-right-panel-per-set .exercise-series-card-header {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.exercise-modal-right-panel-per-set .exercise-series-content {
+  padding-bottom: 20px;
+}
+
+.exercise-modal-right-panel-per-set .sets-detail-list {
+  flex-shrink: 0;
+}
+
+.exercise-modal-right-panel-per-set .sets-detail-td,
+.exercise-modal-right-panel-per-set .sets-detail-th {
+  padding: 14px 12px;
+}
+
+.exercise-modal-right-panel-per-set .sets-detail-table-wrap {
+  flex-shrink: 0;
+}
+
 /* Same scrollbar for right-panel sets when viewing individual sets (Editar por serie) */
 .exercise-modal-right-panel .exercise-sets-panel-content::-webkit-scrollbar {
   width: 8px;

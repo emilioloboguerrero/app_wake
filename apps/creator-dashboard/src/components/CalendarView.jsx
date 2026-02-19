@@ -55,6 +55,8 @@ const CalendarView = ({
   onVerDesempeno = null,
   // Loading states from parent (planificación tab) - disable actions and show feedback
   isAddingSessionToPlanDay = false,
+  addingToWeekKey = null,
+  addingToDayIndex = null,
   isPersonalizingPlanWeek = false,
   isResettingPlanWeek = false,
   isDeletingPlanSession = false,
@@ -270,80 +272,14 @@ const CalendarView = ({
     return map;
   }, [plannedSessions]);
 
-  // Debug: log exact completed IDs and candidate IDs so we can see any mismatch (must run after sessionsByDate is defined)
+  // Debug: log completed slot ids (slot-based matching)
   useEffect(() => {
     const size = completedSessionIds?.size ?? 0;
-    const completedArr = size ? [...completedSessionIds] : [];
-    console.log('[CalendarView] completedSessionIds (exact)', { size, ids: completedArr });
-
-    if (size === 0) return;
-
-    const dateKeys = plannedSessions?.length ? Object.keys(sessionsByDate || {}) : [];
-    const dateSessionsSample = [];
-    for (const dateStr of dateKeys.slice(0, 5)) {
-      const sessions = sessionsByDate[dateStr] || [];
-      for (const s of sessions.slice(0, 2)) {
-        const candidateIds = [s.id, s.session_id].filter(Boolean);
-        const matched = candidateIds.some((id) => id && completedSessionIds.has(id));
-        dateSessionsSample.push({ dateStr, session_id: s.session_id, sessionId: s.id, candidateIds, matched });
-      }
+    const completedArr = size ? [...completedSessionIds].slice(0, 15) : [];
+    if (size > 0) {
+      console.log('[CalendarView] completedSessionIds (slot ids)', { size, sample: completedArr });
     }
-    if (dateSessionsSample.length) {
-      console.log('[CalendarView] PLANNED vs COMPLETED (date-assigned). Completed ids:', completedArr);
-      dateSessionsSample.forEach((item, i) => {
-        const inId = completedSessionIds.has(item.sessionId);
-        const inSessionId = completedSessionIds.has(item.session_id);
-        console.log(`  [${i}] PLANNED id=${item.sessionId} session_id=${item.session_id} date=${item.dateStr} | inCompleted: id? ${inId} session_id? ${inSessionId} | MATCH: ${item.matched}`);
-      });
-    }
-
-    const weekKeys = weekContentByWeekKey ? Object.keys(weekContentByWeekKey) : [];
-    const planSessionsSample = [];
-    for (const weekKey of weekKeys.slice(0, 3)) {
-      const weekContent = weekContentByWeekKey[weekKey];
-      const sessions = weekContent?.sessions || [];
-      let weekStartDate;
-      try {
-        const { start } = getWeekDates(weekKey);
-        weekStartDate = start;
-      } catch (_) {
-        weekStartDate = null;
-      }
-      for (const s of sessions.slice(0, 3)) {
-        const dayIndex = s.dayIndex != null ? s.dayIndex : 0;
-        const sessionDate = weekStartDate ? new Date(weekStartDate.getTime()) : null;
-        if (sessionDate) sessionDate.setDate(sessionDate.getDate() + dayIndex);
-        const y = sessionDate?.getFullYear();
-        const m = sessionDate != null && !Number.isNaN(y) ? String(sessionDate.getMonth() + 1).padStart(2, '0') : null;
-        const d = sessionDate != null && !Number.isNaN(y) ? String(sessionDate.getDate()).padStart(2, '0') : null;
-        const dateStrForDay = y != null && m != null && d != null ? `${y}-${m}-${d}` : null;
-        const clientSessionDocId = clientUserId && dateStrForDay ? `${clientUserId}_${dateStrForDay}_${s.id}` : null;
-        const candidateIds = [s.id, s.session_id, clientSessionDocId, s.librarySessionRef].filter(Boolean);
-        const matched = candidateIds.some((id) => id && completedSessionIds.has(id));
-        planSessionsSample.push({
-          weekKey,
-          dayIndex,
-          dateStrForDay,
-          sessionId: s.id,
-          session_id: s.session_id,
-          librarySessionRef: s.librarySessionRef,
-          clientSessionDocId,
-          candidateIds,
-          matched
-        });
-      }
-    }
-    if (planSessionsSample.length) {
-      console.log('[CalendarView] PLANNED vs COMPLETED (plan). Completed ids:', completedArr);
-      planSessionsSample.forEach((item, i) => {
-        const inId = completedSessionIds.has(item.sessionId);
-        const inSessionId = completedSessionIds.has(item.session_id);
-        const inLibRef = completedSessionIds.has(item.librarySessionRef);
-        const inDocId = completedSessionIds.has(item.clientSessionDocId);
-        console.log(`  [${i}] PLANNED id=${item.sessionId} session_id=${item.session_id} libraryRef=${item.librarySessionRef ?? 'n/a'} docId=${item.clientSessionDocId ?? 'n/a'} | inCompleted: id? ${inId} session_id? ${inSessionId} libraryRef? ${inLibRef} docId? ${inDocId} | MATCH: ${item.matched}`);
-      });
-    }
-  }, [completedSessionIds, plannedSessions, sessionsByDate, weekContentByWeekKey, clientUserId]);
+  }, [completedSessionIds]);
 
   // Get sessions for a specific cell
   const getSessionsForCell = (cell) => {
@@ -369,6 +305,16 @@ const CalendarView = ({
     if (!cell) return null;
     const date = getDateFromCell(cell);
     return getMondayWeek(date);
+  };
+
+  // Slot id: single id per planned slot for completion matching. Date-assigned = client_sessions doc id; plan = userId_programId_weekKey_sessionId.
+  const getSlotId = (session, { type, weekKey: wk } = {}) => {
+    if (!session) return null;
+    if (type === 'date') return session.id || null;
+    if (type === 'plan' && clientUserId && selectedProgramId && wk) {
+      return `${clientUserId}_${selectedProgramId}_${wk}_${session.id}`;
+    }
+    return null;
   };
 
   // Get plan assignments for a specific cell
@@ -408,58 +354,10 @@ const CalendarView = ({
     });
   };
 
-  // Count how many calendar cards show each "naked" session id, and the first dateStr where each appears.
-  // When the same session appears on multiple days, we only mark the first occurrence as completed (by naked match).
-  const { nakedIdToCount, nakedIdToFirstDateStr } = useMemo(() => {
-    const count = new Map();
-    const firstDateStr = new Map();
-    for (let i = 0; i < calendarDays.length; i++) {
-      const cell = calendarDays[i];
-      const date = getDateFromCell(cell);
-      const dateStr = formatDateForStorage(date);
-      const weekKey = getWeekKeyForCell(cell);
-      const weekContent = weekContentByWeekKey?.[weekKey];
-      const weekdayIndex = (date.getDay() + 6) % 7;
-      const planSessionsForDay = weekContent?.sessions?.filter((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex) ?? [];
-      const daySessions = sessionsByDate[dateStr] ?? [];
-      const displayed = planSessionsForDay.length > 0 ? daySessions.filter((s) => !s.plan_id) : daySessions;
-      for (const s of planSessionsForDay) {
-        const id = s.librarySessionRef || s.session_id;
-        if (id) {
-          count.set(id, (count.get(id) || 0) + 1);
-          if (!firstDateStr.has(id)) firstDateStr.set(id, dateStr);
-        }
-      }
-      for (const s of displayed) {
-        if (s.session_id) {
-          count.set(s.session_id, (count.get(s.session_id) || 0) + 1);
-          if (!firstDateStr.has(s.session_id)) firstDateStr.set(s.session_id, dateStr);
-        }
-      }
-    }
-    return { nakedIdToCount: count, nakedIdToFirstDateStr: firstDateStr };
-  }, [calendarDays, weekContentByWeekKey, sessionsByDate, currentYear, currentMonth]);
-
-  // Check if session is completed. Prefer date-specific id (client_session doc id). If only a "naked" session id
-  // matches: when it appears on one card, show green; when it appears on multiple cards, show green only on the
-  // first occurrence (by date) so we don't mark all of them.
-  const isSessionCompleted = (candidateIds, dateSpecificIds, options = {}) => {
-    if (!completedSessionIds?.size) return false;
-    const { nakedIdToCountMap = nakedIdToCount, nakedIdToFirstDateStrMap = nakedIdToFirstDateStr, thisDateStr = null } = options;
-    const dateSpecificSet = new Set((dateSpecificIds || []).filter(Boolean));
-    for (const id of candidateIds) {
-      if (!id || !completedSessionIds.has(id)) continue;
-      if (dateSpecificSet.has(id)) return true;
-    }
-    for (const id of candidateIds) {
-      if (!id || !completedSessionIds.has(id)) continue;
-      if (dateSpecificSet.has(id)) continue;
-      const n = nakedIdToCountMap.get(id);
-      if (n === undefined || n <= 1) return true;
-      if (thisDateStr && nakedIdToFirstDateStrMap.get(id) === thisDateStr) return true;
-      return false;
-    }
-    return false;
+  // Slot-based completion: one slot id per planned slot; completedSessionIds contains only slot ids (from PWA/dashboard).
+  const isSessionCompleted = (slotId) => {
+    if (!slotId || !completedSessionIds?.size) return false;
+    return completedSessionIds.has(slotId);
   };
 
   // Handle drag over (preventDefault required for drop to fire)
@@ -777,18 +675,25 @@ const CalendarView = ({
             const isDraggedOver = draggedOverDay === index;
             const cellDate = getDateFromCell(cell);
             const dateStr = formatDateForStorage(cellDate);
-            // Completed sessions from history (persist when plan is deleted) - avoid duplicates with plan/date sessions
+            // Completed sessions from history (persist when plan is deleted) - avoid duplicates with plan/date slots (by slot id)
             const completedHistoryForDay = completedSessionsByDate[dateStr] || [];
             const planAndDateIds = new Set();
             planSessionsForDay.forEach((s) => {
-              [s.id, s.session_id, s.librarySessionRef, clientUserId && dateStr ? `${clientUserId}_${dateStr}_${s.id}` : null].filter(Boolean).forEach((id) => planAndDateIds.add(id));
+              const slotId = getSlotId(s, { type: 'plan', weekKey });
+              if (slotId) planAndDateIds.add(slotId);
+              // One-on-one: PWA may write sessionHistory with client_sessions doc id; add it so history dedupes
+              const clientSessionDoc = daySessions.find((ds) => ds.session_id === s.id && ds.plan_id);
+              if (clientSessionDoc?.id) planAndDateIds.add(clientSessionDoc.id);
             });
             displayedDaySessions.forEach((s) => {
-              [s.id, s.session_id].filter(Boolean).forEach((id) => planAndDateIds.add(id));
+              const slotId = getSlotId(s, { type: 'date' });
+              if (slotId) planAndDateIds.add(slotId);
             });
             const historyOnlySessions = completedHistoryForDay.filter((h) => !planAndDateIds.has(h.sessionId));
             const hasHistoryOnlySessions = historyOnlySessions.length > 0;
             const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions || hasHistoryOnlySessions;
+            const weekdayIdxForCell = getWeekdayIndex(cell);
+            const isAddingToThisDay = isAddingSessionToPlanDay && addingToWeekKey != null && addingToDayIndex != null && weekKey === addingToWeekKey && weekdayIdxForCell === addingToDayIndex;
 
             // Days under a plan bar get gradient (no solid primaryColor)
             const dayStyle = hasPlanAssignments ? { '--calendar-plan-gradient-start': PLAN_BAR_COLOR } : undefined;
@@ -799,7 +704,7 @@ const CalendarView = ({
                 tabIndex={0}
                 data-calendar-day={dateStr}
                 data-calendar-index={index}
-                className={`calendar-day ${isOtherMonth ? 'calendar-day-other-month' : ''} ${isToday(cell) ? 'calendar-day-today' : ''} ${isSelected(cell) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''} ${hasPlanAssignments ? 'calendar-day-has-plan-assignment' : ''} ${isDraggedOver ? 'calendar-day-drag-over' : ''} ${hasDayContent ? 'calendar-day-has-week-content' : ''}`}
+                className={`calendar-day ${isOtherMonth ? 'calendar-day-other-month' : ''} ${isToday(cell) ? 'calendar-day-today' : ''} ${isSelected(cell) ? 'calendar-day-selected' : ''} ${hasSessions ? 'calendar-day-has-session' : ''} ${hasPlanAssignments ? 'calendar-day-has-plan-assignment' : ''} ${isDraggedOver ? 'calendar-day-drag-over' : ''} ${hasDayContent ? 'calendar-day-has-week-content' : ''} ${isAddingToThisDay ? 'calendar-day-adding' : ''}`}
                 onClick={() => handleDateClick(cell)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDateClick(cell); } }}
                 onDragOver={(e) => { handleDragOver(e, index); }}
@@ -808,18 +713,23 @@ const CalendarView = ({
                 style={dayStyle}
               >
                 <span className="calendar-day-number">{cell.day}</span>
-                
+                {isAddingToThisDay && (
+                  <div className="calendar-day-adding-indicator" role="status" aria-live="polite">
+                    <span className="calendar-saving-bar-spinner" aria-hidden />
+                    <span>Añadiendo...</span>
+                  </div>
+                )}
                 {/* Plan sessions (from week plan) - colored cards, draggable, Editar / Eliminar */}
                 {hasPlanSessions && weekContent && (
                   <div className="calendar-day-session-cards">
                     {planSessionsForDay.map((session) => {
                       const sessionName = session.title || session.session_name || 'Sesión';
                       const docId = `plan-${weekKey}-${session.id}`;
+                      const slotId = getSlotId(session, { type: 'plan', weekKey });
                       const isMenuOpen = openSessionMenuId === docId;
                       const weekdayIdx = getWeekdayIndex(cell);
-                      const clientSessionDocId = clientUserId && cellDate ? `${clientUserId}_${dateStr}_${session.id}` : null;
-                      const planCandidateIds = [session.id, session.session_id, clientSessionDocId, session.librarySessionRef].filter(Boolean);
-                      const isCompleted = isSessionCompleted(planCandidateIds, [clientSessionDocId], { thisDateStr: dateStr });
+                      const isCompleted = isSessionCompleted(slotId);
+                      const sessionWithSlot = slotId ? { ...session, slotId } : session;
                       return (
                         <div
                           key={docId}
@@ -833,7 +743,7 @@ const CalendarView = ({
                                 id: docId,
                                 anchorEl: e.currentTarget,
                                 type: 'plan',
-                                session,
+                                session: sessionWithSlot,
                                 weekKey,
                                 weekContent,
                                 isCompleted: true
@@ -870,7 +780,7 @@ const CalendarView = ({
                                       id: docId,
                                       anchorEl: e.currentTarget,
                                       type: 'plan',
-                                      session,
+                                      session: sessionWithSlot,
                                       weekKey,
                                       weekContent,
                                       isCompleted
@@ -960,9 +870,10 @@ const CalendarView = ({
                     {displayedDaySessions.map((session, idx) => {
                       const sessionName = session.session_name || session.title || `Sesión ${idx + 1}`;
                       const sessionDocId = session.id || `session-${dateStr}-${session.session_id || idx}`;
+                      const slotId = getSlotId(session, { type: 'date' });
                       const isMenuOpen = openSessionMenuId === sessionDocId;
-                      const dateCandidateIds = [session.id, session.session_id].filter(Boolean);
-                      const isCompleted = isSessionCompleted(dateCandidateIds, [session.id], { thisDateStr: dateStr });
+                      const isCompleted = isSessionCompleted(slotId);
+                      const sessionWithSlot = slotId ? { ...session, slotId } : session;
                       return (
                         <div
                           key={sessionDocId}
@@ -976,7 +887,7 @@ const CalendarView = ({
                                 id: sessionDocId,
                                 anchorEl: e.currentTarget,
                                 type: 'date',
-                                session,
+                                session: sessionWithSlot,
                                 date: cellDate,
                                 isCompleted: true
                               });
@@ -998,7 +909,7 @@ const CalendarView = ({
                                     id: sessionDocId,
                                     anchorEl: e.currentTarget,
                                     type: 'date',
-                                    session,
+                                    session: sessionWithSlot,
                                     date: cellDate,
                                     isCompleted
                                   });

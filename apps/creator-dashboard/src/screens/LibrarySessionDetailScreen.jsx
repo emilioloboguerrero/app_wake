@@ -373,7 +373,13 @@ const LibrarySessionDetailScreen = () => {
   const [originalSeriesOrder, setOriginalSeriesOrder] = useState([]);
   const [isCreatingSet, setIsCreatingSet] = useState(false);
   const [isSavingSetChanges, setIsSavingSetChanges] = useState(false);
+  const [optimisticSetsCount, setOptimisticSetsCount] = useState(null); // When adding sets to existing exercise, show this until API completes
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+
+  // Auto-save set changes (debounced)
+  const pendingSetSavesRef = useRef(new Set());
+  const saveSetTimeoutRef = useRef(null);
+  const saveSetChangesRef = useRef(null);
 
   // Propagate changes modal (library session only)
   const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
@@ -1126,13 +1132,24 @@ const LibrarySessionDetailScreen = () => {
           setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
           setUnsavedSetChanges({});
           setNumberOfSetsForNewExercise(setsData.length > 0 ? setsData.length : 3);
-          if (setsData.length > 0 && setsData[0]) {
+          const objectivesForDefaults = (exercise.objectives || []).filter(o => o !== 'previous').length ? (exercise.objectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
+          if (exercise.defaultSetValues && typeof exercise.defaultSetValues === 'object' && Object.keys(exercise.defaultSetValues).length > 0) {
+            const loaded = {};
+            objectivesForDefaults.forEach(o => {
+              const v = exercise.defaultSetValues[o];
+              loaded[o] = v != null && v !== '' ? v : '';
+            });
+            setNewExerciseDefaultSetValues(loaded);
+          } else if (setsData.length > 0 && setsData[0]) {
             const first = setsData[0];
-            setNewExerciseDefaultSetValues(prev => ({
-              ...prev,
-              reps: first.reps != null && first.reps !== '' ? first.reps : '',
-              intensity: first.intensity != null && first.intensity !== '' ? first.intensity : ''
-            }));
+            const fallback = {};
+            objectivesForDefaults.forEach(o => {
+              const v = first[o];
+              fallback[o] = v != null && v !== '' ? v : '';
+            });
+            setNewExerciseDefaultSetValues(fallback);
+          } else {
+            setNewExerciseDefaultSetValues({});
           }
         } catch (err) {
           console.error('Error loading sets:', err);
@@ -1153,23 +1170,23 @@ const LibrarySessionDetailScreen = () => {
   };
 
   const handleCloseExerciseModal = () => {
-    // When creating and form is valid, offer to save before closing
-    if (isCreatingExercise && canSaveCreatingExercise()) {
-      if (window.confirm('¿Guardar ejercicio antes de cerrar?')) {
-        handleSaveCreatingExercise();
-        return;
-      }
+    // Flush any pending debounced set saves so we send them before clearing state (saves run in background; we only notify on failure)
+    const pendingIds = Array.from(pendingSetSavesRef.current);
+    pendingSetSavesRef.current.clear();
+    if (saveSetTimeoutRef.current) {
+      clearTimeout(saveSetTimeoutRef.current);
+      saveSetTimeoutRef.current = null;
+    }
+    pendingIds.forEach((id) => saveSetChangesRef.current?.(id));
+
+    // Persist default set values before clearing (for existing exercise only)
+    if (currentExerciseId && currentExerciseId !== 'new' && user && sessionId && newExerciseDefaultSetValues && Object.keys(newExerciseDefaultSetValues).length > 0) {
+      const sanitized = Object.fromEntries(
+        Object.entries(newExerciseDefaultSetValues).map(([k, v]) => [k, v === undefined ? null : v])
+      );
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, { defaultSetValues: sanitized }).catch((err) => console.error('Error saving default set values:', err));
     }
 
-    // Check if there are unsaved changes
-    const hasUnsavedChanges = Object.values(unsavedSetChanges).some(hasChanges => hasChanges);
-    
-    if (hasUnsavedChanges) {
-      if (!window.confirm('Tienes cambios sin guardar. ¿Estás seguro de que quieres cerrar?')) {
-        return;
-      }
-    }
-    
     setIsExerciseModalOpen(false);
     setSelectedExercise(null);
     setExerciseDraft(null);
@@ -1178,6 +1195,7 @@ const LibrarySessionDetailScreen = () => {
     setOriginalExerciseSets([]);
     setUnsavedSetChanges({});
     setNumberOfSetsForNewExercise(3);
+    setOptimisticSetsCount(null);
     setNewExerciseDefaultSetValues({});
     setShowPerSetCards(false);
     setExpandedSeries({});
@@ -1267,8 +1285,9 @@ const LibrarySessionDetailScreen = () => {
     setExerciseSets(updatedSets);
     
     let setHasChanges = false;
+    const fieldsToCheck = (draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
     if (originalSet) {
-      for (const field of ['reps', 'intensity']) {
+      for (const field of fieldsToCheck) {
         const current = updatedSets[setIndex][field];
         const original = originalSet[field];
         const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
@@ -1284,6 +1303,7 @@ const LibrarySessionDetailScreen = () => {
       ...prev,
       [set.id]: setHasChanges
     }));
+    if (setHasChanges && set.id) scheduleSetSave(set.id);
   };
 
   const handleUpdateNewExerciseDefaultValue = (field, value) => {
@@ -1370,33 +1390,79 @@ const LibrarySessionDetailScreen = () => {
     if (target === current) return;
     if (target > current) {
       setNumberOfSetsForNewExercise(target);
+      setOptimisticSetsCount(target);
+      // Optimistic: append placeholder sets so the list updates immediately
+      const objectiveFields = (draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
+      const defaultSet = {};
+      objectiveFields.forEach(o => {
+        const v = newExerciseDefaultSetValues[o];
+        defaultSet[o] = v != null && v !== '' ? (o === 'intensity' && !String(v).endsWith('/10') ? `${String(v).replace(/\/10$/, '')}/10` : v) : null;
+      });
+      const placeholders = Array.from({ length: target - current }, (_, i) => ({
+        id: `pending-add-${Date.now()}-${i}`,
+        order: current + i,
+        title: `Serie ${current + i + 1}`,
+        ...defaultSet
+      }));
+      setExerciseSets(prev => [...prev, ...placeholders]);
+      setOriginalExerciseSets(prev => [...prev, ...placeholders.map(p => ({ ...p }))]);
+      setUnsavedSetChanges(prev => ({ ...prev, ...Object.fromEntries(placeholders.map(p => [p.id, false])) }));
       (async () => {
-        for (let i = 0; i < target - current; i++) {
-          await handleCreateSet();
-        }
-        const data = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
-        const defaultReps = newExerciseDefaultSetValues.reps != null && newExerciseDefaultSetValues.reps !== '' ? newExerciseDefaultSetValues.reps : null;
-        const defaultIntensity = newExerciseDefaultSetValues.intensity != null && newExerciseDefaultSetValues.intensity !== '' ? newExerciseDefaultSetValues.intensity : null;
-        if (defaultReps !== null || defaultIntensity !== null) {
-          for (const set of data) {
-            await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, set.id, {
-              reps: defaultReps ?? set.reps,
-              intensity: defaultIntensity ?? set.intensity
-            });
+        try {
+          for (let i = 0; i < target - current; i++) {
+            await handleCreateSet();
           }
+          const data = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+          const defaultPayload = {};
+          objectiveFields.forEach(o => {
+            const v = newExerciseDefaultSetValues[o];
+            if (v != null && v !== '') defaultPayload[o] = o === 'intensity' && !String(v).endsWith('/10') ? `${String(v).replace(/\/10$/, '')}/10` : v;
+          });
+          if (Object.keys(defaultPayload).length > 0) {
+            for (const set of data) {
+              const update = {};
+              objectiveFields.forEach(o => { update[o] = defaultPayload[o] ?? set[o] ?? null; });
+              await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, set.id, update);
+            }
+          }
+          const updated = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+          setExerciseSets(updated);
+          setOriginalExerciseSets(JSON.parse(JSON.stringify(updated)));
+          setUnsavedSetChanges({});
+        } catch (err) {
+          console.error('Error adding sets:', err);
+          setExerciseSets(exerciseSets);
+          setOriginalExerciseSets(JSON.parse(JSON.stringify(originalExerciseSets)));
+          setUnsavedSetChanges(unsavedSetChanges);
+          alert('Error al añadir series. Por favor, intenta de nuevo.');
+        } finally {
+          setOptimisticSetsCount(null);
         }
-        const updated = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
-        setExerciseSets(updated);
-        setOriginalExerciseSets(JSON.parse(JSON.stringify(updated)));
-        setUnsavedSetChanges({});
       })();
     } else {
-      if (!window.confirm(`Se eliminarán ${current - target} serie(s). ¿Continuar?`)) return;
       setNumberOfSetsForNewExercise(target);
       const toRemove = exerciseSets.slice(-(current - target));
+      const toRemoveIds = new Set(toRemove.map(s => s.id));
+      // Optimistic: remove sets from list immediately
+      setExerciseSets(prev => prev.filter(s => !toRemoveIds.has(s.id)));
+      setOriginalExerciseSets(prev => prev.filter(s => !toRemoveIds.has(s.id)));
+      setUnsavedSetChanges(prev => {
+        const next = { ...prev };
+        toRemove.forEach(s => { delete next[s.id]; });
+        return next;
+      });
       (async () => {
-        for (const s of toRemove) {
-          await handleDeleteSet(s, { skipConfirm: true });
+        try {
+          for (const s of toRemove) {
+            await contentApi.deleteSetFromLibraryExercise(user.uid, sessionId, currentExerciseId, s.id);
+          }
+        } catch (err) {
+          console.error('Error deleting sets:', err);
+          const refetched = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
+          setExerciseSets(refetched);
+          setOriginalExerciseSets(JSON.parse(JSON.stringify(refetched)));
+          setUnsavedSetChanges({});
+          alert('Error al eliminar series. Por favor, intenta de nuevo.');
         }
       })();
     }
@@ -1446,10 +1512,12 @@ const LibrarySessionDetailScreen = () => {
     const newUnsaved = {};
     updatedSets.forEach(s => { if (s.id) newUnsaved[s.id] = true; });
     setUnsavedSetChanges(prev => ({ ...prev, ...newUnsaved }));
+    updatedSets.forEach(s => { if (s.id) scheduleSetSave(s.id); });
   };
 
   const handleSaveSetChanges = async (setId) => {
     if (!user || !sessionId) return;
+    if (setId && setId.startsWith('pending-add-')) return;
 
     if (isCreatingExercise) {
       const setIndex = exerciseSets.findIndex(s => s.id === setId);
@@ -1478,17 +1546,17 @@ const LibrarySessionDetailScreen = () => {
 
     const updateData = {};
     let hasChanges = false;
-    
-    for (const field of ['reps', 'intensity']) {
+    const fieldsToSave = (draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
+    for (const field of fieldsToSave) {
       const current = set[field];
       const original = originalSet[field];
       const currentNormalized = current === null || current === undefined || current === '' ? null : String(current);
       const originalNormalized = original === null || original === undefined || original === '' ? null : String(original);
       if (currentNormalized !== originalNormalized) {
-        if (field === 'intensity' && current !== null && current !== '') {
+        if (field === 'intensity' && current != null && current !== '') {
           updateData[field] = current;
         } else {
-          updateData[field] = current === null || current === '' ? null : current;
+          updateData[field] = (current === null || current === undefined || current === '') ? null : current;
         }
         hasChanges = true;
       }
@@ -1499,10 +1567,8 @@ const LibrarySessionDetailScreen = () => {
     try {
       setIsSavingSetChanges(true);
       await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, updateData);
-      
-      const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
-      setExerciseSets(setsData);
-      setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
+      // Optimistic success: update "saved" baseline from current state (no refetch, no notification)
+      setOriginalExerciseSets(prev => prev.map(s => s.id === setId ? { ...exerciseSets[setIndex] } : s));
       setUnsavedSetChanges(prev => {
         const newState = { ...prev };
         delete newState[setId];
@@ -1510,11 +1576,28 @@ const LibrarySessionDetailScreen = () => {
       });
     } catch (err) {
       console.error('Error saving set changes:', err);
-      alert('Error al guardar los cambios de la serie');
+      setUnsavedSetChanges(prev => ({ ...prev, [setId]: true }));
+      alert('Los cambios no se pudieron guardar. Puedes volver a editar para reintentar.');
     } finally {
       setIsSavingSetChanges(false);
     }
   };
+
+  saveSetChangesRef.current = handleSaveSetChanges;
+
+  const scheduleSetSave = useCallback((setId) => {
+    if (!setId) return;
+    pendingSetSavesRef.current.add(setId);
+    if (saveSetTimeoutRef.current) clearTimeout(saveSetTimeoutRef.current);
+    saveSetTimeoutRef.current = setTimeout(() => {
+      const ids = Array.from(pendingSetSavesRef.current);
+      pendingSetSavesRef.current.clear();
+      saveSetTimeoutRef.current = null;
+      ids.forEach((id) => {
+        saveSetChangesRef.current?.(id);
+      });
+    }, 600);
+  }, []);
 
   const handleCreateSet = async () => {
     if (!user || !sessionId) return;
@@ -1580,8 +1663,6 @@ const LibrarySessionDetailScreen = () => {
   const handleDeleteSet = async (set, options = {}) => {
     if (!user || !sessionId || !set || !set.id) return;
 
-    if (!options.skipConfirm && !window.confirm('¿Estás seguro de que quieres eliminar esta serie?')) return;
-
     if (isCreatingExercise && set.id.startsWith('temp-')) {
       setExerciseSets(prev => prev.filter(s => s.id !== set.id));
       setOriginalExerciseSets(prev => prev.filter(s => s.id !== set.id));
@@ -1593,17 +1674,28 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
 
+    if (set.id.startsWith('pending-add-')) {
+      setExerciseSets(prev => prev.filter(s => s.id !== set.id));
+      setOriginalExerciseSets(prev => prev.filter(s => s.id !== set.id));
+      setUnsavedSetChanges(prev => { const next = { ...prev }; delete next[set.id]; return next; });
+      return;
+    }
+
     if (!currentExerciseId) return;
 
+    const setId = set.id;
+    setExerciseSets(prev => prev.filter(s => s.id !== setId));
+    setOriginalExerciseSets(prev => prev.filter(s => s.id !== setId));
+    setUnsavedSetChanges(prev => { const next = { ...prev }; delete next[setId]; return next; });
+
     try {
-      await contentApi.deleteSetFromLibraryExercise(user.uid, sessionId, currentExerciseId, set.id);
-      
+      await contentApi.deleteSetFromLibraryExercise(user.uid, sessionId, currentExerciseId, setId);
+    } catch (err) {
+      console.error('Error deleting set:', err);
       const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
-    } catch (err) {
-      console.error('Error deleting set:', err);
       alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
     }
   };
@@ -1696,6 +1788,8 @@ const LibrarySessionDetailScreen = () => {
         alternatives: exerciseDraft.alternatives || {},
         measures: exerciseDraft.measures || [],
         objectives: exerciseDraft.objectives || [],
+        customMeasureLabels: exerciseDraft.customMeasureLabels && typeof exerciseDraft.customMeasureLabels === 'object' ? exerciseDraft.customMeasureLabels : {},
+        customObjectiveLabels: exerciseDraft.customObjectiveLabels && typeof exerciseDraft.customObjectiveLabels === 'object' ? exerciseDraft.customObjectiveLabels : {},
         name: deleteField(),
         title: deleteField()
       };
@@ -2238,20 +2332,6 @@ const LibrarySessionDetailScreen = () => {
                 }}
               >
                 <span className="exercise-series-duplicate-icon">⧉</span>
-              </button>
-            )}
-            {hasUnsavedChanges && (
-              <button
-                className="exercise-series-save-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSaveSetChanges(set.id);
-                }}
-                disabled={isSavingSetChanges}
-              >
-                <span className="exercise-series-save-text">
-                  {isSavingSetChanges ? 'Guardando...' : 'Guardar'}
-                </span>
               </button>
             )}
             <svg
@@ -3358,7 +3438,7 @@ const LibrarySessionDetailScreen = () => {
             </div>
             
             {/* Right Side - Sets Panel */}
-            <div className="exercise-modal-right-panel">
+            <div className={`exercise-modal-right-panel ${showPerSetCards ? 'exercise-modal-right-panel-per-set' : ''}`}>
               <div className="exercise-sets-panel-header">
                 <h3 className="exercise-sets-panel-title">Series</h3>
                 {isCreatingExercise && (
@@ -3372,9 +3452,9 @@ const LibrarySessionDetailScreen = () => {
                   <div className="sets-panel-glass-card sets-panel-glass-card-series">
                     <span className="sets-panel-glass-label">Series</span>
                     <div className="sets-panel-number-wrap">
-                      <button type="button" className="sets-panel-number-btn" onClick={() => syncSetsCountToNumber((isCreatingExercise ? numberOfSetsForNewExercise : exerciseSets.length) - 1)} aria-label="Menos series">−</button>
-                      <input type="number" min={1} max={20} className="sets-panel-number-input" value={isCreatingExercise ? numberOfSetsForNewExercise : exerciseSets.length} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) syncSetsCountToNumber(Math.max(1, Math.min(20, v))); }} />
-                      <button type="button" className="sets-panel-number-btn" onClick={() => syncSetsCountToNumber((isCreatingExercise ? numberOfSetsForNewExercise : exerciseSets.length) + 1)} aria-label="Más series">+</button>
+                      <button type="button" className="sets-panel-number-btn" onClick={() => syncSetsCountToNumber((isCreatingExercise ? numberOfSetsForNewExercise : (optimisticSetsCount ?? exerciseSets.length)) - 1)} aria-label="Menos series">−</button>
+                      <input type="number" min={1} max={20} className="sets-panel-number-input" value={isCreatingExercise ? numberOfSetsForNewExercise : (optimisticSetsCount ?? exerciseSets.length)} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) syncSetsCountToNumber(Math.max(1, Math.min(20, v))); }} />
+                      <button type="button" className="sets-panel-number-btn" onClick={() => syncSetsCountToNumber((isCreatingExercise ? numberOfSetsForNewExercise : (optimisticSetsCount ?? exerciseSets.length)) + 1)} aria-label="Más series">+</button>
                     </div>
                   </div>
                   {(draftMeasures.length > 0 && draftObjectives.length > 0) && ((draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity']).map((obj) => (
@@ -3447,7 +3527,7 @@ const LibrarySessionDetailScreen = () => {
                         >
                           <div className="sets-detail-list">
                             {exerciseSets.map((set, setIndex) => {
-                              const objectivesFields = (draftObjectives || []).filter(obj => ['reps', 'intensity'].includes(obj));
+                              const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous').length ? (draftObjectives || []).filter(obj => obj !== 'previous') : ['reps', 'intensity'];
                               return (
                                 <SortableSeriesCard
                                   key={set.id}
@@ -3490,8 +3570,8 @@ const LibrarySessionDetailScreen = () => {
                           </thead>
                           <tbody>
                             {exerciseSets.map((set, setIndex) => {
-                              const objectivesFields = (draftObjectives || []).filter(obj => ['reps', 'intensity'].includes(obj));
-                              const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
+const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous').length ? (draftObjectives || []).filter(obj => obj !== 'previous') : ['reps', 'intensity'];
+                                  const setNumber = (set.order !== undefined && set.order !== null) ? set.order + 1 : setIndex + 1;
                               return (
                                 <tr key={set.id} className="sets-detail-row">
                                   <td className="sets-detail-td sets-detail-td-num">{setNumber}</td>
@@ -3529,16 +3609,6 @@ const LibrarySessionDetailScreen = () => {
                                     >
                                       ⧉
                                     </button>
-                                    {unsavedSetChanges[set.id] && (
-                                      <button
-                                        type="button"
-                                        className="sets-detail-action-btn sets-detail-save"
-                                        onClick={() => handleSaveSetChanges(set.id)}
-                                        disabled={isSavingSetChanges}
-                                      >
-                                        {isSavingSetChanges ? '…' : 'Guardar'}
-                                      </button>
-                                    )}
                                     <button
                                       type="button"
                                       className="sets-detail-action-btn sets-detail-delete"

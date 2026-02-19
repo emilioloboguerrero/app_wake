@@ -34,7 +34,7 @@ import CourseDetailScreen from '../screens/CourseDetailScreen.web';
 // Import CreatorProfileScreen directly using web wrapper for React Router navigation
 import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
 import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen.web';
-import NutritionTestScreen from '../screens/NutritionTestScreen.web';
+import NutritionScreen from '../screens/NutritionScreen.web';
 // Import screens with web wrappers directly to avoid Metro bundler issues
 import SessionsScreen from '../screens/SessionsScreen.web';
 import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web';
@@ -50,8 +50,20 @@ import { isSafariWeb } from '../utils/platform';
 import BottomTabBar from '../components/BottomTabBar.web';
 import OnboardingNavigator from './OnboardingNavigator';
 import { NavigationContainer } from '@react-navigation/native';
+import UserRoleContext from '../contexts/UserRoleContext';
+import { useUserRole } from '../contexts/UserRoleContext';
+import { isAdmin } from '../utils/roleHelper';
 
 export const RefreshProfileContext = createContext(null);
+
+// Wrapper: only allow admin to access /nutrition; redirect others to home
+const NutritionRouteGuard = () => {
+  const { role } = useUserRole();
+  if (role !== null && !isAdmin(role)) {
+    return <Navigate to="/" replace />;
+  }
+  return React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'));
+};
 
 // Wrapper so OnboardingScreen (profile step) can refetch profile and navigate to questions on web
 const OnboardingProfileRoute = () => {
@@ -445,6 +457,7 @@ const AuthenticatedLayout = ({ children }) => {
   }
 
   logger.log('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
+  const userRole = userProfile?.role ?? null;
   // Render tab bar in a portal to document.body so position:fixed is relative to viewport
   const tabBarEl =
     typeof document !== 'undefined' && document.body
@@ -452,8 +465,10 @@ const AuthenticatedLayout = ({ children }) => {
       : <BottomTabBar />;
   return (
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
-      {children}
-      {tabBarEl}
+      <UserRoleContext.Provider value={{ role: userRole }}>
+        {children}
+        {tabBarEl}
+      </UserRoleContext.Provider>
     </RefreshProfileContext.Provider>
   );
 };
@@ -551,7 +566,7 @@ const WebAppNavigator = () => {
         path="/nutrition"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(NutritionTestScreen, 'NutritionTest'))}
+            <NutritionRouteGuard />
           </AuthenticatedLayout>
         }
       />

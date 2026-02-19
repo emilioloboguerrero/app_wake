@@ -226,6 +226,7 @@ const LibraryExercisesScreen = () => {
   const [muscleLabelsScrollProgress, setMuscleLabelsScrollProgress] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
   const [selectedImplements, setSelectedImplements] = useState(new Set());
   const [isImplementsEditMode, setIsImplementsEditMode] = useState(false);
+  const [customImplementInput, setCustomImplementInput] = useState('');
   const [isIconSelectorModalOpen, setIsIconSelectorModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const muscleLabelsContainerRef = useRef(null);
@@ -990,6 +991,18 @@ const LibraryExercisesScreen = () => {
     });
   };
 
+  const handleAddCustomImplement = () => {
+    const name = customImplementInput.trim();
+    if (!name) return;
+    const alreadyExists = implementsListForEdit.some(i => (i || '').toLowerCase() === name.toLowerCase());
+    if (alreadyExists) {
+      setCustomImplementInput('');
+      return;
+    }
+    setSelectedImplements(prev => new Set([...prev, name]));
+    setCustomImplementInput('');
+  };
+
   // Exercise and wellness SVG icons
   const LIBRARY_ICONS = [
     // Strength Training
@@ -1086,15 +1099,23 @@ const LibraryExercisesScreen = () => {
     return Array.from(musclesSet).sort();
   }, [allExercises]);
 
-  // All unique implements from library exercises (for filter modal)
+  // All unique implements from library exercises (for filter modal), sorted alphabetically
   const allUniqueImplements = useMemo(() => {
     const set = new Set();
     allExercises.forEach(ex => {
       const impl = ex.data?.implements;
       if (Array.isArray(impl)) impl.forEach(i => set.add(i));
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => (a || '').localeCompare(b || '', 'es'));
   }, [allExercises]);
+
+  // Sorted list for implement picker: default list + library customs + currently selected (so new custom tags appear)
+  const implementsListForEdit = useMemo(() => {
+    const set = new Set(IMPLEMENTS_LIST);
+    allUniqueImplements.forEach(i => set.add(i));
+    selectedImplements.forEach(i => set.add(i));
+    return Array.from(set).sort((a, b) => (a || '').localeCompare(b || '', 'es'));
+  }, [allUniqueImplements, selectedImplements]);
 
   // Filter exercises based on selected muscles and selected implements
   useEffect(() => {
@@ -1125,7 +1146,7 @@ const LibraryExercisesScreen = () => {
   if (loading) {
     return (
       <DashboardLayout 
-        screenName={library?.title || 'Biblioteca'}
+        screenName={library?.title || 'Entrenamiento'}
         showBackButton={true}
         backPath={backPath}
         backState={backState}
@@ -1142,7 +1163,7 @@ const LibraryExercisesScreen = () => {
   if (error || !library) {
     return (
       <DashboardLayout 
-        screenName="Biblioteca"
+        screenName="Entrenamiento"
         showBackButton={true}
         backPath={backPath}
         backState={backState}
@@ -1353,7 +1374,7 @@ const LibraryExercisesScreen = () => {
                           <div className="exercise-implements-content">
                             {isImplementsEditMode ? (
                               <div className="exercise-implements-grid">
-                                {IMPLEMENTS_LIST.map(implement => (
+                                {implementsListForEdit.map(implement => (
                                   <button
                                     key={implement}
                                     type="button"
@@ -1363,12 +1384,31 @@ const LibraryExercisesScreen = () => {
                                     {implement}
                                   </button>
                                 ))}
+                                <div className="exercise-implements-add-custom">
+                                  <input
+                                    type="text"
+                                    className="exercise-implements-custom-input"
+                                    placeholder="Añadir implemento personalizado"
+                                    value={customImplementInput}
+                                    onChange={(e) => setCustomImplementInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustomImplement())}
+                                    aria-label="Nombre del implemento personalizado"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="exercise-implements-add-custom-btn"
+                                    onClick={handleAddCustomImplement}
+                                    disabled={!customImplementInput.trim()}
+                                  >
+                                    Añadir
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div className="exercise-implements-display">
                                 {selectedImplements.size > 0 ? (
                                   <div className="exercise-implements-list">
-                                    {Array.from(selectedImplements).map(implement => (
+                                    {Array.from(selectedImplements).sort((a, b) => (a || '').localeCompare(b || '', 'es')).map(implement => (
                                       <span key={implement} className="exercise-implement-tag">
                                         {implement}
                                       </span>
@@ -1499,30 +1539,6 @@ const LibraryExercisesScreen = () => {
                               </>
                             )}
                           </div>
-                          {isMuscleEditMode && (
-                            <div className="exercise-presets-section">
-                              <label className="exercise-section-title">Predeterminados</label>
-                              <div className="exercise-presets-wrapper">
-                                <div className="exercise-presets-container">
-                                  <div className="exercise-presets-scroll">
-                                    {Object.keys(EXERCISE_PRESETS).map(presetKey => {
-                                      const preset = EXERCISE_PRESETS[presetKey];
-                                      return (
-                                        <button
-                                          key={presetKey}
-                                          type="button"
-                                          className="exercise-preset-item"
-                                          onClick={() => handleApplyPreset(presetKey)}
-                                        >
-                                          <span className="exercise-preset-name">{preset.name}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
 
@@ -1707,61 +1723,83 @@ const LibraryExercisesScreen = () => {
                                 </>
                               ) : (
                                 <>
-                                  <div className="exercise-muscle-silhouette-wrapper">
-                                    <MuscleSilhouetteSVG
-                                      selectedMuscles={editingMuscles}
-                                      onMuscleClick={handleToggleEditingMuscle}
-                                    />
-                                  </div>
-                                  <div className="exercise-muscles-labels-wrapper">
-                                    <div
-                                      className="exercise-muscles-labels-container"
-                                      ref={muscleLabelsContainerRef}
-                                      onScroll={(e) => {
-                                        const el = e.target;
-                                        if (el) setMuscleLabelsScrollProgress({ scrollLeft: el.scrollLeft || 0, scrollWidth: el.scrollWidth || 0, clientWidth: el.clientWidth || 0 });
-                                      }}
-                                    >
-                                      <div className="exercise-muscles-labels-scroll">
-                                        {Array.from(editingMuscles).sort().map(muscle => (
-                                          <div key={muscle} className="exercise-muscle-label-item">
-                                            <span className="exercise-muscle-label-name">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
-                                            <button
-                                              type="button"
-                                              className="exercise-muscle-remove-button"
-                                              onClick={() => handleToggleEditingMuscle(muscle)}
-                                              aria-label="Eliminar músculo"
-                                            >
-                                              ×
-                                            </button>
+                                  <div className="exercise-muscles-view-edit-row">
+                                    <div className="exercise-muscles-view-left">
+                                      <div className="exercise-muscle-silhouette-wrapper">
+                                        <MuscleSilhouetteSVG
+                                          selectedMuscles={editingMuscles}
+                                          onMuscleClick={handleToggleEditingMuscle}
+                                        />
+                                      </div>
+                                      <div className="exercise-muscles-labels-wrapper">
+                                        <div
+                                          className="exercise-muscles-labels-container"
+                                          ref={muscleLabelsContainerRef}
+                                          onScroll={(e) => {
+                                            const el = e.target;
+                                            if (el) setMuscleLabelsScrollProgress({ scrollLeft: el.scrollLeft || 0, scrollWidth: el.scrollWidth || 0, clientWidth: el.clientWidth || 0 });
+                                          }}
+                                        >
+                                          <div className="exercise-muscles-labels-scroll">
+                                            {Array.from(editingMuscles).sort().map(muscle => (
+                                              <div key={muscle} className="exercise-muscle-label-item">
+                                                <span className="exercise-muscle-label-name">{MUSCLE_DISPLAY_NAMES[muscle] || muscle}</span>
+                                                <button
+                                                  type="button"
+                                                  className="exercise-muscle-remove-button"
+                                                  onClick={() => handleToggleEditingMuscle(muscle)}
+                                                  aria-label="Eliminar músculo"
+                                                >
+                                                  ×
+                                                </button>
+                                              </div>
+                                            ))}
+                                            {editingMuscles.size === 0 && (
+                                              <div className="exercise-no-muscles-selected">
+                                                <p>Haz clic en el cuerpo para seleccionar músculos</p>
+                                              </div>
+                                            )}
                                           </div>
-                                        ))}
-                                        {editingMuscles.size === 0 && (
-                                          <div className="exercise-no-muscles-selected">
-                                            <p>Haz clic en el cuerpo para seleccionar músculos</p>
-                                          </div>
-                                        )}
+                                        </div>
+                                        {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (() => {
+                                          const scrollableWidth = muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth;
+                                          const barWidth = Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100);
+                                          const maxLeft = 100 - barWidth;
+                                          const leftPosition = scrollableWidth > 0 ? Math.max(0, Math.min(maxLeft, (muscleLabelsScrollProgress.scrollLeft / scrollableWidth) * maxLeft)) : 0;
+                                          return (
+                                            <div className="exercise-muscles-labels-scroll-indicator">
+                                              <div className="exercise-muscles-labels-scroll-indicator-bar" style={{ width: `${barWidth}%`, left: `${leftPosition}%` }} />
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                      <div className="exercise-muscles-actions-overlay">
+                                        <button className="exercise-video-action-pill exercise-video-cancel-pill" onClick={handleCancelMuscleEdit}>
+                                          <span className="exercise-video-action-text">Cancelar</span>
+                                        </button>
+                                        <button className="exercise-video-action-pill exercise-video-save-pill" onClick={handleSaveMuscles} disabled={isSavingMuscles}>
+                                          <span className="exercise-video-action-text">{isSavingMuscles ? 'Guardando...' : 'Guardar'}</span>
+                                        </button>
                                       </div>
                                     </div>
-                                    {muscleLabelsScrollProgress.scrollWidth > muscleLabelsScrollProgress.clientWidth && muscleLabelsScrollProgress.scrollWidth > 0 && (() => {
-                                      const scrollableWidth = muscleLabelsScrollProgress.scrollWidth - muscleLabelsScrollProgress.clientWidth;
-                                      const barWidth = Math.min(100, (muscleLabelsScrollProgress.clientWidth / muscleLabelsScrollProgress.scrollWidth) * 100);
-                                      const maxLeft = 100 - barWidth;
-                                      const leftPosition = scrollableWidth > 0 ? Math.max(0, Math.min(maxLeft, (muscleLabelsScrollProgress.scrollLeft / scrollableWidth) * maxLeft)) : 0;
-                                      return (
-                                        <div className="exercise-muscles-labels-scroll-indicator">
-                                          <div className="exercise-muscles-labels-scroll-indicator-bar" style={{ width: `${barWidth}%`, left: `${leftPosition}%` }} />
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
-                                  <div className="exercise-muscles-actions-overlay">
-                                    <button className="exercise-video-action-pill exercise-video-cancel-pill" onClick={handleCancelMuscleEdit}>
-                                      <span className="exercise-video-action-text">Cancelar</span>
-                                    </button>
-                                    <button className="exercise-video-action-pill exercise-video-save-pill" onClick={handleSaveMuscles} disabled={isSavingMuscles}>
-                                      <span className="exercise-video-action-text">{isSavingMuscles ? 'Guardando...' : 'Guardar'}</span>
-                                    </button>
+                                    <div className="exercise-presets-in-muscles-card">
+                                      <label className="exercise-section-title">Predeterminados</label>
+                                      <div className="exercise-presets-scroll-vertical">
+                                        {Object.keys(EXERCISE_PRESETS).map(presetKey => {
+                                          const preset = EXERCISE_PRESETS[presetKey];
+                                          return (
+                                            <button
+                                              key={presetKey}
+                                              type="button"
+                                              className="exercise-preset-item exercise-preset-item-vertical"
+                                              onClick={() => handleApplyPreset(presetKey)}
+                                            >
+                                              <span className="exercise-preset-name">{preset.name}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
                                   </div>
                                 </>
                               )}
