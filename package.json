@@ -10,6 +10,7 @@
     "android": "npm run android --prefix apps/pwa",
     "ios": "npm run ios --prefix apps/pwa",
     "web": "npm run web --prefix apps/pwa",
+    "pwa:dev": "node scripts/pwa-dev.js",
     "build:web": "npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js",
     "build:landing": "npm run build --prefix apps/landing",
     "build:pwa": "node apps/pwa/scripts/bundle-cities.js && cross-env EXPO_PUBLIC_BASE_PATH=/app npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js && node scripts/rewrite-pwa-paths.js && node scripts/copy-pwa-public.js",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "firebase-tools": "^15.5.1"
+    "firebase-tools": "^15.5.1",
+    "http-proxy": "^1.18.1"
   }
 }

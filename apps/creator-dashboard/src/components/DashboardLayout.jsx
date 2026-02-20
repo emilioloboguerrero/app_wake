@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ASSET_BASE } from '../config/assets';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
+import { submitCreatorFeedback } from '../services/creatorFeedbackService';
 import './DashboardLayout.css';
+
+const TYPE_BUG = 'bug';
+const TYPE_SUGGESTION = 'suggestion';
 
 const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, backState = null, headerIcon = null, headerImageIcon = null }) => {
   const { user } = useAuth();
@@ -11,6 +15,18 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
   const location = useLocation();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [feedbackPanelOpen, setFeedbackPanelOpen] = useState(false);
+  const [feedbackPanelClosing, setFeedbackPanelClosing] = useState(false);
+  const [feedbackButtonClosing, setFeedbackButtonClosing] = useState(false);
+  const [feedbackType, setFeedbackType] = useState(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackImageFile, setFeedbackImageFile] = useState(null);
+  const [feedbackImagePreview, setFeedbackImagePreview] = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(null);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const [feedbackImageProgress, setFeedbackImageProgress] = useState(null);
+  const feedbackImageInputRef = useRef(null);
 
   // Detect mobile screen size
   useEffect(() => {
@@ -38,8 +54,77 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
     setIsSidebarVisible(!isSidebarVisible);
   };
 
+  const closeFeedbackPanel = () => {
+    if (feedbackPanelClosing) return;
+    setFeedbackPanelClosing(true);
+  };
+
+  const finishCloseFeedbackPanel = () => {
+    setFeedbackPanelClosing(false);
+    setFeedbackPanelOpen(false);
+    setFeedbackType(null);
+    setFeedbackText('');
+    setFeedbackImageFile(null);
+    setFeedbackImagePreview(null);
+    setFeedbackError(null);
+    setFeedbackSuccess(false);
+    setFeedbackImageProgress(null);
+  };
+
+  const handleFeedbackImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFeedbackError('Solo se permiten imágenes.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFeedbackError('La imagen no puede superar 5MB.');
+      return;
+    }
+    setFeedbackError(null);
+    setFeedbackImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setFeedbackImagePreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const removeFeedbackImage = () => {
+    setFeedbackImageFile(null);
+    setFeedbackImagePreview(null);
+  };
+
+  const handleFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    setFeedbackError(null);
+    if (!feedbackType || !feedbackText.trim() || !user?.uid) {
+      setFeedbackError(!feedbackType ? 'Elige tipo.' : !feedbackText.trim() ? 'Escribe tu mensaje.' : 'Sesión no disponible.');
+      return;
+    }
+    setFeedbackLoading(true);
+    try {
+      await submitCreatorFeedback({
+        creatorId: user.uid,
+        type: feedbackType,
+        text: feedbackText.trim(),
+        imageFile: feedbackImageFile || null,
+        creatorEmail: user.email ?? null,
+        creatorDisplayName: user.displayName ?? null,
+        onImageProgress: setFeedbackImageProgress,
+      });
+      setFeedbackSuccess(true);
+    } catch (err) {
+      setFeedbackError(err.message || 'Error al enviar. Intenta de nuevo.');
+    } finally {
+      setFeedbackLoading(false);
+      setFeedbackImageProgress(null);
+    }
+  };
+
+  const feedbackSidebarWidth = isMobile ? 0 : (isSidebarVisible ? 280 : 80);
+
   return (
-    <div className="dashboard-layout">
+    <div className="dashboard-layout" style={{ '--feedback-sidebar-width': `${feedbackSidebarWidth}px` }}>
       {/* Sidebar Overlay for Mobile */}
       {isMobile && isSidebarVisible && (
         <div 
@@ -199,6 +284,124 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
         />
         {children}
       </main>
+
+      {/* Feedback: icon button (hover shows "Feedback"), click animates out then opens panel */}
+      {!feedbackPanelOpen ? (
+        <button
+          type="button"
+          className={`feedback-cta-fixed ${feedbackButtonClosing ? 'feedback-cta-fixed-closing' : ''}`}
+          onClick={() => { if (!feedbackButtonClosing) setFeedbackButtonClosing(true); }}
+          onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'feedback-cta-exit') { setFeedbackButtonClosing(false); setFeedbackPanelOpen(true); } }}
+          aria-label="Feedback: sugerencias o reportar un bug"
+        >
+          <span className="feedback-cta-fixed-inner">
+            <svg className="feedback-cta-fixed-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="feedback-cta-fixed-text">Feedback</span>
+          </span>
+        </button>
+      ) : (
+        <div
+          className={`feedback-panel ${feedbackPanelClosing ? 'feedback-panel-closing' : 'feedback-panel-open'}`}
+          onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'feedback-panel-exit') finishCloseFeedbackPanel(); }}
+        >
+          <button type="button" className="feedback-panel-close" onClick={closeFeedbackPanel} aria-label="Cerrar">×</button>
+          {feedbackSuccess ? (
+            <div className="feedback-panel-success">
+              <p>Gracias. Tu feedback fue enviado correctamente.</p>
+              <button type="button" className="feedback-panel-btn-enviar" onClick={closeFeedbackPanel}>Cerrar</button>
+            </div>
+          ) : !feedbackType ? (
+            <div className="feedback-panel-step1">
+              <p className="feedback-panel-label">¿Qué quieres hacer?</p>
+              <button type="button" className="feedback-panel-type-btn" onClick={() => setFeedbackType(TYPE_BUG)}>
+                Reportar un bug
+              </button>
+              <button type="button" className="feedback-panel-type-btn" onClick={() => setFeedbackType(TYPE_SUGGESTION)}>
+                Sugerir una función
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleFeedbackSubmit} className="feedback-panel-step2">
+              <div className="feedback-panel-step2-header">
+                <button type="button" className="feedback-panel-back" onClick={() => { setFeedbackType(null); setFeedbackError(null); }}>
+                  ← Atrás
+                </button>
+                <span className="feedback-panel-step2-title">
+                  {feedbackType === TYPE_BUG ? 'Reportar un bug' : 'Sugerir una función'}
+                </span>
+              </div>
+              <div
+                className="feedback-panel-textbox-wrap"
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!feedbackLoading) e.currentTarget.classList.add('feedback-panel-drag-over'); }}
+                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('feedback-panel-drag-over'); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('feedback-panel-drag-over');
+                  if (feedbackLoading) return;
+                  const file = e.dataTransfer?.files?.[0];
+                  if (file?.type.startsWith('image/')) {
+                    if (file.size > 5 * 1024 * 1024) setFeedbackError('La imagen no puede superar 5MB.');
+                    else { setFeedbackError(null); setFeedbackImageFile(file); const r = new FileReader(); r.onload = () => setFeedbackImagePreview(r.result); r.readAsDataURL(file); }
+                  }
+                }}
+              >
+                <textarea
+                  className="feedback-panel-textarea"
+                  placeholder="Describe el bug o tu sugerencia..."
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  rows={3}
+                  disabled={feedbackLoading}
+                />
+                <input
+                  ref={feedbackImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFeedbackImageChange}
+                  disabled={feedbackLoading}
+                  className="feedback-panel-file-hidden"
+                  aria-hidden
+                />
+                <div className="feedback-panel-textbox-image">
+                  {feedbackImagePreview ? (
+                    <div className="feedback-panel-image-preview-inline">
+                      <img src={feedbackImagePreview} alt="Vista previa" />
+                      <button type="button" className="feedback-panel-remove-image" onClick={(e) => { e.stopPropagation(); removeFeedbackImage(); }} disabled={feedbackLoading}>Quitar</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="feedback-panel-image-trigger-inline"
+                      onClick={() => feedbackImageInputRef.current?.click()}
+                      disabled={feedbackLoading}
+                      aria-label="Añadir imagen"
+                    >
+                      <svg className="feedback-panel-image-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                        <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {feedbackImageProgress != null && <span className="feedback-panel-image-progress">Subiendo… {Math.round(feedbackImageProgress)}%</span>}
+              </div>
+              {feedbackError && <p className="feedback-panel-error">{feedbackError}</p>}
+              <div className="feedback-panel-actions">
+                <button
+                  type="submit"
+                  className="feedback-panel-btn-enviar"
+                  disabled={feedbackLoading}
+                >
+                  {feedbackLoading ? 'Enviando…' : 'Enviar'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
     </div>
   );
 };

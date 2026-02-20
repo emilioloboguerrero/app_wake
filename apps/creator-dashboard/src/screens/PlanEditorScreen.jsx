@@ -5,13 +5,17 @@
  * Each option has items: same structure as a recipe (foods + recipe refs with recipe: true in data only).
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
+import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
+import propagationService from '../services/propagationService';
+import PropagateChangesModal from '../components/PropagateChangesModal';
+import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -159,9 +163,18 @@ function normalizeCategory(c, i) {
 
 export default function PlanEditorScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { planId } = useParams();
   const { user } = useAuth();
   const creatorId = user?.uid ?? '';
+
+  const editScope = location.state?.editScope;
+  const assignmentId = location.state?.assignmentId;
+  const assignmentPlanId = location.state?.assignmentPlanId ?? planId;
+  const clientName = location.state?.clientName ?? 'Cliente';
+  const returnTo = location.state?.returnTo;
+  const returnState = location.state?.returnState;
+  const isAssignmentScope = editScope === 'assignment' && assignmentId;
 
   const [planName, setPlanName] = useState('');
   const [planLoading, setPlanLoading] = useState(true);
@@ -195,50 +208,80 @@ export default function PlanEditorScreen() {
     name: '', food_id: '', serving_id: '0', units: 1, calories: '', protein: '', carbs: '', fat: '',
   });
 
+  // Propagation (library mode only)
+  const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
+  const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
+  const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
+  const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
+  const [isPropagating, setIsPropagating] = useState(false);
+  const [hasMadeChanges, setHasMadeChanges] = useState(false);
+
   useEffect(() => {
     if (!planId || !creatorId) {
       navigate('/nutrition', { replace: true });
       return;
     }
+    if (isAssignmentScope && !assignmentId) {
+      navigate(returnTo || '/nutrition', { replace: true });
+      return;
+    }
     let cancelled = false;
     setPlanLoading(true);
-    Promise.all([
-      nutritionDb.getPlanById(creatorId, planId),
-      nutritionDb.getMealsByCreator(creatorId),
-    ]).then(([plan, mealsList]) => {
-      if (cancelled) return;
-      if (plan) {
-        setPlanName(plan.name ?? '');
-        const cal = plan.daily_calories != null ? String(plan.daily_calories) : '';
-        const p = plan.daily_protein_g != null ? String(plan.daily_protein_g) : '';
-        const c = plan.daily_carbs_g != null ? String(plan.daily_carbs_g) : '';
-        const f = plan.daily_fat_g != null ? String(plan.daily_fat_g) : '';
-        setDailyCalories(cal);
-        setDailyProtein(p);
-        setDailyCarbs(c);
-        setDailyFat(f);
-        const inferred = inferPresetFromGrams(
-          plan.daily_calories ?? 0,
-          plan.daily_protein_g,
-          plan.daily_carbs_g,
-          plan.daily_fat_g
-        );
-        setDistributionPreset(inferred);
-        const cats = Array.isArray(plan.categories) && plan.categories.length > 0
-          ? plan.categories.map((c, i) => normalizeCategory(c, i))
-          : DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i));
-        setCategories(cats);
-        lastSavedRef.current = {
-          name: plan.name ?? '',
-          macros: JSON.stringify({ cal: plan.daily_calories, p: plan.daily_protein_g, c: plan.daily_carbs_g, f: plan.daily_fat_g }),
-          categoriesJson: JSON.stringify(cats),
-        };
+    (async () => {
+      try {
+        const mealsList = await nutritionDb.getMealsByCreator(creatorId);
+        if (cancelled) return;
+        setMeals(mealsList || []);
+
+        let plan = null;
+        if (isAssignmentScope) {
+          const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
+          if (cancelled) return;
+          if (copy) {
+            plan = copy;
+          } else {
+            const effectivePlanId = assignmentPlanId || planId;
+            plan = await nutritionDb.getPlanById(creatorId, effectivePlanId);
+          }
+        } else {
+          plan = await nutritionDb.getPlanById(creatorId, planId);
+        }
+        if (cancelled) return;
+        if (plan) {
+          setPlanName(plan.name ?? '');
+          const cal = plan.daily_calories != null ? String(plan.daily_calories) : '';
+          const p = plan.daily_protein_g != null ? String(plan.daily_protein_g) : '';
+          const c = plan.daily_carbs_g != null ? String(plan.daily_carbs_g) : '';
+          const f = plan.daily_fat_g != null ? String(plan.daily_fat_g) : '';
+          setDailyCalories(cal);
+          setDailyProtein(p);
+          setDailyCarbs(c);
+          setDailyFat(f);
+          const inferred = inferPresetFromGrams(
+            plan.daily_calories ?? 0,
+            plan.daily_protein_g,
+            plan.daily_carbs_g,
+            plan.daily_fat_g
+          );
+          setDistributionPreset(inferred);
+          const cats = Array.isArray(plan.categories) && plan.categories.length > 0
+            ? plan.categories.map((c, i) => normalizeCategory(c, i))
+            : DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i));
+          setCategories(cats);
+          lastSavedRef.current = {
+            name: plan.name ?? '',
+            macros: JSON.stringify({ cal: plan.daily_calories, p: plan.daily_protein_g, c: plan.daily_carbs_g, f: plan.daily_fat_g }),
+            categoriesJson: JSON.stringify(cats),
+          };
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setPlanLoading(false);
       }
-      setMeals(mealsList || []);
-      setPlanLoading(false);
-    }).catch(() => setPlanLoading(false));
+    })();
     return () => { cancelled = true; };
-  }, [planId, creatorId, navigate]);
+  }, [planId, creatorId, navigate, isAssignmentScope, assignmentId, assignmentPlanId, returnTo]);
 
   // When calories or distribution preset change (and not custom), recompute macro grams.
   useEffect(() => {
@@ -253,48 +296,151 @@ export default function PlanEditorScreen() {
     setDailyFat(String(fat));
   }, [dailyCalories, distributionPreset]);
 
+  const planPayload = useMemo(() => ({
+    name: (planName || '').trim() || 'Plan',
+    daily_calories: dailyCalories === '' ? null : Number(dailyCalories),
+    daily_protein_g: dailyProtein === '' ? null : Number(dailyProtein),
+    daily_carbs_g: dailyCarbs === '' ? null : Number(dailyCarbs),
+    daily_fat_g: dailyFat === '' ? null : Number(dailyFat),
+    categories: categories.map((c, i) => ({
+      id: c.id || `cat_${i}`,
+      label: (c.label || '').trim() || 'Categoría',
+      order: i,
+      options: (c.options || []).map((o, oi) => ({
+        id: o.id || `opt_${oi + 1}`,
+        label: (o.label || '').trim() || `Opción ${oi + 1}`,
+        items: (o.items || []).map((item) => {
+          if (item.recipe === true) {
+            return { recipe: true, meal_id: item.meal_id, name: (item.name || '').trim() || (meals.find((m) => m.id === item.meal_id)?.name || 'Opción') };
+          }
+          return { ...item, name: (item.name || '').trim() || 'Alimento' };
+        }),
+      })),
+    })),
+  }), [planName, dailyCalories, dailyProtein, dailyCarbs, dailyFat, categories, meals]);
+
   useEffect(() => {
     if (!planId || !creatorId || planLoading) return;
-    const name = planName.trim();
+    const name = planPayload.name;
     const macros = JSON.stringify({
-      cal: dailyCalories === '' ? null : Number(dailyCalories),
-      p: dailyProtein === '' ? null : Number(dailyProtein),
-      c: dailyCarbs === '' ? null : Number(dailyCarbs),
-      f: dailyFat === '' ? null : Number(dailyFat),
+      cal: planPayload.daily_calories,
+      p: planPayload.daily_protein_g,
+      c: planPayload.daily_carbs_g,
+      f: planPayload.daily_fat_g,
     });
-    const categoriesJson = JSON.stringify(categories);
+    const categoriesJson = JSON.stringify(planPayload.categories);
     if (name === lastSavedRef.current.name && macros === lastSavedRef.current.macros && categoriesJson === lastSavedRef.current.categoriesJson) return;
+
+    if (!isAssignmentScope) setHasMadeChanges(true);
+
     const t = setTimeout(async () => {
       try {
-        await nutritionDb.updatePlan(creatorId, planId, {
-          name: name || 'Plan',
-          daily_calories: dailyCalories === '' ? null : Number(dailyCalories),
-          daily_protein_g: dailyProtein === '' ? null : Number(dailyProtein),
-          daily_carbs_g: dailyCarbs === '' ? null : Number(dailyCarbs),
-          daily_fat_g: dailyFat === '' ? null : Number(dailyFat),
-          categories: categories.map((c, i) => ({
-            id: c.id || `cat_${i}`,
-            label: (c.label || '').trim() || 'Categoría',
-            order: i,
-            options: (c.options || []).map((o, oi) => ({
-              id: o.id || `opt_${oi + 1}`,
-              label: (o.label || '').trim() || `Opción ${oi + 1}`,
-              items: (o.items || []).map((item) => {
-                if (item.recipe === true) {
-                  return { recipe: true, meal_id: item.meal_id, name: (item.name || '').trim() || (meals.find((m) => m.id === item.meal_id)?.name || 'Opción') };
-                }
-                return { ...item, name: (item.name || '').trim() || 'Alimento' };
-              }),
-            })),
-          })),
-        });
+        if (isAssignmentScope) {
+          const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
+          const effectivePlanId = assignmentPlanId || planId;
+          if (!copy) {
+            await clientNutritionPlanContentService.setFromLibrary(assignmentId, effectivePlanId, {
+              name: planPayload.name,
+              description: '',
+              daily_calories: planPayload.daily_calories,
+              daily_protein_g: planPayload.daily_protein_g,
+              daily_carbs_g: planPayload.daily_carbs_g,
+              daily_fat_g: planPayload.daily_fat_g,
+              categories: planPayload.categories,
+            });
+          } else {
+            await clientNutritionPlanContentService.update(assignmentId, planPayload);
+          }
+        } else {
+          await nutritionDb.updatePlan(creatorId, planId, planPayload);
+        }
         lastSavedRef.current = { name, macros, categoriesJson };
       } catch (e) {
         console.error(e);
       }
     }, 700);
     return () => clearTimeout(t);
-  }, [planId, creatorId, planLoading, planName, dailyCalories, dailyProtein, dailyCarbs, dailyFat, categories, meals]);
+  }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId, meals]);
+
+  // Propagation: fetch affected count when in library mode and has changes
+  useEffect(() => {
+    if (!planId || isAssignmentScope || !hasMadeChanges) return;
+    propagationService.findAffectedByNutritionPlan(planId)
+      .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
+      .catch((err) => console.warn('Error fetching nutrition propagation count:', err));
+  }, [planId, isAssignmentScope, hasMadeChanges]);
+
+  useEffect(() => {
+    if (!isNavigateModalOpen || !planId || propagateAffectedCount === 0) return;
+    if (propagateAffectedUsers.length > 0) return;
+    propagationService.getAffectedUsersWithDetailsByNutritionPlan(planId)
+      .then(setPropagateAffectedUsers)
+      .catch((err) => console.warn('Error fetching affected users:', err));
+  }, [isNavigateModalOpen, planId, propagateAffectedCount, propagateAffectedUsers.length]);
+
+  useEffect(() => {
+    const shouldBlock = !isAssignmentScope && hasMadeChanges && propagateAffectedCount > 0;
+    const handler = (e) => {
+      if (shouldBlock) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isAssignmentScope, hasMadeChanges, propagateAffectedCount]);
+
+  const handleBack = () => {
+    if (!isAssignmentScope && hasMadeChanges && propagateAffectedCount > 0) {
+      setIsNavigateModalOpen(true);
+    } else if (returnTo) {
+      navigate(returnTo, { state: returnState });
+    } else {
+      navigate('/nutrition');
+    }
+  };
+
+  const handleOpenPropagateModal = async () => {
+    if (!planId) return;
+    try {
+      const { affectedUserIds } = await propagationService.findAffectedByNutritionPlan(planId);
+      setPropagateAffectedCount(affectedUserIds.length);
+      const users = await propagationService.getAffectedUsersWithDetailsByNutritionPlan(planId);
+      setPropagateAffectedUsers(users);
+      setIsPropagateModalOpen(true);
+    } catch (err) {
+      console.warn(err);
+    }
+  };
+
+  const handlePropagateNutrition = async () => {
+    if (!planId || !creatorId) return;
+    setIsPropagating(true);
+    try {
+      const { propagated, errors } = await propagationService.propagateNutritionPlan(planId, creatorId);
+      if (errors.length > 0) {
+        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+      } else if (propagated > 0) {
+        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+      }
+      setHasMadeChanges(false);
+    } catch (err) {
+      console.error('Error propagating:', err);
+      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+    } finally {
+      setIsPropagating(false);
+    }
+  };
+
+  const handleNavigatePropagate = async () => {
+    await handlePropagateNutrition();
+    setIsNavigateModalOpen(false);
+    if (returnTo) navigate(returnTo, { state: returnState });
+    else navigate('/nutrition');
+  };
+
+  const handleNavigateLeaveWithoutPropagate = () => {
+    setIsNavigateModalOpen(false);
+    if (returnTo) navigate(returnTo, { state: returnState });
+    else navigate('/nutrition');
+  };
 
   async function handleFoodSearch() {
     if (!foodSearchQuery.trim()) return;
@@ -588,7 +734,7 @@ export default function PlanEditorScreen() {
 
   if (planLoading) {
     return (
-      <DashboardLayout screenName="Plan" showBackButton backPath="/nutrition">
+      <DashboardLayout screenName="Plan" showBackButton onBack={handleBack} backPath={returnTo || '/nutrition'} backState={returnState}>
         <div className="library-session-detail-container">
           <p style={{ color: 'rgba(255,255,255,0.6)', padding: 24 }}>Cargando…</p>
         </div>
@@ -600,8 +746,30 @@ export default function PlanEditorScreen() {
     <DashboardLayout
       screenName={planName || 'Plan'}
       showBackButton
-      backPath="/nutrition"
+      onBack={handleBack}
+      backPath={returnTo || '/nutrition'}
+      backState={returnState}
     >
+      {isAssignmentScope && (
+        <div className="library-session-client-edit-banner plan-editor-assignment-banner" role="status">
+          <span className="library-session-client-edit-banner-text">
+            Estás editando este plan solo para <strong>{clientName}</strong>. Los cambios no afectan la biblioteca ni otros clientes.
+          </span>
+        </div>
+      )}
+      {!isAssignmentScope && hasMadeChanges && propagateAffectedCount > 0 && (
+        <div className="plan-editor-propagate-bar">
+          <span className="plan-editor-propagate-text">{propagateAffectedCount} usuario(s) tienen una copia personalizada de este plan.</span>
+          <button
+            type="button"
+            className="plan-editor-propagate-btn"
+            onClick={handleOpenPropagateModal}
+            title="Propagar cambios a los usuarios asignados"
+          >
+            Propagar cambios
+          </button>
+        </div>
+      )}
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
           {/* Left — Tabs: Alimentos | Recetas, then section content */}
@@ -1296,6 +1464,29 @@ export default function PlanEditorScreen() {
           </div>
         </div>
       </Modal>
+
+      <PropagateChangesModal
+        isOpen={isPropagateModalOpen}
+        onClose={() => setIsPropagateModalOpen(false)}
+        type="nutrition_plan"
+        itemName={planName || 'Plan'}
+        affectedCount={propagateAffectedCount}
+        affectedUsers={propagateAffectedUsers}
+        isPropagating={isPropagating}
+        onPropagate={handlePropagateNutrition}
+        onDontPropagate={() => { setIsPropagateModalOpen(false); setHasMadeChanges(false); }}
+      />
+      <PropagateNavigateModal
+        isOpen={isNavigateModalOpen}
+        onClose={() => setIsNavigateModalOpen(false)}
+        type="nutrition_plan"
+        itemName={planName || 'Plan'}
+        affectedCount={propagateAffectedCount}
+        affectedUsers={propagateAffectedUsers}
+        isPropagating={isPropagating}
+        onPropagate={handleNavigatePropagate}
+        onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
+      />
     </DashboardLayout>
   );
 }

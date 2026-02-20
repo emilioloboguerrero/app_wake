@@ -33,11 +33,6 @@ service cloud.firestore {
       return getUserRole() == 'creator' || isAdmin();
     }
     
-    // Check if user is creator of specific resource
-    function isResourceCreator(creatorId) {
-      return isSignedIn() && request.auth.uid == creatorId;
-    }
-    
     // Creator can read/update a user doc if that user is their one-on-one client (creator_client_access doc exists)
     function creatorHasClientAccess(userId) {
       return isCreator() && exists(/databases/$(database)/documents/creator_client_access/$(request.auth.uid + '_' + userId));
@@ -279,8 +274,30 @@ service cloud.firestore {
       allow read: if creatorHasClientAccess(userId);
     }
 
+    // Client nutrition plan content: per-assignment copy (doc id = assignmentId).
+    // Client can read their copy; creator (assignedBy) can read/write.
+    match /client_nutrition_plan_content/{assignmentId} {
+      allow read: if isSignedIn() && (
+        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.assignedBy == request.auth.uid ||
+        isAdmin()
+      );
+      allow create, update, delete: if isSignedIn() && (
+        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.assignedBy == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
     // ============================================
     // DEFAULT RULE (Fallback for any other collections)
+    // ============================================
+    // CREATOR FEEDBACK (suggestions / bug reports)
+    // ============================================
+    match /creator_feedback/{feedbackId} {
+      allow create: if isSignedIn() && isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
     // ============================================
     
     // Allow authenticated users to access other collections

@@ -3,11 +3,13 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
+import Input from '../components/Input';
 import CalendarView from '../components/CalendarView';
 import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
 import SessionAssignmentModal from '../components/SessionAssignmentModal';
 import SessionPerformanceModal from '../components/SessionPerformanceModal';
 import PlanningLibrarySidebar from '../components/PlanningLibrarySidebar';
+import Modal from '../components/Modal';
 import plansService from '../services/plansService';
 import oneOnOneService from '../services/oneOnOneService';
 import clientSessionService from '../services/clientSessionService';
@@ -16,12 +18,47 @@ import clientPlanContentService from '../services/clientPlanContentService';
 import programService from '../services/programService';
 import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
+import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
 import { getUser } from '../services/firestoreService';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import './ClientProgramScreen.css';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const MONTH_NAMES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MINI_DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const NUTRITION_DRAG_TYPE = 'nutrition_plan';
+
+function getMiniCalendarDays(monthFirst) {
+  const year = monthFirst.getFullYear();
+  const month = monthFirst.getMonth();
+  const first = new Date(year, month, 1);
+  const startDow = (first.getDay() + 6) % 7;
+  const startDate = new Date(first);
+  startDate.setDate(first.getDate() - startDow);
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    cells.push({ date: d, day: d.getDate(), inMonth: d.getMonth() === month });
+  }
+  return cells;
+}
+
+function toLocalDateISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function assignmentDateToISO(value) {
+  if (!value) return '';
+  const d = value?.toDate ? value.toDate() : (typeof value === 'string' ? new Date(value) : value);
+  return d && !isNaN(d.getTime()) ? toLocalDateISO(d) : '';
+}
+
 
 const TAB_CONFIG = [
   { key: 'lab', title: 'Lab' },
@@ -99,9 +136,23 @@ const ClientProgramScreen = () => {
   const [clientNutritionAssignments, setClientNutritionAssignments] = useState([]);
   const [nutritionAssignPlanId, setNutritionAssignPlanId] = useState('');
   const [nutritionAssignStartDate, setNutritionAssignStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [nutritionAssignNoEndDate, setNutritionAssignNoEndDate] = useState(true);
+  const [nutritionAssignEndDate, setNutritionAssignEndDate] = useState('');
   const [isNutritionLoading, setIsNutritionLoading] = useState(false);
   const [isAssigningNutrition, setIsAssigningNutrition] = useState(false);
   const [isEndingNutrition, setIsEndingNutrition] = useState(false);
+  const [nutritionPlanSearchQuery, setNutritionPlanSearchQuery] = useState('');
+  const [nutritionAssignModalPlan, setNutritionAssignModalPlan] = useState(null);
+  const [nutritionModalStartDate, setNutritionModalStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [nutritionModalNoEndDate, setNutritionModalNoEndDate] = useState(true);
+  const [nutritionModalEndDate, setNutritionModalEndDate] = useState('');
+  const [nutritionDropZoneActive, setNutritionDropZoneActive] = useState(false);
+  const [nutritionModalCalendarMonth, setNutritionModalCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [nutritionModalEditingEnd, setNutritionModalEditingEnd] = useState(false);
+  const [nutritionModalEditingAssignmentId, setNutritionModalEditingAssignmentId] = useState(null);
+  const [nutritionCurrentCardMenuOpen, setNutritionCurrentCardMenuOpen] = useState(false);
+  const [nutritionPlanDetail, setNutritionPlanDetail] = useState(null);
+  const [isLoadingNutritionPlanDetail, setIsLoadingNutritionPlanDetail] = useState(false);
 
   useEffect(() => {
     const loadClient = async () => {
@@ -231,18 +282,94 @@ const ClientProgramScreen = () => {
     });
   }, [isNutricionTab, client?.clientUserId]);
 
-  async function handleAssignNutritionPlan() {
-    if (!client?.clientUserId || !nutritionAssignPlanId || !user?.uid) return;
+  // Load plan detail and meals (for summary: objectives, categories, recipe resolution) when client has an assignment
+  useEffect(() => {
+    const assignment = clientNutritionAssignments[0] || null;
+    if (!assignment?.planId || !user?.uid) {
+      setNutritionPlanDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingNutritionPlanDetail(true);
+    (async () => {
+      try {
+        const [clientCopy, plan] = await Promise.all([
+          clientNutritionPlanContentService.getByAssignmentId(assignment.id),
+          nutritionDb.getPlanById(user.uid, assignment.planId),
+        ]);
+        if (cancelled) return;
+        if (clientCopy?.categories?.length) {
+          setNutritionPlanDetail({
+            daily_calories: clientCopy.daily_calories ?? null,
+            daily_protein_g: clientCopy.daily_protein_g ?? null,
+            daily_carbs_g: clientCopy.daily_carbs_g ?? null,
+            daily_fat_g: clientCopy.daily_fat_g ?? null,
+            categories: clientCopy.categories,
+          });
+          return;
+        }
+        setNutritionPlanDetail(plan ? {
+          daily_calories: plan.daily_calories ?? null,
+          daily_protein_g: plan.daily_protein_g ?? null,
+          daily_carbs_g: plan.daily_carbs_g ?? null,
+          daily_fat_g: plan.daily_fat_g ?? null,
+          categories: plan.categories ?? [],
+        } : null);
+      } catch (e) {
+        if (!cancelled) setNutritionPlanDetail(null);
+      } finally {
+        if (!cancelled) setIsLoadingNutritionPlanDetail(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientNutritionAssignments, user?.uid]);
+
+  const nutritionObjectivesPieData = useMemo(() => {
+    const p = nutritionPlanDetail?.daily_protein_g ?? 0;
+    const c = nutritionPlanDetail?.daily_carbs_g ?? 0;
+    const f = nutritionPlanDetail?.daily_fat_g ?? 0;
+    const pCal = p * 4, cCal = c * 4, fCal = f * 9;
+    if (pCal + cCal + fCal <= 0) return [];
+    return [
+      { name: 'Proteína', value: pCal, grams: p },
+      { name: 'Carbohidratos', value: cCal, grams: c },
+      { name: 'Grasa', value: fCal, grams: f },
+    ].filter((d) => d.value > 0);
+  }, [nutritionPlanDetail?.daily_protein_g, nutritionPlanDetail?.daily_carbs_g, nutritionPlanDetail?.daily_fat_g]);
+
+  async function handleAssignNutritionPlan(overrides = null) {
+    const planId = overrides?.planId ?? nutritionAssignPlanId;
+    const startDate = overrides?.startDate ?? nutritionAssignStartDate;
+    const noEndDate = overrides?.noEndDate ?? nutritionAssignNoEndDate;
+    const endDate = overrides?.endDate ?? nutritionAssignEndDate;
+    const assignmentId = overrides?.assignmentId ?? nutritionModalEditingAssignmentId;
+    if (!client?.clientUserId || !planId || !user?.uid) return;
+    if (assignmentId && !startDate) return;
     setIsAssigningNutrition(true);
     try {
+      if (assignmentId) {
+        await nutritionDb.updateAssignment(assignmentId, {
+          startDate: startDate || null,
+          endDate: noEndDate ? null : (endDate || null),
+        });
+        setNutritionModalEditingAssignmentId(null);
+        setNutritionAssignModalPlan(null);
+      } else {
+        const planSnapshot = await nutritionDb.getPlanById(user.uid, planId);
       await nutritionDb.createAssignment({
         userId: client.clientUserId,
-        planId: nutritionAssignPlanId,
+          planId,
+        plan: planSnapshot ? { id: planSnapshot.id, name: planSnapshot.name, description: planSnapshot.description, daily_calories: planSnapshot.daily_calories, daily_protein_g: planSnapshot.daily_protein_g, daily_carbs_g: planSnapshot.daily_carbs_g, daily_fat_g: planSnapshot.daily_fat_g, categories: planSnapshot.categories } : null,
         assignedBy: user.uid,
         source: 'one_on_one',
-        startDate: nutritionAssignStartDate || null,
+        programId: selectedProgramId ?? null,
+          startDate: startDate || null,
+          endDate: noEndDate ? null : (endDate || null),
       });
       setNutritionAssignPlanId('');
+      setNutritionAssignEndDate('');
+        setNutritionAssignModalPlan(null);
+      }
       const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
       setClientNutritionAssignments(list);
     } catch (e) {
@@ -257,6 +384,11 @@ const ClientProgramScreen = () => {
     if (!assignmentId) return;
     setIsEndingNutrition(true);
     try {
+      try {
+        await clientNutritionPlanContentService.deleteByAssignmentId(assignmentId);
+      } catch (e) {
+        console.warn('Could not delete client nutrition plan copy:', e?.message);
+      }
       await nutritionDb.deleteAssignment(assignmentId);
       const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
       setClientNutritionAssignments(list);
@@ -1492,63 +1624,456 @@ const ClientProgramScreen = () => {
             </div>
           </div>
         );
-      case 'nutricion':
+      case 'nutricion': {
         const currentNutritionAssignment = clientNutritionAssignments[0] || null;
+        const currentPlanName = currentNutritionAssignment && nutritionPlans.find((p) => p.id === currentNutritionAssignment.planId)?.name;
+        const nutritionStartDateStr = currentNutritionAssignment?.startDate
+          ? (currentNutritionAssignment.startDate?.toDate ? currentNutritionAssignment.startDate.toDate().toLocaleDateString('es-ES') : String(currentNutritionAssignment.startDate))
+          : '';
+        const nutritionEndDateStr = currentNutritionAssignment?.endDate
+          ? (currentNutritionAssignment.endDate?.toDate ? currentNutritionAssignment.endDate.toDate().toLocaleDateString('es-ES') : String(currentNutritionAssignment.endDate))
+          : null;
+        const nutritionPlanQ = (nutritionPlanSearchQuery || '').trim().toLowerCase();
+        const filteredNutritionPlans = nutritionPlanQ
+          ? nutritionPlans.filter((p) => (p.name || '').toLowerCase().includes(nutritionPlanQ))
+          : nutritionPlans;
         return (
-          <div className="client-program-tab-content client-program-nutricion-tab">
-            <div className="client-program-nutricion-header">
-              <p className="client-program-tab-empty-title">Plan nutricional</p>
-              <p className="client-program-tab-empty-message">Asigna o cambia el plan de nutrición de este cliente.</p>
+          <div className="client-program-nutricion-content">
+            <div className="plan-structure-layout client-program-nutricion-layout">
+              {/* Left panel: plans list (same structure as session-edit sidebar) */}
+              <aside className="plan-structure-sidebars client-program-nutricion-sidebar">
+                <div className="client-program-nutricion-sidebar-header">
+                  <h3 className="client-program-nutricion-sidebar-title">Planes</h3>
             </div>
+                <div className="client-program-nutricion-sidebar-search">
+                  <Input
+                    placeholder="Buscar planes…"
+                    value={nutritionPlanSearchQuery}
+                    onChange={(e) => setNutritionPlanSearchQuery(e.target.value)}
+                    type="text"
+                    light
+                  />
+                </div>
+                <div className="client-program-nutricion-sidebar-content">
+                  {currentNutritionAssignment && (
+                    <div className="client-program-nutricion-sidebar-current">
+                      <span className="client-program-nutricion-sidebar-current-label">Asignación actual</span>
+                      <span className="client-program-nutricion-sidebar-current-name">{currentPlanName || currentNutritionAssignment.planId}</span>
+                    </div>
+                  )}
             {isNutritionLoading ? (
-              <p className="client-program-nutricion-loading">Cargando planes…</p>
+                    <div className="client-program-nutricion-sidebar-loading">
+                      <p>Cargando planes…</p>
+                    </div>
+                  ) : filteredNutritionPlans.length === 0 ? (
+                    <div className="client-program-nutricion-sidebar-empty">
+                      <p>{nutritionPlanQ ? 'No hay coincidencias' : 'No hay planes. Crea uno en Nutrición.'}</p>
+                    </div>
+                  ) : (
+                    <ul className="client-program-nutricion-plan-list">
+                      {filteredNutritionPlans.map((p) => {
+                        const isSelected = nutritionAssignPlanId === p.id;
+                        return (
+                        <li key={p.id}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className={`client-program-nutricion-plan-item client-program-nutricion-plan-item-draggable ${isSelected ? 'client-program-nutricion-plan-item-selected' : ''}`}
+                            onClick={() => setNutritionAssignPlanId(p.id)}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = 'copy';
+                              e.dataTransfer.setData('application/json', JSON.stringify({
+                                type: NUTRITION_DRAG_TYPE,
+                                planId: p.id,
+                                planName: p.name || `Plan ${(p.id || '').slice(0, 8)}`,
+                              }));
+                              e.currentTarget.classList.add('client-program-nutricion-plan-item-dragging');
+                            }}
+                            onDragEnd={(e) => e.currentTarget.classList.remove('client-program-nutricion-plan-item-dragging')}
+                            onKeyDown={(e) => e.key === 'Enter' && setNutritionAssignPlanId(p.id)}
+                          >
+                            <span className="client-program-nutricion-plan-item-avatar">{(p.name || 'P').charAt(0)}</span>
+                            <span className="client-program-nutricion-plan-item-name">{p.name || `Plan ${(p.id || '').slice(0, 8)}`}</span>
+                            <span className="client-program-nutricion-plan-item-drag-hint" aria-hidden>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5h6M9 12h6M9 19h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                            </span>
+                          </div>
+                        </li>
+                      );})}
+                    </ul>
+                  )}
+                </div>
+              </aside>
+              {/* Middle panel: single center card (exercise-edit style) */}
+              <div className="plan-structure-main client-program-nutricion-main">
+                <div className="client-program-nutricion-center-card">
+                  {!currentNutritionAssignment ? (
+                    <div
+                      className={`client-program-nutricion-empty ${nutritionDropZoneActive ? 'client-program-nutricion-empty-drag-over' : ''}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                        setNutritionDropZoneActive(true);
+                      }}
+                      onDragLeave={() => setNutritionDropZoneActive(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setNutritionDropZoneActive(false);
+                        let data;
+                        try {
+                          data = JSON.parse(e.dataTransfer.getData('application/json'));
+                        } catch { return; }
+                        if (data?.type !== NUTRITION_DRAG_TYPE || !data?.planId) return;
+                        setNutritionAssignModalPlan({ id: data.planId, name: data.planName || 'Plan' });
+                        const today = new Date().toISOString().slice(0, 10);
+                        setNutritionModalStartDate(today);
+                        setNutritionModalNoEndDate(true);
+                        setNutritionModalEndDate('');
+                        setNutritionModalCalendarMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+                        setNutritionModalEditingEnd(false);
+                      }}
+                    >
+                      <div className="client-program-nutricion-empty-icon" aria-hidden>
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <p className="client-program-nutricion-empty-text">No tiene un plan nutricional asignado</p>
+                      <p className="client-program-nutricion-empty-hint">Arrastra un plan desde el panel izquierdo para asignarlo</p>
+                    </div>
             ) : (
               <>
-                {currentNutritionAssignment && (
-                  <div className="client-program-nutricion-current">
-                    <h3>Asignación actual</h3>
-                    <p>Plan ID: {currentNutritionAssignment.planId}. Inicio: {currentNutritionAssignment.startDate?.toDate ? currentNutritionAssignment.startDate.toDate().toLocaleDateString('es-ES') : String(currentNutritionAssignment.startDate ?? '')}</p>
-                    <button
-                      type="button"
-                      className="client-program-nutricion-end-btn"
-                      onClick={() => handleEndNutritionAssignment(currentNutritionAssignment.id)}
-                      disabled={isEndingNutrition}
-                    >
-                      {isEndingNutrition ? 'Quitando…' : 'Quitar asignación'}
-                    </button>
+                    <div className="client-program-nutricion-center-content client-program-nutricion-center-content-full">
+                      <div className="client-program-nutricion-card client-program-nutricion-current-card">
+                        <div className="client-program-nutricion-current-card-row">
+                        <div className="client-program-nutricion-current-left">
+                          <span className="client-program-nutricion-current-name">{currentPlanName || currentNutritionAssignment.planId}</span>
+                      <button
+                        type="button"
+                            className="client-program-nutricion-current-edit-btn"
+                        onClick={() => navigate(`/nutrition/plans/${currentNutritionAssignment.planId}`, {
+                          state: {
+                            editScope: 'assignment',
+                            assignmentId: currentNutritionAssignment.id,
+                            assignmentPlanId: currentNutritionAssignment.planId,
+                            clientName: client?.clientName || client?.name || client?.displayName || 'Cliente',
+                            returnTo: location.pathname,
+                            returnState: { tab: currentTabIndex },
+                          },
+                        })}
+                            aria-label="Editar plan (solo este cliente)"
+                      >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M18.5 2.50023C18.8978 2.1024 19.4374 1.87891 20 1.87891C20.5626 1.87891 21.1022 2.1024 21.5 2.50023C21.8978 2.89805 22.1213 3.43762 22.1213 4.00023C22.1213 4.56284 21.8978 5.1024 21.5 5.50023L12 15.0002L8 16.0002L9 12.0002L18.5 2.50023Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                      </button>
+                        </div>
+                        <div className="client-program-nutricion-current-pills">
+                          <div className="client-program-nutricion-current-pill">
+                            <span className="client-program-nutricion-current-pill-label">Inicio</span>
+                            <span className="client-program-nutricion-current-pill-value">{nutritionStartDateStr || '—'}</span>
+                          </div>
+                          {nutritionEndDateStr && (
+                            <div className="client-program-nutricion-current-pill">
+                              <span className="client-program-nutricion-current-pill-label">Fin</span>
+                              <span className="client-program-nutricion-current-pill-value">{nutritionEndDateStr}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="client-program-nutricion-current-menu-wrap">
+                      <button
+                        type="button"
+                            className="client-program-nutricion-current-menu-btn"
+                            onClick={() => setNutritionCurrentCardMenuOpen((o) => !o)}
+                            aria-label="Más opciones"
+                            aria-expanded={nutritionCurrentCardMenuOpen}
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="6" r="1.5" fill="currentColor"/>
+                              <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                              <circle cx="12" cy="18" r="1.5" fill="currentColor"/>
+                            </svg>
+                          </button>
+                          {nutritionCurrentCardMenuOpen && (
+                            <>
+                              <div className="client-program-nutricion-current-menu-backdrop" onClick={() => setNutritionCurrentCardMenuOpen(false)} aria-hidden />
+                              <div className="client-program-nutricion-current-menu-dropdown">
+                                <button
+                                  type="button"
+                                  className="client-program-nutricion-current-menu-item"
+                                  onClick={() => {
+                                    setNutritionCurrentCardMenuOpen(false);
+                                    setNutritionAssignModalPlan({ id: currentNutritionAssignment.planId, name: currentPlanName || currentNutritionAssignment.planId || 'Plan' });
+                                    setNutritionModalEditingAssignmentId(currentNutritionAssignment.id);
+                                    const startIso = assignmentDateToISO(currentNutritionAssignment.startDate);
+                                    const endIso = assignmentDateToISO(currentNutritionAssignment.endDate);
+                                    setNutritionModalStartDate(startIso || new Date().toISOString().slice(0, 10));
+                                    setNutritionModalNoEndDate(!endIso);
+                                    setNutritionModalEndDate(endIso || '');
+                                    setNutritionModalCalendarMonth(startIso ? new Date(startIso + 'T00:00:00') : new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+                                    setNutritionModalEditingEnd(false);
+                                  }}
+                                >
+                                  Editar fechas
+                                </button>
+                                <button
+                                  type="button"
+                                  className="client-program-nutricion-current-menu-item client-program-nutricion-current-menu-item--danger"
+                                  onClick={() => {
+                                    setNutritionCurrentCardMenuOpen(false);
+                                    handleEndNutritionAssignment(currentNutritionAssignment.id);
+                                  }}
+                        disabled={isEndingNutrition}
+                      >
+                        {isEndingNutrition ? 'Quitando…' : 'Quitar asignación'}
+                      </button>
+                    </div>
+                            </>
+                          )}
                   </div>
-                )}
-                <div className="client-program-nutricion-assign">
-                  <h3>{currentNutritionAssignment ? 'Asignar otro plan' : 'Asignar plan'}</h3>
-                  <select
-                    value={nutritionAssignPlanId}
-                    onChange={(e) => setNutritionAssignPlanId(e.target.value)}
-                    className="client-program-nutricion-select"
-                  >
-                    <option value="">— Selecciona un plan —</option>
-                    {nutritionPlans.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="date"
-                    value={nutritionAssignStartDate}
-                    onChange={(e) => setNutritionAssignStartDate(e.target.value)}
-                    className="client-program-nutricion-date"
-                  />
-                  <button
-                    type="button"
-                    className="client-program-nutricion-assign-btn"
-                    onClick={handleAssignNutritionPlan}
-                    disabled={!nutritionAssignPlanId || isAssigningNutrition}
-                  >
-                    {isAssigningNutrition ? 'Asignando…' : 'Asignar plan'}
-                  </button>
-                </div>
+                        </div>
+                      {currentNutritionAssignment && (nutritionPlanDetail || isLoadingNutritionPlanDetail) && (
+                        <div className="client-program-nutricion-summary-card">
+                        {isLoadingNutritionPlanDetail ? (
+                          <p className="client-program-nutricion-summary-loading">Cargando objetivos…</p>
+                        ) : nutritionPlanDetail ? (
+                          <div className="client-program-nutricion-summary-left-inner">
+                            <div className="client-program-nutricion-summary-hero">
+                              <div className="client-program-nutricion-summary-hero-value">
+                                {(nutritionPlanDetail.daily_calories ?? 0) > 0 ? nutritionPlanDetail.daily_calories : '—'}
+                              </div>
+                              <div className="client-program-nutricion-summary-hero-label">kcal objetivo</div>
+                            </div>
+                            <div className="client-program-nutricion-summary-pie-macros-row">
+                              {nutritionObjectivesPieData.length > 0 ? (
+                                <div className="client-program-nutricion-summary-pie-wrap">
+                                  <ResponsiveContainer width="100%" height={120}>
+                                    <PieChart className="library-session-pie-chart">
+                                      <defs>
+                                        {[0, 1, 2].map((i) => (
+                                          <linearGradient key={i} id={`client-nutricion-pie-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor={`rgba(255,255,255,${0.22 + i * 0.06})`} />
+                                            <stop offset="50%" stopColor={`rgba(255,255,255,${0.12 + i * 0.04})`} />
+                                            <stop offset="100%" stopColor={`rgba(255,255,255,${0.05 + i * 0.03})`} />
+                                          </linearGradient>
+                                        ))}
+                                      </defs>
+                                      <Pie
+                                        data={nutritionObjectivesPieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={28}
+                                        outerRadius={48}
+                                        paddingAngle={2}
+                                        dataKey="value"
+                                        label={false}
+                                      >
+                                        {nutritionObjectivesPieData.map((_, i) => (
+                                          <Cell key={i} fill={`url(#client-nutricion-pie-grad-${i})`} />
+                                        ))}
+                                      </Pie>
+                                      <Tooltip
+                                        content={({ active, payload }) => {
+                                          if (!active || !payload?.length) return null;
+                                          const { name, grams } = payload[0].payload;
+                                          return (
+                                            <div className="library-session-pie-tooltip">
+                                              <span className="library-session-pie-tooltip-name">{name}</span>
+                                              <span className="library-session-pie-tooltip-sets">{Number(grams ?? 0).toFixed(0)} g</span>
+                                            </div>
+                                          );
+                                        }}
+                                      />
+                                    </PieChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              ) : (
+                                <div className="client-program-nutricion-summary-pie-placeholder" />
+                              )}
+                              <div className="client-program-nutricion-summary-macros">
+                                <div className="client-program-nutricion-summary-macro-row">
+                                  <span className="client-program-nutricion-summary-macro-name">Proteína</span>
+                                  <span className="client-program-nutricion-summary-macro-value">
+                                    {(nutritionPlanDetail.daily_protein_g ?? 0) > 0 ? `${nutritionPlanDetail.daily_protein_g} g` : '—'}
+                                  </span>
+                                </div>
+                                <div className="client-program-nutricion-summary-macro-row">
+                                  <span className="client-program-nutricion-summary-macro-name">Carbohidratos</span>
+                                  <span className="client-program-nutricion-summary-macro-value">
+                                    {(nutritionPlanDetail.daily_carbs_g ?? 0) > 0 ? `${nutritionPlanDetail.daily_carbs_g} g` : '—'}
+                                  </span>
+                                </div>
+                                <div className="client-program-nutricion-summary-macro-row">
+                                  <span className="client-program-nutricion-summary-macro-name">Grasa</span>
+                                  <span className="client-program-nutricion-summary-macro-value">
+                                    {(nutritionPlanDetail.daily_fat_g ?? 0) > 0 ? `${nutritionPlanDetail.daily_fat_g} g` : '—'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                        </div>
+                      )}
+                      </div>
+                    </div>
               </>
             )}
           </div>
+              </div>
+            </div>
+            {/* Assign-dates modal (after drag to center) */}
+            {nutritionAssignModalPlan && (() => {
+              const startTime = nutritionModalStartDate ? new Date(nutritionModalStartDate + 'T00:00:00').getTime() : 0;
+              const endTime = nutritionModalEndDate ? new Date(nutritionModalEndDate + 'T00:00:00').getTime() : 0;
+              const isInRange = (cellDate) => {
+                const t = new Date(cellDate.getFullYear(), cellDate.getMonth(), cellDate.getDate()).getTime();
+                return startTime && endTime && t >= startTime && t <= endTime;
+              };
+              return (
+              <Modal
+                isOpen={!!nutritionAssignModalPlan}
+                onClose={() => { setNutritionAssignModalPlan(null); setNutritionModalEditingAssignmentId(null); }}
+                title={nutritionModalEditingAssignmentId ? `Editar fechas: ${nutritionAssignModalPlan.name}` : `Asignar plan: ${nutritionAssignModalPlan.name}`}
+                containerClassName="client-program-nutricion-modal-container"
+                contentClassName="client-program-nutricion-modal-content"
+              >
+                <div className="client-program-nutricion-modal-body">
+                  <div className="client-program-nutricion-modal-dates-row">
+                    <button
+                      type="button"
+                      className={`client-program-nutricion-modal-date-chip ${!nutritionModalEditingEnd ? 'client-program-nutricion-modal-date-chip--active' : ''}`}
+                      onClick={() => {
+                        setNutritionModalEditingEnd(false);
+                        if (nutritionModalStartDate) setNutritionModalCalendarMonth(new Date(nutritionModalStartDate + 'T00:00:00'));
+                      }}
+                    >
+                      <span className="client-program-nutricion-modal-date-label">Inicio</span>
+                      <span className="client-program-nutricion-modal-date-value">
+                        {nutritionModalStartDate ? (() => {
+                          const d = new Date(nutritionModalStartDate + 'T00:00:00');
+                          return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+                        })() : '—'}
+                      </span>
+                    </button>
+                    <div className="client-program-nutricion-modal-fin-group">
+                      <button
+                        type="button"
+                        className={`client-program-nutricion-modal-date-chip ${nutritionModalEditingEnd ? 'client-program-nutricion-modal-date-chip--active' : ''} ${nutritionModalNoEndDate ? 'client-program-nutricion-modal-date-chip--no-end' : ''}`}
+                        onClick={() => {
+                          setNutritionModalEditingEnd(true);
+                          if (!nutritionModalNoEndDate) {
+                            if (nutritionModalEndDate) setNutritionModalCalendarMonth(new Date(nutritionModalEndDate + 'T00:00:00'));
+                            else if (nutritionModalStartDate) setNutritionModalCalendarMonth(new Date(nutritionModalStartDate + 'T00:00:00'));
+                          } else {
+                            setNutritionModalNoEndDate(false);
+                            if (nutritionModalStartDate) {
+                              setNutritionModalEndDate(nutritionModalStartDate);
+                              setNutritionModalCalendarMonth(new Date(nutritionModalStartDate + 'T00:00:00'));
+                            }
+                          }
+                        }}
+                      >
+                        <span className="client-program-nutricion-modal-date-label">Fin</span>
+                        <span className="client-program-nutricion-modal-date-value">
+                          {nutritionModalNoEndDate ? 'Sin fecha de fin (pulsa para elegir)' : (nutritionModalEndDate ? (() => {
+                            const d = new Date(nutritionModalEndDate + 'T00:00:00');
+                            return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+                          })() : 'Selecciona en el calendario')}
+                        </span>
+                      </button>
+                      {!nutritionModalNoEndDate && (
+                        <button
+                          type="button"
+                          className="client-program-nutricion-modal-sin-fin-link"
+                          onClick={() => {
+                            setNutritionModalNoEndDate(true);
+                            setNutritionModalEndDate('');
+                            setNutritionModalEditingEnd(false);
+                            if (nutritionModalStartDate) setNutritionModalCalendarMonth(new Date(nutritionModalStartDate + 'T00:00:00'));
+                          }}
+                        >
+                          Sin fecha de fin
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="client-program-nutricion-modal-calendars">
+                    <div className="client-program-nutricion-modal-calendar-block client-program-nutricion-modal-calendar-block--single">
+                      <div className="nutrition-modal-calendar nutrition-modal-calendar--range">
+                        <div className="nutrition-modal-calendar-header">
+                          <button type="button" className="nutrition-modal-calendar-nav" onClick={() => setNutritionModalCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))} aria-label="Mes anterior">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </button>
+                          <span className="nutrition-modal-calendar-month">{MONTH_NAMES_FULL[nutritionModalCalendarMonth.getMonth()]} {nutritionModalCalendarMonth.getFullYear()}</span>
+                          <button type="button" className="nutrition-modal-calendar-nav" onClick={() => setNutritionModalCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))} aria-label="Mes siguiente">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </button>
+                        </div>
+                        <div className="nutrition-modal-calendar-weekdays">
+                          {MINI_DAY_NAMES.map((name) => <div key={name} className="nutrition-modal-calendar-weekday">{name}</div>)}
+                        </div>
+                        <div className="nutrition-modal-calendar-grid">
+                          {getMiniCalendarDays(nutritionModalCalendarMonth).map((cell, i) => {
+                            const iso = toLocalDateISO(cell.date);
+                            const isStart = nutritionModalStartDate === iso;
+                            const isEnd = !nutritionModalNoEndDate && nutritionModalEndDate === iso;
+                            const inRange = isInRange(cell.date);
+                            const isSelected = isStart || isEnd;
+                            const handleClick = () => {
+                              if (nutritionModalNoEndDate || !nutritionModalEditingEnd) {
+                                setNutritionModalStartDate(iso);
+                                setNutritionModalCalendarMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
+                              } else {
+                                const startT = nutritionModalStartDate ? new Date(nutritionModalStartDate + 'T00:00:00').getTime() : 0;
+                                const cellT = cell.date.getTime();
+                                const endIso = cellT < startT ? nutritionModalStartDate : iso;
+                                setNutritionModalEndDate(endIso);
+                                setNutritionModalCalendarMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
+                              }
+                            };
+                            return (
+                              <button
+                                key={i}
+                                type="button"
+                                className={`nutrition-modal-calendar-day ${!cell.inMonth ? 'nutrition-modal-calendar-day--other' : ''} ${inRange ? 'nutrition-modal-calendar-day--in-range' : ''} ${isSelected ? 'nutrition-modal-calendar-day--selected' : ''}`}
+                                onClick={handleClick}
+                              >
+                                {cell.day}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="client-program-nutricion-modal-actions">
+                    <button type="button" className="client-program-nutricion-btn client-program-nutricion-btn-secondary" onClick={() => setNutritionAssignModalPlan(null)}>Cancelar</button>
+                    <button
+                      type="button"
+                      className="client-program-nutricion-btn client-program-nutricion-btn-primary"
+                      onClick={() => handleAssignNutritionPlan({
+                        planId: nutritionAssignModalPlan.id,
+                        startDate: nutritionModalStartDate,
+                        noEndDate: nutritionModalNoEndDate,
+                        endDate: nutritionModalNoEndDate ? '' : nutritionModalEndDate,
+                        assignmentId: nutritionModalEditingAssignmentId || undefined,
+                      })}
+                      disabled={isAssigningNutrition || (!nutritionModalNoEndDate && !nutritionModalEndDate)}
+                    >
+                      {isAssigningNutrition ? (nutritionModalEditingAssignmentId ? 'Guardando…' : 'Asignando…') : (nutritionModalEditingAssignmentId ? 'Guardar fechas' : 'Asignar plan')}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+              );
+            })()}
+          </div>
         );
+      }
       case 'info':
         const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
         const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;

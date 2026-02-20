@@ -9,6 +9,8 @@ import { isPWA } from '../utils/platform';
 
 // Push header bar down on non-iPhone (Mac/Android) where safe area is 0.
 const HEADER_TOP_OFFSET_NON_IOS = 24;
+// When env(safe-area-inset-top) is 0 in standalone (e.g. iOS localhost PWA), use this so layout matches production (iPhone 17 / Dynamic Island ~59px).
+const STANDALONE_SAFE_AREA_TOP_FALLBACK = 59;
 
 // Simple SVG icons for web
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (
@@ -36,6 +38,7 @@ export const FixedWakeHeader = ({
   const { width: screenWidth } = useWindowDimensions();
   const headerHeight = 32;
   const initialSafeTopRef = React.useRef(null);
+  // Header: use raw insets only (no fallback). Safe-area fallback is applied to content via WakeHeaderSpacer only.
   if (initialSafeTopRef.current === null) {
     initialSafeTopRef.current = Math.max(0, insets.top);
   }
@@ -253,8 +256,13 @@ export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
   const ref = React.useRef(null);
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  const rawTop = Math.max(0, insets.top);
+  const isStandalone =
+    (typeof navigator !== 'undefined' && navigator.standalone === true) || isPWA();
+  const effectiveTop =
+    rawTop === 0 && isStandalone ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
   if (ref.current === null) {
-    const headerHeight = 32 + Math.max(0, insets.top);
+    const headerHeight = 32 + effectiveTop;
     const extra = isIOS ? 0 : CONTENT_TOP_PADDING_NON_IOS;
     ref.current = headerHeight + extra;
   }

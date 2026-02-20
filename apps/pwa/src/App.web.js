@@ -622,6 +622,11 @@ export default function App() {
         window.document.body.removeChild(el);
       } catch (_) {}
       if (isPWA()) bottom = 0;
+      // Standalone but env(safe-area-inset-top) is 0 (e.g. iOS localhost PWA). Use fallback so dev layout matches production.
+      // iPhone 17 / Dynamic Island devices: ~59px; older notched iPhones ~47px. Use 59 so iPhone 17 is covered.
+      const standaloneOrIOSHomeScreen =
+        isPWA() || (typeof navigator !== 'undefined' && navigator.standalone === true);
+      if (top === 0 && standaloneOrIOSHomeScreen) top = 59;
       const metrics = { frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } };
       setInitialMetrics(metrics);
     }, 250);

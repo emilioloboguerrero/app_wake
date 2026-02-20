@@ -1,505 +1,452 @@
-.one-on-one-content {
+/* ========== Layout: left sidebar + main (same as ClientProgramScreen Planificación / edit sessions) ========== */
+.one-on-one-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
   width: 100%;
   max-width: 1200px;
-  padding: 32px;
   margin: 0 auto;
+  padding: 0;
+  min-height: calc(100vh - 200px);
   box-sizing: border-box;
 }
 
-.one-on-one-actions {
+/* ========== Left panel: client list ========== */
+.one-on-one-sidebar {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-  margin-top: 32px;
-  margin-bottom: 32px;
+  flex-direction: column;
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background-color: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
-.one-on-one-action-pill {
-  padding: 6px 20px;
-  height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+.one-on-one-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.one-on-one-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+
+.one-on-one-sidebar-add-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  gap: 6px;
+  padding: 8px 14px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(191, 168, 77, 0.25);
+  border: 1px solid rgba(191, 168, 77, 0.5);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
 }
 
-.one-on-one-action-pill:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
+.one-on-one-sidebar-add-btn:hover {
+  background: rgba(191, 168, 77, 0.35);
+  border-color: rgba(191, 168, 77, 0.65);
 }
 
-.one-on-one-action-icon {
+.one-on-one-sidebar-add-icon {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.one-on-one-sidebar-add-text {
+  display: inline;
+}
+
+.one-on-one-sidebar-search {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.one-on-one-sidebar-search .input-container {
+  margin-bottom: 0;
+}
+
+.one-on-one-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  min-height: 0;
+}
+
+.one-on-one-sidebar-loading,
+.one-on-one-sidebar-error,
+.one-on-one-sidebar-empty {
+  padding: 32px 20px;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+.one-on-one-sidebar-error {
+  color: rgba(255, 107, 107, 0.95);
+}
+
+.one-on-one-client-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.one-on-one-client-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+
+.one-on-one-client-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.one-on-one-client-item-selected {
+  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(191, 168, 77, 0.45);
+}
+
+.one-on-one-client-item-selected:hover {
+  background: rgba(191, 168, 77, 0.2);
+  border-color: rgba(191, 168, 77, 0.55);
+}
+
+.one-on-one-client-item-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(191, 168, 77, 0.25);
+  border: 1px solid rgba(191, 168, 77, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 16px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.one-on-one-client-item-selected .one-on-one-client-item-avatar {
+  background: rgba(191, 168, 77, 0.35);
+  border-color: rgba(191, 168, 77, 0.6);
+}
+
+.one-on-one-client-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.one-on-one-client-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.one-on-one-client-item-meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ========== Middle panel: detail or empty state ========== */
+.one-on-one-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0 24px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.one-on-one-main-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.one-on-one-main-empty-inner {
+  max-width: 400px;
+  text-align: center;
+}
+
+.one-on-one-main-empty-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 12px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-main-empty-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+  margin: 0 0 24px 0;
+}
+
+.one-on-one-main-empty-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: rgba(191, 168, 77, 0.25);
+  border: 1px solid rgba(191, 168, 77, 0.5);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+
+.one-on-one-main-empty-btn:hover {
+  background: rgba(191, 168, 77, 0.35);
+  border-color: rgba(191, 168, 77, 0.65);
+}
+
+.one-on-one-main-empty-btn-icon {
   font-size: 20px;
   font-weight: 600;
   line-height: 1;
 }
 
-/* Clients List */
-.one-on-one-loading,
-.one-on-one-error,
-.one-on-one-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: #cccccc;
-}
-
-.one-on-one-error {
-  color: #FF6B6B;
-}
-
-.one-on-one-list {
+/* Main detail: selected client */
+.one-on-one-main-detail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 24px;
+  gap: 24px;
+  padding: 8px 0;
 }
 
-.one-on-one-client-box {
-  width: 100%;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 16px 24px;
+.one-on-one-main-header {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: all 0.2s ease;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  cursor: pointer;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
-.one-on-one-client-header {
+.one-on-one-main-header-text {
+  min-width: 0;
+}
+
+.one-on-one-main-client-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 4px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.one-on-one-main-client-meta {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+.one-on-one-main-header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.one-on-one-client-name-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.one-on-one-client-box:hover {
-  border-color: rgba(191, 168, 77, 0.3);
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.one-on-one-client-name {
-  min-width: 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.one-on-one-client-info-btn {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 0;
-  background: none;
-  color: rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-  display: flex;
+}
+
+.one-on-one-main-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s ease;
-}
-
-.one-on-one-client-info-btn:hover {
-  color: rgba(191, 168, 77, 0.95);
-}
-
-.one-on-one-client-info-btn:hover {
-  color: rgba(191, 168, 77, 0.95);
-}
-
-.one-on-one-client-programs-inline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.one-on-one-client-program-tag {
-  padding: 4px 12px;
-  background: rgba(191, 168, 77, 0.15);
-  border: 1px solid rgba(191, 168, 77, 0.3);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  white-space: nowrap;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.one-on-one-client-program-tag--more {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.one-on-one-client-program-tag--empty {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.one-on-one-client-programs {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-}
-
-.one-on-one-client-programs-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.one-on-one-client-program-badge {
-  padding: 4px 10px;
-  background: rgba(191, 168, 77, 0.15);
-  border: 1px solid rgba(191, 168, 77, 0.3);
-  border-radius: 6px;
-  color: rgba(191, 168, 77, 0.9);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.one-on-one-client-program-more {
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.one-on-one-client-no-programs {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
-  font-style: italic;
-}
-
-/* Add Client Modal */
-.add-client-modal {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  max-height: calc(90vh - 120px);
-}
-
-.add-client-modal-error {
-  padding: 14px 18px;
-  background-color: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.35);
-  border-radius: 10px;
-  color: #FF6B6B;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.add-client-modal-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.add-client-modal-section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.add-client-modal-step {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(191, 168, 77, 0.25);
-  color: rgba(191, 168, 77, 0.95);
-  font-size: 14px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.add-client-modal-section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.add-client-modal-subtitle {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
-  margin-left: auto;
-}
-
-.add-client-modal-section-content {
-  padding-left: 40px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.add-client-modal-label {
+  padding: 10px 18px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0;
-  display: block;
-}
-
-.add-client-modal-required {
-  color: rgba(255, 107, 107, 0.95);
-}
-
-.add-client-modal-hint {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.add-client-modal-lookup-row {
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
-}
-
-.add-client-modal-lookup-row .input,
-.add-client-modal-lookup-row input {
-  flex: 1;
-  min-width: 0;
-}
-
-.add-client-modal-lookup-row .button {
-  flex-shrink: 0;
-}
-
-.add-client-modal-confirm-box {
-  padding: 12px 16px;
-  background: rgba(191, 168, 77, 0.12);
-  border: 1px solid rgba(191, 168, 77, 0.25);
-  border-radius: 10px;
-}
-
-.add-client-modal-confirm-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 4px 0;
-}
-
-.add-client-modal-confirm-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0;
-}
-
-.add-client-modal-confirm-email {
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.add-client-modal-loading {
-  padding: 40px 20px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
-}
-
-/* Program cards grid */
-.add-client-modal-programs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 16px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-@media (min-width: 600px) {
-  .add-client-modal-programs-grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  }
-}
-
-.add-client-modal-program-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 0;
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
-  transition: all 0.2s ease;
-  overflow: hidden;
-  text-align: left;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
 }
 
-.add-client-modal-program-card:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.09);
-}
-
-.add-client-modal-program-card-selected {
-  border-color: rgba(191, 168, 77, 0.6);
-  background: rgba(191, 168, 77, 0.08);
-  box-shadow: 0 0 0 1px rgba(191, 168, 77, 0.3);
-}
-
-.add-client-modal-program-card-selected:hover {
-  border-color: rgba(191, 168, 77, 0.7);
-}
-
-.add-client-modal-program-card-image {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.add-client-modal-program-card-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.add-client-modal-program-card-placeholder {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, rgba(191, 168, 77, 0.2), rgba(191, 168, 77, 0.05));
-  font-size: 32px;
-  font-weight: 600;
-  color: rgba(191, 168, 77, 0.6);
-  text-transform: uppercase;
-}
-
-.add-client-modal-program-card-info {
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.add-client-modal-program-card-title {
-  font-size: 14px;
-  font-weight: 600;
+.one-on-one-main-btn-primary {
+  background: rgba(191, 168, 77, 0.25);
+  border: 1px solid rgba(191, 168, 77, 0.5);
   color: rgba(255, 255, 255, 0.95);
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
-.add-client-modal-program-card-discipline {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+.one-on-one-main-btn-primary:hover {
+  background: rgba(191, 168, 77, 0.35);
+  border-color: rgba(191, 168, 77, 0.65);
 }
 
-.add-client-modal-program-card-check {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(191, 168, 77, 0.9);
-  color: #1a1a1a;
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.one-on-one-main-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
 }
 
-/* New program card */
-.add-client-modal-program-card-new {
-  border-style: dashed;
+.one-on-one-main-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.25);
-  min-height: 140px;
-  justify-content: center;
-  align-items: center;
+}
+
+.one-on-one-main-btn-secondary svg {
+  flex-shrink: 0;
+}
+
+/* Programs section */
+.one-on-one-main-programs {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   padding: 20px;
 }
 
-.add-client-modal-program-card-new:hover {
-  border-color: rgba(191, 168, 77, 0.5);
-  background: rgba(191, 168, 77, 0.06);
-}
-
-.add-client-modal-program-card-new-icon {
-  display: block;
-  font-size: 40px;
-  font-weight: 300;
-  color: rgba(191, 168, 77, 0.85);
-  line-height: 1;
-  margin-bottom: 8px;
-}
-
-.add-client-modal-program-card-new-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  display: block;
-}
-
-.add-client-modal-program-card-new-hint {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  margin-top: 4px;
-  display: block;
-}
-
-.add-client-modal-empty-hint {
+.one-on-one-main-programs-title {
   font-size: 13px;
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
-  margin: 0;
-  padding: 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 16px 0;
+  font-family: inherit;
+}
+
+.one-on-one-main-programs-loading,
+.one-on-one-main-programs-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.one-on-one-main-programs-empty p {
+  margin: 0 0 16px 0;
   line-height: 1.5;
 }
 
-.add-client-modal-actions {
+.one-on-one-main-programs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  justify-content: center;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: auto;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* Client Detail Modal */
+.one-on-one-main-program-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.one-on-one-main-program-info {
+  min-width: 0;
+}
+
+.one-on-one-main-program-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.one-on-one-main-program-open {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: rgba(191, 168, 77, 0.2);
+  border: 1px solid rgba(191, 168, 77, 0.45);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+
+.one-on-one-main-program-open:hover {
+  background: rgba(191, 168, 77, 0.3);
+  border-color: rgba(191, 168, 77, 0.6);
+}
+
+/* Sidebar scrollbar */
+.one-on-one-sidebar-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.one-on-one-sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.one-on-one-sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.one-on-one-sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 768px) {
+  .one-on-one-layout {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .one-on-one-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 40vh;
+  }
+
+  .one-on-one-main {
+    padding: 24px 0 0 0;
+  }
+}
+
+/* ========== Modals (FindUser, AssignProgram use their own; client detail uses these) ========== */
 .modal-client-detail-content {
   display: flex;
   flex-direction: column;
@@ -546,4 +493,3 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   text-align: right;
 }
-

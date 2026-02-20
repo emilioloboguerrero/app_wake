@@ -1304,7 +1304,10 @@ useEffect(() => {
       );
     }
 
-    const purchaseButtonText = course.price ? `Comprar - ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(course.price)}` : 'Comprar';
+    const currencyCode = course.currency || course.currency_id || 'COP';
+    const purchaseButtonText = course.price
+      ? `Comprar - ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(course.price)} ${currencyCode}`
+      : 'Comprar';
     return (
       <TouchableOpacity 
         style={[styles.primaryButton, purchasing && styles.disabledButton]} 

@@ -88,6 +88,15 @@ service firebase.storage {
         );
     }
 
+    // Creator feedback attachments (screenshots for bug reports / suggestions)
+    match /creator_feedback_attachments/{creatorId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == creatorId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Legal documents (publicly readable, admin-only write)
     match /legal-documents/{fileName} {
       // Allow anyone to read legal documents (no authentication required)

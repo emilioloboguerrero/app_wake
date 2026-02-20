@@ -12,6 +12,8 @@ import {
 import { getUser } from './firestoreService';
 import clientSessionContentService from './clientSessionContentService';
 import clientPlanContentService from './clientPlanContentService';
+import clientNutritionPlanContentService from './clientNutritionPlanContentService';
+import * as nutritionDb from './nutritionFirestoreService';
 
 class PropagationService {
   /**
@@ -237,6 +239,94 @@ class PropagationService {
       }
     }
 
+    return { propagated, errors };
+  }
+
+  /**
+   * Find users/assignments affected by a nutrition plan (have client_nutrition_plan_content with source_plan_id).
+   * @param {string} planId - Library nutrition plan id
+   * @returns {Promise<{ affectedUserIds: string[], assignmentIds: string[] }>}
+   */
+  async findAffectedByNutritionPlan(planId) {
+    const affectedUserIds = new Set();
+    const assignmentIds = await clientNutritionPlanContentService.getAssignmentIdsBySourcePlanId(planId);
+    for (const assignmentId of assignmentIds) {
+      try {
+        const assignment = await nutritionDb.getAssignmentById(assignmentId);
+        if (assignment?.userId) affectedUserIds.add(assignment.userId);
+      } catch (_) {
+        /* skip */
+      }
+    }
+    return {
+      affectedUserIds: Array.from(affectedUserIds),
+      assignmentIds
+    };
+  }
+
+  /**
+   * Get affected users with display names for a nutrition plan.
+   * @param {string} planId - Library nutrition plan id
+   * @returns {Promise<{ userId: string, displayName: string }[]>}
+   */
+  async getAffectedUsersWithDetailsByNutritionPlan(planId) {
+    const { affectedUserIds } = await this.findAffectedByNutritionPlan(planId);
+    const users = await Promise.all(
+      affectedUserIds.map(async (userId) => {
+        const data = await getUser(userId);
+        return {
+          userId,
+          displayName: data?.displayName || data?.name || data?.email || userId
+        };
+      })
+    );
+    return users;
+  }
+
+  /**
+   * Propagate nutrition plan changes to all affected users.
+   * Deletes client_nutrition_plan_content copies and updates each assignment's plan snapshot
+   * so the PWA can resolve the current library plan without reading creator_nutrition_library.
+   * @param {string} planId - Library nutrition plan id
+   * @param {string} creatorId - Creator uid (to fetch library plan)
+   * @returns {Promise<{ propagated: number, errors: string[] }>}
+   */
+  async propagateNutritionPlan(planId, creatorId) {
+    const { assignmentIds } = await this.findAffectedByNutritionPlan(planId);
+    const errors = [];
+    let propagated = 0;
+
+    let planSnapshot = null;
+    if (creatorId) {
+      try {
+        const lib = await nutritionDb.getPlanById(creatorId, planId);
+        if (lib) {
+          planSnapshot = {
+            name: lib.name,
+            description: lib.description,
+            daily_calories: lib.daily_calories,
+            daily_protein_g: lib.daily_protein_g,
+            daily_carbs_g: lib.daily_carbs_g,
+            daily_fat_g: lib.daily_fat_g,
+            categories: lib.categories,
+          };
+        }
+      } catch (e) {
+        console.warn('[propagationService] could not load library plan for snapshot:', e?.message);
+      }
+    }
+
+    for (const assignmentId of assignmentIds) {
+      try {
+        await clientNutritionPlanContentService.deleteByAssignmentId(assignmentId);
+        if (planSnapshot) {
+          await nutritionDb.updateAssignment(assignmentId, { plan: planSnapshot });
+        }
+        propagated++;
+      } catch (err) {
+        errors.push(`client_nutrition_plan_content/assignment ${assignmentId}: ${err?.message || err}`);
+      }
+    }
     return { propagated, errors };
   }
 }

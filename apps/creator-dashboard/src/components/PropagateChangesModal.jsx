@@ -30,6 +30,8 @@ const PropagateChangesModal = ({
   if (!isOpen) return null;
 
   const isSession = type === 'library_session';
+  const isNutritionPlan = type === 'nutrition_plan';
+  const itemLabel = isNutritionPlan ? 'Este plan de nutrición' : (isSession ? 'Esta sesión' : 'Este plan');
 
   const handlePropagate = async () => {
     if (onPropagate) await onPropagate();
@@ -96,7 +98,7 @@ const PropagateChangesModal = ({
           <>
             <div className="propagate-modal-intro-wrap">
               <p className="propagate-modal-intro">
-                Esta {isSession ? 'sesión' : 'plan'} no está asignada a ningún usuario.
+                {itemLabel} no está asignado a ningún usuario.
               </p>
             </div>
             <div className="propagate-modal-footer">

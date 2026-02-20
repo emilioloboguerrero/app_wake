@@ -133,15 +133,9 @@ export function NutritionScreenBase({ navigation }) {
     if (!userId) return;
     setLoadingAssignment(true);
     try {
-      const list = await nutritionDb.getAssignmentsByUser(userId);
-      const a = list[0] || null;
+      const { plan: effectivePlan, assignment: a } = await nutritionDb.getEffectivePlanForUser(userId);
       setAssignment(a);
-      if (a?.planId && a?.assignedBy) {
-        const p = await nutritionDb.getPlanById(a.assignedBy, a.planId);
-        setPlan(p);
-      } else {
-        setPlan(null);
-      }
+      setPlan(effectivePlan);
     } catch (e) {
       console.error(e);
       setAssignment(null);

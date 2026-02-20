@@ -170,6 +170,13 @@ export async function deleteAssignment(assignmentId) {
   await deleteDoc(doc(firestore, 'nutrition_assignments', assignmentId));
 }
 
+export async function getAssignmentById(assignmentId) {
+  if (!assignmentId) return null;
+  const ref = doc(firestore, 'nutrition_assignments', assignmentId);
+  const d = await getDoc(ref);
+  return d.exists() ? { id: d.id, ...d.data() } : null;
+}
+
 /**
  * User diary
  */
@@ -230,6 +237,7 @@ export default {
   deletePlan,
   getAssignmentsByUser,
   getAssignmentsByCreator,
+  getAssignmentById,
   createAssignment,
   updateAssignment,
   deleteAssignment,
