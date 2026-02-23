@@ -325,15 +325,15 @@ const ClientProgramScreen = () => {
   }, [clientNutritionAssignments, user?.uid]);
 
   const nutritionObjectivesPieData = useMemo(() => {
-    const p = nutritionPlanDetail?.daily_protein_g ?? 0;
-    const c = nutritionPlanDetail?.daily_carbs_g ?? 0;
-    const f = nutritionPlanDetail?.daily_fat_g ?? 0;
-    const pCal = p * 4, cCal = c * 4, fCal = f * 9;
-    if (pCal + cCal + fCal <= 0) return [];
+    const p = Number(nutritionPlanDetail?.daily_protein_g) || 0;
+    const c = Number(nutritionPlanDetail?.daily_carbs_g) || 0;
+    const f = Number(nutritionPlanDetail?.daily_fat_g) || 0;
+    const totalG = p + c + f;
+    if (totalG <= 0) return [];
     return [
-      { name: 'Proteína', value: pCal, grams: p },
-      { name: 'Carbohidratos', value: cCal, grams: c },
-      { name: 'Grasa', value: fCal, grams: f },
+      { name: 'Proteína', value: p, grams: p },
+      { name: 'Carbohidratos', value: c, grams: c },
+      { name: 'Grasa', value: f, grams: f },
     ].filter((d) => d.value > 0);
   }, [nutritionPlanDetail?.daily_protein_g, nutritionPlanDetail?.daily_carbs_g, nutritionPlanDetail?.daily_fat_g]);
 
@@ -1862,6 +1862,7 @@ const ClientProgramScreen = () => {
                                         ))}
                                       </defs>
                                       <Pie
+                                        key={`macro-${nutritionObjectivesPieData.map((d) => d.value).join('-')}`}
                                         data={nutritionObjectivesPieData}
                                         cx="50%"
                                         cy="50%"
@@ -1869,6 +1870,7 @@ const ClientProgramScreen = () => {
                                         outerRadius={48}
                                         paddingAngle={2}
                                         dataKey="value"
+                                        nameKey="name"
                                         label={false}
                                       >
                                         {nutritionObjectivesPieData.map((_, i) => (

@@ -38,9 +38,10 @@ export async function nutritionFoodSearch(searchExpression, pageNumber = 0, maxR
 /**
  * Get food by ID via FatSecret proxy.
  * @param {string|number} foodId
+ * @param {{ include_sub_categories?: boolean }} [options] - include_sub_categories: true uses Premier scope; response may include food_sub_categories
  */
-export async function nutritionFoodGet(foodId) {
-  return post('nutritionFoodGet', { food_id: foodId });
+export async function nutritionFoodGet(foodId, options = {}) {
+  return post('nutritionFoodGet', { food_id: foodId, ...options });
 }
 
 /**

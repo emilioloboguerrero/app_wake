@@ -22,8 +22,8 @@ class HybridDataService {
     USER_PROGRESS: 24 * 60 * 60 * 1000
   };
 
-  // Debug mode - set to true to see detailed logs
-  DEBUG_MODE = true;
+  // Debug mode — off by default; enable via ?wake_debug=1 or WAKE_DEBUG localStorage flag
+  DEBUG_MODE = false;
 
   /**
    * Debug logging helper

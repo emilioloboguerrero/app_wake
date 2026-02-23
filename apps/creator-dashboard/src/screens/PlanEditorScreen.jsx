@@ -90,36 +90,29 @@ function getPer100g(food) {
   };
 }
 
-const DERIVED_100G_ID = 'derived-100g';
 const DERIVED_1G_ID = 'derived-1g';
-function descriptionLooksLike100g(s) {
-  return /100\s*g|100g/i.test(String(s.serving_description || ''));
-}
 function descriptionLooksLike1g(s) {
   return /^1\s*g$|^1g$/i.test(String(s.serving_description || '').trim());
 }
-/** Return servings array with 100g and 1g options when missing (same as meal editor). */
+function isGramOnlyServing(s) {
+  const d = String(s.serving_description || '').trim();
+  return /^\d+([.,]\d+)?\s*g$/i.test(d) || /^\d+([.,]\d+)?g$/i.test(d);
+}
+function is1gServing(s) {
+  return s.serving_id === DERIVED_1G_ID || descriptionLooksLike1g(s);
+}
+/** Return servings array with a 1g option always present (derived from per-100g when missing). Other gram-only options (e.g. 100 g) are removed so the user uses 1 g + quantity. */
 function getServingsWithStandardOptions(food) {
   const raw = food?.servings?.serving;
   const list = Array.isArray(raw) ? [...raw] : (raw ? [raw] : []);
   const per100 = getPer100g(food);
   if (!per100) return list;
-  if (!list.some(descriptionLooksLike100g)) {
-    list.unshift({
-      serving_id: DERIVED_100G_ID,
-      serving_description: '100 g',
-      calories: per100.calories,
-      protein: per100.protein,
-      carbohydrate: per100.carbs,
-      fat: per100.fat,
-      metric_serving_amount: 100,
-      metric_serving_unit: 'g',
-    });
-  }
-  if (!list.some(descriptionLooksLike1g)) {
+  if (!list.some(is1gServing)) {
     list.unshift({
       serving_id: DERIVED_1G_ID,
       serving_description: '1 g',
+      measurement_description: 'g',
+      number_of_units: 1,
       calories: Math.round(per100.calories / 100 * 10) / 10,
       protein: Math.round(per100.protein / 100 * 100) / 100,
       carbohydrate: Math.round(per100.carbs / 100 * 100) / 100,
@@ -128,7 +121,7 @@ function getServingsWithStandardOptions(food) {
       metric_serving_unit: 'g',
     });
   }
-  return list;
+  return list.filter((s) => !isGramOnlyServing(s) || is1gServing(s));
 }
 
 /** Normalize category from legacy meal_options or ensure options[].items exist. */
@@ -450,6 +443,11 @@ export default function PlanEditorScreen() {
       const data = await nutritionApi.nutritionFoodSearch(foodSearchQuery.trim(), 0, 20);
       const raw = data?.foods_search?.results?.food ?? [];
       const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FatSecret search] response:', JSON.stringify(data, null, 2));
+        const first = foods[0];
+        if (first) console.log('[FatSecret search] first food keys:', Object.keys(first));
+      }
       setFoodSearchResults(foods);
     } catch (e) {
       setFoodSearchResults([]);
@@ -497,6 +495,7 @@ export default function PlanEditorScreen() {
         serving_id: m.serving_id || '0',
         number_of_units: units,
         name,
+        serving_unit: 'porción',
         calories: m.calories !== '' ? Number(m.calories) : null,
         protein: m.protein !== '' ? Number(m.protein) : null,
         carbs: m.carbs !== '' ? Number(m.carbs) : null,
@@ -641,7 +640,7 @@ export default function PlanEditorScreen() {
   }
 
   /** Add dropped item to category ci, option optIdx. Used by both category block and option pill drop targets. */
-  function applyDropToOption(e, ci, optIdx) {
+  async function applyDropToOption(e, ci, optIdx) {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.classList.remove('plan-editor-category-block-dropzone-active');
@@ -664,15 +663,35 @@ export default function PlanEditorScreen() {
         if (portionOptions.length === 0) return;
         const s = portionOptions[0];
         const mult = 1;
+        let foodCategory = null;
+        const subCat = food.food_sub_categories?.food_sub_category;
+        if (subCat != null) {
+          foodCategory = Array.isArray(subCat) ? subCat[0] : subCat;
+        } else {
+          try {
+            const getRes = await nutritionApi.nutritionFoodGet(food.food_id, { include_sub_categories: true });
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[FatSecret food.get] response:', JSON.stringify(getRes, null, 2));
+            }
+            const getSub = getRes?.food?.food_sub_categories?.food_sub_category;
+            foodCategory = Array.isArray(getSub) ? getSub[0] : (getSub ?? food.food_name ?? null);
+          } catch (_) {
+            foodCategory = food.food_name ?? null;
+          }
+        }
+        if (foodCategory == null) foodCategory = food.food_name ?? null;
         addItemToOption(ci, optIdx, {
           food_id: food.food_id,
           serving_id: s.serving_id,
           number_of_units: mult,
           name: food.food_name || 'Alimento',
+          food_category: foodCategory,
           calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
           protein: s.protein != null ? Math.round(Number(s.protein) * mult * 10) / 10 : null,
           carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult * 10) / 10 : null,
           fat: s.fat != null ? Math.round(Number(s.fat) * mult * 10) / 10 : null,
+          serving_unit: s.serving_description ?? s.measurement_description ?? null,
+          grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
           servings: portionOptions,
         });
       }
@@ -713,17 +732,17 @@ export default function PlanEditorScreen() {
     return { calories: Math.round(calories), protein, carbs, fat };
   }, [categories, selectedOptionByCategory, meals]);
 
-  /** Pie chart data from planned macros (selected options only). */
+  /** Pie chart data from planned macros (selected options only). Slice size = grams / sum(grams). */
   const planEditorPieData = useMemo(() => {
-    const pCal = selectedOptionsTotals.protein * 4;
-    const cCal = selectedOptionsTotals.carbs * 4;
-    const fCal = selectedOptionsTotals.fat * 9;
-    const totalCal = pCal + cCal + fCal;
-    if (totalCal <= 0) return [];
+    const p = Number(selectedOptionsTotals.protein) || 0;
+    const c = Number(selectedOptionsTotals.carbs) || 0;
+    const f = Number(selectedOptionsTotals.fat) || 0;
+    const totalG = p + c + f;
+    if (totalG <= 0) return [];
     return [
-      { name: 'Proteína', value: pCal, grams: selectedOptionsTotals.protein },
-      { name: 'Carbohidratos', value: cCal, grams: selectedOptionsTotals.carbs },
-      { name: 'Grasa', value: fCal, grams: selectedOptionsTotals.fat },
+      { name: 'Proteína', value: p, grams: p },
+      { name: 'Carbohidratos', value: c, grams: c },
+      { name: 'Grasa', value: f, grams: f },
     ].filter((d) => d.value > 0);
   }, [selectedOptionsTotals]);
 
@@ -991,7 +1010,7 @@ export default function PlanEditorScreen() {
                     {MACRO_PRESETS.map((pre) => (
                       <option key={pre.id} value={pre.id}>{pre.label}</option>
                     ))}
-                    <option value="custom">Personalizado (gramos a mano)</option>
+                    <option key="custom" value="custom">Personalizado (gramos a mano)</option>
                   </select>
                 </div>
               </div>
@@ -1158,8 +1177,8 @@ export default function PlanEditorScreen() {
                                         }}
                                       >
                                         {Array.isArray(item.servings) && item.servings.length > 0 ? (
-                                          item.servings.map((s) => (
-                                            <option key={s.serving_id} value={s.serving_id}>
+                                          item.servings.map((s, si) => (
+                                            <option key={`${ii}-${si}-${s.serving_id}`} value={s.serving_id}>
                                               {s.serving_description} — {s.calories} kcal
                                             </option>
                                           ))
@@ -1257,6 +1276,7 @@ export default function PlanEditorScreen() {
                             ))}
                           </defs>
                           <Pie
+                            key={`macro-${planEditorPieData.map((d) => d.value).join('-')}`}
                             data={planEditorPieData}
                             cx="50%"
                             cy="50%"
@@ -1264,6 +1284,7 @@ export default function PlanEditorScreen() {
                             outerRadius={64}
                             paddingAngle={2}
                             dataKey="value"
+                            nameKey="name"
                             label={false}
                           >
                             {planEditorPieData.map((_, i) => (

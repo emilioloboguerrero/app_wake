@@ -3,12 +3,11 @@
 import React from 'react';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 
-const TAB_BAR_CONTENT_HEIGHT = 62;
-const TOP_PAD = 12;
+const TAB_BAR_CONTENT_HEIGHT = 58;
 
 const BottomSpacer = () => {
   const frozenBottom = useFrozenBottomInset();
-  const totalHeight = TAB_BAR_CONTENT_HEIGHT + TOP_PAD + frozenBottom;
+  const totalHeight = TAB_BAR_CONTENT_HEIGHT + frozenBottom;
   return (
     <div
       style={{

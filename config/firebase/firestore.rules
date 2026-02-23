@@ -269,7 +269,7 @@ service cloud.firestore {
       );
     }
 
-    match /users/{userId}/nutrition/diary/{entryId} {
+    match /users/{userId}/diary/{entryId} {
       allow read, write: if isOwner(userId);
       allow read: if creatorHasClientAccess(userId);
     }

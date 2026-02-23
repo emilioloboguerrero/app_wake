@@ -233,6 +233,39 @@ body {
   box-sizing: border-box;
 }
 
+/* Tab bar center "+" button: wrapper clips to circle from first paint (avoids square flash) */
+.wake-tab-bar-add-button-wrap {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.wake-tab-bar-add-button {
+  width: 100%;
+  height: 100%;
+  min-width: 60px;
+  min-height: 60px;
+  border: none;
+  background: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%3E%3Cpath%20d%3D'M12%205v14M5%2012h14'%20stroke%3D'black'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%2F%3E%3C%2Fsvg%3E") center / 26px 26px no-repeat, linear-gradient(white, white);
+  -webkit-mask-composite: destination-out;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%3E%3Cpath%20d%3D'M12%205v14M5%2012h14'%20stroke%3D'black'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%2F%3E%3C%2Fsvg%3E") center / 26px 26px no-repeat, linear-gradient(white, white);
+  mask-composite: exclude;
+  transition: transform 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* Force-hide tab bar when layout says it should be hidden (Daily Workout, Warmup, etc.) */
 body[data-tab-bar-hidden='true'] .wake-tab-bar-root {
   display: none !important;

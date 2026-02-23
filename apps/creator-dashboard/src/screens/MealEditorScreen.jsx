@@ -48,39 +48,34 @@ function getPer100g(food) {
   };
 }
 
-const DERIVED_100G_ID = 'derived-100g';
 const DERIVED_1G_ID = 'derived-1g';
 
-function descriptionLooksLike100g(s) {
-  return /100\s*g|100g/i.test(String(s.serving_description || ''));
-}
 function descriptionLooksLike1g(s) {
   return /^1\s*g$|^1g$/i.test(String(s.serving_description || '').trim());
 }
 
-/** Return servings array with 100g and 1g options always present (derived from per-100g when missing). */
+function isGramOnlyServing(s) {
+  const d = String(s.serving_description || '').trim();
+  return /^\d+([.,]\d+)?\s*g$/i.test(d) || /^\d+([.,]\d+)?g$/i.test(d);
+}
+
+function is1gServing(s) {
+  return s.serving_id === DERIVED_1G_ID || descriptionLooksLike1g(s);
+}
+
+/** Return servings array with a 1g option always present (derived from per-100g when missing). Other gram-only options (e.g. 100 g) are removed so the user uses 1 g + quantity. */
 function getServingsWithStandardOptions(food) {
   const raw = food?.servings?.serving;
   const list = Array.isArray(raw) ? [...raw] : [];
   const per100 = getPer100g(food);
   if (!per100) return list;
 
-  if (!list.some(descriptionLooksLike100g)) {
-    list.unshift({
-      serving_id: DERIVED_100G_ID,
-      serving_description: '100 g',
-      calories: per100.calories,
-      protein: per100.protein,
-      carbohydrate: per100.carbs,
-      fat: per100.fat,
-      metric_serving_amount: 100,
-      metric_serving_unit: 'g',
-    });
-  }
-  if (!list.some(descriptionLooksLike1g)) {
+  if (!list.some(is1gServing)) {
     list.unshift({
       serving_id: DERIVED_1G_ID,
       serving_description: '1 g',
+      measurement_description: 'g',
+      number_of_units: 1,
       calories: Math.round(per100.calories / 100 * 10) / 10,
       protein: Math.round(per100.protein / 100 * 100) / 100,
       carbohydrate: Math.round(per100.carbs / 100 * 100) / 100,
@@ -89,7 +84,7 @@ function getServingsWithStandardOptions(food) {
       metric_serving_unit: 'g',
     });
   }
-  return list;
+  return list.filter((s) => !isGramOnlyServing(s) || is1gServing(s));
 }
 
 export default function MealEditorScreen() {
@@ -174,11 +169,25 @@ export default function MealEditorScreen() {
     }
   }
 
-  /** Add a food to the meal with portion options stored (no modal). */
-  function addFoodToMeal(food, serving, units) {
+  /** Add a food to the meal with portion options stored (no modal). When search result has no sub_categories, calls food.get with include_sub_categories to try to get category (Premier). */
+  async function addFoodToMeal(food, serving, units) {
     if (!food || !serving) return;
     const mult = Number(units) || 1;
     const portionOptions = getServingsWithStandardOptions(food);
+    let foodCategory = null;
+    const subCat = food.food_sub_categories?.food_sub_category;
+    if (subCat != null) {
+      foodCategory = Array.isArray(subCat) ? subCat[0] : subCat;
+    } else {
+      try {
+        const getRes = await nutritionApi.nutritionFoodGet(food.food_id, { include_sub_categories: true });
+        const getSub = getRes?.food?.food_sub_categories?.food_sub_category;
+        foodCategory = Array.isArray(getSub) ? getSub[0] : (getSub ?? food.food_name ?? null);
+      } catch (_) {
+        foodCategory = food.food_name ?? null;
+      }
+    }
+    if (foodCategory == null) foodCategory = food.food_name ?? null;
     setMealFormItems((prev) => [
       ...prev,
       {
@@ -186,10 +195,13 @@ export default function MealEditorScreen() {
         serving_id: serving.serving_id,
         number_of_units: mult,
         name: food.food_name || 'Food',
+        food_category: foodCategory,
         calories: serving.calories != null ? Math.round(Number(serving.calories) * mult) : null,
         protein: serving.protein != null ? Math.round(Number(serving.protein) * mult * 10) / 10 : null,
         carbs: serving.carbohydrate != null ? Math.round(Number(serving.carbohydrate) * mult * 10) / 10 : null,
         fat: serving.fat != null ? Math.round(Number(serving.fat) * mult * 10) / 10 : null,
+        serving_unit: serving.serving_description ?? serving.measurement_description ?? null,
+        grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
         servings: portionOptions,
       },
     ]);
@@ -215,6 +227,7 @@ export default function MealEditorScreen() {
         serving_id: m.serving_id.trim() || '0',
         number_of_units: Number(m.units) || 1,
         name,
+        serving_unit: 'porción',
         calories: m.calories !== '' ? Number(m.calories) : null,
         protein: m.protein !== '' ? Number(m.protein) : null,
         carbs: m.carbs !== '' ? Number(m.carbs) : null,
@@ -241,15 +254,15 @@ export default function MealEditorScreen() {
   }, [mealFormItems]);
 
   const pieData = useMemo(() => {
-    const pCal = totals.protein * 4;
-    const cCal = totals.carbs * 4;
-    const fCal = totals.fat * 9;
-    const totalCal = pCal + cCal + fCal;
-    if (totalCal <= 0) return [];
+    const p = Number(totals.protein) || 0;
+    const c = Number(totals.carbs) || 0;
+    const f = Number(totals.fat) || 0;
+    const totalG = p + c + f;
+    if (totalG <= 0) return [];
     return [
-      { name: 'Proteína', value: pCal, grams: totals.protein },
-      { name: 'Carbohidratos', value: cCal, grams: totals.carbs },
-      { name: 'Grasa', value: fCal, grams: totals.fat },
+      { name: 'Proteína', value: p, grams: p },
+      { name: 'Carbohidratos', value: c, grams: c },
+      { name: 'Grasa', value: f, grams: f },
     ].filter((d) => d.value > 0);
   }, [totals]);
 
@@ -591,6 +604,7 @@ export default function MealEditorScreen() {
                             ))}
                           </defs>
                           <Pie
+                            key={`macro-${pieData.map((d) => d.value).join('-')}`}
                             data={pieData}
                             cx="50%"
                             cy="50%"
@@ -598,6 +612,7 @@ export default function MealEditorScreen() {
                             outerRadius={64}
                             paddingAngle={2}
                             dataKey="value"
+                            nameKey="name"
                             label={false}
                           >
                             {pieData.map((_, i) => (

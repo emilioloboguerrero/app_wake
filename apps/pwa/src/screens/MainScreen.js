@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
   Animated,
-  ImageBackground,
-  Image,
   Alert,
   ScrollView,
   RefreshControl,
@@ -23,8 +20,6 @@ import { getStorage, isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
-import workoutProgressService from '../data-management/workoutProgressService';
-import simpleCourseCache from '../data-management/simpleCourseCache';
 import courseDownloadService from '../data-management/courseDownloadService';
 import hybridDataService from '../services/hybridDataService';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -42,9 +37,8 @@ import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
 import { trackScreenView } from '../services/monitoringService';
 
-// Responsive dimensions - keep original mobile proportions
-// Cards should be larger - make them about 85% of screen width
-const CARD_SPACING = 0; // No spacing - cards overlap for 3D carousel effect
+// Cards share no spacing — they overlap for the 3D carousel effect
+const CARD_SPACING = 0;
 
 const MainScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -55,10 +49,10 @@ const MainScreen = ({ navigation, route }) => {
   }
   const heightForBottomPadding = Platform.OS === 'web' ? (stableHeightRef.current ?? screenHeight) : screenHeight;
 
-  // Calculate card dimensions based on current screen size
-  const CARD_MARGIN = screenWidth * 0.1; // 7.5% of screen width for margins on each side (15% total)
-  const CARD_WIDTH = screenWidth - (CARD_MARGIN * 2); // Card width = 85% of screen width
-  const CARD_HEIGHT = Math.max(500, screenHeight * 0.62); // 68% of screen height, min 500
+  // Card dimensions — recomputed only when screen size changes
+  const CARD_MARGIN = useMemo(() => screenWidth * 0.1, [screenWidth]);
+  const CARD_WIDTH = useMemo(() => screenWidth - CARD_MARGIN * 2, [screenWidth, CARD_MARGIN]);
+  const CARD_HEIGHT = useMemo(() => Math.max(500, screenHeight * 0.62), [screenHeight]);
 
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(() => StyleSheet.create({
@@ -406,20 +400,20 @@ const MainScreen = ({ navigation, route }) => {
     // Navigation buttons
   }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT, heightForBottomPadding]);
   
+  // Auth — prefer context; fall back to Firebase singleton for cases where context lags
   const { user: contextUser } = useAuth();
-  // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
-  // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
   const user = contextUser || auth.currentUser;
 
-  // BREAKPOINT: Log uid on mount so we can verify it is passed to this screen
+  // Log auth state on mount for diagnostics
   useEffect(() => {
     const uid = user?.uid;
-    logger.log('[MAIN_SCREEN] BREAKPOINT: Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
+    logger.log('[MAIN_SCREEN] Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
     if (!uid) {
-      logger.warn('[MAIN_SCREEN] BREAKPOINT: No uid available on MainScreen mount');
+      logger.warn('[MAIN_SCREEN] No uid available on MainScreen mount');
     }
   }, [user?.uid, contextUser]);
 
+  // Screen state
   const [userProfile, setUserProfile] = useState({
     displayName: '',
     username: '',
@@ -430,30 +424,24 @@ const MainScreen = ({ navigation, route }) => {
   const [purchasedCourses, setPurchasedCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [downloadedCourses, setDownloadedCourses] = useState({});
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
-  const [cachedCourseData, setCachedCourseData] = useState(null);
   const [libraryImageUri, setLibraryImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [upcomingCallCards, setUpcomingCallCards] = useState([]);
-  // Get the first name from displayName
-  const getFirstName = () => {
-    // Check auth.currentUser first for most up-to-date data
+  // First name derived from auth state — stable across renders
+  const firstName = useMemo(() => {
     const currentUser = auth.currentUser;
     const displayName = currentUser?.displayName || userProfile?.displayName || user?.displayName;
-    
-    if (displayName && displayName.trim()) {  // Check for non-empty string
-      return displayName.split(' ')[0];  // Get first word (first name)
+    if (displayName && displayName.trim()) {
+      return displayName.split(' ')[0];
     }
-    // Fallback to email prefix
     return user?.email?.split('@')[0] || 'Usuario';
-  };
+  }, [userProfile?.displayName, user?.displayName, user?.email]);
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
 
@@ -487,6 +475,7 @@ const MainScreen = ({ navigation, route }) => {
   const storage = getStorage();
 
   // Save selected card index to storage
+  // Scroll position persistence — saves and restores the active card index across navigations
   const saveSelectedCardIndex = async (index) => {
     try {
       await storage.setItem('selectedCardIndex', index.toString());
@@ -502,21 +491,6 @@ const MainScreen = ({ navigation, route }) => {
       return savedIndex ? parseInt(savedIndex, 10) : 0;
     } catch (error) {
       return 0;
-    }
-  };
-
-  // Cache course data to reduce database reads
-  const cacheCourseData = async (courses) => {
-    try {
-      const cacheData = {
-        courses,
-        timestamp: Date.now(),
-        userId: user?.uid
-      };
-      await storage.setItem('cachedCourseData', JSON.stringify(cacheData));
-      setCachedCourseData(cacheData);
-    } catch (error) {
-      logger.error('Error caching course data:', error);
     }
   };
 
@@ -558,65 +532,16 @@ const MainScreen = ({ navigation, route }) => {
         }
       });
     return () => { cancelled = true; };
-  }, [user?.uid, purchasedCourses]);
-
-  // Load cached course data
-  const loadCachedCourseData = async () => {
-    try {
-      const cached = await storage.getItem('cachedCourseData');
-      if (cached) {
-        const cacheData = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        // Check if cache is for current user and not too old (24 hours)
-        const isCurrentUser = cacheData.userId === user?.uid;
-        const isNotExpired = Date.now() - cacheData.timestamp < 24 * 60 * 60 * 1000;
-        
-        if (isCurrentUser && isNotExpired) {
-          setCachedCourseData(cacheData);
-          return cacheData.courses;
-        }
-      }
-    } catch (error) {
-      logger.error('Error loading cached course data:', error);
-    }
-    return null;
-  };
-
-  // Track if we've attempted to load courses
-  const coursesLoadAttemptedRef = useRef(false);
-  
-  useEffect(() => {
-    // Track screen view
-    trackScreenView('MainScreen');
-    
-    if (user?.uid && !coursesLoadAttemptedRef.current) {
-      coursesLoadAttemptedRef.current = true;
-      logger.log('🔄 User available, starting course loading...');
-      
-      // Initialize hybrid system with callbacks, but add timeout
-      const initPromise = initializeHybridSystem();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('initializeHybridSystem timeout after 10s')), 10000)
-      );
-      
-      Promise.race([initPromise, timeoutPromise])
-        .then(() => {
-          logger.log('✅ initializeHybridSystem completed successfully');
-        })
-        .catch((error) => {
-          logger.error('❌ Error in initializeHybridSystem (or timeout), falling back to loadCoursesFromCache:', error);
-          // Fallback: Load courses directly if initialization fails or times out
-          loadCoursesFromCache();
-        });
-    }
   }, [user?.uid]);
-  
-  // CRITICAL: Ensure courses are loaded when user becomes available
-  // This is a fallback in case initializeHybridSystem doesn't complete or user wasn't available initially
+
+  // Guard to prevent double-loading when both auth sources resolve quickly
+  const coursesLoadAttemptedRef = useRef(false);
+
+  // Initial course load — runs once when user becomes available
   useEffect(() => {
+    trackScreenView('MainScreen');
     if (user?.uid && !coursesLoadAttemptedRef.current) {
-      // If we have a user but haven't attempted to load courses yet, load them
       coursesLoadAttemptedRef.current = true;
-      logger.log('🔄 User available, loading courses (fallback useEffect)...');
       loadCoursesFromCache();
     }
   }, [user?.uid]);
@@ -627,37 +552,56 @@ const MainScreen = ({ navigation, route }) => {
     if (route?.params?.refresh && user?.uid) {
       logger.log('🔄 Refresh requested after purchase, reloading courses...');
       refreshCoursesFromDatabase();
-      // Clear the refresh param to avoid repeated refreshes
       navigation.setParams({ refresh: undefined });
     }
   }, [route?.params?.refresh]);
 
+  // Download callbacks — stable references, no stale closure bugs
+  const onDownloadSuccess = useCallback((courseId, newVersion, status) => {
+    setDownloadedCourses(prev => {
+      if (!prev[courseId]) return prev;
+      return { ...prev, [courseId]: { ...prev[courseId], status, downloaded_version: newVersion, lastUpdated: Date.now() } };
+    });
+  }, []);
 
-  // Listen for purchase events and auto-refresh
+  const onDownloadError = useCallback((courseId, _error, status) => {
+    setDownloadedCourses(prev => {
+      if (!prev[courseId]) return prev;
+      return { ...prev, [courseId]: { ...prev[courseId], status } };
+    });
+  }, []);
+
+  // Register download callbacks once on mount — prevents repeated registration and stale closures
+  useEffect(() => {
+    courseDownloadService.setUIUpdateCallbacks(onDownloadSuccess, onDownloadError);
+  }, [onDownloadSuccess, onDownloadError]);
+
+  // Debounce ref to prevent double refresh when both purchase events fire in sequence
+  const purchaseRefreshTimerRef = useRef(null);
+
+  // Purchase event listeners — both events fire at different points in the payment flow
+  // Debounced so rapid back-to-back events only trigger one refresh
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribe((courseId) => {
       logger.log('🛒 Purchase event received for course:', courseId);
       if (user?.uid) {
-        logger.log('🔄 Auto-refreshing courses after purchase...');
-        // Clear consolidated cache to ensure fresh data
         consolidatedDataService.clearUserCache(user.uid);
-        refreshCoursesFromDatabase();
+        if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
+        purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
       }
     });
-
-    return unsubscribe; // Cleanup on unmount
+    return unsubscribe;
   }, [user?.uid]);
 
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribeReady((courseId) => {
       logger.log('🎉 Purchase ready event received for course:', courseId);
       if (user?.uid) {
-        logger.log('🔄 Refreshing courses after Firestore confirmation...');
         consolidatedDataService.clearUserCache(user.uid);
-        refreshCoursesFromDatabase();
+        if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
+        purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
       }
     });
-
     return unsubscribe;
   }, [user?.uid]);
 
@@ -671,89 +615,10 @@ const MainScreen = ({ navigation, route }) => {
     return unsubscribe; // Cleanup on unmount
   }, []);
 
-  // Initialize hybrid system (clear old cache, etc.)
-  const initializeHybridSystem = async () => {
-    try {
-      logger.log('🔄 initializeHybridSystem: Starting initialization...');
-      await hybridDataService.initialize();
-      logger.log('✅ initializeHybridSystem: Hybrid service initialized');
-      
-      // Set up UI refresh callbacks for version updates
-      logger.log('🔧 CALLBACK SETUP: Setting up UI update callbacks...');
-      courseDownloadService.setUIUpdateCallbacks(
-        (courseId, newVersion, status) => {
-          logger.debug('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
-          logger.debug('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
-          
-          // Force a complete refresh of courses to ensure UI updates
-          setDownloadedCourses(prev => {
-            logger.debug('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
-            logger.debug('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
-            
-            if (prev[courseId]) {
-              const newState = {
-                ...prev,
-                [courseId]: { 
-                  ...prev[courseId], 
-                  status: status,
-                  downloaded_version: newVersion,
-                  lastUpdated: Date.now() // Force re-render
-                }
-              };
-              logger.debug('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
-              return newState;
-            } else {
-              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
-              return prev;
-            }
-          });
-          
-          // Also trigger a refresh of courses from database to ensure consistency
-          setTimeout(() => {
-            logger.debug('🔄 UI REFRESH: Triggering database refresh for consistency...');
-            refreshCoursesFromDatabase();
-          }, 100);
-          
-          logger.debug('✅ UI REFRESH: Course status updated directly in state');
-        },
-        (courseId, error, status) => {
-          logger.debug('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
-          
-          // Direct state update - instant UI refresh
-          setDownloadedCourses(prev => {
-            if (prev[courseId]) {
-              return {
-                ...prev,
-                [courseId]: { ...prev[courseId], status: status }
-              };
-            } else {
-              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
-              return prev;
-            }
-          });
-          
-          logger.debug('✅ UI REFRESH: Course status updated directly in state');
-        }
-      );
-      
-      // Load courses WITHOUT triggering tutorials
-      logger.log('🔄 initializeHybridSystem: Loading courses without tutorials...');
-      await loadCoursesFromCacheWithoutTutorials();
-      logger.log('✅ initializeHybridSystem: Courses loaded successfully');
-    } catch (error) {
-      logger.error('❌ Error initializing hybrid system:', error);
-      logger.error('❌ Error details:', error.message, error.stack);
-      // Fallback to regular course loading
-      logger.log('🔄 Falling back to loadCoursesFromCache...');
-      await loadCoursesFromCache();
-    }
-  };
-
-  // Track previous user ID to detect changes
+  // User profile loading — two effects: one for immediate auth data, one for Firestore data
   const previousUserIdRef = useRef(null);
 
-  // Update userProfile immediately when component mounts or user changes
-  // Check auth.currentUser directly to get the latest displayName
+  // Immediately populate profile from auth when user ID changes
   useEffect(() => {
     // Get current user from auth.currentUser as source of truth
     const currentUser = auth.currentUser;
@@ -793,9 +658,9 @@ const MainScreen = ({ navigation, route }) => {
       });
       previousUserIdRef.current = null;
     }
-  }, [user?.uid, user]);
+  }, [user?.uid]);
 
-  // Load user profile data using hybrid system
+  // Fetch full profile from Firestore in the background
   useEffect(() => {
     const loadUserProfile = async () => {
       // Always use auth.currentUser as source of truth
@@ -865,15 +730,53 @@ const MainScreen = ({ navigation, route }) => {
     };
 
     loadUserProfile();
-  }, [user]);
+  }, [user?.uid]);
+
+  // Card list — must be declared before any useEffect that uses it in a dep array
+  const swipeableCards = useMemo(() => {
+    const cards = [];
+
+    // Add upcoming call cards first (one per scheduled call)
+    upcomingCallCards.forEach((item, idx) => {
+      cards.push({
+        id: `upcoming_call_${item.booking.id}`,
+        type: 'upcoming_call',
+        data: item,
+        index: idx,
+      });
+    });
+
+    // Add course cards
+    purchasedCourses.forEach((courseData, index) => {
+      const courseId = courseData.courseId || courseData.id || `unknown_${index}`;
+      cards.push({
+        id: `course_${courseId}`,
+        type: 'course',
+        data: {
+          courseDetails: courseData,
+          downloadedCourse: downloadedCourses[courseId]
+        },
+        index: cards.length
+      });
+    });
+
+    // Add library card at the end
+    cards.push({
+      id: 'library',
+      type: 'library',
+      data: null,
+      index: cards.length
+    });
+
+    return cards;
+  }, [upcomingCallCards, purchasedCourses, downloadedCourses]);
 
   // Load saved scroll position when screen loads or data changes
   useEffect(() => {
     if (!loading && purchasedCourses.length > 0) {
       // Load the saved card index
       loadSelectedCardIndex().then((savedIndex) => {
-        const cards = getSwipeableCards();
-        const maxIndex = Math.max(0, cards.length - 1);
+        const maxIndex = Math.max(0, swipeableCards.length - 1);
         const targetIndex = Math.min(savedIndex, maxIndex);
         
         setCurrentIndex(targetIndex);
@@ -925,8 +828,7 @@ const MainScreen = ({ navigation, route }) => {
     }
   }, [loading, purchasedCourses.length]);
 
-  // Refresh courses when MainScreen comes into focus (only if updates completed)
-  // This ensures "actualizando" status is cleared after program updates complete
+  // Re-fetch courses when screen regains focus, but only after a confirmed program update
   const focusEffectCallback = React.useCallback(() => {
     if (user?.uid && hasPendingUpdates) {
       logger.log('🔄 MainScreen focused - refreshing due to completed updates...');
@@ -943,20 +845,17 @@ const MainScreen = ({ navigation, route }) => {
     }
   }, [user?.uid, hasPendingUpdates]);
 
-  // Use platform-specific focus effect
-  // On web, we'll use useEffect; on native, use useFocusEffect
-  if (!isWeb) {
-    useFocusEffect(focusEffectCallback);
-  } else {
-    // On web, check location pathname
-    React.useEffect(() => {
-      if (typeof window !== 'undefined' && window.location.pathname === '/') {
-        focusEffectCallback();
-      }
-    }, [focusEffectCallback]);
-  }
+  // Focus handling — both hooks always exist to satisfy rules of hooks
+  // On native, useFocusEffect fires on navigator focus; on web it receives a no-op
+  useFocusEffect(isWeb ? React.useCallback(() => {}, []) : focusEffectCallback);
+  // On web, fire when navigating to the root route
+  React.useEffect(() => {
+    if (isWeb && typeof window !== 'undefined' && window.location.pathname === '/') {
+      focusEffectCallback();
+    }
+  }, [focusEffectCallback]);
 
-  // Load courses using consolidated service with fallback (Phase 1 optimization)
+  // Primary course load — uses consolidatedDataService with direct Firestore fallback
   const loadCoursesFromCache = async () => {
     try {
       setLoading(true);
@@ -1026,16 +925,6 @@ const MainScreen = ({ navigation, route }) => {
       logger.log('📚 Final courses count:', courses.length);
       
       if (courses.length > 0) {
-        // Update cache with fresh data
-        try {
-          await simpleCourseCache.updateCache(user.uid, courses);
-          await cacheCourseData(courses);
-        } catch (cacheError) {
-          logger.warn('⚠️ Error updating cache:', cacheError);
-          // Continue anyway - cache errors are not critical
-        }
-        
-        // Set courses and downloaded data
         setPurchasedCourses(courses);
         setDownloadedCourses(downloadedData);
         setError(null);
@@ -1065,44 +954,6 @@ const MainScreen = ({ navigation, route }) => {
       } catch (tutorialError) {
         logger.warn('⚠️ Error checking tutorials:', tutorialError);
       }
-    }
-  };
-
-  // Load courses WITHOUT triggering tutorials (for initialization)
-  const loadCoursesFromCacheWithoutTutorials = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      logger.log('🔄 Loading courses using consolidated service (no tutorials)...');
-      
-      // Use consolidated service to get all course data in one call
-      const { courses, downloadedData } = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
-      
-      if (courses.length > 0) {
-        // Update cache with fresh data
-        await simpleCourseCache.updateCache(user.uid, courses);
-        await cacheCourseData(courses);
-        
-        // Set courses and downloaded data
-        setPurchasedCourses(courses);
-        setDownloadedCourses(downloadedData);
-        setError(null);
-        
-        logger.log(`✅ Loaded ${courses.length} courses with consolidated service (no tutorials)`);
-      } else {
-        // No active courses, but still show the library card
-        setPurchasedCourses([]);
-        setDownloadedCourses({});
-        setError(null);
-      }
-      
-    } catch (error) {
-      logger.error('❌ Error loading courses:', error);
-      setError('Error al cargar tus cursos. Inténtalo de nuevo.');
-    } finally {
-      setLoading(false);
-      // NO tutorial check here - this is for initialization only
     }
   };
 
@@ -1146,70 +997,25 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
-  // Pull-to-refresh handler (uses same logic but with separate refreshing state)
+  // Pull-to-refresh handler
   const onRefresh = async () => {
     if (!user?.uid) return;
-    
     setRefreshing(true);
     setError(null);
-    
     try {
-      logger.log('🔄 Pull-to-refresh: Refreshing courses from database...');
-      
-      // Ensure callbacks are set up
-      courseDownloadService.setUIUpdateCallbacks(
-        (courseId, newVersion, status) => {
-          setDownloadedCourses(prev => {
-            if (prev[courseId]) {
-              return {
-                ...prev,
-                [courseId]: { 
-                  ...prev[courseId], 
-                  status: status,
-                  downloaded_version: newVersion,
-                  lastUpdated: Date.now()
-                }
-              };
-            }
-            return prev;
-          });
-        },
-        (courseId, error, status) => {
-          setDownloadedCourses(prev => {
-            if (prev[courseId]) {
-              return {
-                ...prev,
-                [courseId]: { ...prev[courseId], status: status }
-              };
-            }
-            return prev;
-          });
-        }
-      );
-      
-      // Clear consolidated cache to force fresh data
+      // Clear in-memory cache so pull-to-refresh always fetches fresh data
       consolidatedDataService.clearUserCache(user.uid);
-      
-      // OPTIMIZED: Run sync and get courses in parallel (they're independent operations)
+      // Run sync and fetch in parallel — callbacks already registered on mount
       const [_, coursesResult] = await Promise.all([
         hybridDataService.syncCourses(user.uid),
         consolidatedDataService.getUserCoursesWithDetails(user.uid)
       ]);
       const { courses, downloadedData } = coursesResult;
-      
-      logger.log('✅ Pull-to-refresh: Fresh courses loaded:', courses.length);
-      
       if (courses.length > 0) {
-        // Update cache with fresh data
-        await simpleCourseCache.updateCache(user.uid, courses);
-        await cacheCourseData(courses);
-        
-        // Display fresh courses
         setPurchasedCourses(courses);
         setDownloadedCourses(downloadedData);
         setError(null);
       } else {
-        // No active courses, but still show the library card
         setPurchasedCourses([]);
         setDownloadedCourses({});
         setError(null);
@@ -1227,99 +1033,26 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
+  // Force refresh from Firestore — used after purchases, updates, and manual retry
   const refreshCoursesFromDatabase = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      logger.log('🔄 Force refreshing courses from database...');
-      
-      // Ensure callbacks are set up
-      logger.debug('🔧 CALLBACK SETUP: Setting up callbacks in refreshCoursesFromDatabase...');
-      courseDownloadService.setUIUpdateCallbacks(
-        (courseId, newVersion, status) => {
-          logger.debug('🔄 UI REFRESH: Update completed for course:', courseId, 'version:', newVersion, 'status:', status);
-          logger.debug('🔍 UI REFRESH DEBUG: Current downloadedCourses keys:', Object.keys(downloadedCourses));
-          
-          // Force a complete refresh of courses to ensure UI updates
-          setDownloadedCourses(prev => {
-            logger.debug('🔍 UI REFRESH DEBUG: Previous state keys:', Object.keys(prev));
-            logger.debug('🔍 UI REFRESH DEBUG: Course exists in prev?', !!prev[courseId]);
-            
-            if (prev[courseId]) {
-              const newState = {
-                ...prev,
-                [courseId]: { 
-                  ...prev[courseId], 
-                  status: status,
-                  downloaded_version: newVersion,
-                  lastUpdated: Date.now() // Force re-render
-                }
-              };
-              logger.debug('✅ UI REFRESH DEBUG: New state created for course:', courseId, 'status:', status);
-              return newState;
-            } else {
-              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
-              return prev;
-            }
-          });
-          
-          // Also trigger a refresh of courses from database to ensure consistency
-          setTimeout(() => {
-            logger.debug('🔄 UI REFRESH: Triggering database refresh for consistency...');
-            refreshCoursesFromDatabase();
-          }, 100);
-          
-          logger.debug('✅ UI REFRESH: Course status updated directly in state');
-        },
-        (courseId, error, status) => {
-          logger.debug('❌ UI REFRESH: Update failed for course:', courseId, 'error:', error.message, 'status:', status);
-          
-          // Direct state update - instant UI refresh
-          setDownloadedCourses(prev => {
-            if (prev[courseId]) {
-              return {
-                ...prev,
-                [courseId]: { ...prev[courseId], status: status }
-              };
-            } else {
-              logger.debug('⚠️ UI REFRESH: Course not found in downloadedCourses:', courseId);
-              return prev;
-            }
-          });
-          
-          logger.debug('✅ UI REFRESH: Course status updated directly in state');
-        }
-      );
-      
-      // Clear consolidated cache to force fresh data
-      consolidatedDataService.clearUserCache(user.uid);
-      
-      // OPTIMIZED: Run sync and get courses in parallel (they're independent operations)
+      // Callbacks already registered on mount — no need to re-register here
       const [_, coursesResult] = await Promise.all([
         hybridDataService.syncCourses(user.uid),
         consolidatedDataService.getUserCoursesWithDetails(user.uid)
       ]);
       const { courses, downloadedData } = coursesResult;
-      
-      logger.log('✅ Fresh courses loaded:', courses.length);
-      
       if (courses.length > 0) {
-        // Update cache with fresh data
-        await simpleCourseCache.updateCache(user.uid, courses);
-        await cacheCourseData(courses);
-        
-        // Display fresh courses
         setPurchasedCourses(courses);
         setDownloadedCourses(downloadedData);
         setError(null);
       } else {
-        // No active courses, but still show the library card
         setPurchasedCourses([]);
         setDownloadedCourses({});
         setError(null);
       }
-      
     } catch (error) {
       logger.error('❌ Error refreshing courses:', error);
       if (error.message.includes('offline') || error.message.includes('unavailable')) {
@@ -1376,7 +1109,7 @@ const MainScreen = ({ navigation, route }) => {
     navigation.navigate('ProgramLibrary');
   };
 
-  // Modal functions for version system
+  // Alert dialogs shown when a course card is in updating or failed state
   const showUpdateInProgressModal = (course) => {
     Alert.alert(
       "Actualizando programa",
@@ -1420,56 +1153,6 @@ const MainScreen = ({ navigation, route }) => {
     } catch (error) {
       logger.error('❌ Error retrying update:', error);
     }
-  };
-
-  // TEST: Manual callback trigger for debugging
-  const testCallback = () => {
-    logger.debug('🧪 TEST: Manually triggering callback...');
-    if (courseDownloadService.onUpdateComplete) {
-      courseDownloadService.onUpdateComplete('NJ1EEO8wryjFBpMmahcE', '2025-02', 'ready');
-    } else {
-      logger.debug('❌ TEST: Callback not set');
-    }
-  };
-
-  // Create swipeable card data
-  const getSwipeableCards = () => {
-    const cards = [];
-
-    // Add upcoming call cards first (one per scheduled call)
-    upcomingCallCards.forEach((item, idx) => {
-      cards.push({
-        id: `upcoming_call_${item.booking.id}`,
-        type: 'upcoming_call',
-        data: item,
-        index: idx,
-      });
-    });
-
-    // Add course cards
-    purchasedCourses.forEach((courseData, index) => {
-      // Ensure we have a valid courseId
-      const courseId = courseData.courseId || courseData.id || `unknown_${index}`;
-      cards.push({
-        id: `course_${courseId}`,
-        type: 'course',
-        data: {
-          courseDetails: courseData, // Wrap course data in courseDetails
-          downloadedCourse: downloadedCourses[courseId]
-        },
-        index: cards.length
-      });
-    });
-
-    // Add library card at the end
-    cards.push({
-      id: 'library',
-      type: 'library',
-      data: null,
-      index: cards.length
-    });
-    
-    return cards;
   };
 
   // Optimized image preloading (Phase 1 optimization)
@@ -1520,19 +1203,16 @@ const MainScreen = ({ navigation, route }) => {
       saveSelectedCardIndex(index);
       
       // Preload next images for smoother scrolling
-      const cards = getSwipeableCards();
-      preloadNextImages(index, cards);
+      preloadNextImages(index, swipeableCards);
     }
   };
 
   // Render pagination indicators - native driver compatible
   const renderPaginationIndicators = () => {
-    const cards = getSwipeableCards();
-    const cardWidth = CARD_WIDTH; // No spacing
-    
+    const cardWidth = CARD_WIDTH;
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
-        {cards.map((_, index) => {
+        {swipeableCards.map((_, index) => {
           const inputRange = [
             (index - 1) * cardWidth,
             index * cardWidth,
@@ -1571,6 +1251,7 @@ const MainScreen = ({ navigation, route }) => {
     );
   };
 
+  // Renders each card in the horizontal carousel — course, upcoming call, or library
   const renderSwipeableCard = ({ item, index }) => {
     const cardWidth = CARD_WIDTH; // No spacing, cards overlap
     const inputRange = [
@@ -1966,7 +1647,7 @@ const MainScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
           <View style={styles.userSection}>
             <Text style={styles.greeting}>
-              Hola, <Text style={styles.username}>{getFirstName()}</Text>
+              Hola, <Text style={styles.username}>{firstName}</Text>
             </Text>
           </View>
 
@@ -1992,7 +1673,7 @@ const MainScreen = ({ navigation, route }) => {
                     <View style={styles.cardsAndPaginationWrapper}>
                       <Animated.FlatList
                         ref={flatListRef}
-                        data={getSwipeableCards()}
+                        data={swipeableCards}
                         renderItem={renderSwipeableCard}
                         keyExtractor={(item, index) => item?.id || `item_${index}`}
                         horizontal
@@ -2010,7 +1691,7 @@ const MainScreen = ({ navigation, route }) => {
                         onMomentumScrollEnd={handleScroll}
                         scrollEventThrottle={16}
                         style={styles.flatListStyle}
-                        getItemLayout={(data, index) => ({
+                        getItemLayout={(_data, index) => ({
                           length: CARD_WIDTH,
                           offset: CARD_WIDTH * index,
                           index,

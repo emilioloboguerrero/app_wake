@@ -3466,7 +3466,7 @@ const LibrarySessionDetailScreen = () => {
                           <span className="exercise-series-intensity-suffix">/10</span>
                         </div>
                       ) : (
-                        <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder={obj === 'reps' ? '10' : '--'} value={newExerciseDefaultSetValues[obj] != null && newExerciseDefaultSetValues[obj] !== '' ? String(newExerciseDefaultSetValues[obj]) : ''} onChange={(e) => handleUpdateNewExerciseDefaultValue(obj, e.target.value)} />
+                        <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder={obj === 'reps' ? '8-12' : '--'} value={newExerciseDefaultSetValues[obj] != null && newExerciseDefaultSetValues[obj] !== '' ? String(newExerciseDefaultSetValues[obj]) : ''} onChange={(e) => handleUpdateNewExerciseDefaultValue(obj, e.target.value)} />
                       )}
                     </div>
                   ))}

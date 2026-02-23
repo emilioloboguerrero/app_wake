@@ -2341,6 +2341,7 @@ export const nutritionFoodGet = functions
         food_id,
         region = "ES",
         language = "es",
+        include_sub_categories,
       } = request.body || {};
       if (food_id === undefined || food_id === null || food_id === "") {
         response.status(400).json({
@@ -2350,13 +2351,18 @@ export const nutritionFoodGet = functions
         return;
       }
 
-      const token = await getFatSecretToken(clientId, clientSecret, "basic");
+      const scope =
+        include_sub_categories === true ? "premier" : "basic";
+      const token = await getFatSecretToken(clientId, clientSecret, scope);
       const params = new URLSearchParams({
         food_id: String(food_id),
         format: "json",
         region: String(region),
         language: String(language),
       });
+      if (include_sub_categories === true) {
+        params.set("include_sub_categories", "true");
+      }
       const url = `https://platform.fatsecret.com/rest/food/v5?${params}`;
       const res = await fetch(url, {
         method: "GET",

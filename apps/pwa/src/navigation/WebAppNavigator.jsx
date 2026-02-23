@@ -51,19 +51,9 @@ import BottomTabBar from '../components/BottomTabBar.web';
 import OnboardingNavigator from './OnboardingNavigator';
 import { NavigationContainer } from '@react-navigation/native';
 import UserRoleContext from '../contexts/UserRoleContext';
-import { useUserRole } from '../contexts/UserRoleContext';
-import { isAdmin } from '../utils/roleHelper';
 
 export const RefreshProfileContext = createContext(null);
 
-// Wrapper: only allow admin to access /nutrition; redirect others to home
-const NutritionRouteGuard = () => {
-  const { role } = useUserRole();
-  if (role !== null && !isAdmin(role)) {
-    return <Navigate to="/" replace />;
-  }
-  return React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'));
-};
 
 // Wrapper so OnboardingScreen (profile step) can refetch profile and navigate to questions on web
 const OnboardingProfileRoute = () => {
@@ -566,7 +556,7 @@ const WebAppNavigator = () => {
         path="/nutrition"
         element={
           <AuthenticatedLayout>
-            <NutritionRouteGuard />
+            {React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'))}
           </AuthenticatedLayout>
         }
       />

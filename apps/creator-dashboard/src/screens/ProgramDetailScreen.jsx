@@ -8483,7 +8483,7 @@ const ProgramDetailScreen = () => {
                             <span className="exercise-series-intensity-suffix">/10</span>
                           </div>
                         ) : (
-                          <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder="10" value={displayVal} onChange={(e) => handleUpdateAllSetsValue(field, e.target.value)} />
+                          <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder="8-12" value={displayVal} onChange={(e) => handleUpdateAllSetsValue(field, e.target.value)} />
                         )}
                       </div>
                     );
@@ -8924,7 +8924,7 @@ const ProgramDetailScreen = () => {
                           <span className="exercise-series-intensity-suffix">/10</span>
                         </div>
                       ) : (
-                        <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder="10" value={newExerciseDefaultSetValues[obj] != null && newExerciseDefaultSetValues[obj] !== '' ? String(newExerciseDefaultSetValues[obj]) : ''} onChange={(e) => handleUpdateNewExerciseDefaultValue(obj, e.target.value)} />
+                        <input type="text" className="exercise-series-input sets-panel-glass-input" placeholder="8-12" value={newExerciseDefaultSetValues[obj] != null && newExerciseDefaultSetValues[obj] !== '' ? String(newExerciseDefaultSetValues[obj]) : ''} onChange={(e) => handleUpdateNewExerciseDefaultValue(obj, e.target.value)} />
                       )}
                     </div>
                   ))}
@@ -8970,7 +8970,7 @@ const ProgramDetailScreen = () => {
                             {((newExerciseDraft?.objectives || []).filter(o => o !== 'previous').length ? (newExerciseDraft?.objectives || []).filter(o => o !== 'previous') : ['reps', 'intensity']).map((obj) => (
                               <div key={obj} className="create-exercise-set-field">
                                 <label className="create-exercise-set-label">{newExerciseDraft?.customObjectiveLabels?.[obj] || { reps: 'Repeticiones', intensity: 'Intensidad' }[obj] || obj}</label>
-                                <Input type="text" placeholder={obj === 'intensity' ? 'Ej: 8/10' : obj === 'reps' ? 'Ej: 10' : '--'} value={set[obj] != null && set[obj] !== '' ? String(set[obj]) : ''} onChange={(e) => handleUpdateNewExerciseSet(index, obj, e.target.value)} light={true} />
+                                <Input type="text" placeholder={obj === 'intensity' ? 'Ej: 8/10' : obj === 'reps' ? 'Ej: 8-12' : '--'} value={set[obj] != null && set[obj] !== '' ? String(set[obj]) : ''} onChange={(e) => handleUpdateNewExerciseSet(index, obj, e.target.value)} light={true} />
                               </div>
                             ))}
                           </div>
