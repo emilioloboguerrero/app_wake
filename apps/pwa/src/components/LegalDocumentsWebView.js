@@ -6,13 +6,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ActivityIndicator,
   Modal,
   TouchableOpacity,
   Text,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import logger from '../utils/logger';
+import WakeLoader from './WakeLoader';
 import { isWeb } from '../utils/platform';
 
 const LEGAL_URL = 'https://wakelab.co/legal';
@@ -103,7 +103,7 @@ const LegalDocumentsWebView = ({
           {loading && (
             <View style={styles.loadingContainer}>
               <View style={styles.loadingContent}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
+                <WakeLoader />
                 <Text style={styles.loadingText}>Cargando documentos...</Text>
                 <Text style={styles.loadingSubtext}>Conectando con nuestros términos y políticas</Text>
               </View>

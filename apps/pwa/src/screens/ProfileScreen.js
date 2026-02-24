@@ -15,9 +15,9 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
+import WakeLoader from '../components/WakeLoader';
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,7 +36,6 @@ import BottomSpacer from '../components/BottomSpacer';
 import Settings from '../components/icons/vectors_fig/Interface/Settings';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgCamera from '../components/icons/vectors_fig/System/Camera';
-import SvgChartLine from '../components/icons/SvgChartLine';
 import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
@@ -44,7 +43,6 @@ import SvgListChecklist from '../components/icons/SvgListChecklist';
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
-import InsightsModal from '../components/InsightsModal';
 import { calculateExpirationDate } from '../utils/durationHelper';
 
 const ProfileScreen = ({ navigation }) => {
@@ -83,9 +81,6 @@ const ProfileScreen = ({ navigation }) => {
   
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
-  
-  // Insights modal state
-  const [isInsightsModalVisible, setIsInsightsModalVisible] = useState(false);
   
   // Subscriptions info modal state
   const [isSubscriptionsInfoModalVisible, setIsSubscriptionsInfoModalVisible] = useState(false);
@@ -1252,8 +1247,7 @@ const ProfileScreen = ({ navigation }) => {
       
       {profileLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-          <Text style={styles.loadingText}>Cargando perfil...</Text>
+          <WakeLoader />
         </View>
       ) : (
         <ScrollView
@@ -1340,12 +1334,6 @@ const ProfileScreen = ({ navigation }) => {
         </View>
 
 
-        {/* Lab Card */}
-        <TouchableOpacity style={styles.configCard} onPress={() => setIsInsightsModalVisible(true)}>
-          <SvgChartLine width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.configIcon} />
-          <Text style={styles.configCardTitle}>Lab</Text>
-        </TouchableOpacity>
-
         <BottomSpacer />
         </WakeHeaderContent>
       </ScrollView>
@@ -1363,15 +1351,6 @@ const ProfileScreen = ({ navigation }) => {
         <LegalDocumentsWebView
           visible={isLegalWebViewVisible}
           onClose={() => setIsLegalWebViewVisible(false)}
-        />
-        
-        {/* Insights Modal */}
-        <InsightsModal
-          visible={isInsightsModalVisible}
-          onClose={() => setIsInsightsModalVisible(false)}
-          onNavigateToPRs={() => navigation.navigate('ExercisePanel')}
-          onNavigateToVolume={() => navigation.navigate('WeeklyVolumeHistory')}
-          onNavigateToSessions={() => navigation.navigate('Sessions')}
         />
         
         {/* Subscriptions Info Modal */}
@@ -1543,33 +1522,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   smallCardIcon: {
     marginBottom: 8,
-  },
-  configCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    paddingVertical: Math.max(16, screenHeight * 0.02), // Responsive padding
-    paddingHorizontal: Math.max(20, screenWidth * 0.05), // Responsive padding
-    marginBottom: Math.max(15, screenHeight * 0.02), // Responsive margin
-    marginHorizontal: Math.max(24, screenWidth * 0.06), // Responsive horizontal margin
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    minHeight: Math.max(60, screenHeight * 0.075), // Responsive min height
-  },
-  configIcon: {
-    marginRight: 12,
-  },
-  configCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
   },
   displayName: {
     fontSize: 24,

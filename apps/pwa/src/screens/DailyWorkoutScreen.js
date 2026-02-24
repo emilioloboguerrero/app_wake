@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
   ImageBackground,
   Image,
@@ -28,9 +27,11 @@ import exerciseLibraryService from '../services/exerciseLibraryService';
 import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
 import firestoreService from '../services/firestoreService';
+import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
+import WakeLoader from '../components/WakeLoader';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
@@ -38,107 +39,52 @@ import { isWeb } from '../utils/platform';
 // Only on native — react-native-linear-gradient can break on web
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 
-// Custom hook for streak data management
-const useStreakData = (userId, courseId) => {
-  const [streak, setStreak] = React.useState(0);
-  const [sessionsThisWeek, setSessionsThisWeek] = React.useState(0);
-  const [minimumSessions, setMinimumSessions] = React.useState(3);
-  const [isLoading, setIsLoading] = React.useState(true);
+const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
+  const opacityActive = 0.9;
+  const opacityDead = 0.4;
+  const isDead = flameLevel === 0;
+  const opacity = isDead ? opacityDead : opacityActive;
+  const displayNumber = isDead ? 0 : streakNumber;
+  const showBase = flameLevel >= 3;
+  const showMiddle = flameLevel >= 2;
+  const showInner = flameLevel >= 1;
+  return (
+    <>
+      <View style={styles.fireIconContainer}>
+        {showBase && (
+          <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity }]} />
+        )}
+        {showMiddle && (
+          <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity }]} />
+        )}
+        {showInner && (
+          <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity }]} />
+        )}
+        {flameLevel === 0 && (
+          <>
+            <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity: opacityDead }]} />
+            <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: opacityDead }]} />
+            <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity: opacityDead }]} />
+          </>
+        )}
+      </View>
+      <Text style={styles.streakNumber}>{displayNumber}</Text>
+    </>
+  );
+});
 
-  React.useEffect(() => {
-    const loadStreakData = async () => {
-      try {
-        setIsLoading(true);
-        
-        // Load streak data and course settings in parallel
-        const [progressResult, courseDataResult] = await Promise.all([
-          sessionService.getCourseProgress(userId, courseId),
-          workoutProgressService.getCourseDataForWorkout(courseId, userId)
-        ]);
-
-        // Update streak data
-        const progress = progressResult;
-        setStreak(progress?.weeklyStreak?.currentStreak || 0);
-        setSessionsThisWeek(progress?.weeklyStreak?.sessionsCompletedThisWeek || 0);
-
-        // Update minimum sessions
-        const courseData = courseDataResult;
-        setMinimumSessions(courseData?.courseData?.programSettings?.minimumSessionsPerWeek || 3);
-        
-      } catch (error) {
-        logger.error('❌ Error loading streak data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (userId && courseId) {
-      loadStreakData();
-    }
-  }, [userId, courseId]);
-
-  return { streak, sessionsThisWeek, minimumSessions, isLoading };
-};
-
-const DailyWorkoutScreen = ({ navigation, route }) => {
+const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp, onDateChange, showSessionsList = true, renderBeforeContent }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user: contextUser } = useAuth();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
-  // Track failed image loads to show fallbacks
   const [failedImages, setFailedImages] = React.useState(new Set());
-  
-  // Memoized streak display component - SMALLER for overlay
-  // Moved inside component to access styles
-  const StreakDisplay = React.memo(({ streak, sessionsThisWeek, minimumSessions }) => {
-    const isStreakActive = streak > 0;
-    const flameOpacity = isStreakActive ? 0.9 : 0.4;
-    
-    return (
-      <>
-        <View style={styles.fireIconContainer}>
-          {/* Base flame - largest, darkest */}
-          <SvgFire 
-            width={60}
-            height={60}
-            stroke="#000000"
-            strokeWidth={0.3}
-            fill="#E64A11"
-            style={[styles.fireBase, { opacity: flameOpacity }]}
-          />
-          
-          {/* Middle flame - medium size, orange */}
-          <SvgFire 
-            width={20}
-            height={20}
-            stroke="#D5C672"
-            strokeWidth={0.5}
-            fill="#D5C672"
-            style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: flameOpacity }]}
-          />
-          
-          {/* Inner flame - smallest, brightest */}
-          <SvgFire 
-            width={8}
-            height={8}
-            stroke="#FFFFFF"
-            strokeWidth={0.5}
-            fill="#FFFFFF"
-            style={[styles.fireInner, { opacity: flameOpacity }]}
-          />
-        </View>
-        <Text style={styles.streakNumber}>
-          {streak}
-        </Text>
-      </>
-    );
-  });
-  
-  // FALLBACK: If AuthContext doesn't have user, check Firebase directly
+
+  const isOneOnOne = course?.deliveryType === 'one_on_one';
+
   const [fallbackUser, setFallbackUser] = React.useState(null);
   React.useEffect(() => {
     if (!contextUser) {
-      // Try to get user directly from Firebase as fallback
       import('../config/firebase').then(({ auth }) => {
         const firebaseUser = auth.currentUser;
         if (firebaseUser) {
@@ -148,9 +94,10 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
       });
     }
   }, [contextUser]);
-  
+
   const user = contextUser || fallbackUser;
-  
+  const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
+
   // Unified session state - single source of truth
   const [sessionState, setSessionState] = useState({
     session: null,
@@ -172,9 +119,6 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
-  
-  // Use consolidated streak data hook
-  const { streak, sessionsThisWeek, minimumSessions, isLoading: streakLoading } = useStreakData(user?.uid, course?.courseId);
   
   // Cache for service calls to prevent redundant requests
   const serviceCache = useRef({
@@ -200,12 +144,12 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
       Animated.timing(pulseScale, {
         toValue: 1.02,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(pulseScale, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]);
     animation.start();
@@ -233,7 +177,8 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
     // Skip if user is not yet available
     if (!route.params?.selectedSessionId) {
       if (user?.uid) {
-        loadSessionState();
+        const opts = isOneOnOne && selectedDateProp ? { targetDate: selectedDateProp } : {};
+        loadSessionState(opts);
       } else {
         logger.log('⏭️ Waiting for user to be available before loading session state...');
       }
@@ -241,6 +186,15 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
       logger.log('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
     }
   }, [user?.uid]); // Re-run when user becomes available
+
+  // When selectedDate changes (web date picker) and one-on-one, reload session for that day (skip initial mount to avoid double load)
+  const prevSelectedDateRef = useRef(selectedDateProp);
+  useEffect(() => {
+    if (!user?.uid || !course?.courseId || !isOneOnOne || !selectedDateProp) return;
+    if (prevSelectedDateRef.current === selectedDateProp) return;
+    prevSelectedDateRef.current = selectedDateProp;
+    loadSessionState({ targetDate: selectedDateProp });
+  }, [selectedDateProp, isOneOnOne, user?.uid, course?.courseId]);
 
   // Handle pre-selected session from CourseStructureScreen
   useEffect(() => {
@@ -752,7 +706,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
         {/* Loading Overlay */}
         {isLoadingThisCard && (
           <View style={styles.cardLoadingOverlay}>
-            <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
+            <WakeLoader size={56} />
           </View>
         )}
       </TouchableOpacity>
@@ -822,6 +776,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
           <WakeHeaderContent style={styles.content}>
             {/* Spacer for fixed header */}
             <WakeHeaderSpacer />
+            {renderBeforeContent}
 
           {/* Main Swipeable Container */}
           <View style={styles.workoutSection}>
@@ -850,7 +805,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
             >
             {sessionState.isLoading ? (
                 <View style={styles.cardLoadingContainer}>
-                  <ActivityIndicator size="large" color="#ffffff" />
+                  <WakeLoader size={64} />
                   <Text style={styles.cardLoadingText}>Cargando entrenamiento...</Text>
               </View>
             ) : sessionState.error ? (
@@ -938,10 +893,10 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                         {/* Streak Overlay - Bottom Right */}
                         <View style={[styles.streakOverlay, isWeb && styles.streakOverlayWeb]}>
                           <View style={styles.streakIconAndNumber}>
-                            <StreakDisplay 
-                              streak={streak} 
-                              sessionsThisWeek={sessionsThisWeek} 
-                              minimumSessions={minimumSessions} 
+                            <StreakDisplay
+                              streakNumber={streakNumber}
+                              flameLevel={flameLevel}
+                              styles={styles}
                             />
                           </View>
                           <Text style={styles.streakOverlayLabel}>Racha</Text>
@@ -967,6 +922,12 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                               </Text>
                             ) : null}
                           </View>
+                        </View>
+                        <View style={[styles.streakOverlay, isWeb && styles.streakOverlayWeb]}>
+                          <View style={styles.streakIconAndNumber}>
+                            <StreakDisplay streakNumber={streakNumber} flameLevel={flameLevel} styles={styles} />
+                          </View>
+                          <Text style={styles.streakOverlayLabel}>Racha</Text>
                         </View>
                       </View>
                 )}
@@ -1038,7 +999,8 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                 )}
             </AnimatedTouchableOpacity>
             
-              {/* CARD 2: All Sessions + Programa Combined */}
+              {/* CARD 2: All Sessions + Programa Combined (hidden for one-on-one on web when using date selector) */}
+              {showSessionsList !== false && (
               <View style={styles.programAndSessionsContainer}>
                 {/* All Sessions List at Top */}
                 <View style={styles.allSessionsCard}>
@@ -1091,9 +1053,11 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                   <Text style={styles.programCardText}>Programa</Text>
             </TouchableOpacity>
               </View>
+              )}
             </ScrollView>
             
-            {/* Pagination Indicators - MainScreen Style (2 dots) */}
+            {/* Pagination indicators only when sessions list is visible (low-ticket); hidden for one-on-one */}
+            {showSessionsList !== false && (
             <View style={styles.paginationContainer}>
               {[0, 1].map((index) => {
                 const cardWidth = screenWidth - 48;
@@ -1128,6 +1092,7 @@ const DailyWorkoutScreen = ({ navigation, route }) => {
                 );
               })}
             </View>
+            )}
           </View>
           <BottomSpacer />
           </WakeHeaderContent>
@@ -1248,7 +1213,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(700, screenHeight * 0.77), // TALLER: 80% of screen height, min 700px
+    // Card height: adjust min (640) and/or fraction (0.68) to make cards shorter or taller
+    height: Math.max(640, screenHeight * 0.68),
     width: screenWidth - Math.max(48, screenWidth * 0.12),
     overflow: 'hidden',
     position: 'relative',
@@ -1267,6 +1233,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   // No Image Card Styles - Gradient background with centered text (web uses CSS gradient, native uses solid)
   noImageGradientContainer: {
     flex: 1,
+    position: 'relative',
     borderRadius: Math.max(12, screenWidth * 0.04),
     backgroundColor: 'rgba(255, 255, 255, 0.05)', // Fallback for native (web overrides with gradient)
   },
@@ -1363,10 +1330,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  // Combined Programa + Sessions Card (Card 2)
+  // Combined Programa + Sessions Card (Card 2) — same height as session image card
   programAndSessionsContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(700, screenHeight * 0.77),
+    height: Math.max(640, screenHeight * 0.68),
     overflow: 'visible',
   },
   // Programa Card at Bottom - Half height, full width

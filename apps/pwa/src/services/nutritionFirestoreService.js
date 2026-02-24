@@ -143,6 +143,24 @@ export async function getDiaryEntries(userId, date) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+/**
+ * Get YYYY-MM-DD dates that have at least one diary entry in the given range (inclusive).
+ */
+export async function getDatesWithEntries(userId, startDateYYYYMMDD, endDateYYYYMMDD) {
+  const q = query(
+    diaryRef(userId),
+    where('date', '>=', startDateYYYYMMDD),
+    where('date', '<=', endDateYYYYMMDD)
+  );
+  const snap = await getDocs(q);
+  const dates = new Set();
+  snap.docs.forEach((d) => {
+    const date = d.data().date;
+    if (date) dates.add(date);
+  });
+  return Array.from(dates);
+}
+
 export async function addDiaryEntry(userId, data) {
   const ref = await addDoc(diaryRef(userId), {
     userId,
@@ -189,6 +207,40 @@ export async function deleteDiaryEntry(userId, entryId) {
   await deleteDoc(doc(firestore, 'users', userId, 'diary', entryId));
 }
 
+function userMealsRef(userId) {
+  return collection(firestore, 'users', userId, 'meals');
+}
+
+export async function getUserMeals(userId) {
+  if (!userId) return [];
+  const q = query(userMealsRef(userId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function createUserMeal(userId, data) {
+  const ref = await addDoc(userMealsRef(userId), {
+    name: data.name ?? '',
+    items: data.items ?? [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateUserMeal(userId, mealId, data) {
+  const ref = doc(firestore, 'users', userId, 'meals', mealId);
+  await updateDoc(ref, {
+    ...(data.name !== undefined && { name: data.name }),
+    ...(data.items !== undefined && { items: data.items }),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteUserMeal(userId, mealId) {
+  await deleteDoc(doc(firestore, 'users', userId, 'meals', mealId));
+}
+
 function savedFoodsRef(userId) {
   return collection(firestore, 'users', userId, 'saved_foods');
 }
@@ -229,9 +281,14 @@ export default {
   getClientNutritionPlanContent,
   getEffectivePlanForUser,
   getDiaryEntries,
+  getDatesWithEntries,
   addDiaryEntry,
   updateDiaryEntry,
   deleteDiaryEntry,
+  getUserMeals,
+  createUserMeal,
+  updateUserMeal,
+  deleteUserMeal,
   getSavedFoods,
   saveFood,
   deleteSavedFood,

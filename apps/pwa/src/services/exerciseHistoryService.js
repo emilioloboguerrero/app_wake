@@ -1,5 +1,5 @@
 // Exercise History Service - Manages exercise and session history subcollections
-import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, limit, startAfter } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query, where, orderBy, limit, startAfter } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import logger from '../utils/logger.js';
 
@@ -525,6 +525,88 @@ class ExerciseHistoryService {
       return exerciseKeys;
     } catch (error) {
       logger.error('❌ Error getting exercise keys from history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get dates (YYYY-MM-DD) that have a completed session for a course within a date range.
+   * Used by DailyWorkoutScreen calendar to show green days (low-ticket and one-on-one).
+   */
+  async getDatesWithCompletedSessionsForCourse(userId, courseId, startDate, endDate) {
+    const start = typeof startDate === 'string' ? new Date(startDate + 'T00:00:00') : new Date(startDate);
+    const end = typeof endDate === 'string' ? new Date(endDate + 'T23:59:59.999') : new Date(endDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
+
+    const parseTimestamp = (completedAt) => {
+      if (!completedAt) return null;
+      if (typeof completedAt === 'string') {
+        return new Date(completedAt);
+      }
+      if (completedAt?.toDate) {
+        return completedAt.toDate();
+      }
+      return new Date(completedAt);
+    };
+
+    const dates = new Set();
+
+    try {
+      let primarySnapshot = null;
+      try {
+        const primaryQuery = query(
+          sessionHistoryRef,
+          where('courseId', '==', courseId),
+          where('completedAt', '>=', start),
+          where('completedAt', '<=', end)
+        );
+        primarySnapshot = await getDocs(primaryQuery);
+      } catch (indexError) {
+        logger.warn('getDatesWithCompletedSessionsForCourse: indexed query failed, will use fallback:', indexError?.message);
+      }
+
+      if (primarySnapshot && !primarySnapshot.empty) {
+        primarySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.courseId !== courseId) return;
+          const ts = parseTimestamp(data.completedAt);
+          if (!ts || ts < start || ts > end) return;
+          const y = ts.getFullYear();
+          const m = String(ts.getMonth() + 1).padStart(2, '0');
+          const d = String(ts.getDate()).padStart(2, '0');
+          dates.add(`${y}-${m}-${d}`);
+        });
+        return Array.from(dates);
+      }
+
+      // Fallback: fetch recent history and filter in memory (handles string completedAt and older data)
+      try {
+        const fallbackQuery = query(
+          sessionHistoryRef,
+          orderBy('completedAt', 'desc'),
+          limit(200)
+        );
+        const fallbackSnapshot = await getDocs(fallbackQuery);
+        fallbackSnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.courseId !== courseId) return;
+          const ts = parseTimestamp(data.completedAt);
+          if (!ts || ts < start || ts > end) return;
+          const y = ts.getFullYear();
+          const m = String(ts.getMonth() + 1).padStart(2, '0');
+          const d = String(ts.getDate()).padStart(2, '0');
+          dates.add(`${y}-${m}-${d}`);
+        });
+        return Array.from(dates);
+      } catch (fallbackError) {
+        logger.error('❌ getDatesWithCompletedSessionsForCourse fallback failed:', fallbackError);
+        return [];
+      }
+    } catch (error) {
+      logger.error('❌ getDatesWithCompletedSessionsForCourse:', error);
       return [];
     }
   }

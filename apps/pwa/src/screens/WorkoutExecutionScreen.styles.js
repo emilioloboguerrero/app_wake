@@ -274,12 +274,9 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     paddingTop: Math.max(120, screenHeight * 0.15), // Add space to account for header
   },
   simpleLoadingContainer: {
-    position: 'absolute',
-    top: Math.max(300, screenHeight * 0.4), // Fixed position from top
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingText: {
     color: '#cccccc',

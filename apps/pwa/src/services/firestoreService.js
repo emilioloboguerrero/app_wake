@@ -279,7 +279,7 @@ class FirestoreService {
           isOneOnOneProgram = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
           if (isOneOnOneProgram && clientProgramForPlan) {
             const planAssignments = clientProgramForPlan.planAssignments || {};
-            oneOnOneCurrentWeek = getMondayWeek();
+            oneOnOneCurrentWeek = options.weekKey ?? getMondayWeek();
             oneOnOneWeekAssignment = planAssignments[oneOnOneCurrentWeek];
             const assignmentKeys = Object.keys(planAssignments);
             logger.log('📦 [getCourseModules] one-on-one check:', {
@@ -913,6 +913,89 @@ class FirestoreService {
     } catch (error) {
       logger.debug('getPlannedSessionForDate:', error?.message);
       return null;
+    }
+  }
+
+  /**
+   * Get dates (YYYY-MM-DD) that have a planned session for a client in a program within a range.
+   * Used by DailyWorkoutScreen calendar to show "planned" dots for one-on-one.
+   * Tries indexed query first; on failure (e.g. missing composite index) falls back to client_id+program_id then filter by date in memory.
+   */
+  async getDatesWithPlannedSessions(userId, courseId, startDate, endDate) {
+    logger.log('[getDatesWithPlannedSessions] called', { userId, courseId, startDate, endDate });
+
+    const start = typeof startDate === 'string' ? new Date(startDate + 'T00:00:00') : new Date(startDate);
+    const end = typeof endDate === 'string' ? new Date(endDate + 'T23:59:59.999') : new Date(endDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    const parseDocToDate = (data) => {
+      const ts = data.date_timestamp?.toDate?.() || (data.date ? new Date(data.date) : null);
+      if (!ts) return null;
+      const y = ts.getFullYear();
+      const m = String(ts.getMonth() + 1).padStart(2, '0');
+      const d = String(ts.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    const filterInRange = (ymd) => {
+      const t = new Date(ymd + 'T12:00:00').getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    };
+
+    const dates = new Set();
+
+    try {
+      let primarySnapshot = null;
+      try {
+        const primaryQuery = query(
+          collection(firestore, 'client_sessions'),
+          where('client_id', '==', userId),
+          where('program_id', '==', courseId),
+          where('date_timestamp', '>=', start),
+          where('date_timestamp', '<=', end),
+          orderBy('date_timestamp', 'asc')
+        );
+        primarySnapshot = await getDocs(primaryQuery);
+      } catch (indexError) {
+        logger.warn('[getDatesWithPlannedSessions] indexed query failed, will use fallback:', indexError?.message);
+      }
+
+      if (primarySnapshot && !primarySnapshot.empty) {
+        primarySnapshot.forEach((docSnap) => {
+          const ymd = parseDocToDate(docSnap.data());
+          if (ymd) dates.add(ymd);
+        });
+        const result = Array.from(dates);
+        logger.log('[getDatesWithPlannedSessions] primary query ok', { count: result.length, dates: result });
+        return result;
+      }
+
+      logger.debug('[getDatesWithPlannedSessions] primary empty or null, trying fallback');
+
+      // Fallback: broader query by client/program, filter by date in memory (handles docs without date_timestamp)
+      try {
+        const fallbackQ = query(
+          collection(firestore, 'client_sessions'),
+          where('client_id', '==', userId),
+          where('program_id', '==', courseId),
+          orderBy('date_timestamp', 'desc'),
+          limit(200)
+        );
+        const snap = await getDocs(fallbackQ);
+        snap.forEach((docSnap) => {
+          const ymd = parseDocToDate(docSnap.data());
+          if (ymd && filterInRange(ymd)) dates.add(ymd);
+        });
+        const result = Array.from(dates);
+        logger.log('[getDatesWithPlannedSessions] fallback ok', { count: result.length, dates: result });
+        return result;
+      } catch (fallbackError) {
+        logger.debug('[getDatesWithPlannedSessions] fallback failed:', fallbackError?.message);
+        return [];
+      }
+    } catch (error) {
+      logger.error('[getDatesWithPlannedSessions] unexpected error:', error);
+      return [];
     }
   }
 

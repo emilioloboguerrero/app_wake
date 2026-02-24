@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, ScrollView } from 'react-native';
+import WakeLoader from './WakeLoader';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { getMuscleDisplayName } from '../constants/muscles';
@@ -81,7 +82,7 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
         <Text style={styles.title}>Series efectivas</Text>
         <Text style={styles.subtitle}>{getSubtitle()}</Text>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+          <WakeLoader size={40} />
         </View>
       </View>
     );

@@ -7,9 +7,9 @@ import {
   ScrollView,
   TouchableOpacity,
   useWindowDimensions,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
+import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -148,8 +148,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
           onBackPress={handleBackPress}
         />
         <View style={[styles.loadingContainer, { marginTop: headerTotalHeight + getGapAfterHeader() }]}>
-          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-          <Text style={styles.loadingText}>Cargando sesión...</Text>
+          <WakeLoader />
         </View>
       </SafeAreaView>
     );
@@ -169,7 +168,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ marginTop: getGapAfterHeader() }}>
+          <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
           {/* Session Header */}
           <View style={styles.sessionHeader}>
             <Text style={styles.sessionName}>{sessionName}</Text>

@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   useWindowDimensions,
   Platform,
 } from 'react-native';
@@ -17,8 +16,8 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
-
 import logger from '../utils/logger.js';
+import WakeLoader from '../components/WakeLoader';
 // Component to handle async exercise resolution
 const ExerciseList = ({ exercises, styles }) => {
   const [resolvedExercises, setResolvedExercises] = useState([]);
@@ -400,7 +399,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
         <WakeHeaderContent>
           <WakeHeaderSpacer />
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#ffffff" />
+            <WakeLoader size={80} />
             <Text style={styles.loadingText}>Cargando estructura...</Text>
           </View>
         </WakeHeaderContent>

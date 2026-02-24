@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { VideoProvider } from './src/contexts/VideoContext';
+import { ActivityStreakProvider } from './src/contexts/ActivityStreakContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import workoutProgressService from './src/data-management/workoutProgressService';
@@ -84,10 +85,12 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <VideoProvider>
-          <AppNavigator />
-          <StatusBar style="light" />
-        </VideoProvider>
+        <ActivityStreakProvider>
+          <VideoProvider>
+            <AppNavigator />
+            <StatusBar style="light" />
+          </VideoProvider>
+        </ActivityStreakProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

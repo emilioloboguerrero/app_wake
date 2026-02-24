@@ -3,7 +3,6 @@ const TAB_BAR_CONTENT_HEIGHT = 58;
 const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
@@ -11,27 +10,72 @@ import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRound
 import SvgChartLine from './icons/SvgChartLine';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 import { useUserRole } from '../contexts/UserRoleContext';
+import { useAuth } from '../contexts/AuthContext';
 import { isAdmin } from '../utils/roleHelper';
+import purchaseService from '../services/purchaseService';
+import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
+import { NoPlanModal } from './NoPlanModal.web';
+import WakeModalOverlay from './WakeModalOverlay.web';
 
 const BottomTabBar = () => {
   const { width: screenWidth } = useWindowDimensions();
   const location = useLocation();
   const navigate = useNavigate();
   const { role } = useUserRole();
+  const { user } = useAuth();
   const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM_PADDING;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuClosing, setMenuClosing] = useState(false);
+  const [noTrainingPlanModalVisible, setNoTrainingPlanModalVisible] = useState(false);
+  const [noNutritionPlanModalVisible, setNoNutritionPlanModalVisible] = useState(false);
 
-  const closeMenu = () => {
-    setMenuClosing(true);
-    setTimeout(() => {
-      setMenuOpen(false);
-      setMenuClosing(false);
-    }, 200);
-  };
+  const closeMenu = () => setMenuOpen(false);
 
   const handleToggle = () => {
-    if (menuOpen) { closeMenu(); } else { setMenuOpen(true); }
+    if (menuOpen) closeMenu();
+    else setMenuOpen(true);
+  };
+
+  const handleEntrenarPress = () => {
+    closeMenu();
+    const userId = user?.uid;
+    if (!userId) {
+      setNoTrainingPlanModalVisible(true);
+      return;
+    }
+    purchaseService.getUserPurchasedCourses(userId, false).then((courses) => {
+      const active = Array.isArray(courses) ? courses : [];
+      if (active.length === 0) {
+        setNoTrainingPlanModalVisible(true);
+      } else {
+        const first = active[0];
+        const courseId = first.courseId || first.id;
+        if (courseId) {
+          navigate(`/course/${courseId}/workout`);
+        } else {
+          setNoTrainingPlanModalVisible(true);
+        }
+      }
+    }).catch(() => setNoTrainingPlanModalVisible(true));
+  };
+
+  const handleRegistrarComidaPress = () => {
+    closeMenu();
+    const userId = user?.uid;
+    if (!userId) {
+      setNoNutritionPlanModalVisible(true);
+      return;
+    }
+    nutritionFirestoreService.getEffectivePlanForUser(userId).then(({ plan }) => {
+      if (plan) {
+        navigate('/nutrition');
+      } else {
+        setNoNutritionPlanModalVisible(true);
+      }
+    }).catch(() => setNoNutritionPlanModalVisible(true));
+  };
+
+  const handleGoToLibrary = () => {
+    navigate('/library');
   };
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
@@ -102,7 +146,7 @@ const BottomTabBar = () => {
 
   const cardBottomOffset = paddingBottom + TAB_BAR_CONTENT_HEIGHT + 16;
 
-  const cardWidth = Math.floor(screenWidth / 2);
+  const cardWidth = Math.min(170, Math.floor((screenWidth || 390) * 0.42));
 
   const actionCardStyle = {
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
@@ -119,60 +163,49 @@ const BottomTabBar = () => {
     height: 100,
   };
 
-  const backdropAnim = menuClosing ? 'wakeBackdropOut 0.2s ease forwards' : 'wakeBackdropIn 0.2s ease forwards';
-  const cardsAnim   = menuClosing ? 'wakeCardsOut 0.2s ease forwards'   : 'wakeCardsIn 0.2s ease forwards';
-
-  const overlay = menuOpen ? (
-    <>
-      <style>{`
-        @keyframes wakeBackdropIn  { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes wakeBackdropOut { from { opacity: 1; } to { opacity: 0; } }
-        @keyframes wakeCardsIn  { from { transform: translateY(12px); } to { transform: translateY(0); } }
-        @keyframes wakeCardsOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(12px); } }
-      `}</style>
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          zIndex: 1002,
-          animation: backdropAnim,
-        }}
-        onClick={closeMenu}
-      />
-      <div
-        style={{
-          position: 'fixed',
-          right: 20,
-          bottom: cardBottomOffset,
-          zIndex: 1003,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          width: cardWidth,
-          animation: cardsAnim,
-        }}
-      >
-        <div style={actionCardStyle}>
-          <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#ffffff" strokeWidth={1.5} />
-          <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Iniciar entrenamiento</span>
-        </div>
-        <div style={actionCardStyle} onClick={() => { navigate('/nutrition'); closeMenu(); }}>
-          <SvgSteak width={28} height={28} stroke="#ffffff" fill="#ffffff" />
-          <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar comida</span>
-        </div>
-      </div>
-    </>
-  ) : null;
-
   return (
     <>
-      {typeof document !== 'undefined' && document.body
-        ? createPortal(overlay, document.body)
-        : overlay}
+      <NoPlanModal
+        visible={noTrainingPlanModalVisible}
+        onClose={() => setNoTrainingPlanModalVisible(false)}
+        variant="training"
+        onGoToLibrary={handleGoToLibrary}
+      />
+      <NoPlanModal
+        visible={noNutritionPlanModalVisible}
+        onClose={() => setNoNutritionPlanModalVisible(false)}
+        variant="nutrition"
+        onGoToLibrary={handleGoToLibrary}
+      />
+      <WakeModalOverlay
+        visible={menuOpen}
+        onClose={closeMenu}
+        contentAnimation="slideUp"
+        contentPlacement="full"
+      >
+        <div
+          style={{
+            position: 'fixed',
+            right: 20,
+            bottom: cardBottomOffset,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            width: cardWidth,
+            pointerEvents: 'auto',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={actionCardStyle} onClick={handleEntrenarPress} role="button" tabIndex={0}>
+            <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#ffffff" strokeWidth={1.5} />
+            <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Entrenar</span>
+          </div>
+          <div style={actionCardStyle} onClick={handleRegistrarComidaPress} role="button" tabIndex={0}>
+            <SvgSteak width={28} height={28} stroke="#ffffff" fill="#ffffff" />
+            <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar comida</span>
+          </div>
+        </div>
+      </WakeModalOverlay>
       <div className="wake-tab-bar-root" style={fixedWrapperStyle}>
         <div style={pillRingStyle}>
           <div style={pillInnerStyle}>
@@ -232,7 +265,10 @@ const BottomTabBar = () => {
           <button
             type="button"
             className="wake-tab-bar-add-button"
-            style={{ transform: (menuOpen && !menuClosing) ? 'rotate(45deg)' : 'rotate(0deg)' }}
+            style={{
+              transform: menuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+              background: 'rgba(255, 255, 255, 0.8)',
+            }}
             onClick={handleToggle}
           />
         </div>

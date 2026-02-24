@@ -65,7 +65,7 @@ const Button = ({
 
   const renderContent = () => {
     if (loading) {
-      const indicatorColor = (active && !disabled) ? 'rgba(191, 168, 77, 1)' : '#ffffff';
+      const indicatorColor = '#ffffff';
       return <ActivityIndicator color={indicatorColor} size="small" />;
     }
 

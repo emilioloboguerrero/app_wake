@@ -7,6 +7,7 @@ import sessionManager from './sessionManager';
 import exerciseLibraryService from './exerciseLibraryService';
 import oneRepMaxService from './oneRepMaxService';
 import exerciseHistoryService from './exerciseHistoryService';
+import activityStreakService from './activityStreakService';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import logger from '../utils/logger.js';
@@ -24,15 +25,18 @@ class SessionService {
     const {
       forceRefresh = false,
       manualSessionId = null,
-      manualSessionIndex = null
+      manualSessionIndex = null,
+      targetDate = null
     } = options;
 
+    const cacheKey = targetDate ? `${userId}_${courseId}_${targetDate}` : `${userId}_${courseId}`;
+
     try {
-      logger.log('🎯 Getting current session:', { userId, courseId, manualSessionId });
+      logger.log('🎯 Getting current session:', { userId, courseId, manualSessionId, targetDate });
 
       // Check cache first (unless force refresh) - 5 minute cache
       if (!forceRefresh) {
-        const cached = this.cache.get(`${userId}_${courseId}`);
+        const cached = this.cache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp) < 300000) { // 5 min cache
           logger.log('✅ Using cached session state');
           return cached.data;
@@ -40,8 +44,8 @@ class SessionService {
       }
 
       const t0 = Date.now();
-      // Get course data (with automatic download fallback)
-      const courseData = await workoutProgressService.getCourseDataForWorkout(courseId, userId);
+      // Get course data (with automatic download fallback); pass targetDate for one-on-one date navigation
+      const courseData = await workoutProgressService.getCourseDataForWorkout(courseId, userId, { targetDate });
       const tAfterCourse = Date.now();
       logger.log('⏱️ [getCurrentSession] getCourseDataForWorkout:', tAfterCourse - t0, 'ms');
       const inner = courseData?.courseData;
@@ -71,9 +75,9 @@ class SessionService {
         ? sessionManager.flattenAllSessions({ ...inner, modules })
         : [];
 
-      // One-on-one: only show sessions planned for the current week (never show previous week's incomplete)
+      // One-on-one: only show sessions planned for the selected week (targetDate or current week)
       if (isOneOnOne && allSessions.length > 0) {
-        const currentWeekKey = getMondayWeek();
+        const currentWeekKey = targetDate ? getMondayWeek(new Date(targetDate + 'T12:00:00')) : getMondayWeek();
         const { start: weekStart, end: weekEnd } = getWeekDates(currentWeekKey);
         const startMs = new Date(weekStart).setHours(0, 0, 0, 0);
         const endMs = new Date(weekEnd).setHours(23, 59, 59, 999);
@@ -98,7 +102,7 @@ class SessionService {
             error: null,
             emptyReason: 'no_planning_this_week'
           };
-          this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+          this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
           logger.log('🔍 [getCurrentSession] one-on-one: no sessions in current week after filter');
           return sessionState;
         }
@@ -120,7 +124,7 @@ class SessionService {
           error: null,
           emptyReason: 'no_planning_this_week'
         };
-        this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+        this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
         logger.log('🔍 [getCurrentSession] ONE-ON-ONE NO SESSIONS: no_planning_this_week', {
           userId,
           courseId,
@@ -218,7 +222,7 @@ class SessionService {
           error: null,
           emptyReason: 'no_session_today'
         };
-        this.cache.set(`${userId}_${courseId}`, { data: sessionState, timestamp: Date.now() });
+        this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
         logger.log('🔍 [getCurrentSession] One-on-one: emptyReason=no_session_today (plannedSessionIdForToday did not match allSessions or no plan for today)');
         return sessionState;
       }
@@ -279,7 +283,7 @@ class SessionService {
       };
 
       // Cache the result
-      this.cache.set(`${userId}_${courseId}`, {
+      this.cache.set(cacheKey, {
         data: sessionState,
         timestamp: Date.now()
       });
@@ -988,14 +992,11 @@ class SessionService {
       // Use the exerciseHistoryService which has proper data filtering
       await exerciseHistoryService.addSessionData(userId, sessionData, plannedSnapshot);
       
-      // Update weekly streak after adding session data
       try {
-        logger.log('🔥 Updating weekly streak after session data added');
-        await sessionManager.updateWeeklyStreak(userId, sessionData.courseId, sessionData.sessionId);
-        logger.log('✅ Weekly streak updated successfully');
+        const activityDate = activityStreakService.getLocalDateString(sessionData.completedAt || new Date());
+        await activityStreakService.updateActivityStreak(userId, activityDate);
       } catch (error) {
-        logger.error('❌ Error updating weekly streak:', error);
-        // Don't throw - streak update failure shouldn't break session completion
+        logger.error('❌ Error updating activity streak:', error);
       }
       
       logger.log('✅ Session data added to history successfully');
@@ -1289,11 +1290,15 @@ class SessionService {
    * Clear cache
    */
   clearCache(userId, courseId) {
-    const sessionCacheKey = `${userId}_${courseId}`;
     const progressCacheKey = `progress_${userId}_${courseId}`;
-    this.cache.delete(sessionCacheKey);
     this.cache.delete(progressCacheKey);
-    logger.log('🗑️ Cache cleared for:', sessionCacheKey, 'and', progressCacheKey);
+    const prefix = `${userId}_${courseId}`;
+    const toDelete = [];
+    for (const key of this.cache.keys()) {
+      if (key === prefix || (typeof key === 'string' && key.startsWith(prefix + '_'))) toDelete.push(key);
+    }
+    toDelete.forEach((k) => this.cache.delete(k));
+    logger.log('🗑️ Cache cleared for session and progress:', userId, courseId);
   }
 
   /**

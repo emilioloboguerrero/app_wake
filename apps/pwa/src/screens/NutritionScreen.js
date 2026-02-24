@@ -9,7 +9,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
+import activityStreakService from '../services/activityStreakService';
+import WakeLoader from '../components/WakeLoader';
 
 const MEAL_OPTIONS = [
   { id: 'breakfast', label: 'Desayuno' },
@@ -209,6 +210,7 @@ export function NutritionScreenBase({ navigation }) {
         carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult) : null,
         fat: s.fat != null ? Math.round(Number(s.fat) * mult) : null,
       });
+      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
       loadDiary();
     } catch (e) {
@@ -235,6 +237,7 @@ export function NutritionScreenBase({ navigation }) {
         carbs: manualCarbs !== '' ? Number(manualCarbs) : null,
         fat: manualFat !== '' ? Number(manualFat) : null,
       });
+      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
       loadDiary();
     } catch (e) {
@@ -280,7 +283,7 @@ export function NutritionScreenBase({ navigation }) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
+          <WakeLoader size={80} />
           <Text style={styles.loadingText}>Cargando…</Text>
         </View>
       </View>
@@ -355,7 +358,9 @@ export function NutritionScreenBase({ navigation }) {
           </View>
 
           {loadingDiary ? (
-            <ActivityIndicator color="rgba(255,255,255,0.6)" style={{ marginVertical: 16 }} />
+            <View style={{ marginVertical: 16 }}>
+              <WakeLoader size={48} />
+            </View>
           ) : diaryEntries.length === 0 ? (
             <Text style={styles.emptyText}>No hay entradas para esta fecha.</Text>
           ) : (

@@ -6,7 +6,6 @@ import {
   Modal,
   TouchableOpacity,
   useWindowDimensions,
-  ActivityIndicator,
   Animated,
   Platform,
 } from 'react-native';
@@ -16,6 +15,9 @@ import SvgPlay from './icons/SvgPlay';
 import SvgVolumeMax from './icons/SvgVolumeMax';
 import SvgVolumeOff from './icons/SvgVolumeOff';
 import logger from '../utils/logger.js';
+import WakeLoader from './WakeLoader';
+
+const WakeModalOverlayWeb = Platform.OS === 'web' ? require('./WakeModalOverlay.web').default : null;
 
 const TutorialOverlay = ({ 
   visible, 
@@ -265,26 +267,15 @@ const TutorialOverlay = ({
 
   const jsxStartTime = performance.now();
   logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
-  
-  return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={handleClose}
+
+  const videoCardContent = (
+    <TouchableOpacity
+      style={styles.videoCard}
+      activeOpacity={1}
+      onPress={(e) => e.stopPropagation()}
     >
-      <TouchableOpacity 
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={handleClose}
-      >
-        <TouchableOpacity 
-          style={styles.videoCard}
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-        >
-          {/* Progress Indicator - Smooth animation for each segment */}
-          <View style={styles.progressBarContainer}>
+      {/* Progress Indicator - Smooth animation for each segment */}
+      <View style={styles.progressBarContainer}>
             {Array.from({ length: tutorialData.length }).map((_, index) => {
               // Each segment has its own progress state
               const isCompleted = index < currentTutorialIndex;
@@ -331,7 +322,7 @@ const TutorialOverlay = ({
 
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#ffffff" />
+              <WakeLoader size={80} />
               <Text style={styles.loadingText}>Cargando...</Text>
             </View>
           )}
@@ -400,8 +391,35 @@ const TutorialOverlay = ({
               )}
             </>
           ) : null}
-          
-        </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  if (WakeModalOverlayWeb) {
+    return (
+      <WakeModalOverlayWeb
+        visible={visible}
+        onClose={handleClose}
+        contentAnimation="fade"
+        contentPlacement="center"
+      >
+        {videoCardContent}
+      </WakeModalOverlayWeb>
+    );
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
+        onPress={handleClose}
+      >
+        {videoCardContent}
       </TouchableOpacity>
       {(() => {
         const jsxEndTime = performance.now();

@@ -21,6 +21,7 @@ import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
+import WakeLoader from '../components/WakeLoader';
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -650,7 +651,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.contentContainer}>
         {/* Spacer for fixed header - matches header height */}
         <View style={{ height: headerTotalHeight }} />
-        <View style={{ marginTop: getGapAfterHeader() }}>
+        <View style={{ marginTop: getGapAfterHeader(), flex: 1 }}>
         <View style={styles.titleWrapper}>
           <TouchableOpacity
             style={styles.titleButton}
@@ -669,8 +670,7 @@ const SubscriptionsScreen = ({ navigation }) => {
 
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#ffffff" />
-            <Text style={styles.loadingText}>Cargando...</Text>
+            <WakeLoader />
           </View>
         ) : filteredSubscriptions.length === 0 ? (
           <View style={styles.emptyState}>
@@ -819,6 +819,7 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     backgroundColor: '#1a1a1a',
   },
   contentContainer: {
+    flexGrow: 1,
     paddingHorizontal: 0,
     paddingTop: 0, // No extra padding - spacer handles it
     paddingBottom: 40,
@@ -861,6 +862,7 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     fontWeight: '600',
   },
   loadingContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 60,

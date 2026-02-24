@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
+import WakeLoader from './WakeLoader';
 
 // Memoized MuscleSilhouetteSVG to prevent unnecessary re-renders
 const MemoizedMuscleSVG = memo(MuscleSilhouetteSVG, (prevProps, nextProps) => {
@@ -58,6 +59,7 @@ const WorkoutMuscleSVG = ({
             />
           ) : (
             <View style={styles.muscleEmptyState}>
+              <WakeLoader size={56} />
               <Text style={styles.muscleEmptyText}>
                 Cargando visualización...
               </Text>

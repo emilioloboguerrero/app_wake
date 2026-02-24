@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
@@ -402,7 +403,7 @@ const SessionsScreen = ({ navigation }) => {
             {/* Spacer for fixed header - matches header height */}
             <View style={{ height: headerTotalHeight }} />
             {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
-            <View style={{ marginTop: getGapAfterHeader() }}>
+            <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
               <Text style={styles.title}>Sesiones</Text>
               {sessions.length > 0 && renderSetsComparison()}
             </View>
@@ -411,8 +412,7 @@ const SessionsScreen = ({ navigation }) => {
         ListEmptyComponent={() => (
           loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-              <Text style={styles.loadingText}>Cargando sesiones...</Text>
+              <WakeLoader />
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -427,7 +427,7 @@ const SessionsScreen = ({ navigation }) => {
           <>
             {loadingMore && (
               <View style={styles.loadMoreContainer}>
-                <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                <WakeLoader size={40} />
                 <Text style={styles.loadMoreText}>Cargando más sesiones...</Text>
               </View>
             )}
@@ -487,8 +487,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: Math.max(20, screenHeight * 0.025),
   },
   loadingContainer: {
-    paddingVertical: Math.max(60, screenHeight * 0.075),
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: Math.max(60, screenHeight * 0.075),
   },
   loadingText: {
     color: '#ffffff',

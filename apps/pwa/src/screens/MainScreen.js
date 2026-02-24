@@ -35,6 +35,7 @@ import assetBundleService from '../services/assetBundleService';
 import { getUpcomingBookingsForUser } from '../services/callBookingService';
 
 import logger from '../utils/logger.js';
+import WakeLoader from '../components/WakeLoader';
 import { trackScreenView } from '../services/monitoringService';
 
 // Cards share no spacing — they overlap for the 3D carousel effect
@@ -1356,7 +1357,7 @@ const MainScreen = ({ navigation, route }) => {
                   cachePolicy="memory-disk"
                 />
                 <View style={styles.updatingOverlay}>
-                  <ActivityIndicator size="large" color="#ffffff" />
+                  <WakeLoader />
                   <Text style={styles.updatingText}>Actualizando programa</Text>
                 </View>
                 <View style={styles.cardOverlay}>
@@ -1383,7 +1384,7 @@ const MainScreen = ({ navigation, route }) => {
                     <Text style={styles.trialBadgeText}>Prueba</Text>
                   </View>
                 )}
-                <ActivityIndicator size="large" color="#FFA500" />
+                <WakeLoader />
                 <Text style={styles.updatingText}>Actualizando programa</Text>
                 <Text style={styles.cardTitle}>
                   {course.title || 'Curso sin título'}

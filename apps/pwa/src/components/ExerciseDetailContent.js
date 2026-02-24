@@ -25,6 +25,7 @@ import SvgInfo from '../components/icons/SvgInfo';
 import { filterSessionsByPeriod, getSessionDateAsDate } from '../utils/sessionFilter';
 import { getGapAfterHeader } from './WakeHeader';
 import logger from '../utils/logger.js';
+import WakeLoader from './WakeLoader';
 
 const ExerciseDetailContent = ({ 
   exerciseKey, 
@@ -283,7 +284,7 @@ const ExerciseDetailContent = ({
         {/* Spacer for fixed header - matches header height */}
         {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
         {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
-        {headerSpacerHeight > 0 && <View style={{ marginTop: getGapAfterHeader() }} />}
+        {headerSpacerHeight > 0 && <View style={{ marginTop: getGapAfterHeader(), height: Math.max(48, screenHeight * 0.1) }} />}
         
         {/* Top padding when used in modal (no title, no header spacer) */}
         {!showTitle && headerSpacerHeight === 0 && (
@@ -318,8 +319,7 @@ const ExerciseDetailContent = ({
           <View style={styles.chartCard}>
             <Text style={styles.cardTitle}>Historial de los PRs</Text>
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-              <Text style={styles.loadingText}>Cargando historial...</Text>
+              <WakeLoader />
             </View>
           </View>
         ) : (
@@ -567,10 +567,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     overflow: 'hidden',
   },
   loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingTop: Math.max(60, screenHeight * 0.075),
     paddingBottom: Math.max(60, screenHeight * 0.075),
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {

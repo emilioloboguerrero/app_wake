@@ -43,6 +43,7 @@ import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './
 // Gesture handler and video - expo-video (VideoView + useVideoPlayer) with custom overlay UI on all platforms
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import WakeLoader from '../components/WakeLoader';
 
 // Firebase - keep as direct imports (lightweight)
 import { firestore, auth } from '../config/firebase';
@@ -5079,8 +5080,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       <View style={styles.container}>
         <FixedWakeHeader />
         <View style={styles.simpleLoadingContainer}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Inicializando entrenamiento...</Text>
+          <WakeLoader />
         </View>
       </View>
     );
@@ -6096,7 +6096,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               
               {loadingAlternatives ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#ffffff" />
+                  <WakeLoader size={80} />
                   <Text style={styles.loadingText}>Cargando alternativas...</Text>
                 </View>
               ) : alternativeExercises.length > 0 ? (
@@ -6430,7 +6430,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       >
         <View style={loadingOverlayStyles.overlay}>
           <View style={loadingOverlayStyles.loadingContent}>
-            <ActivityIndicator size="large" color="#ffffff" />
+            <WakeLoader size={80} />
             <Text style={loadingOverlayStyles.loadingText}>Guardando entrenamiento</Text>
             <Text style={loadingOverlayStyles.loadingSubtext}>
               Calculando volúmenes y actualizando progreso...
@@ -6591,7 +6591,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
           <ScrollView style={styles.addExerciseModalContent}>
             {loadingAvailableExercises ? (
-              <ActivityIndicator size="large" color="#BFA84D" />
+              <WakeLoader size={80} />
             ) : filteredAvailableExercises.length > 0 ? (
               filteredAvailableExercises.map((exercise, index) => (
                 <AddExerciseCard

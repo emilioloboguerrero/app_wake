@@ -1,5 +1,6 @@
 // MINIMAL METRO CONFIG
 const path = require('path');
+const fs = require('fs');
 const { getDefaultConfig } = require('expo/metro-config');
 const defaultResolve = require('metro-resolver').resolve;
 
@@ -21,6 +22,7 @@ config.resolver.sourceExts = [
 ];
 
 // Single source of truth for layout viewport on web: use our Dimensions so useWindowDimensions() returns canonical size.
+// On web, prefer WakeLoader.web.jsx (shimmer) over WakeLoader.js (pulse). Resolve proactively so we don't depend on defaultResolve return shape.
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (
     platform === 'web' &&
@@ -32,6 +34,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       type: 'sourceFile',
       filePath: path.resolve(__dirname, 'src/utils/layoutViewportDimensions.web.js'),
     };
+  }
+  if (platform === 'web' && (moduleName === 'WakeLoader' || moduleName.endsWith('/WakeLoader') || moduleName.endsWith('\\WakeLoader'))) {
+    const originDir = context.originModulePath ? path.dirname(context.originModulePath) : path.join(__dirname, 'src');
+    const resolvedDir = path.resolve(originDir, path.dirname(moduleName));
+    const webPath = path.join(resolvedDir, 'WakeLoader.web.jsx');
+    if (fs.existsSync(webPath)) {
+      return { type: 'sourceFile', filePath: webPath };
+    }
   }
   return defaultResolve(
     { ...context, resolveRequest: defaultResolve },

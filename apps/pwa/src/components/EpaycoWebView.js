@@ -6,7 +6,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ActivityIndicator,
   Modal,
   TouchableOpacity,
   Text,
@@ -15,6 +14,7 @@ import {
 import { WebView } from 'react-native-webview';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
+import WakeLoader from './WakeLoader';
 
 const MERCADO_PAGO_LOGO = require('../../assets/images.png');
 const MERCADO_PAGO_LOADING_LOGO = require('../../assets/mercado-pago-logo-png_seeklogo-342347.png');
@@ -218,7 +218,7 @@ const EpaycoWebView = ({
                 <View style={styles.loadingContainer}>
                   <View style={styles.loadingContent}>
                     <Image source={MERCADO_PAGO_LOADING_LOGO} style={styles.loadingLogo} />
-                    <ActivityIndicator size="large" color="#4A4A4A" />
+                    <WakeLoader size={80} />
                     <Text style={styles.loadingText}>Procesando pago seguro...</Text>
                     <Text style={styles.loadingSubtext}>Espera mientras cargamos tu información</Text>
                   </View>

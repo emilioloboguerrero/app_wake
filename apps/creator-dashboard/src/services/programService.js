@@ -94,10 +94,7 @@ class ProgramService {
           duration_days: parseInt(programData.freeTrialDurationDays || '0', 10)
         } : { active: false, duration_days: 0 },
         duration: programData.duration || null,
-        programSettings: programData.streakEnabled ? {
-          streakEnabled: true,
-          minimumSessionsPerWeek: parseInt(programData.minimumSessionsPerWeek || '0', 10)
-        } : { streakEnabled: false, minimumSessionsPerWeek: 0 },
+        programSettings: {},
         weight_suggestions: programData.weightSuggestions || false,
         availableLibraries: programData.availableLibraries || [],
         content_plan_id: programData.contentPlanId || null, // Pre-created content from plans (for low-ticket)

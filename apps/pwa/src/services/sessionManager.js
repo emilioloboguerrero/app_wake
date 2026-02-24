@@ -243,9 +243,6 @@ class SessionManager {
         await this.updateWeeklyMuscleVolumes(sessionData.userId, sessionMuscleVolumes);
       }
       
-      // Update weekly streak
-      await this.updateWeeklyStreak(sessionData.userId, sessionData.courseId, sessionData.sessionId);
-      
       // Cleanup
       await AsyncStorage.removeItem('current_session');
       
@@ -447,8 +444,7 @@ class SessionManager {
         lastSessionCompleted: sessionId || null,
         totalSessionsCompleted: (currentProgress?.totalSessionsCompleted || 0) + 1,
         allSessionsCompleted: allSessionsCompleted,
-        lastActivity: new Date().toISOString(),
-        weeklyStreak: currentProgress?.weeklyStreak || null
+        lastActivity: new Date().toISOString()
       };
       
       // Add lastSessionPerformed if exercise data provided
@@ -489,7 +485,7 @@ class SessionManager {
           const cleanExistingLastSession = {};
           Object.keys(existingLastSession).forEach(key => {
             if (key !== 'userId' && key !== 'courseId' && key !== 'totalSessionsCompleted' && 
-                key !== 'lastActivity' && key !== 'weeklyStreak' && key !== 'lastSessionCompleted') {
+                key !== 'lastActivity' && key !== 'lastSessionCompleted') {
               cleanExistingLastSession[key] = existingLastSession[key];
             }
           });
@@ -508,7 +504,7 @@ class SessionManager {
         const cleanExistingLastSession = {};
         Object.keys(existingLastSession).forEach(key => {
           if (key !== 'userId' && key !== 'courseId' && key !== 'totalSessionsCompleted' && 
-              key !== 'lastActivity' && key !== 'weeklyStreak' && key !== 'lastSessionCompleted') {
+              key !== 'lastActivity' && key !== 'lastSessionCompleted') {
             cleanExistingLastSession[key] = existingLastSession[key];
           }
         });
@@ -863,117 +859,6 @@ class SessionManager {
     }
   }
   
-  /**
-   * Simplified weekly streak update using existing week tracking system
-   */
-  async updateWeeklyStreak(userId, courseId, sessionId) {
-    try {
-      logger.log('🔥 Starting weekly streak update:', { userId, courseId, sessionId });
-
-      const progress = await this.getCloudProgress(userId, courseId, true);
-      const courseDataResponse = await this.getCourseDataForWorkout(courseId, userId);
-      const courseData = courseDataResponse?.courseData;
-      
-      if (!progress) {
-        logger.error('❌ No progress data found for streak update');
-        return;
-      }
-
-      logger.log('🔍 DEBUG: Progress data structure:', {
-        hasProgress: !!progress,
-        hasWeeklyStreak: !!progress.weeklyStreak,
-        weeklyStreakValue: progress.weeklyStreak,
-        progressKeys: Object.keys(progress || {})
-      });
-      
-      if (!courseData) {
-        logger.error('❌ No course data found for streak update');
-        return;
-      }
-      
-      const minimumSessions = courseData.programSettings?.minimumSessionsPerWeek || 3;
-      const currentWeek = getMondayWeek(); // Use existing week tracking system
-      
-      // Initialize streak if not exists (first workout ever)
-      if (!progress.weeklyStreak) {
-        progress.weeklyStreak = {
-          currentStreak: 1, // Start streak immediately on first workout
-          sessionsCompletedThisWeek: 1,
-          weekStart: currentWeek, // Use existing week key format
-          lastWorkoutDate: new Date().toISOString()
-        };
-        
-        logger.log('🔥 First workout - starting streak immediately!', {
-          currentStreak: 1,
-          sessionsCompletedThisWeek: 1,
-          weekStart: currentWeek,
-          lastWorkoutDate: new Date().toISOString()
-        });
-      } else {
-        // Check if we're in a new week
-        if (progress.weeklyStreak.weekStart !== currentWeek) {
-          // Previous week evaluation: if >= minimum → increment, else reset
-          const previousSessions = progress.weeklyStreak.sessionsCompletedThisWeek;
-          const previousStreak = progress.weeklyStreak.currentStreak;
-          
-          if (previousSessions >= minimumSessions) {
-            progress.weeklyStreak.currentStreak++;
-            logger.log('🔥 Week completed successfully - streak increased!', {
-              previousStreak,
-              newStreak: progress.weeklyStreak.currentStreak,
-              sessionsCompleted: previousSessions,
-              minimumRequired: minimumSessions
-            });
-          } else {
-            progress.weeklyStreak.currentStreak = 0;
-            logger.log('💔 Week not completed - streak reset to 0', {
-              previousStreak,
-              sessionsCompleted: previousSessions,
-              minimumRequired: minimumSessions
-            });
-          }
-          
-          // Reset for new week
-          progress.weeklyStreak.weekStart = currentWeek;
-          progress.weeklyStreak.sessionsCompletedThisWeek = 1; // Start with 1 for current workout
-          
-          logger.log('📅 New week started', {
-            newWeekStart: currentWeek,
-            sessionsCompletedThisWeek: 1
-          });
-        } else {
-          // Same week - just increment sessions
-          const previousSessions = progress.weeklyStreak.sessionsCompletedThisWeek;
-          progress.weeklyStreak.sessionsCompletedThisWeek++;
-          
-          logger.log('📈 Same week - incrementing sessions', {
-            previousSessions,
-            newSessions: progress.weeklyStreak.sessionsCompletedThisWeek,
-            currentStreak: progress.weeklyStreak.currentStreak
-          });
-        }
-        
-        // Update last workout date
-        progress.weeklyStreak.lastWorkoutDate = new Date().toISOString();
-      }
-      
-      // Save updated streak to user document
-      await userProgressService.updateWeeklyStreak(userId, courseId, progress.weeklyStreak);
-      
-      logger.log('📊 Streak updated:', {
-        currentStreak: progress.weeklyStreak.currentStreak,
-        sessionsCompletedThisWeek: progress.weeklyStreak.sessionsCompletedThisWeek,
-        weekStart: progress.weeklyStreak.weekStart,
-        lastWorkoutDate: progress.weeklyStreak.lastWorkoutDate
-      });
-      
-    } catch (error) {
-      logger.error('❌ Error updating weekly streak:', error);
-      // Re-throw the error so calling code can handle it appropriately
-      throw error;
-    }
-  }
-
   /**
    * Get current week start (Monday) - legacy method
    */

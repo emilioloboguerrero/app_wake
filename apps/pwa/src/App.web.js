@@ -1,6 +1,6 @@
 // Web-specific App entry point
 import React from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 import './styles/global.css'; // Load Montserrat + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen.web';
@@ -28,6 +28,7 @@ const getIsLoginPath = (basePath) => {
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
 const BrowserRouter = require('react-router-dom').BrowserRouter;
 const AuthProvider = require('./contexts/AuthContext').AuthProvider;
+const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
 // CRITICAL: DO NOT import useMontserratFonts from './config/fonts'
@@ -747,6 +748,8 @@ export default function App() {
   }
 
   // Single BrowserRouter at root so useNavigate() always has context (fixes LoginScreen error)
+  const WakeLoader = require('./components/WakeLoader').default;
+
   const loadingMarkup = (
     <div style={{
       minHeight: '100svh',
@@ -757,24 +760,10 @@ export default function App() {
       color: '#ffffff',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
     }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{
-          width: '40px',
-          height: '40px',
-          border: '3px solid rgba(191, 168, 77, 0.3)',
-          borderTopColor: 'rgba(191, 168, 77, 1)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-          margin: '0 auto 20px'
-        }}></div>
-        <p>Cargando...</p>
-      </div>
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <WakeLoader size={80} />
+        <Text style={{ marginTop: 16, fontSize: 16, color: '#ffffff' }}>Cargando...</Text>
+      </View>
     </div>
   );
 
@@ -852,12 +841,14 @@ export default function App() {
     >
       <SafeAreaProvider initialMetrics={initialMetrics}>
         <AuthProvider>
-          <FrozenBottomWrapper>
-            <View style={contentWrapperStyle}>
-              {content}
-            </View>
-          </FrozenBottomWrapper>
-          <WakeDebugPanel />
+          <ActivityStreakProvider>
+            <FrozenBottomWrapper>
+              <View style={contentWrapperStyle}>
+                {content}
+              </View>
+            </FrozenBottomWrapper>
+            <WakeDebugPanel />
+          </ActivityStreakProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </BrowserRouter>

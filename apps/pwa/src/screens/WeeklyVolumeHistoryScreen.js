@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   Animated,
-  ActivityIndicator,
   Modal,
   Platform,
 } from 'react-native';
@@ -27,6 +26,7 @@ import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import logger from '../utils/logger';
+import WakeLoader from '../components/WakeLoader';
 
 const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -220,7 +220,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         <View style={styles.loadingContainer}>
           <View style={{ height: headerTotalHeight }} />
           <View style={{ marginTop: getGapAfterHeader() }}>
-            <ActivityIndicator size="large" color="#ffffff" />
+            <WakeLoader size={80} />
             <Text style={styles.loadingText}>Cargando historial...</Text>
           </View>
         </View>
@@ -258,7 +258,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ marginTop: getGapAfterHeader() }}>
+          <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
           <Text style={styles.title}>Historial de Volumen</Text>
 
           {/* Weekly Volume Trend Chart */}
@@ -348,7 +348,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
 
           {loadingWeek && (
             <View style={styles.weekLoadingContainer}>
-              <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+              <WakeLoader size={40} />
               <Text style={styles.weekLoadingText}>Cargando semana...</Text>
             </View>
           )}

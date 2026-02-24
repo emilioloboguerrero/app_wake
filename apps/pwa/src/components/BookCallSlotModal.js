@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Modal, TouchableOpacity, Text, ActivityIndicator, ScrollView, StyleSheet, Animated, TouchableWithoutFeedback } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { getAvailableSlots, createBooking, cancelBooking } from '../services/callBookingService';
+import WakeLoader from './WakeLoader';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 
 const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -219,8 +220,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
               <View style={styles.content}>
                 {loading && !isManageMode ? (
                   <View style={styles.loadingWrap}>
-                    <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-                    <Text style={styles.loadingText}>Cargando horarios...</Text>
+                    <WakeLoader />
                   </View>
                 ) : error ? (
                   <View style={styles.errorWrap}>
@@ -259,8 +259,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                   </View>
                 ) : isManageMode && rescheduleMode && loading ? (
                   <View style={styles.loadingWrap}>
-                    <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
-                    <Text style={styles.loadingText}>Cargando horarios...</Text>
+                    <WakeLoader />
                   </View>
                 ) : isManageMode && rescheduleMode && dates.length === 0 ? (
                   <Text style={styles.emptyText}>No hay horarios disponibles en las próximas dos semanas.</Text>
@@ -306,7 +305,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                       {formatSlotTime(slot.startUtc)} – {formatSlotTime(slot.endUtc)}
                                     </Text>
                                     {booking ? (
-                                      <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                                      <ActivityIndicator size="small" color="#ffffff" />
                                     ) : (
                                       <View style={styles.slotItemCtaWrap}>
                                         <Text style={styles.slotItemCta}>Reservar</Text>
@@ -364,7 +363,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                       {formatSlotTime(slot.startUtc)} – {formatSlotTime(slot.endUtc)}
                                     </Text>
                                     {booking ? (
-                                      <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                                      <ActivityIndicator size="small" color="#ffffff" />
                                     ) : (
                                       <View style={styles.slotItemCtaWrap}>
                                         <Text style={styles.slotItemCta}>Reservar</Text>
@@ -477,8 +476,11 @@ function createStyles(screenWidth, screenHeight) {
       minHeight: 200,
     },
     loadingWrap: {
+      flex: 1,
+      justifyContent: 'center',
       alignItems: 'center',
       paddingVertical: 40,
+      minHeight: 160,
     },
     loadingText: {
       fontSize: 14,

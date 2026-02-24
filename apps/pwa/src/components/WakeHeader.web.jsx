@@ -2,10 +2,32 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { View, useWindowDimensions } from 'react-native';
+import { View, Image, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../contexts/AuthContext';
+import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import logger from '../utils/logger';
 import { isPWA } from '../utils/platform';
+import HeaderStreakInfoModal from './HeaderStreakInfoModal.web.jsx';
+
+// Match DailyWorkoutScreen streak: base 60, middle 20, inner 8; offsets bottom 0, 6, 8. Header scale: base 32 (a bit larger).
+const STREAK_BASE = 32;
+const STREAK_MIDDLE = Math.round((20 / 60) * STREAK_BASE);  // ~11
+const STREAK_INNER = Math.round((8 / 60) * STREAK_BASE);    // ~4
+const STREAK_BOTTOM_MIDDLE = Math.round((6 / 60) * STREAK_BASE);  // ~3
+const STREAK_BOTTOM_INNER = Math.round((8 / 60) * STREAK_BASE);   // ~4
+const OPACITY_ACTIVE = 0.9;
+const OPACITY_DEAD = 0.4;
+
+const FIRE_PATH = 'M37.34,7.36a.12.12,0,0,1,.18.13c-.47,1.86-2.78,12.63,5.57,19.62,8.16,6.84,8.41,17.13,2.33,24-7.27,8.23-19.84,6.78-25.25,1.37C16.36,48.69,9.44,36.33,21.29,26a.1.1,0,0,1,.16,0c.29,1.23,2.3,9,7.66,10,.25,0,.37-.11.25-.34C27.78,32.6,20.66,17,37.34,7.36Z';
+
+function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity, transform: flipX ? 'scaleX(-1)' : undefined }}>
+      <path d={FIRE_PATH} stroke={stroke} strokeWidth={strokeWidth} fill={fill} strokeLinecap="round" />
+    </svg>
+  );
+}
 
 // Push header bar down on non-iPhone (Mac/Android) where safe area is 0.
 const HEADER_TOP_OFFSET_NON_IOS = 24;
@@ -50,8 +72,27 @@ export const FixedWakeHeader = ({
   const logoHeight = logoWidth * 0.57;
   const iconSize = 20;
   const barCenterTop = totalTop + headerHeight / 2;
+  const [isStreakModalOpen, setIsStreakModalOpen] = React.useState(false);
   
   const shouldShowProfileButton = profileImageUrl !== null || onProfilePress;
+
+  const { user: contextUser } = useAuth();
+  const [fallbackUser, setFallbackUser] = React.useState(null);
+  React.useEffect(() => {
+    if (!contextUser && typeof require !== 'undefined') {
+      import('../config/firebase').then(({ auth }) => {
+        if (auth.currentUser) setFallbackUser(auth.currentUser);
+      });
+    } else {
+      setFallbackUser(null);
+    }
+  }, [contextUser]);
+  const user = contextUser || fallbackUser;
+  const { streakNumber, flameLevel, isLoading } = useActivityStreakContext();
+  const isDead = flameLevel === 0;
+  const streakOpacity = isDead || isLoading ? OPACITY_DEAD : OPACITY_ACTIVE;
+  const streakDisplayNum = isDead ? 0 : streakNumber;
+  const showAllThree = isLoading || isDead;
   
   const handleProfilePress = () => {
     if (onProfilePress) {
@@ -136,15 +177,12 @@ export const FixedWakeHeader = ({
         </button>
       )}
 
-      {/* Logo - same path as loading screen (/app/assets/...) so one canonical location */}
-      <img 
-        src={typeof window !== 'undefined' && window.location.pathname.startsWith('/app') ? '/app/assets/wake-logo-new.png' : '/assets/wake-logo-new.png'}
-        alt="WAKE"
-        style={{
-          width: logoWidth,
-          height: logoHeight,
-          objectFit: 'contain'
-        }}
+      {/* Logo - use require so Metro/Expo resolves asset URL in dev and build */}
+      <Image
+        source={require('../../assets/wake-logo-new.png')}
+        style={{ width: logoWidth, height: logoHeight }}
+        resizeMode="contain"
+        accessibilityLabel="WAKE"
       />
       
       {/* Menu Button - aligned with logo center, on the left */}
@@ -207,6 +245,53 @@ export const FixedWakeHeader = ({
           <ChevronLeftIcon size={iconSize} color="#ffffff" />
         </button>
       )}
+
+      {/* Streak badge - same structure as DailyWorkoutScreen (base / middle / inner), slightly larger.
+          Click to open streak details modal. */}
+      <div
+        aria-label="Racha"
+        role="button"
+        tabIndex={0}
+        style={{
+          position: 'absolute',
+          top: barCenterTop,
+          right: shouldShowProfileButton ? Math.max(32, screenWidth * 0.08) + 44 + 12 : Math.max(32, screenWidth * 0.08),
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          zIndex: 1001,
+        }}
+        onClick={() => setIsStreakModalOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsStreakModalOpen(true);
+          }
+        }}
+      >
+        <div style={{ position: 'relative', width: STREAK_BASE, height: STREAK_BASE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {(showAllThree || flameLevel >= 3) && (
+            <span style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)' }}>
+              <StreakFlameSvg size={STREAK_BASE} stroke="#000000" strokeWidth={0.3} fill="#E64A11" opacity={streakOpacity} />
+            </span>
+          )}
+          {(showAllThree || flameLevel >= 2) && (
+            <span style={{ position: 'absolute', bottom: STREAK_BOTTOM_MIDDLE, left: '50%', transform: 'translateX(-50%)' }}>
+              <StreakFlameSvg size={STREAK_MIDDLE} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" opacity={streakOpacity} flipX />
+            </span>
+          )}
+          {(showAllThree || flameLevel >= 1) && (
+            <span style={{ position: 'absolute', bottom: STREAK_BOTTOM_INNER, left: '50%', transform: 'translateX(-50%)' }}>
+              <StreakFlameSvg size={STREAK_INNER} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" opacity={streakOpacity} />
+            </span>
+          )}
+        </div>
+        <span style={{ color: '#ffffff', fontSize: 16, fontWeight: 600 }}>
+          {isLoading ? '0' : streakDisplayNum}
+        </span>
+      </div>
       
       {/* Reset Button - aligned with logo center */}
       {showResetButton && onResetPress && (
@@ -241,6 +326,11 @@ export const FixedWakeHeader = ({
           }}>{resetButtonText}</span>
         </button>
       )}
+
+      <HeaderStreakInfoModal
+        visible={isStreakModalOpen}
+        onClose={() => setIsStreakModalOpen(false)}
+      />
     </div>
   );
   return (typeof document !== 'undefined' && document.body)

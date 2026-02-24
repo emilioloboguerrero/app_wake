@@ -55,31 +55,6 @@ class UserProgressService {
   }
   
   /**
-   * Update weekly streak
-   */
-  async updateWeeklyStreak(userId, courseId, streakData) {
-    try {
-      logger.log('🔥 Updating weekly streak:', { userId, courseId, streakData });
-      
-      const userDocRef = doc(firestore, 'users', userId);
-      
-      await updateDoc(userDocRef, {
-        [`courseProgress.${courseId}.weeklyStreak`]: streakData
-      });
-      
-      logger.log('✅ Weekly streak updated successfully', {
-        userId,
-        courseId,
-        streakData
-      });
-    } catch (error) {
-      logger.error('❌ Error updating weekly streak:', error);
-      logger.error('❌ Streak update failed with data:', { userId, courseId, streakData });
-      throw error;
-    }
-  }
-  
-  /**
    * Update last session performed
    */
   async updateLastSessionPerformed(userId, courseId, sessionId, sessionData) {

@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   useWindowDimensions,
   Modal,
   Pressable,
@@ -15,6 +14,7 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
+import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -212,8 +212,7 @@ const PRsScreen = ({ navigation, route }) => {
           onBackPress={() => safeNavigation.goBack()}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Cargando panel de ejercicios...</Text>
+          <WakeLoader />
         </View>
       </SafeAreaView>
     );
@@ -239,8 +238,8 @@ const PRsScreen = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
           <View style={{ height: headerTotalHeight }} />
-          <View style={{ marginTop: getGapAfterHeader() }}>
-          <TouchableOpacity 
+          <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
+          <TouchableOpacity
             style={styles.titleContainer}
             onPress={() => setIsInfoModalVisible(true)}
             activeOpacity={0.7}

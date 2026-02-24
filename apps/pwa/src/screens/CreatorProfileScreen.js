@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import { ImageBackground, Image as ExpoImage } from 'expo-image';
@@ -32,6 +32,7 @@ import { creatorProfileCache } from '../utils/cache';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { isAdmin, isCreator } from '../utils/roleHelper';
+import WakeLoader from '../components/WakeLoader';
 // Only load on native — react-native-linear-gradient uses requireNativeComponent and breaks on web
 const NativeLinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 
@@ -1212,7 +1213,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     if (loading) {
       return (
         <View style={[styles.heroImage, styles.heroPlaceholder]}>
-          <ActivityIndicator size="large" color="#ffffff" />
+          <WakeLoader size={80} />
         </View>
       );
     }
@@ -1743,7 +1744,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
             <View style={[styles.tabPageContent, { paddingTop: 8 }]}>
               {programsLoading ? (
                 <View style={styles.programsLoadingContainer}>
-                  <ActivityIndicator size="large" color="#ffffff" />
+                  <WakeLoader size={80} />
                   <Text style={styles.programsLoadingText}>Cargando programas...</Text>
                 </View>
               ) : programsError ? (

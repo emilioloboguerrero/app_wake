@@ -472,7 +472,11 @@ class WorkoutProgressService {
     }
   }
   
-  async getCourseDataForWorkout(courseId, userId = null) {
+  async getCourseDataForWorkout(courseId, userId = null, options = {}) {
+    const { targetDate = null } = options;
+    const effectiveTargetDate = targetDate ? (typeof targetDate === 'string' ? new Date(targetDate + 'T12:00:00') : new Date(targetDate)) : new Date();
+    const weekKeyForTarget = targetDate ? getMondayWeek(effectiveTargetDate) : null;
+
     try {
       let courseData = await courseDownloadService.getCourseData(courseId, true);
       const effectiveUserId = userId;
@@ -484,7 +488,9 @@ class WorkoutProgressService {
         innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : []
       });
       if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
-        const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, { cacheInMemory: true, ttlMs: 5 * 60 * 1000 });
+        const moduleOpts = { cacheInMemory: true, ttlMs: 5 * 60 * 1000 };
+        if (weekKeyForTarget) moduleOpts.weekKey = weekKeyForTarget;
+        const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOpts);
         logger.log('📦 [getCourseDataForWorkout] getCourseModules result:', { modulesLength: modules?.length ?? 0, isArray: Array.isArray(modules) });
         if (modules) {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
@@ -505,18 +511,17 @@ class WorkoutProgressService {
           logger.warn('Could not refresh modules for workout, using cache:', e?.message);
         }
       }
-      // One-on-one: attach today's planned session id only (lightweight; full content loaded in getCurrentSession)
+      // One-on-one: attach planned session id for selected date (or today)
       // Use plan slot id (userId_courseId_weekKey_sessionId) when plan session so list match and sessionHistory dedupes in dashboard
       if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
-        const today = new Date();
-        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
+        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
         const plannedId = planned
           ? (planned.plan_id && planned.session_id
-            ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : today))}_${planned.session_id}`
+            ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : effectiveTargetDate))}_${planned.session_id}`
             : planned.id)
           : null;
         logger.log('🔍 [getCourseDataForWorkout] one-on-one plannedSessionIdForToday:', {
-          date: today.toDateString(),
+          date: effectiveTargetDate.toDateString(),
           plannedId
         });
         courseData = {
@@ -542,16 +547,16 @@ class WorkoutProgressService {
           
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
-            const today = new Date();
-            const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId);
-            const plannedHybrid = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
+            const moduleOptsHybrid = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
+            const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
+            const plannedHybrid = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
             const plannedIdHybrid = isOneOnOne && plannedHybrid
               ? (plannedHybrid.plan_id && plannedHybrid.session_id
-                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedHybrid.date_timestamp?.toDate?.() || (plannedHybrid.date ? new Date(plannedHybrid.date) : today))}_${plannedHybrid.session_id}`
+                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedHybrid.date_timestamp?.toDate?.() || (plannedHybrid.date ? new Date(plannedHybrid.date) : effectiveTargetDate))}_${plannedHybrid.session_id}`
                 : plannedHybrid.id)
               : undefined;
-            if (plannedIdHybrid != null) logger.log('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdHybrid });
+            if (plannedIdHybrid != null) logger.log('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdHybrid });
             // sessionService reads courseData.courseData as "inner" and expects inner.modules and inner.isOneOnOne
             const innerCourseData = {
               ...(hybridCourse.courseData || hybridCourse),
@@ -581,24 +586,24 @@ class WorkoutProgressService {
 
           // Course not in hybrid (e.g. one-on-one assigned via users.courses; hybrid uses courses collection). Fetch from Firestore.
           logger.log('📥 Course not in hybrid list (hybrid uses courses collection; one-on-one may be in users.courses). Fetching from Firestore:', courseId);
+          const firestoreModuleOpts = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
           const [firestoreCourse, modules] = await Promise.all([
             firestoreService.getCourse(courseId),
-            firestoreService.getCourseModules(courseId, effectiveUserId)
+            firestoreService.getCourseModules(courseId, effectiveUserId, firestoreModuleOpts)
           ]);
           if (firestoreCourse) {
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
               logger.error('❌ Background download failed:', error);
             });
-            const today = new Date();
-            const plannedFirestore = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, today);
+            const plannedFirestore = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = firestoreCourse.deliveryType === 'one_on_one' || firestoreCourse.isOneOnOne === true;
             const modulesToUse = modules || [];
             const plannedIdFirestore = isOneOnOne && plannedFirestore
               ? (plannedFirestore.plan_id && plannedFirestore.session_id
-                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedFirestore.date_timestamp?.toDate?.() || (plannedFirestore.date ? new Date(plannedFirestore.date) : today))}_${plannedFirestore.session_id}`
+                ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedFirestore.date_timestamp?.toDate?.() || (plannedFirestore.date ? new Date(plannedFirestore.date) : effectiveTargetDate))}_${plannedFirestore.session_id}`
                 : plannedFirestore.id)
               : undefined;
-            if (plannedIdFirestore != null) logger.log('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: today.toDateString(), plannedId: plannedIdFirestore });
+            if (plannedIdFirestore != null) logger.log('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdFirestore });
             const innerCourseData = {
               ...(firestoreCourse.courseData || firestoreCourse),
               modules: modulesToUse,

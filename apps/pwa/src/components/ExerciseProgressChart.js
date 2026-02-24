@@ -4,6 +4,7 @@ import { LineChart } from 'react-native-chart-kit';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 import { getSessionDateAsDate } from '../utils/sessionFilter';
 import logger from '../utils/logger.js';
+import WakeLoader from './WakeLoader';
 
 const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', onPeriodChange }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -77,6 +78,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
       <View style={styles.container}>
         <Text style={styles.title}>Progreso del Ejercicio</Text>
         <View style={styles.loadingContainer}>
+          <WakeLoader size={56} />
           <Text style={styles.loadingText}>Cargando datos...</Text>
         </View>
       </View>

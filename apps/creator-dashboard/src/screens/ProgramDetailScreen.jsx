@@ -670,10 +670,6 @@ const ProgramDetailScreen = () => {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [isUpdatingProgram, setIsUpdatingProgram] = useState(false);
-  const [isStreakModalOpen, setIsStreakModalOpen] = useState(false);
-  const [streakEnabled, setStreakEnabled] = useState(false);
-  const [minimumSessionsPerWeek, setMinimumSessionsPerWeek] = useState(0);
-  const [isUpdatingStreak, setIsUpdatingStreak] = useState(false);
   const [isWeightSuggestionsModalOpen, setIsWeightSuggestionsModalOpen] = useState(false);
   const [weightSuggestionsEnabled, setWeightSuggestionsEnabled] = useState(false);
   const [isUpdatingWeightSuggestions, setIsUpdatingWeightSuggestions] = useState(false);
@@ -846,11 +842,9 @@ const ProgramDetailScreen = () => {
     setDurationValue(dur);
     setFreeTrialActive(!!program.free_trial?.active);
     setFreeTrialDurationDays(String(program.free_trial?.duration_days ?? 0));
-    setStreakEnabled(!!program.programSettings?.streakEnabled);
-    setMinimumSessionsPerWeek(program.programSettings?.minimumSessionsPerWeek ?? 0);
     setWeightSuggestionsEnabled(!!program.weight_suggestions);
     setSelectedLibraryIds(new Set(program.availableLibraries || []));
-  }, [isConfigTabActive, program?.id, program?.title, program?.price, program?.duration, program?.free_trial, program?.programSettings, program?.weight_suggestions, program?.availableLibraries]);
+  }, [isConfigTabActive, program?.id, program?.title, program?.price, program?.duration, program?.free_trial, program?.weight_suggestions, program?.availableLibraries]);
 
   // Load libraries list when on Ajustes tab (for inline libraries section)
   useEffect(() => {
@@ -1877,51 +1871,6 @@ const ProgramDetailScreen = () => {
     }
   };
 
-  const handleStreakPillClick = () => {
-    if (!program) return;
-    const programSettings = program.programSettings || {};
-    setStreakEnabled(programSettings.streakEnabled || false);
-    setMinimumSessionsPerWeek(programSettings.minimumSessionsPerWeek || 0);
-    setIsStreakModalOpen(true);
-  };
-
-  const handleCloseStreakModal = () => {
-    setIsStreakModalOpen(false);
-    setStreakEnabled(false);
-    setMinimumSessionsPerWeek(0);
-  };
-
-  const handleUpdateStreak = async () => {
-    if (!program) return;
-
-    const programSettings = {
-      ...(program.programSettings || {}),
-      streakEnabled: streakEnabled,
-      minimumSessionsPerWeek: minimumSessionsPerWeek
-    };
-
-    try {
-      setIsUpdatingStreak(true);
-      await programService.updateProgram(program.id, { programSettings });
-      
-      // Update React Query cache
-      queryClient.setQueryData(
-        queryKeys.programs.detail(program.id),
-        (oldData) => ({
-          ...oldData,
-          programSettings
-        })
-      );
-      
-      handleCloseStreakModal();
-    } catch (err) {
-      console.error('Error updating streak settings:', err);
-      alert('Error al actualizar la configuración de racha');
-    } finally {
-      setIsUpdatingStreak(false);
-    }
-  };
-
   const handleWeightSuggestionsPillClick = () => {
     if (!program) return;
     setWeightSuggestionsEnabled(program.weight_suggestions || false);
@@ -2209,21 +2158,6 @@ const ProgramDetailScreen = () => {
       alert('Error al actualizar la prueba gratis');
     } finally {
       setIsUpdatingFreeTrial(false);
-    }
-  };
-
-  const saveStreak = async (enabled, minSessionsPerWeek) => {
-    if (!program) return;
-    const programSettings = { ...(program.programSettings || {}), streakEnabled: !!enabled, minimumSessionsPerWeek: Math.max(0, parseInt(minSessionsPerWeek, 10) || 0) };
-    try {
-      setIsUpdatingStreak(true);
-      await programService.updateProgram(program.id, { programSettings });
-      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, programSettings }));
-    } catch (err) {
-      console.error(err);
-      alert('Error al actualizar la racha');
-    } finally {
-      setIsUpdatingStreak(false);
     }
   };
 
@@ -6326,22 +6260,6 @@ const ProgramDetailScreen = () => {
               </div>
               <div className="program-section__content program-config-inline">
                 <div className="program-config-inline-row">
-                  <span className="program-config-item-label">Racha</span>
-                  <div className="program-config-inline-field program-config-inline-toggle-row">
-                    <label className="program-config-toggle-wrap">
-                      <input type="checkbox" checked={streakEnabled} onChange={(e) => setStreakEnabled(e.target.checked)} />
-                      <span className="program-config-toggle-slider" />
-                    </label>
-                    {streakEnabled && (
-                      <>
-                        <input type="number" min={0} className="program-config-inline-input" value={minimumSessionsPerWeek} onChange={(e) => setMinimumSessionsPerWeek(Math.max(0, parseInt(e.target.value, 10) || 0))} style={{ width: 56 }} />
-                        <span className="program-config-inline-hint">sesiones/semana</span>
-                      </>
-                    )}
-                    <button type="button" className="program-config-inline-btn" onClick={() => saveStreak(streakEnabled, minimumSessionsPerWeek)} disabled={isUpdatingStreak}>{isUpdatingStreak ? 'Guardando...' : 'Guardar'}</button>
-                  </div>
-                </div>
-                <div className="program-config-inline-row">
                   <span className="program-config-item-label">Sugerencias de peso</span>
                   <div className="program-config-inline-field program-config-inline-toggle-row">
                     <label className="program-config-toggle-wrap">
@@ -7010,83 +6928,6 @@ const ProgramDetailScreen = () => {
               onClick={handleUpdateProgram}
               disabled={isUpdatingProgram || !programNameValue.trim() || programNameValue.trim() === (program?.title || '')}
               loading={isUpdatingProgram}
-            />
-          </div>
-        </div>
-      </Modal>
-
-      {/* Streak Modal */}
-      <Modal
-        isOpen={isStreakModalOpen}
-        onClose={handleCloseStreakModal}
-        title="Configurar Racha"
-      >
-        <div className="streak-modal-content">
-          <div className="streak-modal-body">
-            <div className="streak-row">
-              <div className="streak-toggle-section">
-                <label className="streak-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                  <span>Activar Racha</span>
-                  <label className="elegant-toggle">
-                  <input
-                    type="checkbox"
-                    checked={streakEnabled}
-                    onChange={(e) => setStreakEnabled(e.target.checked)}
-                  />
-                    <span className="elegant-toggle-slider"></span>
-                  </label>
-                </label>
-              </div>
-              {streakEnabled && (
-                <div className="streak-input-section">
-                  <label className="streak-input-label">
-                    Cantidad mínima de sesiones en la semana para mantener la racha
-                  </label>
-                  <div className="streak-input-wrapper">
-                    <input
-                      type="number"
-                      className="streak-input"
-                      value={minimumSessionsPerWeek}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value, 10) || 0;
-                        if (value >= 0) {
-                          setMinimumSessionsPerWeek(value);
-                        }
-                      }}
-                      min="0"
-                    />
-                    <div className="streak-arrows">
-                      <button
-                        type="button"
-                        className="streak-spinner-button streak-spinner-up"
-                        onClick={() => setMinimumSessionsPerWeek(prev => prev + 1)}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="streak-spinner-button streak-spinner-down"
-                        disabled={minimumSessionsPerWeek <= 0}
-                        onClick={() => setMinimumSessionsPerWeek(prev => Math.max(0, prev - 1))}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="streak-modal-actions">
-            <Button
-              title={isUpdatingStreak ? 'Guardando...' : 'Guardar'}
-              onClick={handleUpdateStreak}
-              disabled={isUpdatingStreak || (streakEnabled && minimumSessionsPerWeek <= 0)}
-              loading={isUpdatingStreak}
             />
           </div>
         </div>

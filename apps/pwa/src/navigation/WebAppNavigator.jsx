@@ -41,6 +41,7 @@ import WeeklyVolumeHistoryScreen from '../screens/WeeklyVolumeHistoryScreen.web'
 import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
+import LabScreen from '../screens/LabScreen.web';
 import OnboardingScreen from '../screens/OnboardingScreen';
 
 import firestoreService from '../services/firestoreService';
@@ -695,6 +696,15 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(WeeklyVolumeHistoryScreen, 'WeeklyVolumeHistory'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/progress"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(LabScreen, 'Lab'))}
           </AuthenticatedLayout>
         }
       />

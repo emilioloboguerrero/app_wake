@@ -507,6 +507,8 @@ export default function MealEditorScreen() {
                                     protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
                                     carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
                                     fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
+                                    serving_unit: s.serving_description ?? s.measurement_description ?? null,
+                                    grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
                                   });
                                 }}
                               >
@@ -534,6 +536,8 @@ export default function MealEditorScreen() {
                                       protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
                                       carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
                                       fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
+                                      serving_unit: s.serving_description ?? s.measurement_description ?? null,
+                                      grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
                                     });
                                   } else {
                                     const prev = Number(item.number_of_units) || 1;

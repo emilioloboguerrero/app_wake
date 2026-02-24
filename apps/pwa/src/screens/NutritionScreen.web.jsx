@@ -5,19 +5,21 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  ActivityIndicator,
   Animated,
-  Modal,
   TextInput,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import WeekDateSelector from '../components/WeekDateSelector.web';
 import BottomSpacer from '../components/BottomSpacer';
+import WakeModalOverlay from '../components/WakeModalOverlay.web';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
+import activityStreakService from '../services/activityStreakService';
 import logger from '../utils/logger';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
@@ -25,11 +27,12 @@ import Steak from '../components/icons/Steak';
 import Wheat from '../components/icons/Wheat';
 import Avocado from '../components/icons/Avocado';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
+import WakeLoader from '../components/WakeLoader';
 
 const GOLD = 'rgba(191, 168, 77, 1)';
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
 const REMAINING_GRAY = 'rgba(255, 255, 255, 0.12)';
-const GOLD_FILL = 'rgba(191, 168, 77, 0.45)';
+const GOLD_FILL = 'rgba(255, 255, 255, 0.75)';
 const OVER_LIMIT_RED = 'rgba(255, 68, 68, 0.3)';
 
 const DROP_STAGGER_MS = 70;
@@ -186,9 +189,12 @@ function formatIngredientRight(it) {
   const numUnits = Number(amount) || 1;
   const gramsPerUnit = it.grams_per_unit != null ? Number(it.grams_per_unit) : (it.serving_weight_grams != null ? Number(it.serving_weight_grams) : null);
   let unitLabel = (it.unit ?? it.serving_unit ?? it.unit_name ?? it.serving_description ?? '').trim();
-  if (!unitLabel && Array.isArray(it.servings) && it.serving_id != null) {
+  const unitLooksLikeDerived1g = /^1\s*g$/i.test(unitLabel);
+  if ((!unitLabel || unitLooksLikeDerived1g) && Array.isArray(it.servings) && it.serving_id != null) {
     const s = it.servings.find((ss) => String(ss.serving_id) === String(it.serving_id));
-    if (s?.serving_description) unitLabel = String(s.serving_description).trim();
+    if (s?.serving_description && !/^1\s*g$/i.test(s.serving_description)) {
+      unitLabel = String(s.serving_description).trim();
+    }
   }
   if (unitLabel || gramsPerUnit != null) return formatQuantityAndServing(numUnits, unitLabel || (gramsPerUnit != null ? 'g' : ''), gramsPerUnit);
   if (amount != null && amount !== '') return { main: String(amount), sub: null };
@@ -198,9 +204,12 @@ function formatIngredientRight(it) {
 function formatDiaryServing(entry) {
   const units = Number(entry.number_of_units) || 1;
   let unit = (entry.serving_unit ?? entry.serving_description ?? '').trim();
-  if (!unit && Array.isArray(entry.servings) && entry.serving_id != null) {
+  const unitLooksLikeDerived1g = /^1\s*g$/i.test(unit);
+  if ((!unit || unitLooksLikeDerived1g) && Array.isArray(entry.servings) && entry.serving_id != null) {
     const s = entry.servings.find((ss) => String(ss.serving_id) === String(entry.serving_id));
-    if (s?.serving_description) unit = String(s.serving_description).trim();
+    if (s?.serving_description && !/^1\s*g$/i.test(s.serving_description)) {
+      unit = String(s.serving_description).trim();
+    }
   }
   const gramsPerUnit = entry.grams_per_unit != null ? Number(entry.grams_per_unit) : null;
   return formatQuantityAndServing(units, unit || (gramsPerUnit != null ? 'g' : ''), gramsPerUnit);
@@ -301,6 +310,13 @@ const EMOJI_PATTERNS = [
   [/vegetable[s]?|veggie|verdura/i, '🥦'],
 ];
 
+const FOOD_EMOJIS = [...new Set(EMOJI_PATTERNS.map(([, e]) => e))];
+
+function getRandomFoodEmojis(count = 5) {
+  const shuffled = [...FOOD_EMOJIS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(count, FOOD_EMOJIS.length));
+}
+
 function getFoodEmoji(it) {
   const cat = it.food_category ?? '';
   if (cat) {
@@ -399,6 +415,77 @@ function MealImageBanner({ items, colorIndex, categoryIndex = 0 }) {
   );
 }
 
+const NO_OPCIONES_EMOJI_LAYOUT = [
+  { xPct: 5, yPct: 6, size: 36 },
+  { xPct: 35, yPct: 6, size: 36 },
+  { xPct: 65, yPct: 6, size: 36 },
+  { xPct: 95, yPct: 6, size: 36 },
+  { xPct: 20, yPct: 20, size: 28 },
+  { xPct: 50, yPct: 20, size: 28 },
+  { xPct: 80, yPct: 20, size: 28 },
+  { xPct: 5, yPct: 34, size: 36 },
+  { xPct: 35, yPct: 34, size: 36 },
+  { xPct: 65, yPct: 34, size: 36 },
+  { xPct: 95, yPct: 34, size: 36 },
+  { xPct: 20, yPct: 48, size: 28 },
+  { xPct: 50, yPct: 48, size: 28 },
+  { xPct: 80, yPct: 48, size: 28 },
+  { xPct: 5, yPct: 62, size: 36 },
+  { xPct: 35, yPct: 62, size: 36 },
+  { xPct: 65, yPct: 62, size: 36 },
+  { xPct: 95, yPct: 62, size: 36 },
+  { xPct: 20, yPct: 76, size: 28 },
+  { xPct: 50, yPct: 76, size: 28 },
+  { xPct: 80, yPct: 76, size: 28 },
+  { xPct: 5, yPct: 90, size: 36 },
+  { xPct: 35, yPct: 90, size: 36 },
+  { xPct: 65, yPct: 90, size: 36 },
+  { xPct: 95, yPct: 90, size: 36 },
+  { xPct: 20, yPct: 96, size: 28 },
+  { xPct: 50, yPct: 96, size: 28 },
+  { xPct: 80, yPct: 96, size: 28 },
+];
+
+function NoOpcionesEmptyCard() {
+  const emojis = useMemo(() => getRandomFoodEmojis(20), []);
+  const colorIdx = 2;
+  const bg = MEAL_BANNER_COLORS[colorIdx];
+  return (
+    <View style={[styles.opcionesCard, styles.noOpcionesEmptyRoot, styles.noOpcionesFillParent]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.noOpcionesEmojiBg, { backgroundColor: bg }]}>
+        {NO_OPCIONES_EMOJI_LAYOUT.map((pos, i) => (
+          <Text
+            key={i}
+            selectable={false}
+            style={[
+              styles.mealBannerEmoji,
+              styles.noOpcionesEmojiCell,
+              {
+                left: `${pos.xPct}%`,
+                top: `${pos.yPct}%`,
+                fontSize: pos.size,
+                lineHeight: pos.size + 4,
+              },
+            ]}
+          >
+            {emojis[i % emojis.length]}
+          </Text>
+        ))}
+      </View>
+      <View style={StyleSheet.absoluteFill}>
+        <View style={styles.noOpcionesOverlay} />
+      </View>
+      <View style={styles.noOpcionesGlassWrap}>
+        <View style={[styles.noOpcionesGlassCard, styles.noOpcionesGlassCardWeb]}>
+          <View style={styles.noOpcionesGlassCardInner}>
+            <Text style={styles.noOpcionesGlassText}>No tienes opciones planificadas para esta comida.</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function getPer100g(food) {
   const servings = food?.servings?.serving;
   if (!Array.isArray(servings) || servings.length === 0) return null;
@@ -462,6 +549,13 @@ function chipLabel(servingDescription) {
   return d.length > 12 ? d.slice(0, 12) + '…' : d;
 }
 
+const DEFAULT_MEAL_CATEGORIES = [
+  { id: 'breakfast', label: 'Desayuno' },
+  { id: 'lunch', label: 'Almuerzo' },
+  { id: 'dinner', label: 'Cena' },
+  { id: 'snack', label: 'Snack' },
+];
+
 const MICROS = [
   { key: 'saturated_fat',       label: 'Grasa saturada',       unit: 'g' },
   { key: 'polyunsaturated_fat', label: 'Grasa poliinsaturada', unit: 'g' },
@@ -518,13 +612,28 @@ const NutritionScreen = () => {
   const [fdShowMicros, setFdShowMicros] = useState(false);
   const [fdLoadingDetail, setFdLoadingDetail] = useState(false);
   const [editingDiaryEntry, setEditingDiaryEntry] = useState(null);
-  const [fdAmountPickerVisible, setFdAmountPickerVisible] = useState(false);
+  const [fdCreateMeal, setFdCreateMeal] = useState(false);
   const [menuEntryId, setMenuEntryId] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState({ pageY: 0 });
 
-  const fdAmountScrollRef = useRef(null);
-  const GRAM_PICKER_ITEM_HEIGHT = 44;
-  const GRAM_PICKER_MAX = 2000;
+  // Mis comidas (user-created meals)
+  const [userMeals, setUserMeals] = useState([]);
+  const [userMealsLoading, setUserMealsLoading] = useState(false);
+  const [misComidasSelectedByCard, setMisComidasSelectedByCard] = useState({});
+  const [createMealModalOpen, setCreateMealModalOpen] = useState(false);
+  const [createMealName, setCreateMealName] = useState('');
+  const [createMealItems, setCreateMealItems] = useState([]);
+  const [createMealSaving, setCreateMealSaving] = useState(false);
+  const [createMealSearchQuery, setCreateMealSearchQuery] = useState('');
+  const [createMealSearchResults, setCreateMealSearchResults] = useState([]);
+  const [createMealSearchLoading, setCreateMealSearchLoading] = useState(false);
+  const [createMealAddMode, setCreateMealAddMode] = useState(null);
+  const [createMealManualItem, setCreateMealManualItem] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', amount: '1' });
+  const [createMealSelectedFood, setCreateMealSelectedFood] = useState(null);
+  const [createMealServingIndex, setCreateMealServingIndex] = useState(0);
+  const [createMealServingAmount, setCreateMealServingAmount] = useState('1');
+
+  const fdServingsInputRef = useRef(null);
 
   const savedFoodIds = useMemo(() => new Set(savedFoods.map((f) => f.food_id)), [savedFoods]);
 
@@ -567,6 +676,19 @@ const NutritionScreen = () => {
     if (label.includes('cena')) return 'dinner';
     return 'snack';
   }
+
+  const fetchDatesWithEntries = useCallback(
+    async (startDate, endDate) => {
+      if (!userId) return [];
+      try {
+        return await nutritionDb.getDatesWithEntries(userId, startDate, endDate);
+      } catch (e) {
+        logger.error('[NutritionScreen] getDatesWithEntries error:', e);
+        return [];
+      }
+    },
+    [userId]
+  );
 
   const loadData = useCallback(async () => {
     if (!userId) return;
@@ -623,6 +745,7 @@ const NutritionScreen = () => {
             servings: it.servings ?? null,
           });
         }
+        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
         await loadData();
         setAddModalVisible(false);
       } catch (e) {
@@ -795,23 +918,6 @@ const NutritionScreen = () => {
     }
   }, [userId]);
 
-  const handleFdAmountScrollEnd = useCallback((e) => {
-    const y = e.nativeEvent.contentOffset.y;
-    const index = Math.round(y / GRAM_PICKER_ITEM_HEIGHT);
-    const val = Math.max(1, Math.min(GRAM_PICKER_MAX, index + 1));
-    setBuscarAmount(String(val));
-  }, []);
-
-  useEffect(() => {
-    if (!fdAmountPickerVisible) return;
-    const val = Math.max(1, Math.min(GRAM_PICKER_MAX, Math.round(Number(buscarAmount) || 1)));
-    const y = (val - 1) * GRAM_PICKER_ITEM_HEIGHT;
-    const t = setTimeout(() => {
-      fdAmountScrollRef.current?.scrollTo({ y, animated: false });
-    }, 80);
-    return () => clearTimeout(t);
-  }, [fdAmountPickerVisible]);
-
   const handleBuscarLog = useCallback(async () => {
     if (!userId || !selectedDate || !selectedFood) return;
     const serving = selectedFood.servings[buscarServingIndex];
@@ -838,7 +944,9 @@ const NutritionScreen = () => {
         const activeCats = (plan?.categories ?? []).filter(
           (cat) => (cat.options ?? cat.meal_options ?? []).length > 0
         );
-        const meal = getMealIdForCategory(activeCats[addModalCategoryIndex] ?? null);
+        const fallbackCats = activeCats.length > 0 ? activeCats : DEFAULT_MEAL_CATEGORIES;
+        const catIdx = Math.min(addModalCategoryIndex, Math.max(0, fallbackCats.length - 1));
+        const meal = getMealIdForCategory(fallbackCats[catIdx] ?? null);
         await nutritionDb.addDiaryEntry(userId, {
           date: selectedDate,
           meal,
@@ -855,6 +963,7 @@ const NutritionScreen = () => {
           grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
           servings: selectedFood.servings ?? null,
         });
+        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
         await loadData();
         setAddModalVisible(false);
       }
@@ -975,10 +1084,7 @@ const NutritionScreen = () => {
   const categoriesWithFood = useMemo(() => {
     const cats = plan?.categories;
     if (!Array.isArray(cats)) return [];
-    return cats.filter((cat) => {
-      const options = cat.options ?? cat.meal_options ?? [];
-      return options.length > 0;
-    });
+    return cats;
   }, [plan?.categories]);
 
   const diaryByMeal = useMemo(() => {
@@ -991,7 +1097,12 @@ const NutritionScreen = () => {
     return map;
   }, [diaryEntries]);
 
-  const selectedCategory = categoriesWithFood[addModalCategoryIndex] ?? null;
+  const effectiveCategories = useMemo(
+    () => (categoriesWithFood.length > 0 ? categoriesWithFood : DEFAULT_MEAL_CATEGORIES),
+    [categoriesWithFood]
+  );
+  const selectedCategoryIndex = Math.min(addModalCategoryIndex, Math.max(0, effectiveCategories.length - 1));
+  const selectedCategory = effectiveCategories[selectedCategoryIndex] ?? null;
   const opcionesOptions = useMemo(() => {
     if (!selectedCategory) return [];
     return selectedCategory.options ?? selectedCategory.meal_options ?? [];
@@ -1022,6 +1133,163 @@ const NutritionScreen = () => {
     }
   }, [addModalVisible, addModalTab, loadSavedFoods]);
 
+  const loadUserMeals = useCallback(async () => {
+    if (!userId) return;
+    setUserMealsLoading(true);
+    try {
+      const meals = await nutritionDb.getUserMeals(userId);
+      setUserMeals(meals ?? []);
+    } catch (e) {
+      logger.error('[NutritionScreen] loadUserMeals:', e);
+      setUserMeals([]);
+    } finally {
+      setUserMealsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (addModalVisible && addModalTab === 'mis_comidas') {
+      loadUserMeals();
+      setMisComidasSelectedByCard({});
+    }
+  }, [addModalVisible, addModalTab, loadUserMeals]);
+
+  useEffect(() => {
+    if (addModalVisible && addModalTab === 'mis_comidas') setMisComidasSelectedByCard({});
+  }, [addModalVisible, addModalCategoryIndex, addModalTab]);
+
+  const runCreateMealSearch = useCallback(async () => {
+    if (!createMealSearchQuery.trim()) return;
+    setCreateMealSearchLoading(true);
+    setCreateMealSearchResults([]);
+    try {
+      const data = await nutritionApi.nutritionFoodSearch(createMealSearchQuery.trim(), 0, 20);
+      const foods = data?.foods_search?.results?.food ?? [];
+      setCreateMealSearchResults(Array.isArray(foods) ? foods : []);
+    } catch (e) {
+      logger.error('[NutritionScreen] createMeal search:', e);
+      setCreateMealSearchResults([]);
+    } finally {
+      setCreateMealSearchLoading(false);
+    }
+  }, [createMealSearchQuery]);
+
+  const selectCreateMealFood = useCallback(async (food) => {
+    const raw = food?.servings?.serving;
+    const servingArr = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    let servings = getServingsWithStandardOptions({ servings: { serving: servingArr } });
+    if (servings.length === 0 && (food.food_id || food.food_name)) {
+      try {
+        const fullData = await nutritionApi.nutritionFoodGet(food.food_id);
+        const fullRaw = fullData?.food?.servings?.serving;
+        if (fullRaw) {
+          const arr = Array.isArray(fullRaw) ? fullRaw : [fullRaw];
+          servings = getServingsWithStandardOptions({ servings: { serving: arr } });
+        }
+      } catch (_) {}
+    }
+    const effectiveServings = servings.length
+      ? servings
+      : [{
+          serving_id: '0',
+          serving_description: '1 porción',
+          calories: 0,
+          protein: 0,
+          carbohydrate: 0,
+          fat: 0,
+          metric_serving_amount: null,
+        }];
+    const oneGIdx = effectiveServings.findIndex(
+      (s) => s.serving_id === 'derived-1g' || /^1\s*g$/i.test(String(s.serving_description || '').trim())
+    );
+    const firstNonDerived = effectiveServings.findIndex(
+      (s) => !String(s.serving_id).startsWith('derived-')
+    );
+    const idx = oneGIdx >= 0 ? oneGIdx : (firstNonDerived >= 0 ? firstNonDerived : 0);
+    setFdCreateMeal(true);
+    openFoodDetail(
+      food.food_id,
+      food.food_name ?? food.name ?? '',
+      food.food_category ?? null,
+      effectiveServings,
+      idx,
+      '1'
+    );
+  }, [openFoodDetail]);
+
+  const addCreateMealIngredientFromFood = useCallback((food, serving, amount) => {
+    const mult = Number(amount) || 1;
+    const item = {
+      food_id: food.food_id,
+      serving_id: serving.serving_id,
+      number_of_units: mult,
+      name: food.food_name ?? food.name ?? 'Alimento',
+      food_category: food.food_category ?? null,
+      calories: serving.calories != null ? Math.round(Number(serving.calories) * mult) : null,
+      protein: serving.protein != null ? Math.round(Number(serving.protein) * mult * 10) / 10 : null,
+      carbs: serving.carbohydrate != null ? Math.round(Number(serving.carbohydrate) * mult * 10) / 10 : null,
+      fat: serving.fat != null ? Math.round(Number(serving.fat) * mult * 10) / 10 : null,
+      serving_unit: serving.serving_description ?? null,
+      grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
+      servings: food.servings ?? null,
+    };
+    setCreateMealItems((prev) => [...prev, item]);
+    setCreateMealSelectedFood(null);
+    setCreateMealServingIndex(0);
+    setCreateMealServingAmount('1');
+    setCreateMealAddMode(null);
+  }, []);
+
+  const addCreateMealIngredientManual = useCallback(() => {
+    const name = (createMealManualItem.name || '').trim();
+    if (!name) return;
+    const cal = Number(createMealManualItem.calories) || 0;
+    const prot = Number(createMealManualItem.protein) || 0;
+    const carb = Number(createMealManualItem.carbs) || 0;
+    const fat = Number(createMealManualItem.fat) || 0;
+    const amount = Number(createMealManualItem.amount) || 1;
+    const item = {
+      food_id: `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      serving_id: '0',
+      number_of_units: amount,
+      name,
+      food_category: null,
+      calories: Math.round(cal * amount),
+      protein: Math.round(prot * amount * 10) / 10,
+      carbs: Math.round(carb * amount * 10) / 10,
+      fat: Math.round(fat * amount * 10) / 10,
+      serving_unit: null,
+      grams_per_unit: null,
+    };
+    setCreateMealItems((prev) => [...prev, item]);
+    setCreateMealManualItem({ name: '', calories: '', protein: '', carbs: '', fat: '', amount: '1' });
+    setCreateMealAddMode(null);
+  }, [createMealManualItem]);
+
+  const removeCreateMealItem = useCallback((index) => {
+    setCreateMealItems((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const saveCreateMeal = useCallback(async () => {
+    if (!userId || createMealItems.length === 0) return;
+    const trimmed = createMealName.trim();
+    const name = trimmed || 'Mi comida';
+    setCreateMealSaving(true);
+    try {
+      await nutritionDb.createUserMeal(userId, { name, items: createMealItems });
+      setCreateMealModalOpen(false);
+      setCreateMealName('');
+      setCreateMealItems([]);
+      setCreateMealSelectedFood(null);
+      setCreateMealAddMode(null);
+      loadUserMeals();
+    } catch (e) {
+      logger.error('[NutritionScreen] saveCreateMeal:', e);
+    } finally {
+      setCreateMealSaving(false);
+    }
+  }, [userId, createMealName, createMealItems, loadUserMeals]);
+
   useEffect(() => {
     if (!addModalVisible) {
       setBuscarQuery('');
@@ -1051,21 +1319,15 @@ const NutritionScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <WakeHeaderSpacer />
-        <WakeHeaderContent>
+        <WakeHeaderContent style={styles.headerContent}>
           {loading ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator size="large" color={GOLD} />
+              <WakeLoader />
             </View>
           ) : (
             <>
               <View style={styles.dateRow}>
-                <Text style={styles.dateLabel}>Día</Text>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  style={dateInputStyle}
-                />
+                <WeekDateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} fetchDatesWithEntries={fetchDatesWithEntries} />
               </View>
 
               {plan && (
@@ -1287,20 +1549,14 @@ const NutritionScreen = () => {
         <BottomSpacer />
       </ScrollView>
 
-      <Modal
+      <WakeModalOverlay
         visible={addModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setAddModalVisible(false)}
+        onClose={() => setAddModalVisible(false)}
+        contentPlacement="full"
+        contentAnimation="slideUp"
       >
-        <View style={styles.addModalWrapper}>
-          <TouchableOpacity
-            style={styles.addModalBackdrop}
-            activeOpacity={1}
-            onPress={() => setAddModalVisible(false)}
-          />
-          <View style={styles.addModalOverlay}>
-            <View style={styles.addModalContent}>
+        <View style={styles.addModalOverlay}>
+          <View style={styles.addModalContent}>
             <View style={styles.addModalHeader}>
               <View style={styles.addModalTitleRow}>
                 <TouchableOpacity
@@ -1309,7 +1565,7 @@ const NutritionScreen = () => {
                   activeOpacity={0.8}
                 >
                   <Text style={styles.addModalTitle} numberOfLines={1}>
-                    {categoriesWithFood[addModalCategoryIndex]?.label ?? 'Sin nombre'}
+                    {effectiveCategories[selectedCategoryIndex]?.label ?? 'Sin nombre'}
                   </Text>
                   <View style={[styles.addModalChevronWrap, addModalCategoryDropdownOpen && styles.addModalChevronWrapOpen]}>
                     <SvgChevronDown width={20} height={20} stroke="rgba(255,255,255,0.9)" />
@@ -1323,15 +1579,15 @@ const NutritionScreen = () => {
                   <Text style={styles.addModalCloseText}>✕</Text>
                 </TouchableOpacity>
               </View>
-              {addModalCategoryDropdownOpen && categoriesWithFood.length > 0 && (
+              {addModalCategoryDropdownOpen && effectiveCategories.length > 0 && (
                 <View style={styles.addModalCategoryDropdown}>
-                  {categoriesWithFood.map((cat, i) => (
+                  {effectiveCategories.map((cat, i) => (
                     <TouchableOpacity
                       key={`cat-${i}-${cat.label ?? ''}`}
                       style={[
                         styles.addModalCategoryDropdownItem,
-                        i === addModalCategoryIndex && styles.addModalCategoryDropdownItemActive,
-                        i === categoriesWithFood.length - 1 && styles.addModalCategoryDropdownItemLast,
+                        i === selectedCategoryIndex && styles.addModalCategoryDropdownItemActive,
+                        i === effectiveCategories.length - 1 && styles.addModalCategoryDropdownItemLast,
                       ]}
                       onPress={() => {
                         setAddModalCategoryIndex(i);
@@ -1488,7 +1744,7 @@ const NutritionScreen = () => {
                           ) : sortedBuscarResults.length === 0 ? (
                             buscarLoading ? (
                               <View style={styles.buscarEmptyState}>
-                                <ActivityIndicator color="rgba(255,255,255,0.7)" />
+                                <WakeLoader size={48} />
                               </View>
                             ) : buscarQuery.trim() ? (
                               <View style={styles.buscarEmptyState}>
@@ -1568,9 +1824,10 @@ const NutritionScreen = () => {
                       {
                         paddingLeft: opcionesCardMargin,
                         paddingRight: opcionesCardMargin,
+                        minHeight: opcionesCardViewHeight,
                       },
                     ]}
-                    style={[styles.opcionesCarousel, { height: opcionesCardViewHeight }]}
+                    style={[styles.opcionesCarousel, { minHeight: opcionesCardViewHeight }]}
                     onScroll={Animated.event(
                       [{ nativeEvent: { contentOffset: { x: opcionesScrollX } } }],
                       { useNativeDriver: false }
@@ -1587,14 +1844,14 @@ const NutritionScreen = () => {
                     }}
                   >
                     {opcionesOptions.length === 0 ? (
-                      <View style={[styles.opcionesCard, { width: opcionesCardWidth }]}>
-                        <Text style={styles.opcionesCardEmpty}>No hay opciones para esta categoría.</Text>
+                      <View style={{ width: opcionesCardWidth, flex: 1, minHeight: opcionesCardViewHeight }}>
+                        <NoOpcionesEmptyCard />
                       </View>
                     ) : (
                       opcionesOptions.map((opt, idx) => {
                         const items = opt.items ?? opt.foods ?? [];
                         const macros = optionMacros(opt);
-                        const categoryLabel = categoriesWithFood[addModalCategoryIndex]?.label ?? 'comida';
+                        const categoryLabel = effectiveCategories[selectedCategoryIndex]?.label ?? 'comida';
                         const isRecipe = opt.recipe === true;
                         const optionTitle = opt.label ?? opt.name ?? `Opción ${idx + 1}`;
                         const selectedSet = opcionesSelectedByCard[idx] ?? [];
@@ -1632,73 +1889,74 @@ const NutritionScreen = () => {
                               { opacity, transform: [{ scale }] },
                             ]}
                           >
-                            <MealImageBanner items={items} colorIndex={idx} categoryIndex={addModalCategoryIndex} />
-                            <View style={styles.opcionesCardInner}>
-                              <View style={styles.opcionesCardHeader}>
-                                {isRecipe && (
-                                  <Text style={styles.opcionesCardTitle} numberOfLines={1}>{optionTitle}</Text>
-                                )}
-                                <Text style={styles.opcionesCardMacroLine}>
-                                  {`${Math.round(macros.calories)} kcal  ·  ${Math.round(macros.protein)}g Prot  ·  ${Math.round(macros.carbs)}g C  ·  ${Math.round(macros.fat)}g G`}
-                                </Text>
+                            {items.length === 0 ? (
+                              <View style={[styles.noOpcionesOptionCardWrap, { minHeight: opcionesCardViewHeight }]}>
+                                <NoOpcionesEmptyCard />
                               </View>
-                              <View style={styles.opcionesCardIngredients}>
-                                {items.length === 0 ? (
-                                  <View style={styles.opcionesCardIngredientRow}>
-                                    <Text style={styles.opcionesCardIngredientName}>—</Text>
-                                    <Text style={styles.opcionesCardIngredientAmount}>—</Text>
+                            ) : (
+                              <>
+                                <MealImageBanner items={items} colorIndex={idx} categoryIndex={selectedCategoryIndex} />
+                                <View style={styles.opcionesCardInner}>
+                                  <View style={styles.opcionesCardHeader}>
+                                    {isRecipe && (
+                                      <Text style={styles.opcionesCardTitle} numberOfLines={1}>{optionTitle}</Text>
+                                    )}
+                                    <Text style={styles.opcionesCardMacroLine}>
+                                      {`${Math.round(macros.calories)} kcal  ·  ${Math.round(macros.protein)}g Prot  ·  ${Math.round(macros.carbs)}g C  ·  ${Math.round(macros.fat)}g G`}
+                                    </Text>
                                   </View>
-                                ) : (
-                                  items.map((it, i) => {
-                                    const selected = selectedSet.includes(i);
-                                    const right = formatIngredientRight(it);
-                                    return (
-                                      <TouchableOpacity
-                                        key={i}
-                                        style={styles.opcionesCardIngredientRow}
-                                        onPress={() => toggleItem(i)}
-                                        activeOpacity={0.7}
-                                      >
-                                        <Text style={styles.opcionesCardIngredientName} numberOfLines={1}>
-                                          {getFoodEmoji(it)}{'  '}{it.name ?? 'Alimento'}
-                                        </Text>
-                                        <View style={styles.opcionesCardIngredientRight}>
-                                          <View style={styles.opcionesCardIngredientAmountBlock}>
-                                            <Text style={styles.opcionesCardIngredientAmount} numberOfLines={1}>
-                                              {right.main}
-                                            </Text>
-                                            {right.sub != null && (
-                                              <Text style={styles.opcionesCardIngredientAmountSub} numberOfLines={1}>
-                                                {right.sub}
+                                  <View style={styles.opcionesCardIngredients}>
+                                    {items.map((it, i) => {
+                                      const selected = selectedSet.includes(i);
+                                      const right = formatIngredientRight(it);
+                                      return (
+                                        <TouchableOpacity
+                                          key={i}
+                                          style={styles.opcionesCardIngredientRow}
+                                          onPress={() => toggleItem(i)}
+                                          activeOpacity={0.7}
+                                        >
+                                          <Text style={styles.opcionesCardIngredientName} numberOfLines={1}>
+                                            {getFoodEmoji(it)}{'  '}{it.name ?? 'Alimento'}
+                                          </Text>
+                                          <View style={styles.opcionesCardIngredientRight}>
+                                            <View style={styles.opcionesCardIngredientAmountBlock}>
+                                              <Text style={styles.opcionesCardIngredientAmount} numberOfLines={1}>
+                                                {right.main}
                                               </Text>
-                                            )}
+                                              {right.sub != null && (
+                                                <Text style={styles.opcionesCardIngredientAmountSub} numberOfLines={1}>
+                                                  {right.sub}
+                                                </Text>
+                                              )}
+                                            </View>
+                                            <View style={[styles.opcionesCardCheckbox, selected && styles.opcionesCardCheckboxChecked]}>
+                                              {selected && <Text style={styles.opcionesCardCheckboxCheck}>✓</Text>}
+                                            </View>
                                           </View>
-                                          <View style={[styles.opcionesCardCheckbox, selected && styles.opcionesCardCheckboxChecked]}>
-                                            {selected && <Text style={styles.opcionesCardCheckboxCheck}>✓</Text>}
-                                          </View>
-                                        </View>
-                                      </TouchableOpacity>
-                                    );
-                                  })
-                                )}
-                              </View>
-                              <TouchableOpacity
-                                style={[
-                                  styles.opcionesCardAddBtn,
-                                  (addOptionLoading || selectedCount === 0) && styles.opcionesCardAddBtnDisabled,
-                                ]}
-                                activeOpacity={0.8}
-                                onPress={() => handleAddOptionToMeal(opt, selectedCategory, selectedSet)}
-                                disabled={addOptionLoading || selectedCount === 0}
-                              >
-                                <Text style={[
-                                  styles.opcionesCardAddBtnText,
-                                  selectedCount === 0 && styles.opcionesCardAddBtnTextDisabled,
-                                ]}>
-                                  {addOptionLoading ? 'Añadiendo…' : `Añadir a ${categoryLabel}`}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.opcionesCardAddBtn,
+                                      (addOptionLoading || selectedCount === 0) && styles.opcionesCardAddBtnDisabled,
+                                    ]}
+                                    activeOpacity={0.8}
+                                    onPress={() => handleAddOptionToMeal(opt, selectedCategory, selectedSet)}
+                                    disabled={addOptionLoading || selectedCount === 0}
+                                  >
+                                    <Text style={[
+                                      styles.opcionesCardAddBtnText,
+                                      selectedCount === 0 && styles.opcionesCardAddBtnTextDisabled,
+                                    ]}>
+                                      {addOptionLoading ? 'Añadiendo…' : `Añadir a ${categoryLabel}`}
+                                    </Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </>
+                            )}
                           </Animated.View>
                         );
                       })
@@ -1736,17 +1994,281 @@ const NutritionScreen = () => {
                   </View>
                 </View>
               )}
+              {addModalTab === 'mis_comidas' && (
+                <View style={styles.opcionesSection}>
+                  <View style={styles.misComidasHeader}>
+                    <TouchableOpacity
+                      style={styles.crearComidaBtn}
+                      onPress={() => {
+                        setCreateMealName('');
+                        setCreateMealItems([]);
+                        setCreateMealModalOpen(true);
+                        setCreateMealAddMode(null);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.crearComidaBtnText}>+ Crear comida</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {userMealsLoading ? (
+                    <View style={styles.misComidasLoading}>
+                      <WakeLoader size={80} />
+                    </View>
+                  ) : userMeals.length === 0 ? (
+                    <View style={styles.misComidasEmpty}>
+                      <Text style={styles.misComidasEmptyText}>Aún no tienes comidas guardadas.</Text>
+                      <Text style={styles.misComidasEmptySub}>Crea una para añadirla rápido al día.</Text>
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.misComidasScroll}
+                      contentContainerStyle={styles.misComidasScrollContent}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {userMeals.map((meal, idx) => {
+                        const items = meal.items ?? [];
+                        const macros = optionMacros(meal);
+                        const selectedSet = misComidasSelectedByCard[idx] ?? [];
+                        const selectedCount = selectedSet.length;
+                        const toggleItem = (itemIndex) => {
+                          setMisComidasSelectedByCard((prev) => {
+                            const arr = prev[idx] ?? [];
+                            const set = new Set(arr);
+                            if (set.has(itemIndex)) set.delete(itemIndex);
+                            else set.add(itemIndex);
+                            return { ...prev, [idx]: Array.from(set) };
+                          });
+                        };
+                        const categoryLabel = effectiveCategories[selectedCategoryIndex]?.label ?? 'comida';
+                        return (
+                          <View key={meal.id} style={[styles.opcionesCard, styles.misComidasCard]}>
+                            <View style={styles.opcionesCardInner}>
+                              <View style={styles.opcionesCardHeader}>
+                                <Text style={styles.opcionesCardTitle} numberOfLines={1}>{meal.name || 'Sin nombre'}</Text>
+                                <Text style={styles.opcionesCardMacroLine}>
+                                  {`${Math.round(macros.calories)} kcal  ·  ${Math.round(macros.protein)}g Prot  ·  ${Math.round(macros.carbs)}g C  ·  ${Math.round(macros.fat)}g G`}
+                                </Text>
+                              </View>
+                              <View style={styles.opcionesCardIngredients}>
+                                {items.map((it, i) => {
+                                  const selected = selectedSet.includes(i);
+                                  const right = formatIngredientRight(it);
+                                  return (
+                                    <TouchableOpacity
+                                      key={i}
+                                      style={styles.opcionesCardIngredientRow}
+                                      onPress={() => toggleItem(i)}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={styles.opcionesCardIngredientName} numberOfLines={1}>
+                                        {getFoodEmoji(it)}{'  '}{it.name ?? 'Alimento'}
+                                      </Text>
+                                      <View style={styles.opcionesCardIngredientRight}>
+                                        <View style={styles.opcionesCardIngredientAmountBlock}>
+                                          <Text style={styles.opcionesCardIngredientAmount} numberOfLines={1}>
+                                            {right.main}
+                                          </Text>
+                                          {right.sub != null && (
+                                            <Text style={styles.opcionesCardIngredientAmountSub} numberOfLines={1}>
+                                              {right.sub}
+                                            </Text>
+                                          )}
+                                        </View>
+                                        <View style={[styles.opcionesCardCheckbox, selected && styles.opcionesCardCheckboxChecked]}>
+                                          {selected && <Text style={styles.opcionesCardCheckboxCheck}>✓</Text>}
+                                        </View>
+                                      </View>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                              <TouchableOpacity
+                                style={[
+                                  styles.opcionesCardAddBtn,
+                                  addOptionLoading && styles.opcionesCardAddBtnDisabled,
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                  const option = { items: meal.items ?? [], foods: meal.items ?? [] };
+                                  const toUse = selectedCount > 0 ? selectedSet : [];
+                                  handleAddOptionToMeal(option, selectedCategory, toUse);
+                                }}
+                                disabled={addOptionLoading}
+                              >
+                                <Text style={styles.opcionesCardAddBtnText}>
+                                  {addOptionLoading ? 'Añadiendo…' : selectedCount > 0 ? `Añadir ${selectedCount} a ${categoryLabel}` : `Añadir todo a ${categoryLabel}`}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
+            </View>
             </View>
           </View>
-        </View>
-        </View>
-      </Modal>
+      </WakeModalOverlay>
 
-      <Modal
+      <WakeModalOverlay
+        visible={createMealModalOpen}
+        onClose={() => setCreateMealModalOpen(false)}
+        contentPlacement="full"
+        contentAnimation="fade"
+      >
+        <View style={styles.createMealModalRoot}>
+          <View style={styles.createMealModalHeader}>
+            <Text style={styles.createMealModalTitle}>Crear comida</Text>
+            <TouchableOpacity onPress={() => setCreateMealModalOpen(false)} style={styles.createMealModalClose} activeOpacity={0.8}>
+              <Text style={styles.addModalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.createMealModalScroll} contentContainerStyle={styles.createMealModalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Text style={styles.createMealLabel}>Nombre de la comida</Text>
+            <TextInput
+              style={styles.createMealNameInput}
+              value={createMealName}
+              onChangeText={setCreateMealName}
+              placeholder="Ej: Ensalada de atún"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+            />
+            <Text style={styles.createMealLabel}>Ingredientes</Text>
+            {createMealItems.map((it, i) => (
+              <View key={i} style={styles.createMealItemRow}>
+                <Text style={styles.createMealItemName} numberOfLines={1}>{it.name}</Text>
+                <Text style={styles.createMealItemMacros} numberOfLines={1}>
+                  {Math.round(it.calories || 0)} kcal · P {it.protein ?? 0} · C {it.carbs ?? 0} · G {it.fat ?? 0}
+                </Text>
+                <TouchableOpacity onPress={() => removeCreateMealItem(i)} style={styles.createMealItemRemove} activeOpacity={0.7}>
+                  <Text style={styles.createMealItemRemoveText}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            {createMealAddMode === null && (
+              <View style={styles.createMealAddRow}>
+                <TouchableOpacity style={styles.createMealAddBtn} onPress={() => setCreateMealAddMode('search')} activeOpacity={0.8}>
+                  <Text style={styles.createMealAddBtnText}>Buscar alimento</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.createMealAddBtn} onPress={() => setCreateMealAddMode('manual')} activeOpacity={0.8}>
+                  <Text style={styles.createMealAddBtnText}>Añadir manual</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {createMealAddMode === 'search' && (
+              <View style={styles.createMealSearchBlock}>
+                <View style={styles.buscarSearchRow}>
+                  <TextInput
+                    style={styles.buscarSearchInput}
+                    value={createMealSearchQuery}
+                    onChangeText={setCreateMealSearchQuery}
+                    placeholder="Buscar alimento…"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    onSubmitEditing={runCreateMealSearch}
+                    returnKeyType="search"
+                  />
+                  <TouchableOpacity style={styles.crearComidaBtn} onPress={runCreateMealSearch} activeOpacity={0.8}>
+                    <Text style={styles.crearComidaBtnText}>Buscar</Text>
+                  </TouchableOpacity>
+                </View>
+                {createMealSelectedFood ? (
+                  <View style={styles.createMealServingBlock}>
+                    <Text style={styles.createMealLabel}>{createMealSelectedFood.food_name}</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.buscarChipList} style={styles.buscarChipScroll}>
+                      {(createMealSelectedFood.servings ?? []).map((s, i) => (
+                        <TouchableOpacity
+                          key={s.serving_id}
+                          style={[styles.buscarChip, createMealServingIndex === i && styles.buscarChipActive]}
+                          onPress={() => { setCreateMealServingIndex(i); }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.buscarChipText, createMealServingIndex === i && styles.buscarChipTextActive]}>{chipLabel(s.serving_description)}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <View style={styles.createMealServingAmountRow}>
+                      <Text style={styles.createMealLabel}>Cantidad</Text>
+                      <TextInput
+                        style={styles.createMealNameInput}
+                        value={createMealServingAmount}
+                        onChangeText={setCreateMealServingAmount}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={styles.createMealServingActions}>
+                      <TouchableOpacity style={styles.createMealAddBtn} onPress={() => addCreateMealIngredientFromFood(createMealSelectedFood, createMealSelectedFood.servings[createMealServingIndex], createMealServingAmount)} activeOpacity={0.8}>
+                        <Text style={styles.createMealAddBtnText}>Añadir a la comida</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => { setCreateMealSelectedFood(null); setCreateMealAddMode(null); }} activeOpacity={0.8}>
+                        <Text style={styles.createMealCancelBtnText}>Cancelar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {createMealSearchLoading && (
+                      <View style={{ marginVertical: 10 }}>
+                        <WakeLoader size={48} />
+                      </View>
+                    )}
+                    {createMealSearchResults.map((food) => {
+                      const per100 = getPer100g(food);
+                      const meta = per100 ? `${per100.calories} kcal` : '—';
+                      return (
+                        <TouchableOpacity key={food.food_id} style={styles.buscarResultItem} onPress={() => selectCreateMealFood(food)} activeOpacity={0.8}>
+                          <View style={styles.buscarResultInfo}>
+                            <Text style={styles.buscarResultName} numberOfLines={1}>{food.food_name ?? food.name ?? ''}</Text>
+                            <Text style={styles.buscarResultMeta} numberOfLines={1}>{meta}</Text>
+                          </View>
+                          <Text style={styles.buscarResultAddBtnText}>+</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => setCreateMealAddMode(null)} activeOpacity={0.8}>
+                      <Text style={styles.createMealCancelBtnText}>Cancelar búsqueda</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+            {createMealAddMode === 'manual' && (
+              <View style={styles.createMealManualBlock}>
+                <TextInput style={styles.createMealNameInput} value={createMealManualItem.name} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, name: v }))} placeholder="Nombre del alimento" placeholderTextColor="rgba(255,255,255,0.35)" />
+                <View style={styles.createMealManualRow}>
+                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.calories} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, calories: v }))} placeholder="Cal" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
+                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.protein} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, protein: v }))} placeholder="Prot (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
+                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.carbs} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, carbs: v }))} placeholder="Carb (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
+                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.fat} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, fat: v }))} placeholder="Grasa (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
+                </View>
+                <TextInput style={styles.createMealNameInput} value={createMealManualItem.amount} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, amount: v }))} placeholder="Cantidad (porciones)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
+                <View style={styles.createMealServingActions}>
+                  <TouchableOpacity style={styles.createMealAddBtn} onPress={addCreateMealIngredientManual} activeOpacity={0.8}>
+                    <Text style={styles.createMealAddBtnText}>Añadir a la comida</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => setCreateMealAddMode(null)} activeOpacity={0.8}>
+                    <Text style={styles.createMealCancelBtnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.crearComidaBtn, styles.createMealSaveBtn, (!createMealName.trim() || createMealItems.length === 0 || createMealSaving) && styles.crearComidaBtnDisabled]}
+              onPress={saveCreateMeal}
+              disabled={!createMealName.trim() || createMealItems.length === 0 || createMealSaving}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.crearComidaBtnText}>{createMealSaving ? 'Guardando…' : 'Guardar comida'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </WakeModalOverlay>
+
+      <WakeModalOverlay
         visible={selectedFood !== null}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => { setSelectedFood(null); setEditingDiaryEntry(null); }}
+        onClose={() => { setSelectedFood(null); setEditingDiaryEntry(null); }}
+        contentPlacement="full"
+        contentAnimation="fade"
       >
         <View style={styles.fdScreen}>
           {selectedFood && (
@@ -1798,10 +2320,13 @@ const NutritionScreen = () => {
 
                 <View style={styles.fdServingsRow}>
                   <Text style={styles.fdServingsLabel}>Número de porciones</Text>
-                  <View style={styles.fdServingsPill}>
+                  <TouchableOpacity
+                    style={styles.fdServingsPill}
+                    onPress={() => fdServingsInputRef.current?.focus()}
+                    activeOpacity={1}
+                  >
                     {(() => {
                       const s = selectedFood.servings[buscarServingIndex];
-                      const isGramServing = s && is1gServing(s);
                       const qty = Number(buscarAmount) || 1;
                       const displayMain = (() => {
                         const desc = s?.serving_description ?? '';
@@ -1809,21 +2334,10 @@ const NutritionScreen = () => {
                         const main = formatQuantityAndServing(qty, desc, gpu).main;
                         return main.replace(/^\d+([.,]\d+)?\s+/i, '');
                       })();
-                      if (isGramServing) {
-                        return (
-                          <TouchableOpacity
-                            style={styles.fdServingsCenter}
-                            onPress={() => setFdAmountPickerVisible(true)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.fdServingsInputText}>{Math.round(qty)}</Text>
-                            <Text style={styles.fdServingsDesc}>g</Text>
-                          </TouchableOpacity>
-                        );
-                      }
                       return (
                         <View style={styles.fdServingsCenter}>
                           <TextInput
+                            ref={fdServingsInputRef}
                             style={styles.fdServingsInput}
                             value={buscarAmount}
                             onChangeText={setBuscarAmount}
@@ -1834,7 +2348,7 @@ const NutritionScreen = () => {
                         </View>
                       );
                     })()}
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 {(() => {
@@ -1928,72 +2442,15 @@ const NutritionScreen = () => {
             </>
           )}
         </View>
-      </Modal>
+      </WakeModalOverlay>
 
-      <Modal
-        visible={fdAmountPickerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFdAmountPickerVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.gramPickerOverlay}
-          activeOpacity={1}
-          onPress={() => setFdAmountPickerVisible(false)}
-        >
-          <View style={styles.gramPickerCard} onStartShouldSetResponder={() => true}>
-            <View style={styles.gramPickerHeader}>
-              <Text style={styles.gramPickerTitle}>Cantidad (g)</Text>
-              <TouchableOpacity onPress={() => setFdAmountPickerVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={styles.gramPickerClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.gramPickerRow}>
-              <ScrollView
-                ref={fdAmountScrollRef}
-                style={styles.gramPickerScroll}
-                contentContainerStyle={styles.gramPickerContent}
-                showsVerticalScrollIndicator={false}
-                snapToInterval={GRAM_PICKER_ITEM_HEIGHT}
-                snapToAlignment="center"
-                decelerationRate="fast"
-                onMomentumScrollEnd={handleFdAmountScrollEnd}
-              >
-                {Array.from({ length: GRAM_PICKER_MAX }, (_, i) => {
-                  const val = i + 1;
-                  const selected = (Number(buscarAmount) || 1) === val;
-                  return (
-                    <TouchableOpacity
-                      key={`g-${val}`}
-                      style={styles.gramPickerItem}
-                      onPress={() => {
-                        setBuscarAmount(String(val));
-                        fdAmountScrollRef.current?.scrollTo({ y: i * GRAM_PICKER_ITEM_HEIGHT, animated: true });
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.gramPickerItemText, selected && styles.gramPickerItemTextSelected]}>{val}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <Text style={styles.gramPickerUnit}>g</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
+      <WakeModalOverlay
         visible={!!menuEntryId}
-        transparent
-        animationType="none"
-        onRequestClose={() => setMenuEntryId(null)}
+        onClose={() => setMenuEntryId(null)}
+        contentPlacement="full"
+        contentAnimation="fade"
       >
-        <TouchableOpacity
-          style={styles.menuBackdrop}
-          activeOpacity={1}
-          onPress={() => setMenuEntryId(null)}
-        >
+        <View style={styles.menuModalOverlayWrap} pointerEvents="box-none">
           <View style={[styles.menuDropdown, { top: menuAnchor.pageY }]}>
             <TouchableOpacity
               style={styles.menuDropdownItem}
@@ -2005,19 +2462,10 @@ const NutritionScreen = () => {
               <Text style={styles.menuDropdownItemTextDelete}>Eliminar</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+      </WakeModalOverlay>
     </View>
   );
-};
-
-const dateInputStyle = {
-  padding: '8px 12px',
-  borderRadius: 8,
-  border: '1px solid rgba(255,255,255,0.2)',
-  background: 'rgba(255,255,255,0.06)',
-  color: 'rgba(255,255,255,0.95)',
-  fontSize: 14,
 };
 
 const styles = StyleSheet.create({
@@ -2031,20 +2479,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 320,
   },
+  headerContent: {
+    flex: 1,
+  },
   loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 60,
   },
   dateRow: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 20,
-  },
-  dateLabel: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '500',
+    justifyContent: 'center',
+    marginBottom: 32,
   },
   topCard: {
     flexDirection: 'row',
@@ -2244,6 +2693,13 @@ const styles = StyleSheet.create({
   menuBackdrop: {
     flex: 1,
   },
+  menuModalOverlayWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   menuDropdown: {
     position: 'absolute',
     right: 16,
@@ -2421,12 +2877,16 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   opcionesCarouselAndPagination: {
-    flexGrow: 0,
-    flexShrink: 0,
+    flex: 1,
+    minHeight: 0,
   },
-  opcionesCarousel: {},
+  opcionesCarousel: {
+    flex: 1,
+    minHeight: 0,
+  },
   opcionesCarouselContent: {
-    paddingVertical: 8,
+    flexGrow: 1,
+    alignItems: 'stretch',
   },
   opcionesPaginationContainer: {
     width: '100%',
@@ -2491,6 +2951,69 @@ const styles = StyleSheet.create({
   opcionesCardEmpty: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.4)',
+  },
+  noOpcionesOptionCardWrap: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  noOpcionesFillParent: {
+    flex: 1,
+    alignSelf: 'stretch',
+    position: 'relative',
+  },
+  noOpcionesEmptyRoot: {
+    overflow: 'hidden',
+    justifyContent: 'flex-start',
+  },
+  noOpcionesEmojiBg: {
+    overflow: 'hidden',
+  },
+  noOpcionesEmojiCell: {
+    opacity: 0.85,
+  },
+  noOpcionesOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  noOpcionesGlassWrap: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    zIndex: 10,
+  },
+  noOpcionesGlassCard: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 20,
+    maxWidth: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  noOpcionesGlassCardWeb: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+  },
+  noOpcionesGlassCardInner: {
+    paddingVertical: 32,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+  },
+  noOpcionesGlassText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 280,
   },
   opcionesCardHeader: {
     marginBottom: 18,
@@ -2597,6 +3120,199 @@ const styles = StyleSheet.create({
   },
   opcionesCardAddBtnTextDisabled: {
     color: 'rgba(26,26,26,0.6)',
+  },
+
+  misComidasHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+  },
+  crearComidaBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+  },
+  crearComidaBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.95)',
+  },
+  crearComidaBtnDisabled: {
+    opacity: 0.5,
+  },
+  misComidasLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  misComidasEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+  },
+  misComidasEmptyText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  misComidasEmptySub: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+  },
+  misComidasScroll: {
+    flex: 1,
+  },
+  misComidasScrollContent: {
+    paddingBottom: 24,
+    gap: 16,
+  },
+  misComidasCard: {
+    marginBottom: 0,
+  },
+
+  createMealModalRoot: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  createMealModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  createMealModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+  },
+  createMealModalClose: {
+    padding: 8,
+  },
+  createMealModalScroll: {
+    flex: 1,
+  },
+  createMealModalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  createMealLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 6,
+    marginTop: 16,
+  },
+  createMealNameInput: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    fontSize: 15,
+  },
+  createMealItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  createMealItemName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.9)',
+    marginRight: 8,
+  },
+  createMealItemMacros: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginRight: 12,
+  },
+  createMealItemRemove: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  createMealItemRemoveText: {
+    fontSize: 13,
+    color: 'rgba(255,100,100,0.9)',
+  },
+  createMealAddRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  createMealAddBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  createMealAddBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.95)',
+  },
+  createMealSearchBlock: {
+    marginTop: 12,
+  },
+  createMealServingBlock: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+  },
+  createMealServingAmountRow: {
+    marginTop: 10,
+  },
+  createMealServingActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+  },
+  createMealCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  createMealCancelBtnText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  createMealManualBlock: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+  },
+  createMealManualRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  createMealSaveBtn: {
+    marginTop: 28,
   },
 
   // Buscar tab
@@ -3001,6 +3717,13 @@ const styles = StyleSheet.create({
 
   // Food detail full-screen modal
   fdScreen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
@@ -3105,24 +3828,25 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxWidth: '55%',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
   },
   fdServingsCenter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
   },
   fdServingsInput: {
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
-    minWidth: 28,
-    maxWidth: 80,
+    minWidth: 14,
+    maxWidth: 72,
     textAlign: 'center',
     paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   fdServingsInputText: {
     fontSize: 16,
@@ -3130,75 +3854,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   fdServingsDesc: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
-  },
-  gramPickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  gramPickerCard: {
-    backgroundColor: 'rgba(28,28,28,0.98)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    minWidth: 160,
-    maxWidth: 220,
-  },
-  gramPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  gramPickerTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-  },
-  gramPickerClose: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.6)',
-    padding: 4,
-  },
-  gramPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  gramPickerScroll: {
-    height: 132,
-    width: 72,
-  },
-  gramPickerContent: {
-    paddingVertical: 44,
-  },
-  gramPickerItem: {
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  gramPickerItemText: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.35)',
-  },
-  gramPickerItemTextSelected: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 22,
-  },
-  gramPickerUnit: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
   },
   fdCalCard: {
     backgroundColor: 'rgba(255,255,255,0.05)',

@@ -60,8 +60,6 @@ const ProgramsScreen = () => {
   // Configuración page fields
   const [freeTrialActive, setFreeTrialActive] = useState(false);
   const [freeTrialDurationDays, setFreeTrialDurationDays] = useState('0');
-  const [streakEnabled, setStreakEnabled] = useState(false);
-  const [minimumSessionsPerWeek, setMinimumSessionsPerWeek] = useState(0);
   const [weightSuggestions, setWeightSuggestions] = useState(false);
   const [availableLibraries, setAvailableLibraries] = useState([]);
   const [selectedLibraryIds, setSelectedLibraryIds] = useState(new Set());
@@ -342,8 +340,6 @@ const ProgramsScreen = () => {
         freeTrialActive: deliveryType === 'one_on_one' ? false : freeTrialActive,
         freeTrialDurationDays: deliveryType === 'one_on_one' ? '0' : freeTrialDurationDays,
         duration: deliveryType === 'one_on_one' ? null : (duration !== undefined && duration !== null && programType === 'one-time' ? `${parseInt(duration, 10)} semanas` : (programType === 'subscription' ? 'Mensual' : null)),
-        streakEnabled,
-        minimumSessionsPerWeek,
         weightSuggestions,
         availableLibraries: Array.from(selectedLibraryIds),
         tutorials: defaultTutorials,
@@ -1011,41 +1007,6 @@ const ProgramsScreen = () => {
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '8px' }}>
-                {/* Streak */}
-                <div className="one-on-one-config-item">
-                  <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
-                    <span>Racha Activa</span>
-                    <label className="elegant-toggle">
-                      <input
-                        type="checkbox"
-                        checked={streakEnabled}
-                        onChange={(e) => setStreakEnabled(e.target.checked)}
-                      />
-                      <span className="elegant-toggle-slider"></span>
-                    </label>
-                  </label>
-                  <p className="one-on-one-config-description">
-                    Activa el sistema de rachas para motivar la consistencia en los entrenamientos
-                  </p>
-                  {streakEnabled && (
-                    <div style={{ marginTop: '12px' }}>
-                      <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block', fontSize: '13px' }}>
-                        Mínimo de sesiones por semana
-                      </label>
-                      <Input
-                        placeholder="Ej: 3"
-                        value={minimumSessionsPerWeek}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '');
-                          setMinimumSessionsPerWeek(value ? parseInt(value, 10) : 0);
-                        }}
-                        type="text"
-                        light={true}
-                      />
-                    </div>
-                  )}
-                </div>
-                
                 {/* Weight Suggestions */}
                 <div className="one-on-one-config-item">
                   <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>

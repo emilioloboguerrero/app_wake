@@ -39,6 +39,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "client_id", "order": "ASCENDING"},
+        {"fieldPath": "program_id", "order": "ASCENDING"},
+        {"fieldPath": "date_timestamp", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "client_id", "order": "ASCENDING"},
         {"fieldPath": "date_timestamp", "order": "ASCENDING"}
       ]
     },
@@ -47,6 +56,13 @@
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "meals",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
         {"fieldPath": "createdAt", "order": "DESCENDING"}
       ]
     },
@@ -64,6 +80,14 @@
       "fields": [
         {"fieldPath": "assignedBy", "order": "ASCENDING"},
         {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "sessionHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "courseId", "order": "ASCENDING"},
+        {"fieldPath": "completedAt", "order": "ASCENDING"}
       ]
     },
     {

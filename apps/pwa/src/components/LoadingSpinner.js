@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import WakeLoader from './WakeLoader';
 
 const LoadingSpinner = ({ 
   size = 'large', 
@@ -7,9 +8,15 @@ const LoadingSpinner = ({
   containerStyle = null, 
   textStyle = null 
 }) => {
+  const getLoaderSize = (value) => {
+    if (typeof value === 'number') return value;
+    if (value === 'small') return 40;
+    return 80; // default for 'large' and any other string
+  };
+
   return (
     <View style={[styles.container, containerStyle]}>
-      <ActivityIndicator size={size} color="#ffffff" />
+      <WakeLoader size={getLoaderSize(size)} />
       {text && (
         <Text style={[styles.text, textStyle]}>{text}</Text>
       )}

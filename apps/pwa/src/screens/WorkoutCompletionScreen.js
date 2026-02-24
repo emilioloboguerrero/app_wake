@@ -36,6 +36,7 @@ import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/Sha
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
+import WakeLoader from '../components/WakeLoader';
 
 const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -1297,8 +1298,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Calculando estadísticas...</Text>
+          <WakeLoader />
         </View>
       </SafeAreaView>
     );
@@ -1825,7 +1825,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               disabled={isSharing || currentShareCardIndex === 1}
             >
               {isSharing ? (
-                <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                <ActivityIndicator size="small" color="#ffffff" />
               ) : (
                 <Text style={styles.shareModalButtonText}>Compartir</Text>
               )}

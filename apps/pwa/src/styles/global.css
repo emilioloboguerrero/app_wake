@@ -233,7 +233,8 @@ body {
   box-sizing: border-box;
 }
 
-/* Tab bar center "+" button: wrapper clips to circle from first paint (avoids square flash) */
+/* Tab bar center "+" button: wrapper clips to circle from first paint (avoids square flash).
+   Critical copy in web/index.html inline <style> so circle shows before this file loads. */
 .wake-tab-bar-add-button-wrap {
   width: 60px;
   height: 60px;

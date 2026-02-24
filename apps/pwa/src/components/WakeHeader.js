@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Image, StyleSheet, TouchableOpacity, Text, useWindowDimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
+import { HeaderStreakBadge } from './HeaderStreakBadge';
+import HeaderStreakInfoModal from './HeaderStreakInfoModal';
 import logger from '../utils/logger';
 // Fixed header container that stays above ScrollView
 export const FixedWakeHeader = ({ 
@@ -29,6 +31,7 @@ export const FixedWakeHeader = ({
   
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const [isStreakModalOpen, setIsStreakModalOpen] = React.useState(false);
   
   // Same as first commit: web = 0 top, native = insets.top - 8 (capped 0) for consistent UI
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
@@ -122,6 +125,21 @@ export const FixedWakeHeader = ({
           <SvgChevronLeft width={iconSize} height={iconSize} stroke="#ffffff" />
         </TouchableOpacity>
       )}
+
+      {/* Streak badge - top right, opens streak details modal on press */}
+      <TouchableOpacity
+        style={[
+          styles.streakBadge,
+          {
+            top: safeAreaTop + headerHeight / 2 - 9,
+            right: shouldShowProfileButton ? Math.max(32, screenWidth * 0.08) + 44 + 12 : Math.max(32, screenWidth * 0.08)
+          }
+        ]}
+        activeOpacity={0.8}
+        onPress={() => setIsStreakModalOpen(true)}
+      >
+        <HeaderStreakBadge />
+      </TouchableOpacity>
       
       {/* Reset Button - aligned with logo center inside header, on the right */}
       {showResetButton && onResetPress && (
@@ -140,6 +158,11 @@ export const FixedWakeHeader = ({
           <Text style={styles.resetButtonText}>{resetButtonText}</Text>
         </TouchableOpacity>
       )}
+      
+      <HeaderStreakInfoModal
+        visible={isStreakModalOpen}
+        onClose={() => setIsStreakModalOpen(false)}
+      />
     </View>
   );
   
@@ -201,8 +224,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 40, // Fixed width for consistent alignment
-    height: 40, // Fixed height for consistent alignment
+    width: 40,
+    height: 40,
+    zIndex: 1001,
+  },
+  streakBadge: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 1001,
   },
   resetButton: {

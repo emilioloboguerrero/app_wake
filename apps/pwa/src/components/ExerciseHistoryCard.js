@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { getSessionDateAsDate } from '../utils/sessionFilter';
 import logger from '../utils/logger';
+import WakeLoader from './WakeLoader';
 
 const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -25,7 +26,7 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
       <View style={styles.container}>
         <Text style={styles.title}>Historial de Series</Text>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="rgba(191, 168, 77, 1)" />
+          <WakeLoader size={80} />
           <Text style={styles.loadingText}>Cargando historial...</Text>
         </View>
       </View>
