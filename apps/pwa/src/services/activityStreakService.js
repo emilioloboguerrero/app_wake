@@ -138,6 +138,10 @@ async function updateActivityStreak(userId, activityDate) {
     const lastActivityDate = existing.lastActivityDate || null;
     const streakStartDate = existing.streakStartDate || null;
 
+    if (lastActivityDate && activityDate < lastActivityDate) {
+      return;
+    }
+
     const daysSinceLast = lastActivityDate ? calendarDaysBetween(lastActivityDate, activityDate) : null;
     const isDead = lastActivityDate && daysSinceLast >= DAYS_WITHOUT_ACTIVITY_TO_DIE;
     const isNewStreak = !streakStartDate || isDead;
