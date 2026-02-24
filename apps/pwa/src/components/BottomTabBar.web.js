@@ -267,10 +267,13 @@ const BottomTabBar = () => {
             className="wake-tab-bar-add-button"
             style={{
               transform: menuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-              background: 'rgba(255, 255, 255, 0.8)',
             }}
             onClick={handleToggle}
-          />
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <path d="M12 5v14M5 12h14" stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </>
