@@ -129,15 +129,7 @@ export default function WeekDateSelector({
     const lastDay = new Date(y, m + 1, 0).getDate();
     const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    // 1. Cache hit — already fetched this month during this session
-    if (fetchCacheRef.current[key]) {
-      logger.log('[WeekDateSelector.web] calendar open: using cache', { key, plannedCount: fetchCacheRef.current[key].planned?.length, entriesCount: fetchCacheRef.current[key].entries?.length });
-      setDatesWithPlanned(fetchCacheRef.current[key].planned);
-      setDatesWithEntries(fetchCacheRef.current[key].entries);
-      return;
-    }
-
-    // 2. Pre-fetched initial data available for this month — use it, skip live fetch
+    // 1. Pre-fetched initial data for this month — use it first (overrides cache so late-arriving pre-fetch wins)
     const hasInitialArrays = Array.isArray(initialDatesWithPlanned) && Array.isArray(initialDatesWithEntries);
     const monthMatch = key === initialMonthKey;
     if (monthMatch && hasInitialArrays) {
@@ -145,6 +137,14 @@ export default function WeekDateSelector({
       fetchCacheRef.current[key] = { planned: initialDatesWithPlanned, entries: initialDatesWithEntries };
       setDatesWithPlanned(initialDatesWithPlanned);
       setDatesWithEntries(initialDatesWithEntries);
+      return;
+    }
+
+    // 2. Cache hit — already fetched this month during this session
+    if (fetchCacheRef.current[key]) {
+      logger.log('[WeekDateSelector.web] calendar open: using cache', { key, plannedCount: fetchCacheRef.current[key].planned?.length, entriesCount: fetchCacheRef.current[key].entries?.length });
+      setDatesWithPlanned(fetchCacheRef.current[key].planned);
+      setDatesWithEntries(fetchCacheRef.current[key].entries);
       return;
     }
 

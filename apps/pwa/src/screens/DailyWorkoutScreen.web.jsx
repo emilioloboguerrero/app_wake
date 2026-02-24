@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import firestoreService from '../services/firestoreService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector.web';
 
 const DailyWorkoutScreenModule = require('./DailyWorkoutScreen.js');
@@ -26,7 +27,17 @@ const DailyWorkoutScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { courseId } = useParams();
-  const { user } = useAuth();
+  const { user: contextUser } = useAuth();
+  const [fallbackUser, setFallbackUser] = useState(null);
+  const user = contextUser || fallbackUser;
+
+  React.useEffect(() => {
+    if (!contextUser && auth?.currentUser) {
+      setFallbackUser(auth.currentUser);
+    } else if (contextUser) {
+      setFallbackUser(null);
+    }
+  }, [contextUser]);
 
   const [course, setCourse] = React.useState(null);
   const [loading, setLoading] = React.useState(true);

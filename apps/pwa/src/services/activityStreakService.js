@@ -32,6 +32,12 @@ function toYYYYMMDD(value) {
 // { state, computedForDate }
 const streakCache = new Map();
 
+/** Clear in-memory streak cache so next read refetches (e.g. when app becomes visible again). */
+function clearStreakCache(userId) {
+  if (userId) streakCache.delete(userId);
+  else streakCache.clear();
+}
+
 function getTodayLocal() {
   return getLocalDateString(new Date());
 }
@@ -98,24 +104,42 @@ async function getActivityStreakState(userId) {
   }
 
   const today = getTodayLocal();
-
-  // Fast path: use in-memory cache when state was already computed for today
-  const cached = streakCache.get(userId);
-  if (cached && cached.computedForDate === today) {
-    logger.debug?.('🔥 [streak] Using cached activity streak state for user', userId);
-    return cached.state;
-  }
+  const userDocRef = doc(firestore, 'users', userId);
 
   try {
-    const userDocRef = doc(firestore, 'users', userId);
-    const userDoc = await getDoc(userDocRef);
+    let userDoc;
+    let fromServer = false;
+    try {
+      userDoc = await getDocFromServer(userDocRef);
+      fromServer = true;
+    } catch (serverError) {
+      const isOffline = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
+      if (isOffline) {
+        logger.debug?.('🔥 [streak] Server unavailable, using cache for user', userId);
+        userDoc = await getDoc(userDocRef);
+      } else {
+        // Auth or network not ready yet (e.g. cold start) – retry once before giving up
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          userDoc = await getDocFromServer(userDocRef);
+          fromServer = true;
+        } catch (retryError) {
+          if (retryError?.code === 'unavailable' || retryError?.message?.includes('offline')) {
+            userDoc = await getDoc(userDocRef);
+          } else {
+            throw retryError;
+          }
+        }
+      }
+    }
+
     if (!userDoc.exists()) {
       return { streakNumber: 0, flameLevel: 0 };
     }
     const data = userDoc.data();
     const as = data?.activityStreak || {};
-    const lastActivityDate = as.lastActivityDate || null;
-    const streakStartDate = as.streakStartDate || null;
+    const lastActivityDate = toYYYYMMDD(as.lastActivityDate) || null;
+    const streakStartDate = toYYYYMMDD(as.streakStartDate) || null;
     const current = computeStreakStateFromDates(streakStartDate, lastActivityDate, today);
     const result = {
       ...current,
@@ -123,14 +147,18 @@ async function getActivityStreakState(userId) {
       lastActivityDate,
     };
     if (as.longestStreak != null) result.longestStreak = as.longestStreak;
-    if (as.longestStreakStartDate != null) result.longestStreakStartDate = as.longestStreakStartDate;
-    if (as.longestStreakEndDate != null) result.longestStreakEndDate = as.longestStreakEndDate;
+    const longestStart = toYYYYMMDD(as.longestStreakStartDate);
+    const longestEnd = toYYYYMMDD(as.longestStreakEndDate);
+    if (longestStart != null) result.longestStreakStartDate = longestStart;
+    if (longestEnd != null) result.longestStreakEndDate = longestEnd;
 
-    // Cache successful result for this user/day
-    streakCache.set(userId, {
-      state: result,
-      computedForDate: today
-    });
+    // Only cache when we got data from server – never cache local/cache fallback (stale on reopen)
+    if (fromServer) {
+      streakCache.set(userId, {
+        state: result,
+        computedForDate: today
+      });
+    }
 
     return result;
   } catch (error) {
@@ -153,8 +181,8 @@ async function updateActivityStreak(userId, activityDate) {
     }
     const data = userDoc.data();
     const existing = data?.activityStreak || {};
-    const lastActivityDate = existing.lastActivityDate || null;
-    const streakStartDate = existing.streakStartDate || null;
+    const lastActivityDate = toYYYYMMDD(existing.lastActivityDate) || null;
+    const streakStartDate = toYYYYMMDD(existing.streakStartDate) || null;
 
     if (lastActivityDate && activityDate < lastActivityDate) {
       return;
@@ -188,8 +216,10 @@ async function updateActivityStreak(userId, activityDate) {
       activityStreakPayload.longestStreakEndDate = candidateEnd;
     } else if (existing.longestStreak != null) {
       activityStreakPayload.longestStreak = existing.longestStreak;
-      if (existing.longestStreakStartDate != null) activityStreakPayload.longestStreakStartDate = existing.longestStreakStartDate;
-      if (existing.longestStreakEndDate != null) activityStreakPayload.longestStreakEndDate = existing.longestStreakEndDate;
+      const existingLongestStart = toYYYYMMDD(existing.longestStreakStartDate);
+      const existingLongestEnd = toYYYYMMDD(existing.longestStreakEndDate);
+      if (existingLongestStart != null) activityStreakPayload.longestStreakStartDate = existingLongestStart;
+      if (existingLongestEnd != null) activityStreakPayload.longestStreakEndDate = existingLongestEnd;
     }
     await updateDoc(userDocRef, { activityStreak: activityStreakPayload });
     logger.log('🔥 Activity streak updated:', { userId, activityDate, streakStartDate: nextStart });
@@ -224,12 +254,27 @@ export function useActivityStreak(userId) {
     }
     let cancelled = false;
     let midnightTimeoutId;
+    const refetch = () => {
+      getActivityStreakState(userId).then((result) => {
+        if (!cancelled) {
+          setState({ ...result, isLoading: false });
+        }
+      });
+    };
     setState((s) => ({ ...s, isLoading: true }));
-    getActivityStreakState(userId).then((result) => {
-      if (!cancelled) {
-        setState({ ...result, isLoading: false });
-      }
-    });
+    refetch();
+
+    // When app becomes visible again (tab focus, PWA reopen), clear in-memory cache and refetch
+    // so we don't show stale cached streak from before the user left.
+    const onVisibilityChange = () => {
+      if (cancelled || !userId || document.visibilityState !== 'visible') return;
+      clearStreakCache(userId);
+      setState((s) => ({ ...s, isLoading: true }));
+      refetch();
+    };
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
 
     // Schedule one refresh at next local midnight so flame level and streak number
     // adjust when a new day starts, without tying it to screen navigation.
@@ -240,11 +285,7 @@ export function useActivityStreak(userId) {
       const msUntilMidnight = Math.max(0, nextMidnight.getTime() - now.getTime() + 1000);
       midnightTimeoutId = setTimeout(() => {
         if (cancelled) return;
-        getActivityStreakState(userId).then((result) => {
-          if (!cancelled) {
-            setState({ ...result, isLoading: false });
-          }
-        });
+        refetch();
       }, msUntilMidnight);
     } catch (e) {
       logger.warn?.('🔥 [streak] Failed to schedule midnight refresh:', e);
@@ -257,6 +298,9 @@ export function useActivityStreak(userId) {
     streakUpdateListeners.add(unsubscribe);
     return () => {
       cancelled = true;
+      if (typeof document !== 'undefined' && document.removeEventListener) {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
       if (midnightTimeoutId) {
         clearTimeout(midnightTimeoutId);
       }
@@ -272,5 +316,6 @@ export default {
   getActivityStreakState,
   updateActivityStreak,
   useActivityStreak,
+  clearStreakCache,
   DAYS_WITHOUT_ACTIVITY_TO_DIE
 };
