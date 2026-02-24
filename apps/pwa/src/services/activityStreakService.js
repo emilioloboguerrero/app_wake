@@ -4,11 +4,29 @@
  * When user doesn't log for 4+ calendar days, streak dies (show 0). On next log, streak restarts at 1.
  */
 import React from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, updateDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import logger from '../utils/logger.js';
 
 const DAYS_WITHOUT_ACTIVITY_TO_DIE = 4;
+
+/** Normalize Firestore Timestamp, Date, or YYYY-MM-DD string to YYYY-MM-DD. Returns null if invalid. */
+function toYYYYMMDD(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  let d;
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value?.toDate === 'function') {
+    d = value.toDate();
+  } else if (typeof value?.toMillis === 'function') {
+    d = new Date(value.toMillis());
+  } else {
+    d = new Date(value);
+  }
+  if (Number.isNaN(d.getTime())) return null;
+  return getLocalDateString(d);
+}
 
 // In-memory cache: one entry per user, per local day
 // { state, computedForDate }
