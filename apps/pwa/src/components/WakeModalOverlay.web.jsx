@@ -27,6 +27,7 @@ export function WakeModalOverlay({
   children,
   contentAnimation = 'slideUp',
   contentPlacement = 'center',
+  closeOnBackdropClick = true,
 }) {
   const rootRef = useRef(null);
 
@@ -69,7 +70,7 @@ export function WakeModalOverlay({
     position: 'fixed',
     inset: 0,
     zIndex: 2,
-    pointerEvents: isFull ? 'none' : 'auto',
+    pointerEvents: 'auto',
     display: isFull ? 'block' : 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -89,15 +90,18 @@ export function WakeModalOverlay({
       />
       <div
         style={contentLayerStyle}
-        onClick={isFull ? undefined : handleBackdropClick}
+        onClick={handleBackdropClick}
       >
-        {isFull ? (
-          children
-        ) : (
-          <div onClick={(e) => e.stopPropagation()} style={{ pointerEvents: 'auto' }}>
-            {children}
-          </div>
-        )}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            pointerEvents: 'auto',
+            display: isFull ? 'block' : 'contents',
+            height: isFull && !closeOnBackdropClick ? '100%' : undefined,
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

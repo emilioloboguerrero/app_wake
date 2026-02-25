@@ -9,6 +9,7 @@ import {
   TextInput,
   useWindowDimensions,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -1288,7 +1289,7 @@ const NutritionScreen = () => {
   const opcionesCardViewHeight = 540;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
       <ScrollView
         style={styles.scroll}
@@ -1532,6 +1533,7 @@ const NutritionScreen = () => {
         onClose={() => setAddModalVisible(false)}
         contentPlacement="full"
         contentAnimation="slideUp"
+        closeOnBackdropClick={false}
       >
         <View style={styles.addModalOverlay}>
           <View style={styles.addModalContent}>
@@ -2299,7 +2301,7 @@ const NutritionScreen = () => {
           </View>
         </View>
       </WakeModalOverlay>
-    </View>
+    </SafeAreaView>
   );
 };
 
