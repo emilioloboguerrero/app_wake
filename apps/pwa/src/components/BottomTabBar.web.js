@@ -2,7 +2,7 @@
 const TAB_BAR_CONTENT_HEIGHT = 58;
 const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
@@ -14,9 +14,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { isAdmin } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
+import firestoreService from '../services/firestoreService';
+import sessionService from '../services/sessionService';
+import sessionManager from '../services/sessionManager';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { NoPlanModal } from './NoPlanModal.web';
+import { TrainingActionModal } from './TrainingActionModal.web';
+import { ProgramPickerModal } from './ProgramPickerModal.web';
 import WakeModalOverlay from './WakeModalOverlay.web';
+import { toYYYYMMDD } from '../components/WeekDateSelector.web';
 import logger from '../utils/logger';
 
 const BottomTabBar = () => {
@@ -30,6 +36,12 @@ const BottomTabBar = () => {
   const [menuActionLoading, setMenuActionLoading] = useState(false);
   const [noTrainingPlanModalVisible, setNoTrainingPlanModalVisible] = useState(false);
   const [noNutritionPlanModalVisible, setNoNutritionPlanModalVisible] = useState(false);
+  const [trainingActionModal, setTrainingActionModal] = useState({ visible: false, variant: 'no_session_today', courseId: null });
+  const [programPickerTraining, setProgramPickerTraining] = useState({ visible: false, options: [] });
+  const [programPickerNutrition, setProgramPickerNutrition] = useState({ visible: false, options: [] });
+
+  const PREFETCH_TTL_MS = 90000;
+  const prefetchedTrainingRef = useRef({ courses: null, pinnedId: null, timestamp: 0 });
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -38,6 +50,78 @@ const BottomTabBar = () => {
     else setMenuOpen(true);
   };
 
+  const resolveTargetCourse = useCallback((active, pinnedId) => {
+    if (!active?.length) return null;
+    if (active.length === 1) return active[0];
+    const pinned = pinnedId ? active.find((c) => (c.courseId || c.id) === pinnedId) : null;
+    return pinned || null;
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const userId = user?.uid ?? auth.currentUser?.uid;
+    if (!userId) return;
+    let cancelled = false;
+    const today = toYYYYMMDD(new Date());
+    Promise.all([
+      purchaseService.getUserPurchasedCourses(userId, false),
+      firestoreService.getPinnedTrainingCourseId(userId),
+    ]).then(([courses, pinnedId]) => {
+      if (cancelled) return;
+      const active = Array.isArray(courses) ? courses : [];
+      prefetchedTrainingRef.current = { courses: active, pinnedId: pinnedId || null, timestamp: Date.now() };
+      const target = resolveTargetCourse(active, pinnedId);
+      if (target) {
+        const courseId = target.courseId || target.id;
+        sessionService.getCurrentSession(userId, courseId, { targetDate: today }).catch(() => {});
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [menuOpen, user?.uid, resolveTargetCourse]);
+
+  const buildCourseObj = (course) => {
+    const cid = course.courseId || course.id;
+    const details = course.courseDetails || {};
+    return {
+      courseId: cid,
+      id: cid,
+      title: details.title || course.title || 'Programa',
+      ...details,
+    };
+  };
+
+  const runEntrenarFlow = useCallback(async (course, userId) => {
+    const courseId = course.courseId || course.id;
+    if (!courseId) {
+      setMenuActionLoading(false);
+      setNoTrainingPlanModalVisible(true);
+      return;
+    }
+    const courseObj = buildCourseObj(course);
+    const today = toYYYYMMDD(new Date());
+    try {
+      const sessionState = await sessionService.getCurrentSession(userId, courseId, { targetDate: today });
+      if (sessionState.emptyReason === 'no_session_today' || sessionState.emptyReason === 'no_planning_this_week' || !sessionState.workout?.exercises?.length) {
+        setTrainingActionModal({ visible: true, variant: 'no_session_today', courseId });
+        return;
+      }
+      if (sessionState.todaySessionAlreadyCompleted) {
+        setTrainingActionModal({ visible: true, variant: 'already_completed', courseId });
+        return;
+      }
+      const workout = sessionState.workout;
+      const sessionId = workout.sessionId || sessionState.session?.sessionId || sessionState.session?.id;
+      const session = await sessionManager.startSession(userId, courseId, sessionId, workout.title);
+      closeMenu();
+      navigate('/warmup', { state: { course: courseObj, workout, sessionId: session.sessionId } });
+    } catch (err) {
+      logger.error('[Entrenar] getCurrentSession or startSession failed', err?.message ?? err);
+      setTrainingActionModal({ visible: true, variant: 'no_session_today', courseId });
+    } finally {
+      setMenuActionLoading(false);
+    }
+  }, [navigate]);
+
   const handleEntrenarPress = () => {
     const userId = user?.uid ?? auth.currentUser?.uid;
     if (!userId) {
@@ -45,55 +129,158 @@ const BottomTabBar = () => {
       setNoTrainingPlanModalVisible(true);
       return;
     }
-    setMenuActionLoading(true);
-    purchaseService.getUserPurchasedCourses(userId, false).then((courses) => {
+    const prefetched = prefetchedTrainingRef.current;
+    const usePrefetched = prefetched.courses != null && (Date.now() - prefetched.timestamp) < PREFETCH_TTL_MS;
+
+    if (usePrefetched && prefetched.courses.length === 0) {
       closeMenu();
-      setMenuActionLoading(false);
+      setNoTrainingPlanModalVisible(true);
+      return;
+    }
+    if (usePrefetched && prefetched.courses.length > 0) {
+      const active = prefetched.courses;
+      if (active.length === 1) {
+        setMenuActionLoading(true);
+        runEntrenarFlow(active[0], userId);
+        return;
+      }
+      const pinnedCourse = prefetched.pinnedId ? active.find((c) => (c.courseId || c.id) === prefetched.pinnedId) : null;
+      if (pinnedCourse) {
+        setMenuActionLoading(true);
+        runEntrenarFlow(pinnedCourse, userId);
+        return;
+      }
+      closeMenu();
+      setProgramPickerTraining({
+        visible: true,
+        options: active.map((c) => ({
+          ...c,
+          id: c.courseId || c.id,
+          courseId: c.courseId || c.id,
+          title: c.courseDetails?.title || c.title || 'Programa',
+        })),
+      });
+      return;
+    }
+
+    setMenuActionLoading(true);
+    Promise.all([
+      purchaseService.getUserPurchasedCourses(userId, false),
+      firestoreService.getPinnedTrainingCourseId(userId),
+    ]).then(([courses, pinnedId]) => {
       const active = Array.isArray(courses) ? courses : [];
       if (active.length === 0) {
+        closeMenu();
+        setMenuActionLoading(false);
         setNoTrainingPlanModalVisible(true);
-      } else {
-        const first = active[0];
-        const courseId = first.courseId || first.id;
-        if (courseId) {
-          navigate(`/course/${courseId}/workout`);
-        } else {
-          setNoTrainingPlanModalVisible(true);
-        }
+        return;
       }
-    }).catch(() => {
+      if (active.length === 1) {
+        runEntrenarFlow(active[0], userId);
+        return;
+      }
+      const pinnedCourse = pinnedId ? active.find((c) => (c.courseId || c.id) === pinnedId) : null;
+      if (pinnedCourse) {
+        runEntrenarFlow(pinnedCourse, userId);
+        return;
+      }
       closeMenu();
       setMenuActionLoading(false);
+      setProgramPickerTraining({
+        visible: true,
+        options: active.map((c) => ({
+          ...c,
+          id: c.courseId || c.id,
+          courseId: c.courseId || c.id,
+          title: c.courseDetails?.title || c.title || 'Programa',
+        })),
+      });
+    }).catch((err) => {
+      closeMenu();
+      setMenuActionLoading(false);
+      logger.error('[Entrenar] failed', err?.message ?? err);
       setNoTrainingPlanModalVisible(true);
     });
+  };
+
+  const handleTrainingPickerSelect = (item) => {
+    const userId = user?.uid ?? auth.currentUser?.uid;
+    if (!userId) return;
+    setProgramPickerTraining((prev) => ({ ...prev, visible: false }));
+    firestoreService.setPinnedTrainingCourseId(userId, item.courseId || item.id).then(() => {
+      setMenuActionLoading(true);
+      runEntrenarFlow(item, userId);
+    }).catch((err) => {
+      logger.error('[Entrenar] setPinnedTrainingCourseId failed', err?.message ?? err);
+    });
+  };
+
+  const handleVerPrograma = (courseId) => {
+    setTrainingActionModal((prev) => ({ ...prev, visible: false }));
+    if (courseId) navigate(`/course/${courseId}/workout`);
   };
 
   const handleRegistrarComidaPress = () => {
     setNoNutritionPlanModalVisible(false);
     const userId = user?.uid ?? auth.currentUser?.uid;
-    logger.log('[Registrar comida] userId=', userId, '(from context:', !!user?.uid, ', from auth.currentUser:', !!auth.currentUser?.uid, ')');
     if (!userId) {
-      logger.log('[Registrar comida] no userId, showing modal');
       closeMenu();
       setNoNutritionPlanModalVisible(true);
       return;
     }
     setMenuActionLoading(true);
-    nutritionFirestoreService.hasActiveNutritionAssignment(userId).then((hasPlan) => {
+    Promise.all([
+      nutritionFirestoreService.getAssignmentsByUser(userId),
+      firestoreService.getPinnedNutritionAssignmentId(userId),
+    ]).then(([assignments, pinnedId]) => {
+      const today = toYYYYMMDD(new Date());
+      const activeAssignments = nutritionFirestoreService.getActiveAssignmentsForDate(assignments || [], today);
+      if (activeAssignments.length === 0) {
+        closeMenu();
+        setMenuActionLoading(false);
+        setNoNutritionPlanModalVisible(true);
+        return;
+      }
+      if (activeAssignments.length === 1) {
+        closeMenu();
+        setMenuActionLoading(false);
+        navigate('/nutrition', { state: { preferredAssignmentId: activeAssignments[0].id } });
+        return;
+      }
+      const pinned = pinnedId ? activeAssignments.find((a) => a.id === pinnedId) : null;
+      if (pinned) {
+        closeMenu();
+        setMenuActionLoading(false);
+        navigate('/nutrition', { state: { preferredAssignmentId: pinned.id } });
+        return;
+      }
       closeMenu();
       setMenuActionLoading(false);
-      logger.log('[Registrar comida] hasPlan=', hasPlan, '→', hasPlan ? 'navigate' : 'show modal');
-      if (hasPlan) {
-        setNoNutritionPlanModalVisible(false);
-        navigate('/nutrition');
-      } else {
-        setNoNutritionPlanModalVisible(true);
-      }
+      setProgramPickerNutrition({
+        visible: true,
+        options: activeAssignments.map((a) => ({
+          ...a,
+          id: a.id,
+          assignmentId: a.id,
+          title: a.plan?.name || a.planId || 'Plan de alimentación',
+        })),
+      });
     }).catch((err) => {
       closeMenu();
       setMenuActionLoading(false);
-      logger.error('[Registrar comida] hasActiveNutritionAssignment failed', err?.message ?? err, err);
+      logger.error('[Registrar comida] failed', err?.message ?? err, err);
       setNoNutritionPlanModalVisible(true);
+    });
+  };
+
+  const handleNutritionPickerSelect = (item) => {
+    const userId = user?.uid ?? auth.currentUser?.uid;
+    if (!userId) return;
+    setProgramPickerNutrition((prev) => ({ ...prev, visible: false }));
+    firestoreService.setPinnedNutritionAssignmentId(userId, item.assignmentId || item.id).then(() => {
+      navigate('/nutrition', { state: { preferredAssignmentId: item.assignmentId || item.id } });
+    }).catch((err) => {
+      logger.error('[Registrar comida] setPinnedNutritionAssignmentId failed', err?.message ?? err);
     });
   };
 
@@ -103,6 +290,7 @@ const BottomTabBar = () => {
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
   const showNutritionTab = role !== null && isAdmin(role);
+  const showLabTab = false; // Lab (progress) tab hidden for now
 
   // Determine if tab bar should be visible based on current route (nutrition has its own header back, no tab bar)
   const shouldShowTabBar = () => {
@@ -200,6 +388,28 @@ const BottomTabBar = () => {
         variant="nutrition"
         onGoToLibrary={handleGoToLibrary}
       />
+      <TrainingActionModal
+        visible={trainingActionModal.visible}
+        onClose={() => setTrainingActionModal((p) => ({ ...p, visible: false }))}
+        variant={trainingActionModal.variant}
+        courseId={trainingActionModal.courseId}
+        onVerPrograma={handleVerPrograma}
+      />
+      <ProgramPickerModal
+        visible={programPickerTraining.visible}
+        onClose={() => setProgramPickerTraining((p) => ({ ...p, visible: false }))}
+        variant="training"
+        title="¿Con qué programa quieres entrenar?"
+        options={programPickerTraining.options}
+        onSelect={handleTrainingPickerSelect}
+      />
+      <ProgramPickerModal
+        visible={programPickerNutrition.visible}
+        onClose={() => setProgramPickerNutrition((p) => ({ ...p, visible: false }))}
+        variant="nutrition"
+        options={programPickerNutrition.options}
+        onSelect={handleNutritionPickerSelect}
+      />
       <WakeModalOverlay
         visible={menuOpen}
         onClose={() => { if (!menuActionLoading) closeMenu(); }}
@@ -252,21 +462,23 @@ const BottomTabBar = () => {
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.tabButton}
-                onPress={() => navigate('/progress')}
-                activeOpacity={0.7}
-              >
-                <View style={styles.tabIconWrap}>
-                  <SvgChartLine
-                    width={iconSize}
-                    height={iconSize}
-                    color="#ffffff"
-                    strokeWidth={isProgressActive ? 2.8 : 2.5}
-                    style={{ opacity: isProgressActive ? 1 : 0.6 }}
-                  />
-                </View>
-              </TouchableOpacity>
+              {showLabTab && (
+                <TouchableOpacity
+                  style={styles.tabButton}
+                  onPress={() => navigate('/progress')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.tabIconWrap}>
+                    <SvgChartLine
+                      width={iconSize}
+                      height={iconSize}
+                      color="#ffffff"
+                      strokeWidth={isProgressActive ? 2.8 : 2.5}
+                      style={{ opacity: isProgressActive ? 1 : 0.6 }}
+                    />
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {showNutritionTab && (
                 <TouchableOpacity

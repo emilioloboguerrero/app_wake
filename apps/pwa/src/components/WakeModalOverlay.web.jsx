@@ -1,14 +1,12 @@
 /**
- * Shared modal layer for web: single root (z 99999), full-viewport backdrop,
- * open/close animation (backdrop fade + content slide), click-outside to close.
- * Use for NutritionScreen, MainScreen (TutorialOverlay), and other overlay modals.
+ * Simple modal overlay for web: full-screen backdrop, click-outside to close.
+ * Used by BottomTabBar (+ menu), NutritionScreen, TutorialOverlay.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 const ROOT_ID = 'wake-modal-overlay-root';
-const Z_INDEX = 99999;
-const ANIMATION_MS = 200;
+const Z_INDEX = 2147483646;
 
 function getOrCreateRoot() {
   if (typeof document === 'undefined') return null;
@@ -17,17 +15,10 @@ function getOrCreateRoot() {
     root = document.createElement('div');
     root.id = ROOT_ID;
     root.style.cssText =
-      'position:fixed;inset:0;z-index:' + Z_INDEX + ';pointer-events:none;';
+      'position:fixed;inset:0;z-index:' + Z_INDEX + ';pointer-events:auto;';
     document.body.appendChild(root);
   }
   return root;
-}
-
-function ensureRootLastChild(root) {
-  if (typeof document === 'undefined' || !root || !root.parentNode) return;
-  if (document.body.lastChild !== root) {
-    document.body.appendChild(root);
-  }
 }
 
 export function WakeModalOverlay({
@@ -37,107 +28,76 @@ export function WakeModalOverlay({
   contentAnimation = 'slideUp',
   contentPlacement = 'center',
 }) {
-  const [closing, setClosing] = useState(false);
-
-  const handleBackdropClick = () => {
-    setClosing(true);
-  };
+  const rootRef = useRef(null);
 
   useEffect(() => {
-    if (!closing) return;
-    const t = setTimeout(() => {
-      setClosing(false);
-      onClose();
-    }, ANIMATION_MS);
-    return () => clearTimeout(t);
-  }, [closing, onClose]);
-
-  useEffect(() => {
-    if (!visible) setClosing(false);
+    const root = rootRef.current;
+    if (!root) return;
+    root.style.pointerEvents = visible ? 'auto' : 'none';
+    return () => {
+      root.style.pointerEvents = 'none';
+    };
   }, [visible]);
 
-  const modalRoot = visible && typeof document !== 'undefined' ? getOrCreateRoot() : null;
   useEffect(() => {
-    if (visible && modalRoot) ensureRootLastChild(modalRoot);
-  }, [visible, modalRoot]);
+    if (!visible) return;
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [visible, onClose]);
 
   if (!visible || typeof document === 'undefined') {
     return null;
   }
 
-  const isClosing = closing;
-  const backdropAnim =
-    isClosing ? 'wakeModalBackdropOut 0.2s ease forwards' : 'wakeModalBackdropIn 0.2s ease forwards';
-  const contentAnim =
-    isClosing ? 'wakeModalContentOut 0.2s ease forwards' : 'wakeModalContentIn 0.2s ease forwards';
-
-  const keyframes =
-    contentAnimation === 'slideUp'
-      ? `
-    @keyframes wakeModalBackdropIn  { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes wakeModalBackdropOut { from { opacity: 1; } to { opacity: 0; } }
-    @keyframes wakeModalContentIn  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes wakeModalContentOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(12px); } }
-  `
-      : `
-    @keyframes wakeModalBackdropIn  { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes wakeModalBackdropOut { from { opacity: 1; } to { opacity: 0; } }
-    @keyframes wakeModalContentIn  { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes wakeModalContentOut { from { opacity: 1; } to { opacity: 0; } }
-  `;
+  const modalRoot = getOrCreateRoot();
+  rootRef.current = modalRoot;
+  if (document.body.lastChild !== modalRoot) {
+    document.body.appendChild(modalRoot);
+  }
 
   const isFull = contentPlacement === 'full';
-  const contentWrapperStyle = isFull
-    ? {
-        position: 'fixed',
-        inset: 0,
-        zIndex: 2,
-        pointerEvents: 'none',
-      }
-    : {
-        position: 'fixed',
-        inset: 0,
-        zIndex: 2,
-        pointerEvents: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      };
 
-  const innerStyle = isFull
-    ? {
-        pointerEvents: 'none',
-        position: 'fixed',
-        inset: 0,
-        overflow: 'auto',
-        animation: contentAnim,
-      }
-    : {
-        pointerEvents: 'auto',
-        maxHeight: '100%',
-        overflow: 'auto',
-        animation: contentAnim,
-      };
+  const backdropStyle = {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    zIndex: 1,
+  };
+
+  const contentLayerStyle = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 2,
+    pointerEvents: isFull ? 'none' : 'auto',
+    display: isFull ? 'block' : 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget) onClose();
+  };
 
   const overlay = (
-    <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0 }}>
-      <style>{keyframes}</style>
+    <div style={{ position: 'fixed', inset: 0 }}>
       <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.62)',
-          zIndex: 1,
-          animation: backdropAnim,
-        }}
-        onClick={handleBackdropClick}
+        style={backdropStyle}
+        onClick={onClose}
         role="button"
         aria-label="Cerrar"
       />
-      <div style={contentWrapperStyle}>
-        <div style={innerStyle} onClick={(e) => e.stopPropagation()}>
-          {children}
-        </div>
+      <div
+        style={contentLayerStyle}
+        onClick={isFull ? undefined : handleBackdropClick}
+      >
+        {isFull ? (
+          children
+        ) : (
+          <div onClick={(e) => e.stopPropagation()} style={{ pointerEvents: 'auto' }}>
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );

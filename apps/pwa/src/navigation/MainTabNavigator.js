@@ -31,7 +31,6 @@ const MainTabNavigator = () => {
       'ProgramLibrary',
       'CourseDetail',
       'DailyWorkout',
-      'WorkoutExercises',
       'ExercisePanel',
       'ExerciseDetail',
       'Warmup',

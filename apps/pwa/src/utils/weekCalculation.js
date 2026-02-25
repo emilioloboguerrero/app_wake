@@ -78,6 +78,18 @@ export const formatWeekDisplay = (weekKey) => {
 };
 
 /**
+ * Get the week key for the week before the given week
+ * @param {string} weekKey - Week key in format "YYYY-WXX"
+ * @returns {string} - Previous week key
+ */
+export const getPreviousWeekKey = (weekKey) => {
+  const { start } = getWeekDates(weekKey);
+  const prev = new Date(start);
+  prev.setDate(prev.getDate() - 7);
+  return getMondayWeek(prev);
+};
+
+/**
  * Get week start and end dates
  * @param {string} weekKey - Week key in format "YYYY-WXX"
  * @returns {Object} - { start: Date, end: Date }

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-const MODAL_ROOT_ID = 'wake-no-plan-modal-root';
+const MODAL_ROOT_ID = 'wake-training-nutrition-choice-modal-root';
 const MODAL_Z_INDEX = 2147483646;
 const CARD_MAX_WIDTH = 320;
 
@@ -46,8 +46,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  buttonWrap: {
-    alignItems: 'center',
+  buttonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
   },
   button: {
     backgroundColor: 'transparent',
@@ -58,6 +61,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 140,
   },
   buttonText: {
     color: '#ffffff',
@@ -66,23 +70,40 @@ const styles = StyleSheet.create({
   },
 });
 
-export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibrary }) {
+export function TrainingNutritionChoiceModal({
+  visible,
+  onClose,
+  programTitle,
+  creatorName,
+  onChooseTraining,
+  onChooseNutrition,
+}) {
   if (!visible || typeof document === 'undefined') {
     return null;
   }
 
-  const planType = variant === 'training' ? 'entrenamiento' : 'alimentación';
-  const title = `Busquemos tu plan de ${planType}`;
+  const firstName = creatorName?.trim() ? creatorName.trim().split(/\s+/)[0] : null;
+  const titleText = firstName
+    ? `¿Qué quieres del plan que te hizo ${firstName}?`
+    : programTitle
+      ? `¿Qué quieres hacer en ${programTitle}?`
+      : '¿Qué quieres hacer?';
 
-  const handleLibrary = () => {
+  const handleTraining = () => {
     onClose();
-    if (onGoToLibrary) onGoToLibrary();
+    if (onChooseTraining) onChooseTraining();
+  };
+
+  const handleNutrition = () => {
+    onClose();
+    if (onChooseNutrition) onChooseNutrition();
   };
 
   const modalRoot = getOrCreateModalRoot();
   useEffect(() => {
     if (visible && modalRoot) ensureModalRootLastChild(modalRoot);
   }, [visible, modalRoot]);
+
   const fullCover = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 };
   const overlay = (
     <div style={{ pointerEvents: 'auto', ...fullCover }}>
@@ -107,11 +128,18 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
         onClick={onClose}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.buttonWrap}>
+          <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+            {titleText}
+          </Text>
+          <View style={styles.buttonsRow}>
             <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
-              <TouchableOpacity style={styles.button} onPress={handleLibrary} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Explorar</Text>
+              <TouchableOpacity style={styles.button} onPress={handleTraining} activeOpacity={0.8}>
+                <Text style={styles.buttonText}>Entrenar</Text>
+              </TouchableOpacity>
+            </div>
+            <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
+              <TouchableOpacity style={styles.button} onPress={handleNutrition} activeOpacity={0.8}>
+                <Text style={styles.buttonText}>Comer</Text>
               </TouchableOpacity>
             </div>
           </View>
@@ -123,4 +151,4 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
   return modalRoot ? createPortal(overlay, modalRoot) : null;
 }
 
-export default NoPlanModal;
+export default TrainingNutritionChoiceModal;

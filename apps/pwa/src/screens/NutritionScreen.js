@@ -105,7 +105,10 @@ export function NutritionScreenBase({ navigation }) {
   const [assignment, setAssignment] = useState(null);
   const [plan, setPlan] = useState(null);
   const [loadingAssignment, setLoadingAssignment] = useState(true);
-  const [diaryDate, setDiaryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [diaryDate, setDiaryDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [diaryEntries, setDiaryEntries] = useState([]);
   const [loadingDiary, setLoadingDiary] = useState(false);
   const [logMode, setLogMode] = useState('search'); // 'search' | 'manual'

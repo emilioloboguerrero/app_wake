@@ -287,8 +287,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'rgba(191, 168, 77, 0.2)', // Match OnboardingScreen.js
     minHeight: Math.max(50, screenHeight * 0.06),
     paddingVertical: 6,
-    width: Math.max(200, screenWidth * 0.5), // Match WorkoutExercisesScreen.js
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
+    width: Math.max(200, screenWidth * 0.5), // Primary button dimensions
+    borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,

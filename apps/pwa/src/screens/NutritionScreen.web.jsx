@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -573,15 +573,20 @@ const MICROS = [
 
 const NutritionScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { width: screenWidth } = useWindowDimensions();
   const { user } = useAuth();
   const userId = user?.uid ?? auth.currentUser?.uid ?? '';
+  const preferredAssignmentId = location.state?.preferredAssignmentId ?? null;
 
   const [assignment, setAssignment] = useState(null);
   const [plan, setPlan] = useState(null);
   const [diaryEntries, setDiaryEntries] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [macroShowLeft, setMacroShowLeft] = useState(true);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addModalTab, setAddModalTab] = useState('opciones');
@@ -693,11 +698,13 @@ const NutritionScreen = () => {
     setLoading(true);
     try {
       const dateForPlan = selectedDate ? new Date(selectedDate + 'T12:00:00') : new Date();
-      const { plan: p, assignment: a } = await nutritionDb.getEffectivePlanForUser(userId, dateForPlan);
+      const { plan: p, assignment: a } = preferredAssignmentId
+        ? await nutritionDb.getPlanForAssignmentId(userId, preferredAssignmentId, dateForPlan)
+        : await nutritionDb.getEffectivePlanForUser(userId, dateForPlan);
       setAssignment(a);
       setPlan(p);
     } catch (e) {
-      logger.error('[NutritionScreen] getEffectivePlanForUser error:', e);
+      logger.error('[NutritionScreen] load plan error:', e);
     }
     try {
       const entries = await nutritionDb.getDiaryEntries(userId, selectedDate);
@@ -706,7 +713,7 @@ const NutritionScreen = () => {
       logger.error('[NutritionScreen] getDiaryEntries error:', e);
     }
     setLoading(false);
-  }, [userId, selectedDate]);
+  }, [userId, selectedDate, preferredAssignmentId]);
 
   useEffect(() => {
     loadData();
@@ -1494,6 +1501,7 @@ const NutritionScreen = () => {
                               onPress={() => {
                                 setAddModalCategoryIndex(idx);
                                 setAddModalCategoryDropdownOpen(false);
+                                setAddModalTab('opciones');
                                 setAddModalVisible(true);
                               }}
                               activeOpacity={0.8}
@@ -1577,15 +1585,14 @@ const NutritionScreen = () => {
                   style={[
                     styles.addModalTabIndicator,
                     {
-                      width: '33.333%',
-                      left: addModalTab === 'opciones' ? '0%' : addModalTab === 'buscar' ? '33.333%' : '66.666%',
+                      width: '50%',
+                      left: addModalTab === 'opciones' ? '0%' : '50%',
                     },
                   ]}
                 />
                 {[
                   { key: 'opciones', title: 'Opciones' },
                   { key: 'buscar', title: 'Buscar' },
-                  { key: 'mis_comidas', title: 'Mis comidas' },
                 ].map((tab) => (
                   <TouchableOpacity
                     key={tab.key}
@@ -1962,118 +1969,6 @@ const NutritionScreen = () => {
                     </View>
                   )}
                   </View>
-                </View>
-              )}
-              {addModalTab === 'mis_comidas' && (
-                <View style={styles.opcionesSection}>
-                  <View style={styles.misComidasHeader}>
-                    <TouchableOpacity
-                      style={styles.crearComidaBtn}
-                      onPress={() => {
-                        setCreateMealName('');
-                        setCreateMealItems([]);
-                        setCreateMealModalOpen(true);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.crearComidaBtnText}>+ Crear comida</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {userMealsLoading ? (
-                    <View style={styles.misComidasLoading}>
-                      <WakeLoader size={80} />
-                    </View>
-                  ) : userMeals.length === 0 ? (
-                    <View style={styles.misComidasEmpty}>
-                      <Text style={styles.misComidasEmptyText}>Aún no tienes comidas guardadas.</Text>
-                      <Text style={styles.misComidasEmptySub}>Crea una para añadirla rápido al día.</Text>
-                    </View>
-                  ) : (
-                    <ScrollView
-                      style={styles.misComidasScroll}
-                      contentContainerStyle={styles.misComidasScrollContent}
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {userMeals.map((meal, idx) => {
-                        const items = meal.items ?? [];
-                        const macros = optionMacros(meal);
-                        const selectedSet = misComidasSelectedByCard[idx] ?? [];
-                        const selectedCount = selectedSet.length;
-                        const toggleItem = (itemIndex) => {
-                          setMisComidasSelectedByCard((prev) => {
-                            const arr = prev[idx] ?? [];
-                            const set = new Set(arr);
-                            if (set.has(itemIndex)) set.delete(itemIndex);
-                            else set.add(itemIndex);
-                            return { ...prev, [idx]: Array.from(set) };
-                          });
-                        };
-                        const categoryLabel = effectiveCategories[selectedCategoryIndex]?.label ?? 'comida';
-                        return (
-                          <View key={meal.id} style={[styles.opcionesCard, styles.misComidasCard]}>
-                            <View style={styles.opcionesCardInner}>
-                              <View style={styles.opcionesCardHeader}>
-                                <Text style={styles.opcionesCardTitle} numberOfLines={1}>{meal.name || 'Sin nombre'}</Text>
-                                <Text style={styles.opcionesCardMacroLine}>
-                                  {`${Math.round(macros.calories)} kcal  ·  ${Math.round(macros.protein)}g Prot  ·  ${Math.round(macros.carbs)}g C  ·  ${Math.round(macros.fat)}g G`}
-                                </Text>
-                              </View>
-                              <View style={styles.opcionesCardIngredients}>
-                                {items.map((it, i) => {
-                                  const selected = selectedSet.includes(i);
-                                  const right = formatIngredientRight(it);
-                                  return (
-                                    <TouchableOpacity
-                                      key={i}
-                                      style={styles.opcionesCardIngredientRow}
-                                      onPress={() => toggleItem(i)}
-                                      activeOpacity={0.7}
-                                    >
-                                      <Text style={styles.opcionesCardIngredientName} numberOfLines={1}>
-                                        {getFoodEmoji(it)}{'  '}{it.name ?? 'Alimento'}
-                                      </Text>
-                                      <View style={styles.opcionesCardIngredientRight}>
-                                        <View style={styles.opcionesCardIngredientAmountBlock}>
-                                          <Text style={styles.opcionesCardIngredientAmount} numberOfLines={1}>
-                                            {right.main}
-                                          </Text>
-                                          {right.sub != null && (
-                                            <Text style={styles.opcionesCardIngredientAmountSub} numberOfLines={1}>
-                                              {right.sub}
-                                            </Text>
-                                          )}
-                                        </View>
-                                        <View style={[styles.opcionesCardCheckbox, selected && styles.opcionesCardCheckboxChecked]}>
-                                          {selected && <Text style={styles.opcionesCardCheckboxCheck}>✓</Text>}
-                                        </View>
-                                      </View>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                              <TouchableOpacity
-                                style={[
-                                  styles.opcionesCardAddBtn,
-                                  addOptionLoading && styles.opcionesCardAddBtnDisabled,
-                                ]}
-                                activeOpacity={0.8}
-                                onPress={() => {
-                                  const option = { items: meal.items ?? [], foods: meal.items ?? [] };
-                                  const toUse = selectedCount > 0 ? selectedSet : [];
-                                  handleAddOptionToMeal(option, selectedCategory, toUse);
-                                }}
-                                disabled={addOptionLoading}
-                              >
-                                <Text style={styles.opcionesCardAddBtnText}>
-                                  {addOptionLoading ? 'Añadiendo…' : selectedCount > 0 ? `Añadir ${selectedCount} a ${categoryLabel}` : `Añadir todo a ${categoryLabel}`}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
                 </View>
               )}
             </View>

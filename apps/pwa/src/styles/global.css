@@ -499,3 +499,10 @@ video::-webkit-media-controls-enclosure {
   transform: translateZ(0);
   z-index: 1;
 }
+
+/* Lab nutrition pie (creator app style) – recharts */
+.lab-nutrition-pie-chart .recharts-pie-label text,
+.lab-nutrition-pie-chart .recharts-label-list text {
+  font-size: 6px !important;
+  fill: rgba(255, 255, 255, 0.6);
+}

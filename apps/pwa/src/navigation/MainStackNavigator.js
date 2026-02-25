@@ -7,7 +7,6 @@ import MainScreen from '../screens/MainScreen';
 import ProgramLibraryScreen from '../screens/ProgramLibraryScreen';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
 import DailyWorkoutScreen from '../screens/DailyWorkoutScreen';
-import WorkoutExercisesScreen from '../screens/WorkoutExercisesScreen';
 import WorkoutExecutionScreen from '../screens/WorkoutExecutionScreen';
 import WarmupScreen from '../screens/WarmupScreen';
 import WorkoutCompletionScreen from '../screens/WorkoutCompletionScreen';
@@ -31,7 +30,6 @@ const MainStackNavigator = () => {
       <Stack.Screen name="CourseDetail" component={withErrorBoundary(CourseDetailScreen, 'CourseDetail')} />
       <Stack.Screen name="CreatorProfile" component={withErrorBoundary(CreatorProfileScreen, 'CreatorProfile')} />
       <Stack.Screen name="DailyWorkout" component={withErrorBoundary(DailyWorkoutScreen, 'DailyWorkout')} />
-      <Stack.Screen name="WorkoutExercises" component={withErrorBoundary(WorkoutExercisesScreen, 'WorkoutExercises')} />
       <Stack.Screen 
         name="Warmup" 
         component={withErrorBoundary(WarmupScreen, 'Warmup')}

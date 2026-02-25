@@ -707,9 +707,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     },
     submitButton: {
       backgroundColor: 'rgba(191, 168, 77, 0.2)',
-      height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
-      width: Math.max(200, screenWidth * 0.5), // Match WorkoutExercisesScreen.js
-      borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
+      height: Math.max(50, screenHeight * 0.06), // Primary button dimensions
+      width: Math.max(200, screenWidth * 0.5), // Primary button dimensions
+      borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
       alignItems: 'center',
       justifyContent: 'center',
       marginTop: 20,

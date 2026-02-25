@@ -27,7 +27,6 @@ import DailyWorkoutScreen from '../screens/DailyWorkoutScreen.web';
 import WorkoutExecutionScreen from '../screens/WorkoutExecutionScreen.web';
 import WorkoutCompletionScreen from '../screens/WorkoutCompletionScreen.web';
 import WarmupScreen from '../screens/WarmupScreen.web';
-import WorkoutExercisesScreen from '../screens/WorkoutExercisesScreen.web';
 import CourseStructureScreen from '../screens/CourseStructureScreen.web';
 // Import CourseDetailScreen directly using web wrapper for React Router navigation
 import CourseDetailScreen from '../screens/CourseDetailScreen.web';
@@ -628,17 +627,6 @@ const WebAppNavigator = () => {
           <AuthenticatedLayout>
             <Suspense fallback={<LoadingScreen />}>
               {React.createElement(withErrorBoundary(WorkoutCompletionScreen, 'WorkoutCompletion'))}
-            </Suspense>
-          </AuthenticatedLayout>
-        }
-      />
-
-      <Route
-        path="/course/:courseId/exercises"
-        element={
-          <AuthenticatedLayout>
-            <Suspense fallback={<LoadingScreen />}>
-              {React.createElement(withErrorBoundary(WorkoutExercisesScreen, 'WorkoutExercises'))}
             </Suspense>
           </AuthenticatedLayout>
         }

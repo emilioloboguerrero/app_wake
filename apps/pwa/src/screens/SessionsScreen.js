@@ -36,7 +36,9 @@ const SessionsScreen = ({ navigation }) => {
     () => createStyles(screenWidth, screenHeight),
     [screenWidth, screenHeight],
   );
-  const { user, loading: authLoading } = useAuth();
+  const { user: contextUser, loading: authLoading } = useAuth();
+  const [fallbackUser, setFallbackUser] = useState(null);
+  const user = contextUser || fallbackUser;
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -44,17 +46,33 @@ const SessionsScreen = ({ navigation }) => {
   const [resolvedUserId, setResolvedUserId] = useState(null); // Handles web auth race
   const lastDocRef = useRef(null); // Track last document for pagination
   const userResolveTimerRef = useRef(null);
+  const initialLoadAttemptedRef = useRef(false);
+
+  React.useEffect(() => {
+    if (!contextUser && Platform.OS === 'web') {
+      const current = auth.currentUser;
+      if (current) {
+        logger.log('📊 SessionsScreen: Using fallback Firebase user (AuthContext not yet set after navigation)');
+        setFallbackUser(current);
+      }
+    }
+  }, [contextUser]);
 
   const loadSessions = useCallback(async (isInitialLoad = false) => {
-    // Resolve user from context or Firebase auth (web can lag context)
+    // Resolve user from context, fallback state, or Firebase auth (web can lag context after route change)
     const resolvedUser = user || auth.currentUser || (resolvedUserId ? { uid: resolvedUserId } : null);
     const userId = resolvedUser?.uid;
 
-    // Don't try to load if auth is still loading or user is not available
-    if (authLoading || !userId) {
-      if (!authLoading) {
-        logger.log('⚠️ SessionsScreen: Cannot load sessions - user not available');
+    if (!userId) {
+      logger.log('⚠️ SessionsScreen: Cannot load sessions - user not available');
+      if (isInitialLoad) {
+        setLoading(false);
+        setHasMore(false);
       }
+      return;
+    }
+    // On native, wait for AuthContext; on web, load as soon as we have userId (avoids stuck loading after nav from Lab)
+    if (Platform.OS !== 'web' && authLoading) {
       if (isInitialLoad) {
         setLoading(false);
         setHasMore(false);
@@ -161,50 +179,41 @@ const SessionsScreen = ({ navigation }) => {
     }
   }, [authLoading, user?.uid, loadingMore, hasMore, loading, loadSessions]);
 
+  // Trigger initial load as soon as we have a uid from any source (context, fallback, or auth.currentUser).
+  // Reading auth.currentUser inside the effect avoids depending on state updates after navigation (e.g. Lab → Sessions).
   useEffect(() => {
-    logger.log('📊 SessionsScreen useEffect triggered:', {
-      authLoading,
-      hasUser: !!user,
-      userId: user?.uid
-    });
-    
-    // Wait for auth to finish loading before attempting to load sessions
-    if (!authLoading) {
-      if (user?.uid) {
-        logger.log('📊 SessionsScreen: Auth ready, loading sessions...');
-        loadSessions(true); // Initial load
-      } else {
-        logger.log('📊 SessionsScreen: Auth ready but no user, stopping loading');
-        setLoading(false);
-      }
-    } else {
-      logger.log('📊 SessionsScreen: Auth still loading, waiting...');
+    const uid = auth.currentUser?.uid ?? user?.uid ?? resolvedUserId;
+    if (!uid) {
+      if (!authLoading) setLoading(false);
+      return;
     }
-  }, [user?.uid, authLoading, loadSessions]);
+    if (initialLoadAttemptedRef.current) return;
+    initialLoadAttemptedRef.current = true;
+    logger.log('📊 SessionsScreen: Initial load triggered for uid:', uid, { fromAuth: !!auth.currentUser?.uid, fromUser: !!user?.uid });
+    loadSessions(true);
+  }, [user?.uid, resolvedUserId, authLoading, loadSessions]);
 
-  // Fallback: poll auth.currentUser a few times if context user is missing (web race condition)
+  // Fallback: poll auth.currentUser a few times if we still have no uid (web race / slow restore)
   useEffect(() => {
-    if (!authLoading && !user?.uid && !resolvedUserId) {
-      let attempts = 0;
-      userResolveTimerRef.current = setInterval(() => {
-        attempts += 1;
-        const current = auth.currentUser;
-        if (current?.uid) {
-          logger.log('📊 SessionsScreen: Resolved user from auth.currentUser:', current.uid);
-          setResolvedUserId(current.uid);
-          clearInterval(userResolveTimerRef.current);
-          loadSessions(true);
-        } else if (attempts >= 5) {
-          clearInterval(userResolveTimerRef.current);
-          logger.log('⚠️ SessionsScreen: Unable to resolve user from auth.currentUser after retries');
-          setLoading(false);
-          setHasMore(false);
-        }
-      }, 300);
-      return () => clearInterval(userResolveTimerRef.current);
-    }
-    return undefined;
-  }, [authLoading, user?.uid, resolvedUserId, loadSessions]);
+    const uid = auth.currentUser?.uid ?? user?.uid ?? resolvedUserId;
+    if (uid || authLoading) return;
+    let attempts = 0;
+    userResolveTimerRef.current = setInterval(() => {
+      attempts += 1;
+      const current = auth.currentUser;
+      if (current?.uid) {
+        logger.log('📊 SessionsScreen: Resolved user from auth.currentUser (poll):', current.uid);
+        setResolvedUserId(current.uid);
+        clearInterval(userResolveTimerRef.current);
+      } else if (attempts >= 10) {
+        clearInterval(userResolveTimerRef.current);
+        logger.log('⚠️ SessionsScreen: No user after poll retries');
+        setLoading(false);
+        setHasMore(false);
+      }
+    }, 300);
+    return () => clearInterval(userResolveTimerRef.current);
+  }, [authLoading, user?.uid, resolvedUserId]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);

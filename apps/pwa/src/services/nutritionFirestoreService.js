@@ -85,16 +85,23 @@ function parseAssignmentDate(value) {
  * If none, returns the most recent assignment by startDate (backward compatible).
  */
 function getActiveAssignmentForDate(assignments, date) {
+  const active = getActiveAssignmentsForDate(assignments, date);
+  return active[0] || assignments[0] || null;
+}
+
+/**
+ * Get all assignments active on a given date (for program picker when user has multiple plans).
+ */
+export function getActiveAssignmentsForDate(assignments, date = null) {
   const today = date ? new Date(date) : new Date();
   today.setHours(0, 0, 0, 0);
-  for (const a of assignments) {
+  return (assignments || []).filter((a) => {
     const start = parseAssignmentDate(a.startDate);
     const end = parseAssignmentDate(a.endDate);
-    if (start && start > today) continue;
-    if (end && end < today) continue;
-    return a;
-  }
-  return assignments[0] || null;
+    if (start && start > today) return false;
+    if (end && end < today) return false;
+    return !!(a.planId && a.assignedBy);
+  });
 }
 
 function normalizePlanMacros(plan) {
@@ -157,11 +164,62 @@ export async function getEffectivePlanForUser(userId, onDate = null) {
   }
 }
 
+/**
+ * Get plan for a specific assignment (e.g. when user has pinned a default plan).
+ * @param {string} userId - User id
+ * @param {string} assignmentId - Assignment document id
+ * @param {Date|string} [onDate] - Optional date (for validation; not used for resolution)
+ * @returns {Promise<{ plan: Object|null, assignment: Object|null }>}
+ */
+export async function getPlanForAssignmentId(userId, assignmentId, onDate = null) {
+  if (!assignmentId) return { plan: null, assignment: null };
+  const assignments = await getAssignmentsByUser(userId);
+  const assignment = assignments.find((a) => a.id === assignmentId);
+  if (!assignment?.planId || !assignment?.assignedBy) {
+    return { plan: null, assignment: null };
+  }
+  const copy = await getClientNutritionPlanContent(assignment.id);
+  if (copy) {
+    return { plan: normalizePlanMacros(copy), assignment };
+  }
+  const snapshot = assignment.plan && typeof assignment.plan === 'object'
+    ? { id: assignment.planId, ...assignment.plan }
+    : null;
+  if (snapshot) {
+    return { plan: normalizePlanMacros(snapshot), assignment };
+  }
+  try {
+    const libraryPlan = await getPlanById(assignment.assignedBy, assignment.planId);
+    return { plan: normalizePlanMacros(libraryPlan), assignment };
+  } catch (err) {
+    return { plan: null, assignment };
+  }
+}
+
 export async function getDiaryEntries(userId, date) {
   const q = query(
     diaryRef(userId),
     where('date', '==', date),
     orderBy('meal', 'asc')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Get all diary entries in a date range (inclusive). One query = lightest/cheapest for aggregations
+ * (e.g. average calories/macros last 7 days and % change vs previous 7 days).
+ * @param {string} userId
+ * @param {string} startDateYYYYMMDD
+ * @param {string} endDateYYYYMMDD
+ * @returns {Promise<Array<{ id: string, date: string, calories?: number, protein?: number, carbs?: number, fat?: number, ... }>>}
+ */
+export async function getDiaryEntriesInRange(userId, startDateYYYYMMDD, endDateYYYYMMDD) {
+  if (!userId || !startDateYYYYMMDD || !endDateYYYYMMDD) return [];
+  const q = query(
+    diaryRef(userId),
+    where('date', '>=', startDateYYYYMMDD),
+    where('date', '<=', endDateYYYYMMDD)
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -301,10 +359,12 @@ export async function deleteSavedFood(userId, savedFoodId) {
 
 export default {
   getAssignmentsByUser,
+  getActiveAssignmentsForDate,
   hasActiveNutritionAssignment,
   getPlanById,
   getClientNutritionPlanContent,
   getEffectivePlanForUser,
+  getPlanForAssignmentId,
   getDiaryEntries,
   getDatesWithEntries,
   addDiaryEntry,

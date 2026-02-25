@@ -106,7 +106,6 @@ const CourseDetailScreen = () => {
         'CourseDetail': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}`),
         'DailyWorkout': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout`),
         'CourseStructure': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/structure`),
-        'WorkoutExercises': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/exercises`),
         'WorkoutExecution': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout/execution`, { state: params }),
         'WorkoutCompletion': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout/completion`, { state: params }),
         'Warmup': () => navigate('/warmup', { state: params }),

@@ -23,6 +23,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import firestoreService from '../services/firestoreService';
+import purchaseService from '../services/purchaseService';
+import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { auth, firestore } from '../config/firebase';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import googleAuthService from '../services/googleAuthService';
@@ -79,6 +81,17 @@ const ProfileScreen = ({ navigation }) => {
     'Otros'
   ];
   
+  // Default program (pinned) state for + menu
+  const [pinnedTrainingCourseId, setPinnedTrainingCourseId] = useState(null);
+  const [pinnedTrainingTitle, setPinnedTrainingTitle] = useState('');
+  const [pinnedNutritionAssignmentId, setPinnedNutritionAssignmentId] = useState(null);
+  const [pinnedNutritionTitle, setPinnedNutritionTitle] = useState('');
+  const [defaultTrainingPickerVisible, setDefaultTrainingPickerVisible] = useState(false);
+  const [defaultNutritionPickerVisible, setDefaultNutritionPickerVisible] = useState(false);
+  const [defaultTrainingOptions, setDefaultTrainingOptions] = useState([]);
+  const [defaultNutritionOptions, setDefaultNutritionOptions] = useState([]);
+  const [loadingPinned, setLoadingPinned] = useState(false);
+
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
   
@@ -458,6 +471,99 @@ const ProfileScreen = ({ navigation }) => {
   // Hide settings modal
   const hideSettingsModal = () => {
     setIsSettingsModalVisible(false);
+  };
+
+  // Load pinned default program ids when settings modal opens
+  useEffect(() => {
+    if (!isSettingsModalVisible || !user?.uid) return;
+    let cancelled = false;
+    setLoadingPinned(true);
+    Promise.all([
+      firestoreService.getPinnedTrainingCourseId(user.uid),
+      firestoreService.getPinnedNutritionAssignmentId(user.uid),
+    ]).then(([trainingId, nutritionId]) => {
+      if (!cancelled) {
+        setPinnedTrainingCourseId(trainingId || null);
+        setPinnedNutritionAssignmentId(nutritionId || null);
+      }
+    }).finally(() => { if (!cancelled) setLoadingPinned(false); });
+    return () => { cancelled = true; };
+  }, [isSettingsModalVisible, user?.uid]);
+
+  const openDefaultTrainingPicker = async () => {
+    if (!user?.uid) return;
+    setLoadingPinned(true);
+    try {
+      const courses = await purchaseService.getUserPurchasedCourses(user.uid, false);
+      const active = Array.isArray(courses) ? courses : [];
+      const options = active.map((c) => ({
+        id: c.courseId || c.id,
+        courseId: c.courseId || c.id,
+        title: c.courseDetails?.title || c.title || 'Programa',
+      }));
+      setDefaultTrainingOptions(options);
+      const pinned = options.find((o) => o.id === pinnedTrainingCourseId);
+      if (pinned) setPinnedTrainingTitle(pinned.title);
+      setDefaultTrainingPickerVisible(true);
+    } catch (e) {
+      logger.error('[Profile] load training options failed', e);
+    } finally {
+      setLoadingPinned(false);
+    }
+  };
+
+  const openDefaultNutritionPicker = async () => {
+    if (!user?.uid) return;
+    setLoadingPinned(true);
+    try {
+      const assignments = await nutritionFirestoreService.getAssignmentsByUser(user.uid);
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const active = nutritionFirestoreService.getActiveAssignmentsForDate(assignments || [], todayStr);
+      const options = active.map((a) => ({
+        id: a.id,
+        assignmentId: a.id,
+        title: a.plan?.name || a.planId || 'Plan de alimentación',
+      }));
+      setDefaultNutritionOptions(options);
+      const pinned = options.find((o) => o.id === pinnedNutritionAssignmentId);
+      if (pinned) setPinnedNutritionTitle(pinned.title);
+      setDefaultNutritionPickerVisible(true);
+    } catch (e) {
+      logger.error('[Profile] load nutrition options failed', e);
+    } finally {
+      setLoadingPinned(false);
+    }
+  };
+
+  const onSelectDefaultTraining = async (item) => {
+    setDefaultTrainingPickerVisible(false);
+    if (!user?.uid) return;
+    const id = item?.courseId ?? item?.id ?? null;
+    const title = id ? (item?.title ?? '') : '';
+    try {
+      await firestoreService.setPinnedTrainingCourseId(user.uid, id);
+      setPinnedTrainingCourseId(id);
+      setPinnedTrainingTitle(title);
+    } catch (e) {
+      logger.error('[Profile] setPinnedTrainingCourseId failed', e);
+      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
+  };
+
+  const onSelectDefaultNutrition = async (item) => {
+    setDefaultNutritionPickerVisible(false);
+    if (!user?.uid) return;
+    const id = item?.assignmentId ?? item?.id ?? null;
+    const title = id ? (item?.title ?? '') : '';
+    try {
+      await firestoreService.setPinnedNutritionAssignmentId(user.uid, id);
+      setPinnedNutritionAssignmentId(id);
+      setPinnedNutritionTitle(title);
+    } catch (e) {
+      logger.error('[Profile] setPinnedNutritionAssignmentId failed', e);
+      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
   };
 
   // Save profile using hybrid system
@@ -977,6 +1083,34 @@ const ProfileScreen = ({ navigation }) => {
                     </View>
                   )}
                 </View>
+
+                {/* Default program for + menu */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Programa de entrenamiento por defecto</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownButton}
+                    onPress={openDefaultTrainingPicker}
+                    disabled={loadingPinned}
+                  >
+                    <Text style={[styles.dropdownButtonText, !pinnedTrainingCourseId && styles.dropdownPlaceholder]}>
+                      {pinnedTrainingCourseId ? (pinnedTrainingTitle || 'Programa seleccionado') : 'Automático (primero de la lista)'}
+                    </Text>
+                    <SvgChevronRight width={16} height={16} stroke="#ffffff" style={styles.dropdownChevron} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Plan de alimentación por defecto</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownButton}
+                    onPress={openDefaultNutritionPicker}
+                    disabled={loadingPinned}
+                  >
+                    <Text style={[styles.dropdownButtonText, !pinnedNutritionAssignmentId && styles.dropdownPlaceholder]}>
+                      {pinnedNutritionAssignmentId ? (pinnedNutritionTitle || 'Plan seleccionado') : 'Automático (activo hoy)'}
+                    </Text>
+                    <SvgChevronRight width={16} height={16} stroke="#ffffff" style={styles.dropdownChevron} />
+                  </TouchableOpacity>
+                </View>
               </View>
               
                   {/* Sign Out Button */}
@@ -1017,6 +1151,96 @@ const ProfileScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 </View>
               </KeyboardAvoidingView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Default training program picker */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={defaultTrainingPickerVisible}
+        onRequestClose={() => setDefaultTrainingPickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDefaultTrainingPickerVisible(false)} accessible={false}>
+          <View style={styles.settingsModalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <View style={[styles.settingsModal, { maxHeight: '70%' }]}>
+                <View style={styles.settingsModalHeader}>
+                  <Text style={styles.settingsModalTitle}>Programa de entrenamiento por defecto</Text>
+                  <TouchableOpacity style={styles.closeButton} onPress={() => setDefaultTrainingPickerVisible(false)}>
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.settingsModalContent} keyboardShouldPersistTaps="handled">
+                  <TouchableOpacity
+                    style={styles.dropdownOption}
+                    onPress={() => onSelectDefaultTraining({ id: null, courseId: null, title: 'Automático' })}
+                  >
+                    <Text style={styles.dropdownOptionText}>Automático (primero de la lista)</Text>
+                  </TouchableOpacity>
+                  {defaultTrainingOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={styles.dropdownOption}
+                      onPress={() => onSelectDefaultTraining(opt)}
+                    >
+                      <View style={styles.dropdownOptionRow}>
+                        {pinnedTrainingCourseId === opt.id && (
+                          <Text style={styles.dropdownOptionCheck}>✓</Text>
+                        )}
+                        <Text style={styles.dropdownOptionText}>{opt.title}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Default nutrition plan picker */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={defaultNutritionPickerVisible}
+        onRequestClose={() => setDefaultNutritionPickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDefaultNutritionPickerVisible(false)} accessible={false}>
+          <View style={styles.settingsModalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <View style={[styles.settingsModal, { maxHeight: '70%' }]}>
+                <View style={styles.settingsModalHeader}>
+                  <Text style={styles.settingsModalTitle}>Plan de alimentación por defecto</Text>
+                  <TouchableOpacity style={styles.closeButton} onPress={() => setDefaultNutritionPickerVisible(false)}>
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.settingsModalContent} keyboardShouldPersistTaps="handled">
+                  <TouchableOpacity
+                    style={styles.dropdownOption}
+                    onPress={() => onSelectDefaultNutrition({ id: null, assignmentId: null, title: 'Automático' })}
+                  >
+                    <Text style={styles.dropdownOptionText}>Automático (activo hoy)</Text>
+                  </TouchableOpacity>
+                  {defaultNutritionOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={styles.dropdownOption}
+                      onPress={() => onSelectDefaultNutrition(opt)}
+                    >
+                      <View style={styles.dropdownOptionRow}>
+                        {pinnedNutritionAssignmentId === opt.id && (
+                          <Text style={styles.dropdownOptionCheck}>✓</Text>
+                        )}
+                        <Text style={styles.dropdownOptionText}>{opt.title}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -2236,6 +2460,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.2,
     borderBottomColor: '#ffffff',
+  },
+  dropdownOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dropdownOptionCheck: {
+    color: '#ffffff',
+    fontSize: 16,
+    marginRight: 10,
+    fontWeight: '600',
   },
   dropdownOptionSelected: {
     backgroundColor: 'rgba(191, 168, 77, 0.2)',

@@ -94,6 +94,24 @@ class FirestoreService {
     }
   }
 
+  async getPinnedTrainingCourseId(userId) {
+    const userData = await this.getUser(userId);
+    return userData?.pinnedTrainingCourseId ?? null;
+  }
+
+  async setPinnedTrainingCourseId(userId, courseId) {
+    await this.updateUser(userId, { pinnedTrainingCourseId: courseId || null });
+  }
+
+  async getPinnedNutritionAssignmentId(userId) {
+    const userData = await this.getUser(userId);
+    return userData?.pinnedNutritionAssignmentId ?? null;
+  }
+
+  async setPinnedNutritionAssignmentId(userId, assignmentId) {
+    await this.updateUser(userId, { pinnedNutritionAssignmentId: assignmentId || null });
+  }
+
   // Progress tracking methods
   async createProgressEntry(userId, progressData) {
     try {

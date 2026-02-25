@@ -131,10 +131,18 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const scrollX = new Animated.Value(0);
   const mainSwipeRef = useRef(null);
 
+  const canStartWorkout = !!(
+    sessionState.workout &&
+    sessionState.workout.exercises?.length > 0 &&
+    !sessionState.isLoading &&
+    !sessionState.error &&
+    !sessionState.emptyReason
+  );
+
   // Subtle pulse on entire session image card once, 1.5s after load (affordance: card is tappable)
   const pulseScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    const shouldPulse = sessionState.workout && !sessionState.isLoading && !sessionState.error && !sessionState.emptyReason;
+    const shouldPulse = canStartWorkout;
     if (!shouldPulse) {
       pulseScale.setValue(1);
       return;
@@ -154,7 +162,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     ]);
     animation.start();
     return () => animation.stop();
-  }, [sessionState.workout, sessionState.isLoading, sessionState.error]);
+  }, [canStartWorkout]);
 
   // Reset scroll position to show correct pagination indicator
   const resetScrollPosition = () => {
@@ -402,15 +410,26 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   };
 
 
-  const handleViewExercises = () => {
-    if (sessionState.workout) {
-      // Pass the current session state to WorkoutExercises
-      navigation.navigate('WorkoutExercises', { 
+  const handleStartWorkout = async () => {
+    if (!sessionState.workout) return;
+    if (!sessionState.workout.exercises?.length) return;
+    try {
+      const sessionId = sessionState.workout.sessionId || sessionState.session?.sessionId || sessionState.session?.id;
+      const session = await sessionManager.startSession(
+        user.uid,
+        course.courseId,
+        sessionId,
+        sessionState.workout.title
+      );
+      logger.log('✅ Workout session started:', session.sessionId);
+      navigation.navigate('Warmup', {
         course: course,
-        sessionData: sessionState.session,
-        workoutData: sessionState.workout,
-        sessionState: sessionState // Pass the entire session state
+        workout: sessionState.workout,
+        sessionId: session.sessionId
       });
+    } catch (error) {
+      logger.error('❌ Failed to start workout:', error);
+      Alert.alert('Error', 'Error al iniciar el entrenamiento. Inténtalo de nuevo.');
     }
   };
 
@@ -799,8 +818,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
                   sessionState.workout?.image_url && styles.sessionImageCardNoBorder,
                   { transform: [{ scale: pulseScale }] },
               ]} 
-              onPress={sessionState.workout ? handleViewExercises : undefined}
-              disabled={!sessionState.workout}
+              onPress={canStartWorkout ? handleStartWorkout : undefined}
+              disabled={!canStartWorkout}
                 activeOpacity={0.9}
             >
             {sessionState.isLoading ? (

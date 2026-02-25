@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-const MODAL_ROOT_ID = 'wake-no-plan-modal-root';
+const MODAL_ROOT_ID = 'wake-training-action-modal-root';
 const MODAL_Z_INDEX = 2147483646;
 const CARD_MAX_WIDTH = 320;
 
@@ -44,6 +44,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
     textAlign: 'center',
+    marginBottom: 12,
+  },
+  message: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
     marginBottom: 20,
   },
   buttonWrap: {
@@ -66,17 +73,27 @@ const styles = StyleSheet.create({
   },
 });
 
-export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibrary }) {
+const COPY = {
+  no_session_today: {
+    message: 'No tienes una sesión para hoy, pero puedes ver el programa.',
+    button: 'Ver programa',
+  },
+  already_completed: {
+    message: 'Ya completaste la sesión de hoy. Puedes ver el programa para cambiar de día o sesión.',
+    button: 'Ver programa',
+  },
+};
+
+export function TrainingActionModal({ visible, onClose, variant = 'no_session_today', courseId, onVerPrograma }) {
   if (!visible || typeof document === 'undefined') {
     return null;
   }
 
-  const planType = variant === 'training' ? 'entrenamiento' : 'alimentación';
-  const title = `Busquemos tu plan de ${planType}`;
+  const { message, button } = COPY[variant] || COPY.no_session_today;
 
-  const handleLibrary = () => {
+  const handleVerPrograma = () => {
     onClose();
-    if (onGoToLibrary) onGoToLibrary();
+    if (onVerPrograma && courseId) onVerPrograma(courseId);
   };
 
   const modalRoot = getOrCreateModalRoot();
@@ -107,11 +124,11 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
         onClick={onClose}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.message}>{message}</Text>
           <View style={styles.buttonWrap}>
             <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
-              <TouchableOpacity style={styles.button} onPress={handleLibrary} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Explorar</Text>
+              <TouchableOpacity style={styles.button} onPress={handleVerPrograma} activeOpacity={0.8}>
+                <Text style={styles.buttonText}>{button}</Text>
               </TouchableOpacity>
             </div>
           </View>
@@ -123,4 +140,4 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
   return modalRoot ? createPortal(overlay, modalRoot) : null;
 }
 
-export default NoPlanModal;
+export default TrainingActionModal;

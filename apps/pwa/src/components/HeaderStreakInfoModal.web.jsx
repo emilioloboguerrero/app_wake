@@ -11,7 +11,7 @@ import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import SvgFire from './icons/vectors_fig/Environment/Fire';
 
 const MODAL_ROOT_ID = 'wake-streak-modal-root';
-const MODAL_Z_INDEX = 99999;
+const MODAL_Z_INDEX = 2147483646;
 const ANIMATION_MS = 200;
 
 const STREAK_MODAL_KEYFRAMES = `
@@ -28,7 +28,7 @@ function getOrCreateModalRoot() {
     root = document.createElement('div');
     root.id = MODAL_ROOT_ID;
     root.style.cssText =
-      'position:fixed;inset:0;z-index:' +
+      'position:fixed;top:0;left:0;right:0;bottom:0;z-index:' +
       MODAL_Z_INDEX +
       ';pointer-events:none;';
     document.body.appendChild(root);
@@ -141,13 +141,13 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
     : 'wakeStreakContentIn 0.2s ease forwards';
 
   const modalRoot = getOrCreateModalRoot();
+  const fullCover = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 };
   const overlay = (
-    <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0 }}>
+    <div style={{ pointerEvents: 'auto', ...fullCover }}>
       <style>{STREAK_MODAL_KEYFRAMES}</style>
       <div
         style={{
-          position: 'fixed',
-          inset: 0,
+          ...fullCover,
           backgroundColor: 'rgba(0,0,0,0.62)',
           zIndex: 1,
           animation: backdropAnim,

@@ -175,10 +175,6 @@ const DailyWorkoutScreen = () => {
           navigate(`/course/${cId}/workout/completion`, { state: params });
         },
         'Warmup': () => navigate('/warmup', { state: params }),
-        'WorkoutExercises': () => {
-          const cId = params?.course?.courseId || params?.course?.id || courseId;
-          navigate(`/course/${cId}/exercises`, { state: params });
-        },
         'CourseStructure': () => {
           const cId = params?.course?.courseId || params?.course?.id || courseId;
           navigate(`/course/${cId}/structure`, { state: params });

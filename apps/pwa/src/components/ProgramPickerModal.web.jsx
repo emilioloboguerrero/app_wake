@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 
-const MODAL_ROOT_ID = 'wake-no-plan-modal-root';
+const MODAL_ROOT_ID = 'wake-program-picker-modal-root';
 const MODAL_Z_INDEX = 2147483646;
-const CARD_MAX_WIDTH = 320;
+const CARD_MAX_WIDTH = 340;
 
 function getOrCreateModalRoot() {
   if (typeof document === 'undefined') return null;
@@ -31,6 +31,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 20,
     paddingVertical: 24,
+    maxHeight: '70vh',
     shadowColor: 'rgba(0,0,0,0.6)',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.8,
@@ -46,37 +47,44 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  buttonWrap: {
-    alignItems: 'center',
+  list: {
+    maxHeight: 280,
   },
-  button: {
-    backgroundColor: 'transparent',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.6)',
+  option: {
     paddingVertical: 14,
-    paddingHorizontal: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 10,
   },
-  buttonText: {
-    color: '#ffffff',
+  optionText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#ffffff',
   },
 });
 
-export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibrary }) {
+export function ProgramPickerModal({
+  visible,
+  onClose,
+  variant = 'training',
+  title,
+  options,
+  onSelect,
+}) {
   if (!visible || typeof document === 'undefined') {
     return null;
   }
 
-  const planType = variant === 'training' ? 'entrenamiento' : 'alimentación';
-  const title = `Busquemos tu plan de ${planType}`;
+  const defaultTitle = variant === 'training'
+    ? '¿Con qué programa quieres entrenar?'
+    : '¿Con qué plan de alimentación quieres registrar?';
+  const displayTitle = title || defaultTitle;
 
-  const handleLibrary = () => {
+  const handleSelect = (item) => {
     onClose();
-    if (onGoToLibrary) onGoToLibrary();
+    if (onSelect) onSelect(item);
   };
 
   const modalRoot = getOrCreateModalRoot();
@@ -107,14 +115,21 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
         onClick={onClose}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.buttonWrap}>
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
-              <TouchableOpacity style={styles.button} onPress={handleLibrary} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Explorar</Text>
+          <Text style={styles.title}>{displayTitle}</Text>
+          <ScrollView style={styles.list} showsVerticalScrollIndicator={true}>
+            {(options || []).map((item) => (
+              <TouchableOpacity
+                key={item.id || item.courseId || item.assignmentId}
+                style={styles.option}
+                onPress={() => handleSelect(item)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.optionText} numberOfLines={2}>
+                  {item.title || item.planName || item.name || 'Sin nombre'}
+                </Text>
               </TouchableOpacity>
-            </div>
-          </View>
+            ))}
+          </ScrollView>
         </View>
       </div>
     </div>
@@ -123,4 +138,4 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
   return modalRoot ? createPortal(overlay, modalRoot) : null;
 }
 
-export default NoPlanModal;
+export default ProgramPickerModal;

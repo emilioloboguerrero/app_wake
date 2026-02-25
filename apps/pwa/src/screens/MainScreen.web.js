@@ -1,50 +1,125 @@
 // Web wrapper for MainScreen - provides React Router navigation
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { NavigationContainer } from '@react-navigation/native';
-// Import the base component - Metro should resolve MainScreen.js (not .web.js) when we use explicit .js extension
-// The metro.config.js is configured to prioritize .js over .web.js for explicit imports
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
+import * as nutritionDb from '../services/nutritionFirestoreService';
+import { TrainingNutritionChoiceModal } from '../components/TrainingNutritionChoiceModal.web';
+import logger from '../utils/logger';
+
 const MainScreenModule = require('./MainScreen.js');
 const MainScreenBase = MainScreenModule.MainScreenBase || MainScreenModule.default;
 
 const MainScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const userId = user?.uid ?? auth.currentUser?.uid ?? '';
 
-  // Create navigation adapter that matches React Navigation API
-  const navigation = {
+  const [programChoiceVisible, setProgramChoiceVisible] = useState(false);
+  const [programChoiceCourse, setProgramChoiceCourse] = useState(null);
+  const [programChoiceAssignmentId, setProgramChoiceAssignmentId] = useState(null);
+
+  const goToWorkout = useCallback(
+    (course) => {
+      const id = course?.courseId || course?.id;
+      if (id) navigate(`/course/${id}/workout`);
+    },
+    [navigate]
+  );
+
+  const goToNutrition = useCallback(
+    (preferredAssignmentId) => {
+      navigate('/nutrition', { state: preferredAssignmentId ? { preferredAssignmentId } : {} });
+    },
+    [navigate]
+  );
+
+  const navigation = React.useMemo(() => ({
     navigate: (routeName, params) => {
-      // Map React Navigation routes to React Router paths
+      if (routeName === 'DailyWorkout' && params?.course) {
+        const course = params.course;
+        const courseId = course.courseId || course.id;
+        (async () => {
+          if (!userId) {
+            goToWorkout(course);
+            return;
+          }
+          try {
+            const assignments = await nutritionDb.getAssignmentsByUser(userId);
+            const active = nutritionDb.getActiveAssignmentsForDate(assignments);
+            let creatorId = course.creator_id || course.creatorId;
+            if (!creatorId && courseId) {
+              const courseDoc = await firestoreService.getCourse(courseId);
+              creatorId = courseDoc?.creator_id ?? courseDoc?.creatorId ?? null;
+            }
+            const assignmentForCreator = active.find((a) => a.assignedBy === creatorId);
+            if (assignmentForCreator && creatorId) {
+              setProgramChoiceCourse(course);
+              setProgramChoiceAssignmentId(assignmentForCreator.id);
+              setProgramChoiceVisible(true);
+            } else {
+              goToWorkout(course);
+            }
+          } catch (e) {
+            logger.warn('[MainScreen.web] program choice check failed', e);
+            goToWorkout(course);
+          }
+        })();
+        return;
+      }
+
       const routeMap = {
         'CourseDetail': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}`),
-        'DailyWorkout': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}/workout`),
+        'DailyWorkout': () => goToWorkout(params?.course),
         'ProgramLibrary': () => navigate('/library'),
-        'UpcomingCallDetail': () => navigate(`/call/${params?.booking?.id}`, { state: { booking: params?.booking, course: params?.course, creatorName: params?.creatorName } }),
+        'UpcomingCallDetail': () =>
+          navigate(`/call/${params?.booking?.id}`, {
+            state: { booking: params?.booking, course: params?.course, creatorName: params?.creatorName },
+          }),
       };
 
       if (routeMap[routeName]) {
         routeMap[routeName]();
       } else {
-        // Fallback: try to construct path from route name
         const path = `/${routeName.toLowerCase()}`;
         navigate(path, { state: params });
       }
     },
-    setParams: (params) => {
-      // On web, params are handled via URL or state
-      // This is a no-op for web
-    }
-  };
+    setParams: () => {},
+  }), [userId, navigate, goToWorkout]);
 
-  // Create route object for compatibility
-  const route = {
-    params: {}
-  };
+  const route = { params: {} };
 
-  // Wrap in NavigationContainer so base MainScreen's useFocusEffect has a context and doesn't throw
+  const handleCloseChoice = useCallback(() => {
+    setProgramChoiceVisible(false);
+    setProgramChoiceCourse(null);
+    setProgramChoiceAssignmentId(null);
+  }, []);
+
+  const handleChooseTraining = useCallback(() => {
+    if (programChoiceCourse) goToWorkout(programChoiceCourse);
+    handleCloseChoice();
+  }, [programChoiceCourse, goToWorkout, handleCloseChoice]);
+
+  const handleChooseNutrition = useCallback(() => {
+    goToNutrition(programChoiceAssignmentId);
+    handleCloseChoice();
+  }, [programChoiceAssignmentId, goToNutrition, handleCloseChoice]);
+
   return (
     <NavigationContainer independent={true}>
       <MainScreenBase navigation={navigation} route={route} />
+      <TrainingNutritionChoiceModal
+        visible={programChoiceVisible}
+        onClose={handleCloseChoice}
+        programTitle={programChoiceCourse?.title ?? null}
+        creatorName={programChoiceCourse?.creatorName ?? programChoiceCourse?.creator_name ?? null}
+        onChooseTraining={handleChooseTraining}
+        onChooseNutrition={handleChooseNutrition}
+      />
     </NavigationContainer>
   );
 };

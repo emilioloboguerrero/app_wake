@@ -2302,9 +2302,9 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    height: Math.max(50, screenHeight * 0.06), // Match WorkoutExercisesScreen.js
+    height: Math.max(50, screenHeight * 0.06), // Primary button dimensions
     width: Math.max(280, screenWidth * 0.7), // Increased width to fit "Procesando compra..." text
-    borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExercisesScreen.js
+    borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',

@@ -341,10 +341,14 @@ class OneRepMaxService {
         if (!currentValue || highest1RM > currentValue) {
           logger.log('  ✅ New 1RM is higher - updating!');
           
-          // Prepare update
+          // Prepare update (store achievedWith for display e.g. "80kg × 5 reps")
           updates[`oneRepMaxEstimates.${exerciseKey}`] = {
             current: highest1RM,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
+            achievedWith: {
+              weight: bestSet.weight,
+              reps: bestSet.reps
+            }
           };
           
           // Prepare history entry
