@@ -22,6 +22,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
+import logger from '../utils/logger';
 
 const PLANS = 'plans';
 const CLIENT_NUTRITION_PLAN_CONTENT = 'client_nutrition_plan_content';
@@ -107,6 +108,25 @@ function normalizePlanMacros(plan) {
 }
 
 /**
+ * Returns whether the user has an active nutrition assignment (for routing only; no plan content read).
+ * Use this when you only need to know "has plan" (e.g. bottom bar) to avoid permission issues.
+ */
+export async function hasActiveNutritionAssignment(userId, onDate = null) {
+  const tag = '[hasActiveNutritionAssignment]';
+  try {
+    const assignments = await getAssignmentsByUser(userId);
+    logger.log(tag, 'userId=', userId, 'assignmentsCount=', assignments?.length ?? 0, 'assignments=', assignments?.map((a) => ({ id: a.id, planId: a.planId, assignedBy: a.assignedBy, startDate: a.startDate, endDate: a.endDate })));
+    const assignment = getActiveAssignmentForDate(assignments, onDate);
+    const hasPlan = !!(assignment?.planId && assignment?.assignedBy);
+    logger.log(tag, 'activeAssignment=', assignment ? { id: assignment.id, planId: assignment.planId, assignedBy: assignment.assignedBy, startDate: assignment.startDate, endDate: assignment.endDate } : null, 'result hasPlan=', hasPlan);
+    return hasPlan;
+  } catch (err) {
+    logger.error(tag, 'userId=', userId, 'error=', err?.message ?? err, err);
+    throw err;
+  }
+}
+
+/**
  * Get the effective plan for a user: assignment copy if exists, else plan snapshot on assignment.
  * Uses the assignment that is active today (startDate <= today, endDate null or >= today); else most recent.
  * @param {string} userId - User id
@@ -129,8 +149,12 @@ export async function getEffectivePlanForUser(userId, onDate = null) {
   if (snapshot) {
     return { plan: normalizePlanMacros(snapshot), assignment };
   }
-  const libraryPlan = await getPlanById(assignment.assignedBy, assignment.planId);
-  return { plan: normalizePlanMacros(libraryPlan), assignment };
+  try {
+    const libraryPlan = await getPlanById(assignment.assignedBy, assignment.planId);
+    return { plan: normalizePlanMacros(libraryPlan), assignment };
+  } catch (err) {
+    return { plan: null, assignment };
+  }
 }
 
 export async function getDiaryEntries(userId, date) {
@@ -277,6 +301,7 @@ export async function deleteSavedFood(userId, savedFoodId) {
 
 export default {
   getAssignmentsByUser,
+  hasActiveNutritionAssignment,
   getPlanById,
   getClientNutritionPlanContent,
   getEffectivePlanForUser,

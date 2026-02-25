@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   View,
@@ -12,6 +12,14 @@ import SvgFire from './icons/vectors_fig/Environment/Fire';
 
 const MODAL_ROOT_ID = 'wake-streak-modal-root';
 const MODAL_Z_INDEX = 99999;
+const ANIMATION_MS = 200;
+
+const STREAK_MODAL_KEYFRAMES = `
+  @keyframes wakeStreakBackdropIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes wakeStreakBackdropOut { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes wakeStreakContentIn   { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes wakeStreakContentOut  { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+`;
 
 function getOrCreateModalRoot() {
   if (typeof document === 'undefined') return null;
@@ -26,6 +34,13 @@ function getOrCreateModalRoot() {
     document.body.appendChild(root);
   }
   return root;
+}
+
+function ensureStreakRootLastChild(root) {
+  if (typeof document === 'undefined' || !root || !root.parentNode) return;
+  if (document.body.lastChild !== root) {
+    document.body.appendChild(root);
+  }
 }
 
 function formatDateHuman(iso) {
@@ -45,6 +60,23 @@ function formatDateHuman(iso) {
 
 export function HeaderStreakInfoModal({ visible, onClose }) {
   const [anchorRect, setAnchorRect] = useState(null);
+  const [closing, setClosing] = useState(false);
+
+  const handleBackdropClick = () => setClosing(true);
+
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(() => {
+      setClosing(false);
+      onClose();
+    }, ANIMATION_MS);
+    return () => clearTimeout(t);
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    if (!visible) setClosing(false);
+  }, [visible]);
+
   const {
     streakNumber,
     flameLevel,
@@ -68,6 +100,12 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
       setAnchorRect(null);
     }
   }, [visible, hasUser]);
+
+  useLayoutEffect(() => {
+    if (!visible || typeof document === 'undefined') return;
+    const root = document.getElementById(MODAL_ROOT_ID);
+    if (root) ensureStreakRootLastChild(root);
+  }, [visible]);
 
   if (!visible || typeof document === 'undefined') {
     return null;
@@ -94,17 +132,27 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
     left = Math.max(8, Math.min(left, viewportWidth - CARD_WIDTH - 8));
   }
 
+  const isClosing = closing;
+  const backdropAnim = isClosing
+    ? 'wakeStreakBackdropOut 0.2s ease forwards'
+    : 'wakeStreakBackdropIn 0.2s ease forwards';
+  const contentAnim = isClosing
+    ? 'wakeStreakContentOut 0.2s ease forwards'
+    : 'wakeStreakContentIn 0.2s ease forwards';
+
   const modalRoot = getOrCreateModalRoot();
   const overlay = (
     <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0 }}>
+      <style>{STREAK_MODAL_KEYFRAMES}</style>
       <div
         style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.62)',
           zIndex: 1,
+          animation: backdropAnim,
         }}
-        onClick={onClose}
+        onClick={handleBackdropClick}
       />
       <div
         style={{
@@ -114,13 +162,14 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
           zIndex: 2,
           width: CARD_WIDTH,
           maxWidth: 'calc(100vw - 32px)',
+          animation: contentAnim,
         }}
       >
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.title}>Tu racha</Text>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={handleBackdropClick}
               style={styles.closeButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >

@@ -3,7 +3,7 @@ const TAB_BAR_CONTENT_HEIGHT = 58;
 const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 
 import React, { useState } from 'react';
-import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRounded';
@@ -11,11 +11,13 @@ import SvgChartLine from './icons/SvgChartLine';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 import { useUserRole } from '../contexts/UserRoleContext';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
 import { isAdmin } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { NoPlanModal } from './NoPlanModal.web';
 import WakeModalOverlay from './WakeModalOverlay.web';
+import logger from '../utils/logger';
 
 const BottomTabBar = () => {
   const { width: screenWidth } = useWindowDimensions();
@@ -25,6 +27,7 @@ const BottomTabBar = () => {
   const { user } = useAuth();
   const paddingBottom = useFrozenBottomInset() + TAB_BAR_EXTRA_BOTTOM_PADDING;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuActionLoading, setMenuActionLoading] = useState(false);
   const [noTrainingPlanModalVisible, setNoTrainingPlanModalVisible] = useState(false);
   const [noNutritionPlanModalVisible, setNoNutritionPlanModalVisible] = useState(false);
 
@@ -36,13 +39,16 @@ const BottomTabBar = () => {
   };
 
   const handleEntrenarPress = () => {
-    closeMenu();
-    const userId = user?.uid;
+    const userId = user?.uid ?? auth.currentUser?.uid;
     if (!userId) {
+      closeMenu();
       setNoTrainingPlanModalVisible(true);
       return;
     }
+    setMenuActionLoading(true);
     purchaseService.getUserPurchasedCourses(userId, false).then((courses) => {
+      closeMenu();
+      setMenuActionLoading(false);
       const active = Array.isArray(courses) ? courses : [];
       if (active.length === 0) {
         setNoTrainingPlanModalVisible(true);
@@ -55,23 +61,40 @@ const BottomTabBar = () => {
           setNoTrainingPlanModalVisible(true);
         }
       }
-    }).catch(() => setNoTrainingPlanModalVisible(true));
+    }).catch(() => {
+      closeMenu();
+      setMenuActionLoading(false);
+      setNoTrainingPlanModalVisible(true);
+    });
   };
 
   const handleRegistrarComidaPress = () => {
-    closeMenu();
-    const userId = user?.uid;
+    setNoNutritionPlanModalVisible(false);
+    const userId = user?.uid ?? auth.currentUser?.uid;
+    logger.log('[Registrar comida] userId=', userId, '(from context:', !!user?.uid, ', from auth.currentUser:', !!auth.currentUser?.uid, ')');
     if (!userId) {
+      logger.log('[Registrar comida] no userId, showing modal');
+      closeMenu();
       setNoNutritionPlanModalVisible(true);
       return;
     }
-    nutritionFirestoreService.getEffectivePlanForUser(userId).then(({ plan }) => {
-      if (plan) {
+    setMenuActionLoading(true);
+    nutritionFirestoreService.hasActiveNutritionAssignment(userId).then((hasPlan) => {
+      closeMenu();
+      setMenuActionLoading(false);
+      logger.log('[Registrar comida] hasPlan=', hasPlan, '→', hasPlan ? 'navigate' : 'show modal');
+      if (hasPlan) {
+        setNoNutritionPlanModalVisible(false);
         navigate('/nutrition');
       } else {
         setNoNutritionPlanModalVisible(true);
       }
-    }).catch(() => setNoNutritionPlanModalVisible(true));
+    }).catch((err) => {
+      closeMenu();
+      setMenuActionLoading(false);
+      logger.error('[Registrar comida] hasActiveNutritionAssignment failed', err?.message ?? err, err);
+      setNoNutritionPlanModalVisible(true);
+    });
   };
 
   const handleGoToLibrary = () => {
@@ -179,7 +202,7 @@ const BottomTabBar = () => {
       />
       <WakeModalOverlay
         visible={menuOpen}
-        onClose={closeMenu}
+        onClose={() => { if (!menuActionLoading) closeMenu(); }}
         contentAnimation="slideUp"
         contentPlacement="full"
       >
@@ -196,14 +219,23 @@ const BottomTabBar = () => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={actionCardStyle} onClick={handleEntrenarPress} role="button" tabIndex={0}>
-            <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#ffffff" strokeWidth={1.5} />
-            <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Entrenar</span>
-          </div>
-          <div style={actionCardStyle} onClick={handleRegistrarComidaPress} role="button" tabIndex={0}>
-            <SvgSteak width={28} height={28} stroke="#ffffff" fill="#ffffff" />
-            <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar comida</span>
-          </div>
+          {menuActionLoading ? (
+            <div style={{ ...actionCardStyle, justifyContent: 'center', gap: 12 }}>
+              <ActivityIndicator size="small" color="#ffffff" />
+              <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: '500' }}>Cargando...</span>
+            </div>
+          ) : (
+            <>
+              <div style={actionCardStyle} onClick={handleEntrenarPress} role="button" tabIndex={0}>
+                <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#ffffff" strokeWidth={1.5} />
+                <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Entrenar</span>
+              </div>
+              <div style={actionCardStyle} onClick={handleRegistrarComidaPress} role="button" tabIndex={0}>
+                <SvgSteak width={28} height={28} stroke="#ffffff" fill="#ffffff" />
+                <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar comida</span>
+              </div>
+            </>
+          )}
         </div>
       </WakeModalOverlay>
       <div className="wake-tab-bar-root" style={fixedWrapperStyle}>

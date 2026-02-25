@@ -23,6 +23,13 @@ function getOrCreateRoot() {
   return root;
 }
 
+function ensureRootLastChild(root) {
+  if (typeof document === 'undefined' || !root || !root.parentNode) return;
+  if (document.body.lastChild !== root) {
+    document.body.appendChild(root);
+  }
+}
+
 export function WakeModalOverlay({
   visible,
   onClose,
@@ -48,6 +55,11 @@ export function WakeModalOverlay({
   useEffect(() => {
     if (!visible) setClosing(false);
   }, [visible]);
+
+  const modalRoot = visible && typeof document !== 'undefined' ? getOrCreateRoot() : null;
+  useEffect(() => {
+    if (visible && modalRoot) ensureRootLastChild(modalRoot);
+  }, [visible, modalRoot]);
 
   if (!visible || typeof document === 'undefined') {
     return null;
@@ -94,7 +106,7 @@ export function WakeModalOverlay({
 
   const innerStyle = isFull
     ? {
-        pointerEvents: 'auto',
+        pointerEvents: 'none',
         position: 'fixed',
         inset: 0,
         overflow: 'auto',
@@ -107,7 +119,6 @@ export function WakeModalOverlay({
         animation: contentAnim,
       };
 
-  const root = getOrCreateRoot();
   const overlay = (
     <div style={{ pointerEvents: 'auto', position: 'fixed', inset: 0 }}>
       <style>{keyframes}</style>
@@ -131,7 +142,7 @@ export function WakeModalOverlay({
     </div>
   );
 
-  return root ? createPortal(overlay, root) : null;
+  return modalRoot ? createPortal(overlay, modalRoot) : null;
 }
 
 export default WakeModalOverlay;

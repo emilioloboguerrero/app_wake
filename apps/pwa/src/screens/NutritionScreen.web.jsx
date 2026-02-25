@@ -627,8 +627,6 @@ const NutritionScreen = () => {
   const [createMealSearchQuery, setCreateMealSearchQuery] = useState('');
   const [createMealSearchResults, setCreateMealSearchResults] = useState([]);
   const [createMealSearchLoading, setCreateMealSearchLoading] = useState(false);
-  const [createMealAddMode, setCreateMealAddMode] = useState(null);
-  const [createMealManualItem, setCreateMealManualItem] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', amount: '1' });
   const [createMealSelectedFood, setCreateMealSelectedFood] = useState(null);
   const [createMealServingIndex, setCreateMealServingIndex] = useState(0);
   const [createMealServingAmount, setCreateMealServingAmount] = useState('1');
@@ -1237,34 +1235,7 @@ const NutritionScreen = () => {
     setCreateMealSelectedFood(null);
     setCreateMealServingIndex(0);
     setCreateMealServingAmount('1');
-    setCreateMealAddMode(null);
   }, []);
-
-  const addCreateMealIngredientManual = useCallback(() => {
-    const name = (createMealManualItem.name || '').trim();
-    if (!name) return;
-    const cal = Number(createMealManualItem.calories) || 0;
-    const prot = Number(createMealManualItem.protein) || 0;
-    const carb = Number(createMealManualItem.carbs) || 0;
-    const fat = Number(createMealManualItem.fat) || 0;
-    const amount = Number(createMealManualItem.amount) || 1;
-    const item = {
-      food_id: `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      serving_id: '0',
-      number_of_units: amount,
-      name,
-      food_category: null,
-      calories: Math.round(cal * amount),
-      protein: Math.round(prot * amount * 10) / 10,
-      carbs: Math.round(carb * amount * 10) / 10,
-      fat: Math.round(fat * amount * 10) / 10,
-      serving_unit: null,
-      grams_per_unit: null,
-    };
-    setCreateMealItems((prev) => [...prev, item]);
-    setCreateMealManualItem({ name: '', calories: '', protein: '', carbs: '', fat: '', amount: '1' });
-    setCreateMealAddMode(null);
-  }, [createMealManualItem]);
 
   const removeCreateMealItem = useCallback((index) => {
     setCreateMealItems((prev) => prev.filter((_, i) => i !== index));
@@ -1281,7 +1252,6 @@ const NutritionScreen = () => {
       setCreateMealName('');
       setCreateMealItems([]);
       setCreateMealSelectedFood(null);
-      setCreateMealAddMode(null);
       loadUserMeals();
     } catch (e) {
       logger.error('[NutritionScreen] saveCreateMeal:', e);
@@ -2003,7 +1973,6 @@ const NutritionScreen = () => {
                         setCreateMealName('');
                         setCreateMealItems([]);
                         setCreateMealModalOpen(true);
-                        setCreateMealAddMode(null);
                       }}
                       activeOpacity={0.8}
                     >
@@ -2126,14 +2095,6 @@ const NutritionScreen = () => {
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.createMealModalScroll} contentContainerStyle={styles.createMealModalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={styles.createMealLabel}>Nombre de la comida</Text>
-            <TextInput
-              style={styles.createMealNameInput}
-              value={createMealName}
-              onChangeText={setCreateMealName}
-              placeholder="Ej: Ensalada de atún"
-              placeholderTextColor="rgba(255,255,255,0.35)"
-            />
             <Text style={styles.createMealLabel}>Ingredientes</Text>
             {createMealItems.map((it, i) => (
               <View key={i} style={styles.createMealItemRow}>
@@ -2146,18 +2107,8 @@ const NutritionScreen = () => {
                 </TouchableOpacity>
               </View>
             ))}
-            {createMealAddMode === null && (
-              <View style={styles.createMealAddRow}>
-                <TouchableOpacity style={styles.createMealAddBtn} onPress={() => setCreateMealAddMode('search')} activeOpacity={0.8}>
-                  <Text style={styles.createMealAddBtnText}>Buscar alimento</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.createMealAddBtn} onPress={() => setCreateMealAddMode('manual')} activeOpacity={0.8}>
-                  <Text style={styles.createMealAddBtnText}>Añadir manual</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {createMealAddMode === 'search' && (
-              <View style={styles.createMealSearchBlock}>
+            <View style={styles.buscarSection}>
+              <View style={styles.buscarSearchWrap}>
                 <View style={styles.buscarSearchRow}>
                   <TextInput
                     style={styles.buscarSearchInput}
@@ -2168,10 +2119,19 @@ const NutritionScreen = () => {
                     onSubmitEditing={runCreateMealSearch}
                     returnKeyType="search"
                   />
-                  <TouchableOpacity style={styles.crearComidaBtn} onPress={runCreateMealSearch} activeOpacity={0.8}>
-                    <Text style={styles.crearComidaBtnText}>Buscar</Text>
-                  </TouchableOpacity>
                 </View>
+                {createMealSearchQuery.trim().length > 0 && (
+                  <TouchableOpacity
+                    style={styles.buscarSearchBtn}
+                    onPress={runCreateMealSearch}
+                    disabled={createMealSearchLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.buscarSearchBtnText}>
+                      {createMealSearchLoading ? 'Buscando…' : 'Buscar en base de datos'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {createMealSelectedFood ? (
                   <View style={styles.createMealServingBlock}>
                     <Text style={styles.createMealLabel}>{createMealSelectedFood.food_name}</Text>
@@ -2200,7 +2160,7 @@ const NutritionScreen = () => {
                       <TouchableOpacity style={styles.createMealAddBtn} onPress={() => addCreateMealIngredientFromFood(createMealSelectedFood, createMealSelectedFood.servings[createMealServingIndex], createMealServingAmount)} activeOpacity={0.8}>
                         <Text style={styles.createMealAddBtnText}>Añadir a la comida</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => { setCreateMealSelectedFood(null); setCreateMealAddMode(null); }} activeOpacity={0.8}>
+                      <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => setCreateMealSelectedFood(null)} activeOpacity={0.8}>
                         <Text style={styles.createMealCancelBtnText}>Cancelar</Text>
                       </TouchableOpacity>
                     </View>
@@ -2225,37 +2185,17 @@ const NutritionScreen = () => {
                         </TouchableOpacity>
                       );
                     })}
-                    <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => setCreateMealAddMode(null)} activeOpacity={0.8}>
+                    <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => { setCreateMealSearchQuery(''); setCreateMealSearchResults([]); setCreateMealSelectedFood(null); }} activeOpacity={0.8}>
                       <Text style={styles.createMealCancelBtnText}>Cancelar búsqueda</Text>
                     </TouchableOpacity>
                   </>
                 )}
               </View>
-            )}
-            {createMealAddMode === 'manual' && (
-              <View style={styles.createMealManualBlock}>
-                <TextInput style={styles.createMealNameInput} value={createMealManualItem.name} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, name: v }))} placeholder="Nombre del alimento" placeholderTextColor="rgba(255,255,255,0.35)" />
-                <View style={styles.createMealManualRow}>
-                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.calories} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, calories: v }))} placeholder="Cal" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
-                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.protein} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, protein: v }))} placeholder="Prot (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
-                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.carbs} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, carbs: v }))} placeholder="Carb (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
-                  <TextInput style={[styles.createMealNameInput, { flex: 1 }]} value={createMealManualItem.fat} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, fat: v }))} placeholder="Grasa (g)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
-                </View>
-                <TextInput style={styles.createMealNameInput} value={createMealManualItem.amount} onChangeText={(v) => setCreateMealManualItem((p) => ({ ...p, amount: v }))} placeholder="Cantidad (porciones)" keyboardType="decimal-pad" placeholderTextColor="rgba(255,255,255,0.35)" />
-                <View style={styles.createMealServingActions}>
-                  <TouchableOpacity style={styles.createMealAddBtn} onPress={addCreateMealIngredientManual} activeOpacity={0.8}>
-                    <Text style={styles.createMealAddBtnText}>Añadir a la comida</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.createMealCancelBtn} onPress={() => setCreateMealAddMode(null)} activeOpacity={0.8}>
-                    <Text style={styles.createMealCancelBtnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+            </View>
             <TouchableOpacity
-              style={[styles.crearComidaBtn, styles.createMealSaveBtn, (!createMealName.trim() || createMealItems.length === 0 || createMealSaving) && styles.crearComidaBtnDisabled]}
+              style={[styles.crearComidaBtn, styles.createMealSaveBtn, (createMealItems.length === 0 || createMealSaving) && styles.crearComidaBtnDisabled]}
               onPress={saveCreateMeal}
-              disabled={!createMealName.trim() || createMealItems.length === 0 || createMealSaving}
+              disabled={createMealItems.length === 0 || createMealSaving}
               activeOpacity={0.8}
             >
               <Text style={styles.crearComidaBtnText}>{createMealSaving ? 'Guardando…' : 'Guardar comida'}</Text>

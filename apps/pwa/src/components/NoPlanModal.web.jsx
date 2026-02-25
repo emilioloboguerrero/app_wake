@@ -1,8 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRounded';
-import SvgSteak from './icons/Steak';
 
 const MODAL_ROOT_ID = 'wake-no-plan-modal-root';
 const MODAL_Z_INDEX = 1005;
@@ -47,12 +45,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   button: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'transparent',
     borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
     paddingVertical: 14,
     paddingHorizontal: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
@@ -61,11 +66,8 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
     return null;
   }
 
-  const title =
-    variant === 'training'
-      ? 'Empieza a entrenar con quien admiras!'
-      : 'Alimentate como quienes te inspiran';
-  const isTraining = variant === 'training';
+  const planType = variant === 'training' ? 'entrenamiento' : 'alimentación';
+  const title = `Busquemos tu plan de ${planType}`;
 
   const handleLibrary = () => {
     onClose();
@@ -99,11 +101,7 @@ export function NoPlanModal({ visible, onClose, variant = 'training', onGoToLibr
           <Text style={styles.title}>{title}</Text>
           <View style={styles.buttonWrap}>
             <TouchableOpacity style={styles.button} onPress={handleLibrary} activeOpacity={0.8}>
-              {isTraining ? (
-                <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#000000" strokeWidth={1.5} />
-              ) : (
-                <SvgSteak width={28} height={28} stroke="#000000" fill="#000000" />
-              )}
+              <Text style={styles.buttonText}>Explorar</Text>
             </TouchableOpacity>
           </View>
         </View>

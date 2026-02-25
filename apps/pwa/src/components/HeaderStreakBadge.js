@@ -55,7 +55,7 @@ export function HeaderStreakBadge() {
           />
         )}
       </View>
-      <Text style={styles.number}>{isLoading ? '0' : displayNumber}</Text>
+      <Text style={styles.number}>{displayNumber}</Text>
     </View>
   );
 }

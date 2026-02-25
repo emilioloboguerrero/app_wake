@@ -4,7 +4,7 @@
  * When user doesn't log for 4+ calendar days, streak dies (show 0). On next log, streak restarts at 1.
  */
 import React from 'react';
-import { doc, getDoc, getDocFromServer, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, updateDoc, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import logger from '../utils/logger.js';
 
@@ -93,8 +93,25 @@ function notifyStreakUpdated(newState) {
   });
 }
 
+/** Build streak state from user doc data (no Firestore read). */
+function buildStreakResultFromUserData(data) {
+  const today = getTodayLocal();
+  const as = data?.activityStreak || {};
+  const lastActivityDate = toYYYYMMDD(as.lastActivityDate) || null;
+  const streakStartDate = toYYYYMMDD(as.streakStartDate) || null;
+  const current = computeStreakStateFromDates(streakStartDate, lastActivityDate, today);
+  const result = { ...current, streakStartDate, lastActivityDate };
+  if (as.longestStreak != null) result.longestStreak = as.longestStreak;
+  const longestStart = toYYYYMMDD(as.longestStreakStartDate);
+  const longestEnd = toYYYYMMDD(as.longestStreakEndDate);
+  if (longestStart != null) result.longestStreakStartDate = longestStart;
+  if (longestEnd != null) result.longestStreakEndDate = longestEnd;
+  return result;
+}
+
 /**
  * Get current activity streak state (computed from stored dates).
+ * Tries server first; on failure (e.g. unavailable), falls back to cache so we never show 0 due to cold start.
  * @param {string} userId
  * @returns {Promise<{ streakNumber: number, flameLevel: number, longestStreak?: number, longestStreakStartDate?: string, longestStreakEndDate?: string, streakStartDate?: string, lastActivityDate?: string }>}
  */
@@ -107,59 +124,31 @@ async function getActivityStreakState(userId) {
   const userDocRef = doc(firestore, 'users', userId);
 
   try {
-    let userDoc;
+    let userDoc = null;
     let fromServer = false;
     try {
       userDoc = await getDocFromServer(userDocRef);
       fromServer = true;
     } catch (serverError) {
-      const isOffline = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
-      if (isOffline) {
+      const isUnavailable = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
+      if (isUnavailable) {
         logger.debug?.('🔥 [streak] Server unavailable, using cache for user', userId);
         userDoc = await getDoc(userDocRef);
       } else {
-        // Auth or network not ready yet (e.g. cold start) – retry once before giving up
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          userDoc = await getDocFromServer(userDocRef);
-          fromServer = true;
-        } catch (retryError) {
-          if (retryError?.code === 'unavailable' || retryError?.message?.includes('offline')) {
-            userDoc = await getDoc(userDocRef);
-          } else {
-            throw retryError;
-          }
-        }
+        throw serverError;
       }
     }
 
-    if (!userDoc.exists()) {
+    if (!userDoc || !userDoc.exists()) {
       return { streakNumber: 0, flameLevel: 0 };
     }
-    const data = userDoc.data();
-    const as = data?.activityStreak || {};
-    const lastActivityDate = toYYYYMMDD(as.lastActivityDate) || null;
-    const streakStartDate = toYYYYMMDD(as.streakStartDate) || null;
-    const current = computeStreakStateFromDates(streakStartDate, lastActivityDate, today);
-    const result = {
-      ...current,
-      streakStartDate,
-      lastActivityDate,
-    };
-    if (as.longestStreak != null) result.longestStreak = as.longestStreak;
-    const longestStart = toYYYYMMDD(as.longestStreakStartDate);
-    const longestEnd = toYYYYMMDD(as.longestStreakEndDate);
-    if (longestStart != null) result.longestStreakStartDate = longestStart;
-    if (longestEnd != null) result.longestStreakEndDate = longestEnd;
-
-    // Only cache when we got data from server – never cache local/cache fallback (stale on reopen)
+    const result = buildStreakResultFromUserData(userDoc.data());
     if (fromServer) {
       streakCache.set(userId, {
         state: result,
         computedForDate: today
       });
     }
-
     return result;
   } catch (error) {
     logger.error('❌ getActivityStreakState:', error);
@@ -175,7 +164,19 @@ async function getActivityStreakState(userId) {
 async function updateActivityStreak(userId, activityDate) {
   try {
     const userDocRef = doc(firestore, 'users', userId);
-    const userDoc = await getDoc(userDocRef);
+    // Read from server so we don't overwrite server state with state computed from stale cache.
+    let userDoc;
+    try {
+      userDoc = await getDocFromServer(userDocRef);
+    } catch (serverError) {
+      const isOffline = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
+      if (isOffline) {
+        logger.debug?.('🔥 [streak] Server unavailable on update, using cache for user', userId);
+        userDoc = await getDoc(userDocRef);
+      } else {
+        throw serverError;
+      }
+    }
     if (!userDoc.exists()) {
       return;
     }
@@ -245,69 +246,165 @@ async function updateActivityStreak(userId, activityDate) {
   }
 }
 
+function getInitialStreakState(userId) {
+  if (!userId) {
+    logger.log('[STREAK] getInitialStreakState: no userId → _loaded:true, isLoading:false');
+    return { streakNumber: 0, flameLevel: 0, isLoading: false, _loaded: true };
+  }
+  const cached = streakCache.get(userId);
+  const today = getTodayLocal();
+  if (cached && cached.computedForDate === today && cached.state) {
+    logger.log('[STREAK] getInitialStreakState: cache HIT', { userId: userId.slice(0, 8), today });
+    return { ...cached.state, isLoading: false, _loaded: true };
+  }
+  logger.log('[STREAK] getInitialStreakState: cache MISS → _loaded:false, isLoading:true', { userId: userId.slice(0, 8) });
+  return { streakNumber: 0, flameLevel: 0, isLoading: true, _loaded: false };
+}
+
+/**
+ * useActivityStreak: initial state from cache when available, then onSnapshot for live updates
+ * and one getActivityStreakState() to confirm/backfill (server or cache fallback).
+ * Loading is derived from _loaded so it cannot get stuck true.
+ */
 export function useActivityStreak(userId) {
-  const [state, setState] = React.useState({ streakNumber: 0, flameLevel: 0, isLoading: true });
+  const [state, setState] = React.useState(() => getInitialStreakState(userId));
+  const effectRunIdRef = React.useRef(0);
+
+  const out = { ...state };
+  delete out._loaded;
+  out.isLoading = state._loaded === false && !!userId;
+  if (typeof logger.debug === 'function') {
+    logger.debug('[STREAK] useActivityStreak render', { userId: userId ? userId.slice(0, 8) : null, _loaded: state._loaded, isLoading: out.isLoading });
+  }
+
   React.useEffect(() => {
     if (!userId) {
-      setState({ streakNumber: 0, flameLevel: 0, isLoading: false });
+      logger.log('[STREAK] effect: no userId, setting _loaded:true and returning');
+      setState({ streakNumber: 0, flameLevel: 0, isLoading: false, _loaded: true });
       return;
     }
-    let cancelled = false;
+
+    const runId = ++effectRunIdRef.current;
+    logger.log('[STREAK] effect: started', { runId, userId: userId.slice(0, 8) });
+
     let midnightTimeoutId;
-    const refetch = () => {
-      getActivityStreakState(userId).then((result) => {
-        if (!cancelled) {
-          setState({ ...result, isLoading: false });
-        }
+    let loadingFallbackId;
+    let earlyClearId;
+
+    setState((prev) => {
+      const cached = streakCache.get(userId);
+      const today = getTodayLocal();
+      if (cached && cached.computedForDate === today && cached.state) {
+        logger.log('[STREAK] effect setState: cache HIT, setting _loaded:true');
+        return { ...cached.state, isLoading: false, _loaded: true };
+      }
+      logger.log('[STREAK] effect setState: no cache, setting _loaded:false (loading true)');
+      return { ...prev, isLoading: true, _loaded: false };
+    });
+
+    const applyLoaded = (nextState) => {
+      if (effectRunIdRef.current !== runId) {
+        logger.log('[STREAK] applyLoaded: SKIP (stale runId)', { current: effectRunIdRef.current, runId });
+        return;
+      }
+      logger.log('[STREAK] applyLoaded: applying _loaded:true');
+      setState((prev) => {
+        const merged = typeof nextState === 'function' ? nextState(prev) : { ...prev, ...nextState };
+        return { ...merged, isLoading: false, _loaded: true };
       });
     };
-    setState((s) => ({ ...s, isLoading: true }));
-    refetch();
 
-    // When app becomes visible again (tab focus, PWA reopen), clear in-memory cache and refetch
-    // so we don't show stale cached streak from before the user left.
-    const onVisibilityChange = () => {
-      if (cancelled || !userId || document.visibilityState !== 'visible') return;
-      clearStreakCache(userId);
-      setState((s) => ({ ...s, isLoading: true }));
-      refetch();
-    };
-    if (typeof document !== 'undefined' && document.addEventListener) {
-      document.addEventListener('visibilitychange', onVisibilityChange);
-    }
+    const userDocRef = doc(firestore, 'users', userId);
+    const unsubFirestore = onSnapshot(
+      userDocRef,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        const ok = effectRunIdRef.current === runId;
+        logger.log('[STREAK] onSnapshot callback', { runId, currentRunId: effectRunIdRef.current, ok, exists: snapshot?.exists?.() });
+        if (!ok) return;
+        if (!snapshot.exists()) {
+          applyLoaded({ streakNumber: 0, flameLevel: 0 });
+          return;
+        }
+        const result = buildStreakResultFromUserData(snapshot.data());
+        applyLoaded(result);
+      },
+      (err) => {
+        logger.log('[STREAK] onSnapshot error callback', { runId, currentRunId: effectRunIdRef.current, skip: effectRunIdRef.current !== runId });
+        if (effectRunIdRef.current !== runId) return;
+        logger.warn?.('🔥 [streak] Listener error:', err);
+        applyLoaded({ streakNumber: 0, flameLevel: 0 });
+      }
+    );
 
-    // Schedule one refresh at next local midnight so flame level and streak number
-    // adjust when a new day starts, without tying it to screen navigation.
+    getActivityStreakState(userId).then((result) => {
+      const ok = effectRunIdRef.current === runId;
+      logger.log('[STREAK] getActivityStreakState then', { runId, currentRunId: effectRunIdRef.current, ok });
+      if (!ok) return;
+      applyLoaded(result);
+    }).catch((e) => {
+      const ok = effectRunIdRef.current === runId;
+      logger.log('[STREAK] getActivityStreakState catch', { runId, currentRunId: effectRunIdRef.current, ok, err: String(e?.message || e) });
+      if (!ok) return;
+      logger.warn?.('🔥 [streak] Initial fetch failed:', e);
+      applyLoaded({});
+    });
+
+    earlyClearId = setTimeout(() => {
+      const ok = effectRunIdRef.current === runId;
+      logger.log('[STREAK] earlyClear 400ms', { runId, currentRunId: effectRunIdRef.current, ok });
+      if (!ok) return;
+      setState((prev) => {
+        if (prev._loaded) return prev;
+        logger.log('[STREAK] earlyClear: setting _loaded:true');
+        return { ...prev, isLoading: false, _loaded: true };
+      });
+    }, 400);
+
+    loadingFallbackId = setTimeout(() => {
+      const ok = effectRunIdRef.current === runId;
+      logger.log('[STREAK] loadingFallback 2s', { runId, currentRunId: effectRunIdRef.current, ok });
+      if (!ok) return;
+      setState((prev) => {
+        if (prev._loaded) return prev;
+        logger.log('[STREAK] loadingFallback: setting _loaded:true');
+        return { ...prev, isLoading: false, _loaded: true };
+      });
+    }, 2000);
+
     try {
       const now = new Date();
       const nextMidnight = new Date(now);
       nextMidnight.setHours(24, 0, 0, 0);
       const msUntilMidnight = Math.max(0, nextMidnight.getTime() - now.getTime() + 1000);
       midnightTimeoutId = setTimeout(() => {
-        if (cancelled) return;
-        refetch();
+        if (effectRunIdRef.current !== runId) return;
+        setState((prev) => {
+          const next = computeStreakStateFromDates(prev.streakStartDate, prev.lastActivityDate);
+          return { ...prev, ...next, isLoading: false, _loaded: true };
+        });
       }, msUntilMidnight);
     } catch (e) {
       logger.warn?.('🔥 [streak] Failed to schedule midnight refresh:', e);
     }
+
     const unsubscribe = (newState) => {
-      if (!cancelled) {
-        setState({ ...newState, isLoading: false });
-      }
+      if (effectRunIdRef.current !== runId) return;
+      applyLoaded(newState);
     };
     streakUpdateListeners.add(unsubscribe);
+
     return () => {
-      cancelled = true;
-      if (typeof document !== 'undefined' && document.removeEventListener) {
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-      }
-      if (midnightTimeoutId) {
-        clearTimeout(midnightTimeoutId);
-      }
+      logger.log('[STREAK] effect cleanup', { runId });
+      clearTimeout(earlyClearId);
+      clearTimeout(loadingFallbackId);
+      unsubFirestore();
+      if (midnightTimeoutId) clearTimeout(midnightTimeoutId);
       streakUpdateListeners.delete(unsubscribe);
     };
   }, [userId]);
-  return state;
+
+  return out;
 }
 
 export default {
