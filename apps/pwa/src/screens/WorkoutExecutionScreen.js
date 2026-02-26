@@ -312,6 +312,7 @@ import SvgArrowLeftRight from '../components/icons/SvgArrowLeftRight';
 import SvgPlus from '../components/icons/SvgPlus';
 import SvgMinus from '../components/icons/SvgMinus';
 import SvgInfo from '../components/icons/SvgInfo';
+import SvgEditPencil from '../components/icons/SvgEditPencil';
 import SvgChartLine from '../components/icons/SvgChartLine';
 import SvgDragVertical from '../components/icons/SvgDragVertical';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
@@ -851,6 +852,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [loadingAlternatives, setLoadingAlternatives] = useState(false); // Loading state for alternatives
   const [creatorName, setCreatorName] = useState(''); // Creator name for suggestions
   const [oneRepMaxEstimates, setOneRepMaxEstimates] = useState({}); // 1RM estimates for weight suggestions
+  const [sessionNotes, setSessionNotes] = useState('');
+  const [isNotesModalVisible, setIsNotesModalVisible] = useState(false);
   
   const useStateBatchDuration = performance.now() - useStateBatchStartTime;
   logger.debug(`[TIMING] [CHECKPOINT] First batch of useState completed - took ${useStateBatchDuration.toFixed(2)}ms`);
@@ -1116,7 +1119,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Animation values for set input modal
   const modalOpacity = useRef(new Animated.Value(0)).current;
   const modalTranslateY = useRef(new Animated.Value(300)).current;
-  
+
+  // Animation values for notes bottom sheet modal
+  const notesModalOpacity = useRef(new Animated.Value(0)).current;
+  const notesModalTranslateY = useRef(new Animated.Value(500)).current;
+
   // Timer modal: workout start time (set when screen mounts so total time tracks entire session)
   const workoutStartTimeRef = useRef(null);
   // Animation values for timer modal (same pattern as set input modal)
@@ -2365,6 +2372,39 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setCurrentSetInputData({});
     });
   }, []);
+
+  const handleCloseNotesModal = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(notesModalOpacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(notesModalTranslateY, {
+        toValue: 500,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setIsNotesModalVisible(false));
+  }, []);
+
+  useEffect(() => {
+    if (!isNotesModalVisible) return;
+    notesModalTranslateY.setValue(500);
+    notesModalOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(notesModalOpacity, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(notesModalTranslateY, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isNotesModalVisible]);
 
   // Timer modal: open (same animation as set input modal)
   const handleOpenTimerModal = useCallback(() => {
@@ -3953,7 +3993,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       currentUser.uid,
                       course.courseId,
                       workoutWithSetData,
-                      { plannedWorkout: workout }
+                      { plannedWorkout: workout, userNotes: sessionNotes }
                     );
                      
                      logger.log('🔍 Session completion result:', { 
@@ -4258,12 +4298,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={handleToggleEditMode}
-          >
-            <Text style={styles.editButtonText}>Editar</Text>
-          </TouchableOpacity>
+          <View style={styles.editModeControls}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => setIsNotesModalVisible(true)}
+              accessibilityLabel="Notas de la sesión"
+            >
+              <SvgEditPencil width={18} height={18} color="#ffffff" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={handleToggleEditMode}
+            >
+              <Text style={styles.editButtonText}>Editar</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </WakeHeaderContent>
@@ -4274,6 +4323,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     handleOpenAddExerciseModal,
     handleSaveEditMode,
     handleToggleEditMode,
+    setIsNotesModalVisible,
   ]);
 
   // List footer component
@@ -4869,16 +4919,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const handleCompleteWorkout = useCallback(async () => {
     try {
       logger.log('🏁 Completing workout session...');
-      
-      if (user?.uid && course?.courseId) {
+      const currentUser = user || auth.currentUser;
+      if (currentUser?.uid && course?.courseId) {
         // Get current session data
         const currentSession = await sessionManager.getCurrentSession();
         if (currentSession) {
           // Complete the session using new session service
           const result = await sessionService.completeSession(
-            user.uid, 
-            course.courseId, 
-            currentSession
+            currentUser.uid,
+            course.courseId,
+            currentSession,
+            { userNotes: sessionNotes }
           );
           
           if (result) {
@@ -5270,6 +5321,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 </View>
                 );
                 })}
+                <View style={styles.setInputModalNotesCard}>
+                  <Text style={styles.setInputModalNotesTitle}>Notas de la sesión</Text>
+                  <TextInput
+                    style={styles.setInputModalNotesInput}
+                    value={sessionNotes}
+                    onChangeText={setSessionNotes}
+                    placeholder="Añade notas para esta sesión (opcional)"
+                    placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
               </ScrollView>
               
               <View style={styles.setInputModalFooter}>
@@ -5758,7 +5821,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         <MuscleSilhouetteSVG
                           muscleVolumes={muscleVolumesForCurrentExercise}
                           useWorkoutExecutionColors={true}
-                          height={Math.max(260, screenHeight * 0.32)}
+                          height={
+                            currentExercise?.implements && currentExercise.implements.length > 0
+                              ? Math.max(260, screenHeight * 0.32)
+                              : Math.max(320, screenHeight * 0.40)
+                          }
                         />
                       ) : (
                         <View style={styles.muscleEmptyState}>
@@ -5770,47 +5837,43 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     </View>
                   </View>
 
-                  {/* Spacer between muscle silhouette and implements */}
-                  <View style={{ 
-                    width: '100%', 
-                    height: Math.max(20, screenHeight * 0.04), 
-                    flexShrink: 0,
-                    flexGrow: 0,
-                  }} />
-
-                  {/* Implements section (horizontal, styled like "Editar" pill) */}
-                  <View style={styles.implementsSection}>
-                    <Text style={[styles.instructionsTitle, styles.implementsSubtitle]}>
-                      Implementos
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.implementsRow}
-                    >
-                      {currentExercise?.implements && currentExercise.implements.length > 0 ? (
-                        currentExercise.implements.map((impl, index) => (
-                          <View
-                            key={`${impl}-${index}`}
-                            style={[
-                              styles.implementsPillContainer,
-                              index > 0 && { marginLeft: 10 },
-                            ]}
-                          >
-                            <View style={styles.editButton}>
-                              <Text style={styles.editButtonText}>
-                                {impl}
-                              </Text>
+                  {/* Implements section: only show when exercise has implements */}
+                  {currentExercise?.implements && currentExercise.implements.length > 0 ? (
+                    <>
+                      <View style={{ 
+                        width: '100%', 
+                        height: Math.max(20, screenHeight * 0.04), 
+                        flexShrink: 0,
+                        flexGrow: 0,
+                      }} />
+                      <View style={styles.implementsSection}>
+                        <Text style={[styles.instructionsTitle, styles.implementsSubtitle]}>
+                          Implementos
+                        </Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.implementsRow}
+                        >
+                          {currentExercise.implements.map((impl, index) => (
+                            <View
+                              key={`${impl}-${index}`}
+                              style={[
+                                styles.implementsPillContainer,
+                                index > 0 && { marginLeft: 10 },
+                              ]}
+                            >
+                              <View style={styles.editButton}>
+                                <Text style={styles.editButtonText}>
+                                  {impl}
+                                </Text>
+                              </View>
                             </View>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.muscleEmptyStateInline}>
-                          <Text style={styles.muscleEmptyTextInline}>Sin implementos</Text>
-                        </View>
-                      )}
-                    </ScrollView>
-                  </View>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    </>
+                  ) : null}
                   </View>
                 </View>
               </ScrollView>
@@ -6421,6 +6484,45 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             </View>
           </Modal>
       )}
+
+      {/* Session notes bottom sheet modal */}
+      <Modal
+        visible={isNotesModalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleCloseNotesModal}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseNotesModal} accessible={false}>
+          <Animated.View style={[styles.notesBottomSheetOverlay, { opacity: notesModalOpacity }]}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
+              <Animated.View style={[styles.notesBottomSheet, { transform: [{ translateY: notesModalTranslateY }] }]}>
+                <View style={styles.notesBottomSheetHeader}>
+                  <Text style={styles.notesBottomSheetTitle}>Notas de la sesión</Text>
+                  <TouchableOpacity style={styles.notesBottomSheetClose} onPress={handleCloseNotesModal}>
+                    <Text style={styles.notesBottomSheetCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.notesBottomSheetInput}
+                  value={sessionNotes}
+                  onChangeText={setSessionNotes}
+                  placeholder="Ej: Buen ritmo, último set pesado..."
+                  placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                  multiline
+                  numberOfLines={6}
+                />
+                <TouchableOpacity
+                  style={styles.notesBottomSheetButton}
+                  onPress={handleCloseNotesModal}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.notesBottomSheetButtonText}>Listo</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Loading Overlay for Workout Completion */}
       <Modal

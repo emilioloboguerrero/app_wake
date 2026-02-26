@@ -140,6 +140,53 @@
   margin-left: 2px;
 }
 
+.session-performance-notes-indicator {
+  margin-top: 4px;
+}
+
+.session-performance-notes-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.session-performance-notes-badge--has {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.session-performance-notes-badge--none {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.session-performance-user-notes {
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.session-performance-user-notes-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 10px 0;
+}
+
+.session-performance-user-notes-content {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ===== Stats summary - prominent for creator ===== */
 .session-performance-stats {
   display: grid;

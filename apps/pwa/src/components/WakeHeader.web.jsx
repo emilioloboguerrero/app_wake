@@ -347,11 +347,12 @@ export const FixedWakeHeader = ({
 const CONTENT_TOP_PADDING_NON_IOS = 100;
 
 // Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding. Does not include HEADER_TOP_OFFSET_NON_IOS so content stays in place when only the bar is pushed down.
+// 59px fallback only when standalone (iOS PWA) so env(safe-area-inset-top) can be 0 at first paint; desktop and Android use rawTop so they don't get extra space.
 export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
   const ref = React.useRef(null);
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
-  const rawTop = Math.max(0, insets.top);
+  const rawTop = Math.max(0, Number(insets?.top) || 0);
   const isStandalone =
     (typeof navigator !== 'undefined' && navigator.standalone === true) || isPWA();
   const effectiveTop =

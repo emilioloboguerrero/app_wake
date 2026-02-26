@@ -1333,7 +1333,21 @@ const MainScreen = ({ navigation, route }) => {
       } else {
         logger.log(`🖼️ Course ${course.id || course.courseId || 'unknown'} has image URL:`, imageUrl);
       }
-      
+
+      // Web: mix-blend-mode makes text contrast with image (no CORS, no canvas). Native: white text.
+      // Blend is computed at paint time. Until the image has loaded, the backdrop is the card bg (#2a2a2a),
+      // so the effective text color is fixed on first paint; it may not update after image load if the
+      // browser/RN Web doesn't repaint the blend layer. See [CARD_IMAGE_LOAD] log for load timing.
+      const textOverImageStyle = imageUrl && isWeb ? { mixBlendMode: 'difference' } : null;
+      logger.log('[CARD_CONTRAST]', {
+        courseId: course.id || course.courseId,
+        isWeb,
+        Platform_OS: Platform.OS,
+        hasImageUrl: !!imageUrl,
+        blendStyleApplied: !!textOverImageStyle,
+        textOverImageStyle: textOverImageStyle ? 'mixBlendMode: difference' : 'null (white only)',
+      });
+
       // Render based on status
       logger.debug('🎨 RENDERING CARD:', course.id, 'status:', courseStatus, 'downloadedData:', !!downloadedCourse);
       
@@ -1358,20 +1372,24 @@ const MainScreen = ({ navigation, route }) => {
                 />
                 <View style={styles.updatingOverlay}>
                   <WakeLoader />
-                  <Text style={styles.updatingText}>Actualizando programa</Text>
+                  <View style={textOverImageStyle}>
+                    <Text style={styles.updatingText}>Actualizando programa</Text>
+                  </View>
                 </View>
-                <View style={styles.cardOverlay}>
+                <View style={[styles.cardOverlay, imageUrl && isWeb && { isolation: 'isolate' }]}>
                   {trialMetadata.isTrial && (
                     <View style={styles.trialBadge}>
                       <Text style={styles.trialBadgeText}>Prueba</Text>
                     </View>
                   )}
-                  <Text style={styles.cardTitle}>
-                    {course.title || 'Curso sin título'}
-                  </Text>
-                  <Text style={styles.cardCreator}>
-                    {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
-                  </Text>
+                  <View style={textOverImageStyle}>
+                    <Text style={styles.cardTitle}>
+                      {course.title || 'Curso sin título'}
+                    </Text>
+                    <Text style={styles.cardCreator}>
+                      {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
+                    </Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -1417,20 +1435,24 @@ const MainScreen = ({ navigation, route }) => {
                   cachePolicy="memory-disk"
                 />
                 <View style={styles.failedOverlay}>
-                  <Text style={styles.failedText}>Error en actualización</Text>
+                  <View style={textOverImageStyle}>
+                    <Text style={styles.failedText}>Error en actualización</Text>
+                  </View>
                 </View>
-                <View style={styles.cardOverlay}>
+                <View style={[styles.cardOverlay, imageUrl && isWeb && { isolation: 'isolate' }]}>
                   {trialMetadata.isTrial && (
                     <View style={styles.trialBadge}>
                       <Text style={styles.trialBadgeText}>Prueba</Text>
                     </View>
                   )}
-                  <Text style={styles.cardTitle}>
-                    {course.title || 'Curso sin título'}
-                  </Text>
-                  <Text style={styles.cardCreator}>
-                    {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
-                  </Text>
+                  <View style={textOverImageStyle}>
+                    <Text style={styles.cardTitle}>
+                      {course.title || 'Curso sin título'}
+                    </Text>
+                    <Text style={styles.cardCreator}>
+                      {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
+                    </Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -1475,9 +1497,15 @@ const MainScreen = ({ navigation, route }) => {
                 transition={200}
                 priority="high"
                 recyclingKey={course.id || course.courseId || 'unknown'}
+                onLoad={() => {
+                  logger.log('[CARD_IMAGE_LOAD]', {
+                    courseId: course.id || course.courseId,
+                    note: 'Image painted; blend should recompute on repaint if browser triggers it.',
+                  });
+                }}
               />
               <TouchableOpacity
-                style={styles.cardOverlay}
+                style={[styles.cardOverlay, imageUrl && isWeb && { isolation: 'isolate' }]}
                 onPress={() => handleCoursePress(item.data)}
               >
                 {trialMetadata.isTrial && (
@@ -1485,12 +1513,14 @@ const MainScreen = ({ navigation, route }) => {
                     <Text style={styles.trialBadgeText}>Prueba</Text>
                   </View>
                 )}
-                <Text style={styles.cardTitle}>
-                  {course.title || 'Curso sin título'}
-                </Text>
-                <Text style={styles.cardCreator}>
-                  {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
-                </Text>
+                <View style={textOverImageStyle}>
+                  <Text style={styles.cardTitle}>
+                    {course.title || 'Curso sin título'}
+                  </Text>
+                  <Text style={styles.cardCreator}>
+                    {creatorName ? `Por ${creatorName}` : 'NO ESPECIFICADO'}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           ) : (

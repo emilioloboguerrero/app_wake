@@ -1,5 +1,5 @@
 // Exercise History Service - Manages exercise and session history subcollections
-import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query, where, orderBy, limit, startAfter } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, startAfter } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import logger from '../utils/logger.js';
 
@@ -146,9 +146,10 @@ class ExerciseHistoryService {
         sessionId: sessionData.sessionId,
         courseId: sessionData.courseId,
         courseName: sessionData.courseName || 'Unknown Course',
-        sessionName: sessionData.sessionName || 'Workout Session', // ✅ Add session name
+        sessionName: sessionData.sessionName || 'Workout Session',
         completedAt: sessionData.completedAt,
         duration: sessionData.duration || 0,
+        userNotes: sessionData.userNotes ?? '',
         exercises: {}
       };
       
@@ -262,6 +263,23 @@ class ExerciseHistoryService {
     }
   }
   
+  /**
+   * Update session notes after completion (e.g. from completion screen or session history).
+   * @param {string} userId - User ID
+   * @param {string} sessionId - Session document ID
+   * @param {string} userNotes - Notes text (can be empty string to clear)
+   */
+  async updateSessionNotes(userId, sessionId, userNotes) {
+    try {
+      const docRef = doc(firestore, 'users', userId, 'sessionHistory', sessionId);
+      await updateDoc(docRef, { userNotes: userNotes ?? '' });
+      logger.log('✅ Session notes updated:', sessionId);
+    } catch (error) {
+      logger.error('❌ Error updating session notes:', error);
+      throw error;
+    }
+  }
+
   /**
    * Get session history
    */

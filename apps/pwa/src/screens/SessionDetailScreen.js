@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   Platform,
+  TextInput,
 } from 'react-native';
 import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
+import exerciseHistoryService from '../services/exerciseHistoryService';
 import logger from '../utils/logger.js';
 
 const SessionDetailScreen = ({ navigation, route }) => {
@@ -33,12 +36,31 @@ const SessionDetailScreen = ({ navigation, route }) => {
   const { sessionId, sessionName, date, sessionData } = route.params;
   const { user } = useAuth();
   const [session, setSession] = useState(sessionData);
+  const [editNotes, setEditNotes] = useState(sessionData?.userNotes ?? '');
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
 
   useEffect(() => {
     if (sessionData) {
       setSession(sessionData);
+      setEditNotes(sessionData.userNotes ?? '');
     }
   }, [sessionData]);
+
+  const handleSaveNotes = async () => {
+    const currentUser = user || auth.currentUser;
+    if (!currentUser?.uid || !sessionId) return;
+    setNotesSaving(true);
+    try {
+      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionId, editNotes);
+      setSession(prev => (prev ? { ...prev, userNotes: editNotes } : null));
+      setIsEditingNotes(false);
+    } catch (error) {
+      logger.error('Error saving session notes:', error);
+    } finally {
+      setNotesSaving(false);
+    }
+  };
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -68,9 +90,11 @@ const SessionDetailScreen = ({ navigation, route }) => {
     let lastUpdated = null;
     
     try {
+      const currentUser = user || auth.currentUser;
+      if (!currentUser?.uid) return;
       // Import oneRepMaxService dynamically to avoid circular dependencies
       const oneRepMaxService = require('../services/oneRepMaxService').default;
-      const allEstimates = await oneRepMaxService.getEstimatesForUser(user.uid);
+      const allEstimates = await oneRepMaxService.getEstimatesForUser(currentUser.uid);
       
       if (allEstimates && allEstimates[exerciseKey]) {
         currentEstimate = allEstimates[exerciseKey].current;
@@ -210,6 +234,57 @@ const SessionDetailScreen = ({ navigation, route }) => {
             </View>
           </View>
           
+          {/* Session notes */}
+          <View style={styles.notesCard}>
+            <Text style={styles.notesCardTitle}>Notas de la sesión</Text>
+            {isEditingNotes ? (
+              <>
+                <TextInput
+                  style={styles.notesCardInput}
+                  value={editNotes}
+                  onChangeText={setEditNotes}
+                  placeholder="Añade notas..."
+                  placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                  multiline
+                  numberOfLines={3}
+                />
+                <View style={styles.notesCardActions}>
+                  <TouchableOpacity
+                    style={[styles.notesCardButton, styles.notesCardButtonSecondary]}
+                    onPress={() => { setIsEditingNotes(false); setEditNotes(session?.userNotes ?? ''); }}
+                  >
+                    <Text style={styles.notesCardButtonTextSecondary}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.notesCardButton, notesSaving && styles.notesCardButtonDisabled]}
+                    onPress={handleSaveNotes}
+                    disabled={notesSaving}
+                  >
+                    <Text style={styles.notesCardButtonText}>
+                      {notesSaving ? 'Guardando...' : 'Guardar'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                {session.userNotes && String(session.userNotes).trim() ? (
+                  <Text style={styles.notesCardText}>{session.userNotes}</Text>
+                ) : (
+                  <Text style={styles.notesCardPlaceholder}>Sin notas</Text>
+                )}
+                <TouchableOpacity
+                  style={styles.notesCardButton}
+                  onPress={() => setIsEditingNotes(true)}
+                >
+                  <Text style={styles.notesCardButtonText}>
+                    {session.userNotes && String(session.userNotes).trim() ? 'Editar notas' : 'Añadir notas'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
           {/* Exercises List */}
           <View style={styles.exercisesList}>
             {exerciseKeys.length === 0 ? (
@@ -309,6 +384,72 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontSize: Math.min(screenWidth * 0.035, 14),
     fontWeight: '500',
     color: 'rgba(191, 168, 77, 1)',
+  },
+  notesCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    padding: Math.max(20, screenWidth * 0.05),
+    marginBottom: Math.max(20, screenHeight * 0.025),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  notesCardTitle: {
+    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 10,
+  },
+  notesCardText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  notesCardPlaceholder: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  notesCardInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: Math.max(8, screenWidth * 0.02),
+    padding: Math.max(12, screenWidth * 0.03),
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    minHeight: Math.max(80, screenHeight * 0.1),
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 12,
+  },
+  notesCardActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  notesCardButton: {
+    flex: 1,
+    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    borderRadius: Math.max(10, screenWidth * 0.025),
+    paddingVertical: Math.max(12, screenHeight * 0.015),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notesCardButtonSecondary: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  notesCardButtonDisabled: {
+    opacity: 0.6,
+  },
+  notesCardButtonText: {
+    color: '#bfa84d',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
+  },
+  notesCardButtonTextSecondary: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '500',
   },
   exercisesList: {
     gap: Math.max(16, screenWidth * 0.04),

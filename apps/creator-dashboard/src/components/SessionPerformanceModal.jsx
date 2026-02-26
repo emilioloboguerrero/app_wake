@@ -285,7 +285,21 @@ export default function SessionPerformanceModal({
                     )}
                   </div>
                 )}
+                <div className="session-performance-notes-indicator">
+                  {displayHistoryDoc?.userNotes && String(displayHistoryDoc.userNotes).trim() ? (
+                    <span className="session-performance-notes-badge session-performance-notes-badge--has">Tiene notas</span>
+                  ) : (
+                    <span className="session-performance-notes-badge session-performance-notes-badge--none">Sin notas del usuario</span>
+                  )}
+                </div>
               </div>
+
+              {displayHistoryDoc?.userNotes && String(displayHistoryDoc.userNotes).trim() && (
+                <div className="session-performance-user-notes">
+                  <h4 className="session-performance-user-notes-title">Notas del usuario</h4>
+                  <p className="session-performance-user-notes-content">{displayHistoryDoc.userNotes}</p>
+                </div>
+              )}
 
               <div className="session-performance-stats">
                 {stats.completed > 0 && (

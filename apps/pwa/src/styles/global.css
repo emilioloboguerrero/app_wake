@@ -326,6 +326,11 @@ body[data-tab-bar-hidden='true'] .wake-tab-bar-root {
 /* PWA standalone: do NOT add body padding from env() - it can change on scroll and cause jump.
    Top/bottom safe area are handled in JS (WakeHeader frozen top, FrozenBottomWrapper + BottomSpacer + tab bar frozen bottom). */
 @media (display-mode: standalone) {
+  html,
+  body {
+    touch-action: none;
+    overscroll-behavior: none;
+  }
   body {
     padding-top: 0;
     padding-bottom: 0;

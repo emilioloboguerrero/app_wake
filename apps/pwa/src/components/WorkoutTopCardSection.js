@@ -21,47 +21,43 @@ const WorkoutTopCardSection = ({
         styles={styles}
       />
 
-      {/* Spacer between muscle silhouette and implements */}
-      <View style={{ 
-        width: '100%', 
-        height: Math.max(20, screenHeight * 0.04), 
-        flexShrink: 0,
-        flexGrow: 0,
-      }} />
-
-      {/* Implements section (horizontal, styled like "Editar" pill) */}
-      <View style={styles.implementsSection}>
-        <Text style={[styles.instructionsTitle, styles.implementsSubtitle]}>
-          Implementos
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.implementsRow}
-        >
-          {currentExercise?.implements && currentExercise.implements.length > 0 ? (
-            currentExercise.implements.map((impl, index) => (
-              <View
-                key={`${impl}-${index}`}
-                style={[
-                  styles.implementsPillContainer,
-                  index > 0 && { marginLeft: 10 },
-                ]}
-              >
-                <View style={styles.editButton}>
-                  <Text style={styles.editButtonText}>
-                    {impl}
-                  </Text>
+      {/* Implements section: only show when exercise has implements */}
+      {currentExercise?.implements && currentExercise.implements.length > 0 ? (
+        <>
+          <View style={{ 
+            width: '100%', 
+            height: Math.max(20, screenHeight * 0.04), 
+            flexShrink: 0,
+            flexGrow: 0,
+          }} />
+          <View style={styles.implementsSection}>
+            <Text style={[styles.instructionsTitle, styles.implementsSubtitle]}>
+              Implementos
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.implementsRow}
+            >
+              {currentExercise.implements.map((impl, index) => (
+                <View
+                  key={`${impl}-${index}`}
+                  style={[
+                    styles.implementsPillContainer,
+                    index > 0 && { marginLeft: 10 },
+                  ]}
+                >
+                  <View style={styles.editButton}>
+                    <Text style={styles.editButtonText}>
+                      {impl}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))
-          ) : (
-            <View style={styles.muscleEmptyStateInline}>
-              <Text style={styles.muscleEmptyTextInline}>Sin implementos</Text>
-            </View>
-          )}
-        </ScrollView>
-      </View>
+              ))}
+            </ScrollView>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 };

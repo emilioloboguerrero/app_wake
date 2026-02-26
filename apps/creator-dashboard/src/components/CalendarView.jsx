@@ -354,10 +354,62 @@ const CalendarView = ({
     });
   };
 
+  // All slot ids (plan + date) in the visible month — used to avoid showing a history-only card on the
+  // completion date when that session is already shown as a planned card on another day.
+  const allPlannedAndDateSlotIdsInMonth = useMemo(() => {
+    const set = new Set();
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7;
+    const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+    const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+    const cells = [];
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      const d = new Date(currentYear, currentMonth, 1 - (startingDayOfWeek - i));
+      cells.push({ day: d.getDate(), monthOffset: -1 });
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      cells.push({ day, monthOffset: 0 });
+    }
+    for (let i = 0; i < trailingCount; i++) {
+      cells.push({ day: i + 1, monthOffset: 1 });
+    }
+    cells.forEach((cell) => {
+      const weekKey = getWeekKeyForCell(cell);
+      const planSessionsForDay = getPlanSessionsForCell(cell);
+      const date = getDateFromCell(cell);
+      const dateStr = formatDateForStorage(date);
+      const daySessions = sessionsByDate[dateStr] || [];
+      const displayedDaySessions = planSessionsForDay.length > 0
+        ? daySessions.filter((s) => !s.plan_id)
+        : daySessions;
+      planSessionsForDay.forEach((s) => {
+        const slotId = getSlotId(s, { type: 'plan', weekKey });
+        if (slotId) set.add(slotId);
+        const clientSessionDoc = daySessions.find((ds) => ds.session_id === s.id && ds.plan_id);
+        if (clientSessionDoc?.id) set.add(clientSessionDoc.id);
+      });
+      displayedDaySessions.forEach((s) => {
+        const slotId = getSlotId(s, { type: 'date' });
+        if (slotId) set.add(slotId);
+      });
+    });
+    return set;
+  }, [currentYear, currentMonth, weekContentByWeekKey, planAssignments, sessionsByDate, clientUserId, selectedProgramId]);
+
   // Slot-based completion: one slot id per planned slot; completedSessionIds contains only slot ids (from PWA/dashboard).
   const isSessionCompleted = (slotId) => {
     if (!slotId || !completedSessionIds?.size) return false;
     return completedSessionIds.has(slotId);
+  };
+
+  // True if there is a completed session with this sessionId on this day that has user notes
+  const completedSessionHasNotes = (completedHistoryForDay, sessionId) => {
+    if (!completedHistoryForDay?.length || !sessionId) return false;
+    return completedHistoryForDay.some(
+      (h) => h.sessionId === sessionId && (h.userNotes || '').trim().length > 0
+    );
   };
 
   // Handle drag over (preventDefault required for drop to fire)
@@ -675,21 +727,13 @@ const CalendarView = ({
             const isDraggedOver = draggedOverDay === index;
             const cellDate = getDateFromCell(cell);
             const dateStr = formatDateForStorage(cellDate);
-            // Completed sessions from history (persist when plan is deleted) - avoid duplicates with plan/date slots (by slot id)
+            // Completed sessions from history (persist when plan is deleted). Exclude any that are already
+            // shown as a planned/date-assigned card anywhere in the month (so we don't show a duplicate on
+            // the completion date when the user completed a session planned for another day).
             const completedHistoryForDay = completedSessionsByDate[dateStr] || [];
-            const planAndDateIds = new Set();
-            planSessionsForDay.forEach((s) => {
-              const slotId = getSlotId(s, { type: 'plan', weekKey });
-              if (slotId) planAndDateIds.add(slotId);
-              // One-on-one: PWA may write sessionHistory with client_sessions doc id; add it so history dedupes
-              const clientSessionDoc = daySessions.find((ds) => ds.session_id === s.id && ds.plan_id);
-              if (clientSessionDoc?.id) planAndDateIds.add(clientSessionDoc.id);
-            });
-            displayedDaySessions.forEach((s) => {
-              const slotId = getSlotId(s, { type: 'date' });
-              if (slotId) planAndDateIds.add(slotId);
-            });
-            const historyOnlySessions = completedHistoryForDay.filter((h) => !planAndDateIds.has(h.sessionId));
+            const historyOnlySessions = completedHistoryForDay.filter(
+              (h) => !allPlannedAndDateSlotIdsInMonth.has(h.sessionId)
+            );
             const hasHistoryOnlySessions = historyOnlySessions.length > 0;
             const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions || hasHistoryOnlySessions;
             const weekdayIdxForCell = getWeekdayIndex(cell);
@@ -729,11 +773,12 @@ const CalendarView = ({
                       const isMenuOpen = openSessionMenuId === docId;
                       const weekdayIdx = getWeekdayIndex(cell);
                       const isCompleted = isSessionCompleted(slotId);
+                      const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
                       return (
                         <div
                           key={docId}
-                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''}`}
+                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
                           title={`${sessionName}. Arrastra a otro día o semana para mover.`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -764,6 +809,7 @@ const CalendarView = ({
                             e.dataTransfer.effectAllowed = 'move';
                           }}
                         >
+                          {hasNotes && <span className="calendar-day-session-card-notes-dot" aria-hidden />}
                           <span className="calendar-day-session-card-name">{sessionName}</span>
                           {(onEditPlanSession || onDeletePlanSession) && (
                             <div className="calendar-day-session-card-actions">
@@ -809,10 +855,11 @@ const CalendarView = ({
                       const sessionName = historyItem.sessionName || historyItem.courseName || 'Sesión';
                       const docId = `history-${dateStr}-${historyItem.sessionId}-${idx}`;
                       const isMenuOpen = openSessionMenuId === docId;
+                      const hasNotes = (historyItem.userNotes || '').trim().length > 0;
                       return (
                         <div
                           key={docId}
-                          className="calendar-day-session-card calendar-day-session-card-completed calendar-day-session-card-from-history"
+                          className={`calendar-day-session-card calendar-day-session-card-completed calendar-day-session-card-from-history ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
                           title={sessionName}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -827,6 +874,7 @@ const CalendarView = ({
                             });
                           }}
                         >
+                          {hasNotes && <span className="calendar-day-session-card-notes-dot" aria-hidden />}
                           <span className="calendar-day-session-card-name">{sessionName}</span>
                           {onVerDesempeno && (
                             <div className="calendar-day-session-card-actions">
@@ -873,11 +921,12 @@ const CalendarView = ({
                       const slotId = getSlotId(session, { type: 'date' });
                       const isMenuOpen = openSessionMenuId === sessionDocId;
                       const isCompleted = isSessionCompleted(slotId);
+                      const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
                       return (
                         <div
                           key={sessionDocId}
-                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''}`}
+                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
                           title={sessionName}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -894,6 +943,7 @@ const CalendarView = ({
                             }
                           }}
                         >
+                          {hasNotes && <span className="calendar-day-session-card-notes-dot" aria-hidden />}
                           <span className="calendar-day-session-card-name">{sessionName}</span>
                           <div className="calendar-day-session-card-actions">
                             <button

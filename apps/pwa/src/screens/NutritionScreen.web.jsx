@@ -9,12 +9,14 @@ import {
   TextInput,
   useWindowDimensions,
   ActivityIndicator,
-  SafeAreaView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderContent } from '../components/WakeHeader';
+import { isPWA } from '../utils/platform';
 import WeekDateSelector from '../components/WeekDateSelector.web';
 import BottomSpacer from '../components/BottomSpacer';
 import WakeModalOverlay from '../components/WakeModalOverlay.web';
@@ -35,6 +37,32 @@ const ICON_WHITE = 'rgba(255,255,255,0.95)';
 const REMAINING_GRAY = 'rgba(255, 255, 255, 0.12)';
 const GOLD_FILL = 'rgba(255, 255, 255, 0.75)';
 const OVER_LIMIT_RED = 'rgba(255, 68, 68, 0.3)';
+
+const NUTRITION_SPACER_SAFE_TOP_FALLBACK = 59;
+const NUTRITION_SPACER_MIN_TOP = 40;
+
+function NutritionTopSpacer() {
+  const insets = useSafeAreaInsets();
+  const ref = React.useRef(null);
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  const rawTop = Math.max(0, Number(insets?.top) || 0);
+  const useMinForRealDevice = Platform.OS === 'web' && (isIOS || isPWA());
+  // 59px fallback only on iOS or PWA (standalone) so iPhone PWA layout is correct; desktop/Android use 0 when rawTop is 0.
+  const effectiveTop =
+    rawTop === 0
+      ? (isIOS || isPWA() ? NUTRITION_SPACER_SAFE_TOP_FALLBACK : 0)
+      : useMinForRealDevice && rawTop < NUTRITION_SPACER_MIN_TOP
+        ? NUTRITION_SPACER_SAFE_TOP_FALLBACK
+        : rawTop;
+  const headerHeight = 32 + effectiveTop;
+  const extra = isIOS ? 0 : 100;
+  const computedHeight = headerHeight + extra;
+  if (ref.current === null || computedHeight > ref.current) {
+    ref.current = computedHeight;
+  }
+  const totalHeight = Number.isFinite(ref.current) ? ref.current : 32 + (isIOS || isPWA() ? NUTRITION_SPACER_SAFE_TOP_FALLBACK : 0);
+  return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
+}
 
 const DROP_STAGGER_MS = 70;
 const DROP_DURATION = 240;
@@ -156,6 +184,25 @@ function parseGramsOrMlFromUnit(unitLabel) {
   return null;
 }
 
+function getGramsPerUnitFromServings(servings, servingId) {
+  if (!Array.isArray(servings) || servings.length === 0 || servingId == null) return null;
+  const hundred = servings.find((s) => /100\s*g|100g/i.test(String(s.serving_description || '')));
+  let caloriesPer100g;
+  if (hundred) {
+    caloriesPer100g = Number(hundred.calories) || 0;
+  } else {
+    const first = servings[0];
+    const grams = Number(first.metric_serving_amount) || 100;
+    const scale = 100 / grams;
+    caloriesPer100g = (Number(first.calories) || 0) * scale;
+  }
+  if (caloriesPer100g <= 0) return null;
+  const selected = servings.find((s) => String(s.serving_id) === String(servingId));
+  if (!selected) return null;
+  const caloriesPerUnit = Number(selected.calories) || 0;
+  return (caloriesPerUnit * 100) / caloriesPer100g;
+}
+
 function formatQuantityAndServing(numUnits, unitLabel, gramsPerUnit) {
   const n = Number(numUnits) || 1;
   const displayN = Number.isInteger(n) ? String(n) : n.toFixed(1);
@@ -188,7 +235,11 @@ function formatQuantityAndServing(numUnits, unitLabel, gramsPerUnit) {
 function formatIngredientRight(it) {
   const amount = it.amount ?? it.quantity ?? it.number_of_units;
   const numUnits = Number(amount) || 1;
-  const gramsPerUnit = it.grams_per_unit != null ? Number(it.grams_per_unit) : (it.serving_weight_grams != null ? Number(it.serving_weight_grams) : null);
+  let gramsPerUnit = it.grams_per_unit != null ? Number(it.grams_per_unit) : (it.serving_weight_grams != null ? Number(it.serving_weight_grams) : null);
+  if ((gramsPerUnit == null || gramsPerUnit === 1) && Array.isArray(it.servings) && it.serving_id != null) {
+    const computed = getGramsPerUnitFromServings(it.servings, it.serving_id);
+    if (computed != null) gramsPerUnit = computed;
+  }
   let unitLabel = (it.unit ?? it.serving_unit ?? it.unit_name ?? it.serving_description ?? '').trim();
   const unitLooksLikeDerived1g = /^1\s*g$/i.test(unitLabel);
   if ((!unitLabel || unitLooksLikeDerived1g) && Array.isArray(it.servings) && it.serving_id != null) {
@@ -212,7 +263,11 @@ function formatDiaryServing(entry) {
       unit = String(s.serving_description).trim();
     }
   }
-  const gramsPerUnit = entry.grams_per_unit != null ? Number(entry.grams_per_unit) : null;
+  let gramsPerUnit = entry.grams_per_unit != null ? Number(entry.grams_per_unit) : null;
+  if ((gramsPerUnit == null || gramsPerUnit === 1) && Array.isArray(entry.servings) && entry.serving_id != null) {
+    const computed = getGramsPerUnitFromServings(entry.servings, entry.serving_id);
+    if (computed != null) gramsPerUnit = computed;
+  }
   return formatQuantityAndServing(units, unit || (gramsPerUnit != null ? 'g' : ''), gramsPerUnit);
 }
 
@@ -575,7 +630,7 @@ const MICROS = [
 const NutritionScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = useAuth();
   const userId = user?.uid ?? auth.currentUser?.uid ?? '';
   const preferredAssignmentId = location.state?.preferredAssignmentId ?? null;
@@ -1289,15 +1344,15 @@ const NutritionScreen = () => {
   const opcionesCardViewHeight = 540;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <WakeHeaderSpacer />
-        <WakeHeaderContent style={styles.headerContent}>
+        <WakeHeaderContent style={styles.content}>
+          <NutritionTopSpacer />
           {loading ? (
             <View style={styles.loadingWrap}>
               <WakeLoader />
@@ -1308,6 +1363,7 @@ const NutritionScreen = () => {
                 <WeekDateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} fetchDatesWithEntries={fetchDatesWithEntries} />
               </View>
 
+              <View style={[styles.scrollContent, { minHeight: screenHeight }]}>
               {plan && (
                 <>
                   <TouchableOpacity style={styles.topCard} onPress={toggleMacroMode} activeOpacity={0.8}>
@@ -1522,6 +1578,7 @@ const NutritionScreen = () => {
                   <Text style={styles.noPlanText}>No tienes un plan de nutrición asignado.</Text>
                 </View>
               )}
+              </View>
             </>
           )}
         </WakeHeaderContent>
@@ -2309,15 +2366,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
+    overflow: 'visible',
   },
-  scroll: { flex: 1 },
+  scrollView: {
+    flex: 1,
+  },
+  contentScrollContent: {
+    flexGrow: 1,
+  },
+  content: {
+    paddingBottom: 20,
+    overflow: 'visible',
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingBottom: 320,
-  },
-  headerContent: {
-    flex: 1,
   },
   loadingWrap: {
     flex: 1,

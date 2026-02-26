@@ -14,7 +14,10 @@ import {
   Image,
   Pressable,
   Platform,
+  TextInput,
 } from 'react-native';
+
+const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -36,6 +39,7 @@ import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/Sha
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
+import exerciseHistoryService from '../services/exerciseHistoryService';
 import WakeLoader from '../components/WakeLoader';
 
 const WorkoutCompletionScreen = ({ navigation, route }) => {
@@ -43,6 +47,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [completionNotes, setCompletionNotes] = useState(route.params?.sessionData?.userNotes ?? '');
+  const [initialNotes, setInitialNotes] = useState(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  const hasNotesChanges = initialNotes !== null && (completionNotes || '') !== (initialNotes || '');
   const [completionStats, setCompletionStats] = useState(null);
   const [randomPhrase, setRandomPhrase] = useState('');
   const [weeklyMuscleVolumes, setWeeklyMuscleVolumes] = useState(null);
@@ -184,6 +194,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
+    if (sessionData?.sessionId != null && initialNotes === null) {
+      setInitialNotes(sessionData?.userNotes ?? '');
+    }
+  }, [sessionData?.sessionId, sessionData?.userNotes, initialNotes]);
+
+  useEffect(() => {
     // Set random phrase when component mounts
     setRandomPhrase(getRandomPhrase());
     initializeCompletionScreen();
@@ -216,14 +232,17 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     }
     
     // Fetch user display name
-    if (currentUser?.uid) {
+    const uid = (user || auth.currentUser)?.uid;
+    if (uid) {
       fetchUserDisplayName();
     }
   }, []);
   
   const fetchUserDisplayName = async () => {
     try {
-      const userDocRef = doc(firestore, 'users', user.uid);
+      const currentUser = user || auth.currentUser;
+      if (!currentUser?.uid) return;
+      const userDocRef = doc(firestore, 'users', currentUser.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data();
@@ -288,12 +307,13 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   // Check for tutorials to show
   const checkForTutorials = async () => {
-    if (!user?.uid || !course?.courseId) return;
+    const currentUser = user || auth.currentUser;
+    if (!currentUser?.uid || !course?.courseId) return;
 
     try {
       logger.log('🎬 Checking for workout completion screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
-        user.uid, 
+        currentUser.uid,
         'workoutCompletion',
         course.courseId  // Pass programId for program-specific tutorials
       );
@@ -313,14 +333,15 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   // Handle tutorial completion
   const handleTutorialComplete = async () => {
-    if (!user?.uid || !course?.courseId || tutorialData.length === 0) return;
+    const currentUser = user || auth.currentUser;
+    if (!currentUser?.uid || !course?.courseId || tutorialData.length === 0) return;
 
     try {
       const currentTutorial = tutorialData[currentTutorialIndex];
       if (currentTutorial) {
         await tutorialManager.markTutorialCompleted(
-          user.uid, 
-          'workoutCompletion', 
+          currentUser.uid,
+          'workoutCompletion',
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
@@ -620,6 +641,23 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const handleSharePress = () => {
     setCurrentShareCardIndex(0); // Reset to first card when opening modal
     setIsShareModalVisible(true);
+  };
+
+  const handleSaveNotes = async () => {
+    const currentUser = user || auth.currentUser;
+    if (!currentUser?.uid || !sessionData?.sessionId) return;
+    setNotesSaving(true);
+    setNotesSaved(false);
+    try {
+      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionData.sessionId, completionNotes);
+      setNotesSaved(true);
+      setInitialNotes(completionNotes);
+      setTimeout(() => setNotesSaved(false), 2500);
+    } catch (error) {
+      logger.error('Error saving session notes:', error);
+    } finally {
+      setNotesSaving(false);
+    }
   };
 
   const handleShareCard = async () => {
@@ -1282,6 +1320,39 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       width: '100%',
       paddingHorizontal: Math.max(24, screenWidth * 0.06),
     },
+    notesCard: {
+      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      padding: Math.max(20, screenWidth * 0.05),
+      marginTop: Math.max(24, screenHeight * 0.03),
+      marginBottom: Math.max(16, screenHeight * 0.02),
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    notesCardTitle: {
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      fontWeight: '600',
+      color: '#ffffff',
+      marginBottom: 10,
+    },
+    notesCardInput: {
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      borderRadius: Math.max(8, screenWidth * 0.02),
+      padding: Math.max(12, screenWidth * 0.03),
+      color: '#ffffff',
+      fontSize: Math.min(screenWidth * 0.04, 16),
+      minHeight: Math.max(100, screenHeight * 0.12),
+      textAlignVertical: 'top',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    bottomScrollGradient: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: Math.max(100, screenHeight * 0.14),
+    },
   }), [screenWidth, screenHeight]);
 
   const renderExerciseVolumeCard = (exercise) => (
@@ -1490,6 +1561,25 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           </View>
 
 
+          {/* Session notes card - always show so user sees their notes or an empty card; save on blur when changed */}
+          {sessionData?.sessionId != null && (
+            <View style={styles.notesCard}>
+              <Text style={styles.notesCardTitle}>Notas de la sesión</Text>
+              <TextInput
+                style={styles.notesCardInput}
+                value={completionNotes}
+                onChangeText={setCompletionNotes}
+                onBlur={() => {
+                  if (hasNotesChanges && !notesSaving) handleSaveNotes();
+                }}
+                placeholder="Ej: Buen ritmo, último set pesado..."
+                placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+          )}
+
           {/* Finish Button */}
           <View style={styles.actionsRow}>
             <TouchableOpacity style={styles.finishButton} onPress={handleFinishWorkout}>
@@ -1500,6 +1590,27 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           <BottomSpacer />
         </WakeHeaderContent>
       </ScrollView>
+
+      {/* Bottom gradient to suggest more content below (e.g. Finalizar entrenamiento) */}
+      {LinearGradient ? (
+        <LinearGradient
+          colors={['transparent', '#1a1a1a']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.bottomScrollGradient}
+          pointerEvents="none"
+        />
+      ) : (
+        <View
+          style={[
+            styles.bottomScrollGradient,
+            Platform.OS === 'web' && {
+              backgroundImage: 'linear-gradient(to top, #1a1a1a 0%, transparent 100%)',
+            },
+          ]}
+          pointerEvents="none"
+        />
+      )}
       
       {/* Tutorial Overlay */}
       <TutorialOverlay

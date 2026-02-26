@@ -65,6 +65,14 @@ export default function DailyWorkoutScreen({ navigation, route }) {
     async (startDate, endDate) => {
       if (!user?.uid || !courseId) return [];
       try {
+        if (isOneOnOne) {
+          return await firestoreService.getDatesWithCompletedPlannedSessions(
+            user.uid,
+            courseId,
+            startDate,
+            endDate
+          );
+        }
         return await exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
           user.uid,
           courseId,
@@ -75,7 +83,7 @@ export default function DailyWorkoutScreen({ navigation, route }) {
         return [];
       }
     },
-    [user?.uid, courseId]
+    [user?.uid, courseId, isOneOnOne]
   );
 
   const fetchDatesWithPlanned = useCallback(
@@ -101,7 +109,7 @@ export default function DailyWorkoutScreen({ navigation, route }) {
   })();
 
   const passInitialPlanned = initialDataMonthKey === currentMonthKey ? initialPlannedDates : undefined;
-  const passInitialEntries = initialDataMonthKey === currentMonthKey ? initialEntriesDates : undefined;
+  const passInitialEntries = initialDataMonthKey === currentMonthKey && !isOneOnOne ? initialEntriesDates : undefined;
   logger.debug('[DailyWorkoutScreen.native] WeekDateSelector props', {
     isOneOnOne,
     currentMonthKey,

@@ -290,7 +290,7 @@ const BottomTabBar = () => {
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
   const showNutritionTab = role !== null && isAdmin(role);
-  const showLabTab = false; // Lab (progress) tab hidden for now
+  const showLabTab = false; // disabled for now — lab/progress tab hidden
 
   // Determine if tab bar should be visible based on current route (nutrition has its own header back, no tab bar)
   const shouldShowTabBar = () => {

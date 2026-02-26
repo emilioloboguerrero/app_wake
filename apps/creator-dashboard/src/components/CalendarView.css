@@ -485,6 +485,23 @@
   cursor: pointer;
 }
 
+/* Blue dot: completed session with notes (top-left) */
+.calendar-day-session-card-notes-dot {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.calendar-day-session-card-has-notes .calendar-day-session-card-name {
+  margin-left: 8px;
+}
+
 .calendar-day-session-card-name {
   font-size: 10px;
   font-weight: 600;

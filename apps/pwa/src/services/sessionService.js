@@ -437,6 +437,9 @@ class SessionService {
         logger.log('❌ Course name not found in course data');
       }
 
+      // Merge user notes from options (e.g. from WorkoutExecutionScreen)
+      actualSessionData.userNotes = options.userNotes ?? actualSessionData.userNotes ?? '';
+
       // Build planned snapshot from template when available (makes history self-contained)
       const plannedSnapshot = options.plannedWorkout
         ? this.buildPlannedSnapshot(options.plannedWorkout)

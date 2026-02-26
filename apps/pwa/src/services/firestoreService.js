@@ -1018,6 +1018,100 @@ class FirestoreService {
   }
 
   /**
+   * Get dates (YYYY-MM-DD) that have a *planned* session which the user has completed.
+   * Used for one-on-one calendar: show green on the planned day, not on the completion day.
+   * Matches creator dashboard logic so we don't show completion on two different days.
+   * @param {string} userId - Client user ID
+   * @param {string} courseId - Program ID
+   * @param {string} startDate - Start of range (YYYY-MM-DD or Date)
+   * @param {string} endDate - End of range (YYYY-MM-DD or Date)
+   * @returns {Promise<string[]>} Array of YYYY-MM-DD dates
+   */
+  async getDatesWithCompletedPlannedSessions(userId, courseId, startDate, endDate) {
+    const start = typeof startDate === 'string' ? new Date(startDate + 'T00:00:00') : new Date(startDate);
+    const end = typeof endDate === 'string' ? new Date(endDate + 'T23:59:59.999') : new Date(endDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    const completedIds = new Set();
+    try {
+      const userRef = doc(firestore, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const arr = userSnap.data()?.courseProgress?.[courseId]?.allSessionsCompleted;
+        if (Array.isArray(arr)) arr.forEach((id) => completedIds.add(id));
+      }
+      const sessionHistoryRef = collection(firestore, 'users', userId, 'sessionHistory');
+      const historyQ = query(sessionHistoryRef, where('courseId', '==', courseId));
+      const historySnap = await getDocs(historyQ);
+      historySnap.docs.forEach((d) => {
+        if (d.data()?.courseId === courseId && d.id) completedIds.add(d.id);
+      });
+    } catch (e) {
+      logger.warn('[getDatesWithCompletedPlannedSessions] failed to load completed ids:', e?.message);
+      return [];
+    }
+
+    const parseDocToDate = (data) => {
+      const ts = data.date_timestamp?.toDate?.() || (data.date ? new Date(data.date) : null);
+      if (!ts) return null;
+      const y = ts.getFullYear();
+      const m = String(ts.getMonth() + 1).padStart(2, '0');
+      const d = String(ts.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    const filterInRange = (ymd) => {
+      const t = new Date(ymd + 'T12:00:00').getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    };
+
+    const dates = new Set();
+    let docsSnapshot = null;
+    try {
+      const primaryQuery = query(
+        collection(firestore, 'client_sessions'),
+        where('client_id', '==', userId),
+        where('program_id', '==', courseId),
+        where('date_timestamp', '>=', start),
+        where('date_timestamp', '<=', end),
+        orderBy('date_timestamp', 'asc')
+      );
+      docsSnapshot = await getDocs(primaryQuery);
+    } catch (indexError) {
+      logger.warn('[getDatesWithCompletedPlannedSessions] indexed query failed, will use fallback:', indexError?.message);
+    }
+
+    if (!docsSnapshot || docsSnapshot.empty) {
+      try {
+        const fallbackQ = query(
+          collection(firestore, 'client_sessions'),
+          where('client_id', '==', userId),
+          where('program_id', '==', courseId),
+          orderBy('date_timestamp', 'desc'),
+          limit(200)
+        );
+        docsSnapshot = await getDocs(fallbackQ);
+      } catch (fallbackError) {
+        logger.warn('[getDatesWithCompletedPlannedSessions] fallback failed:', fallbackError?.message);
+        return [];
+      }
+    }
+
+    docsSnapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      const ymd = parseDocToDate(data);
+      if (!ymd || !filterInRange(ymd)) return;
+      const ts = data.date_timestamp?.toDate?.() || (data.date ? new Date(data.date) : null);
+      const weekKey = ts ? getMondayWeek(ts) : null;
+      const slotId = data.plan_id && data.session_id && weekKey
+        ? `${userId}_${courseId}_${weekKey}_${data.session_id}`
+        : docSnap.id;
+      if (completedIds.has(slotId) || completedIds.has(docSnap.id)) dates.add(ymd);
+    });
+    return Array.from(dates);
+  }
+
+  /**
    * Resolve session content for a planned session.
    * Tries client_session_content (client-specific copy) first; then plan or library.
    * @param {Object} clientSession - client_sessions doc (must have id for copy lookup)

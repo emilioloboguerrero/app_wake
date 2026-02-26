@@ -372,6 +372,7 @@ const SessionsScreen = ({ navigation }) => {
   const renderSessionCard = ({ item: session }) => {
     const exerciseCount = getExerciseCount(session);
     const totalSets = getTotalSets(session);
+    const hasNotes = !!(session.userNotes && String(session.userNotes).trim());
     
     return (
       <TouchableOpacity
@@ -387,8 +388,14 @@ const SessionsScreen = ({ navigation }) => {
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionStats}>
             {exerciseCount} ejercicio{exerciseCount !== 1 ? 's' : ''} • {totalSets} series
+            {hasNotes ? ' · Notas' : ''}
           </Text>
         </View>
+        {hasNotes && (
+          <Text style={styles.sessionNotesPreview} numberOfLines={2}>
+            {session.userNotes}
+          </Text>
+        )}
       </TouchableOpacity>
     );
   };
@@ -571,6 +578,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
     fontSize: Math.min(screenWidth * 0.035, 14),
     opacity: 0.7,
+  },
+  sessionNotesPreview: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: Math.min(screenWidth * 0.032, 13),
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   tendenciesCard: {
     backgroundColor: '#2a2a2a',
