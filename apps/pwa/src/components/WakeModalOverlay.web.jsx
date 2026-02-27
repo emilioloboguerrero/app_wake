@@ -1,12 +1,14 @@
 /**
  * Simple modal overlay for web: full-screen backdrop, click-outside to close.
+ * Enter/exit animations: backdrop fades, content slides up from bottom (same as plus-button menu).
  * Used by BottomTabBar (+ menu), NutritionScreen, TutorialOverlay.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const ROOT_ID = 'wake-modal-overlay-root';
 const Z_INDEX = 2147483646;
+const EXIT_DURATION_MS = 250;
 
 function getOrCreateRoot() {
   if (typeof document === 'undefined') return null;
@@ -15,10 +17,16 @@ function getOrCreateRoot() {
     root = document.createElement('div');
     root.id = ROOT_ID;
     root.style.cssText =
-      'position:fixed;inset:0;z-index:' + Z_INDEX + ';pointer-events:auto;';
+      'position:fixed;inset:0;z-index:' + Z_INDEX + ';pointer-events:none;';
     document.body.appendChild(root);
   }
   return root;
+}
+
+// Pre-create the modal root when this module is loaded on web
+// so the first visible modal doesn't pay this cost on click.
+if (typeof document !== 'undefined') {
+  getOrCreateRoot();
 }
 
 export function WakeModalOverlay({
@@ -30,24 +38,46 @@ export function WakeModalOverlay({
   closeOnBackdropClick = true,
 }) {
   const rootRef = useRef(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const wasVisibleRef = useRef(false);
+
+  useEffect(() => {
+    if (visible) {
+      wasVisibleRef.current = true;
+      setIsClosing(false);
+    } else if (wasVisibleRef.current) {
+      setIsClosing(true);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!isClosing) return;
+    const t = setTimeout(() => {
+      wasVisibleRef.current = false;
+      setIsClosing(false);
+    }, EXIT_DURATION_MS);
+    return () => clearTimeout(t);
+  }, [isClosing]);
+
+  const showOverlay = visible || isClosing;
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    root.style.pointerEvents = visible ? 'auto' : 'none';
+    root.style.pointerEvents = showOverlay ? 'auto' : 'none';
     return () => {
       root.style.pointerEvents = 'none';
     };
-  }, [visible]);
+  }, [showOverlay]);
 
   useEffect(() => {
-    if (!visible) return;
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    if (!visible && !isClosing) return;
+    const onKey = (e) => e.key === 'Escape' && !isClosing && onClose();
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [visible, onClose]);
+  }, [visible, isClosing, onClose]);
 
-  if (!visible || typeof document === 'undefined') {
+  if (!showOverlay || typeof document === 'undefined') {
     return null;
   }
 
@@ -58,6 +88,15 @@ export function WakeModalOverlay({
   }
 
   const isFull = contentPlacement === 'full';
+  const useSlideUp = contentAnimation === 'slideUp';
+
+  const backdropClass = isClosing
+    ? 'wake-modal-backdrop-exit'
+    : 'wake-modal-backdrop-enter';
+
+  const contentClass = useSlideUp
+    ? (isClosing ? 'wake-modal-content-exit' : 'wake-modal-content-enter')
+    : (isClosing ? 'wake-modal-backdrop-exit' : 'wake-modal-backdrop-enter');
 
   const backdropStyle = {
     position: 'fixed',
@@ -70,19 +109,21 @@ export function WakeModalOverlay({
     position: 'fixed',
     inset: 0,
     zIndex: 2,
-    pointerEvents: 'auto',
-    display: isFull ? 'block' : 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    pointerEvents: isClosing ? 'none' : 'auto',
+    display: isFull ? 'flex' : 'flex',
+    alignItems: isFull ? 'flex-end' : 'center',
+    justifyContent: isFull ? 'flex-end' : 'center',
   };
 
   const handleBackdropClick = (e) => {
+    if (isClosing) return;
     if (e.target === e.currentTarget) onClose();
   };
 
   const overlay = (
     <div style={{ position: 'fixed', inset: 0 }}>
       <div
+        className={backdropClass}
         style={backdropStyle}
         onClick={onClose}
         role="button"
@@ -93,11 +134,13 @@ export function WakeModalOverlay({
         onClick={handleBackdropClick}
       >
         <div
+          className={useSlideUp ? contentClass : undefined}
           onClick={(e) => e.stopPropagation()}
           style={{
             pointerEvents: 'auto',
             display: isFull ? 'block' : 'contents',
             height: isFull && !closeOnBackdropClick ? '100%' : undefined,
+            width: isFull ? '100%' : undefined,
           }}
         >
           {children}

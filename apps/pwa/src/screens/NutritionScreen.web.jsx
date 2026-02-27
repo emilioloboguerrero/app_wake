@@ -31,6 +31,7 @@ import Wheat from '../components/icons/Wheat';
 import Avocado from '../components/icons/Avocado';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
 import WakeLoader from '../components/WakeLoader';
+import { Video, ResizeMode } from 'expo-av';
 
 const GOLD = 'rgba(191, 168, 77, 1)';
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
@@ -651,6 +652,7 @@ const NutritionScreen = () => {
   const [opcionesCardIndex, setOpcionesCardIndex] = useState(0);
   const [addOptionLoading, setAddOptionLoading] = useState(false);
   const [opcionesSelectedByCard, setOpcionesSelectedByCard] = useState({});
+  const [recipeVideoModalUrl, setRecipeVideoModalUrl] = useState(null);
   const opcionesScrollX = useRef(new Animated.Value(0)).current;
   const opcionesScrollRef = useRef(null);
 
@@ -693,6 +695,9 @@ const NutritionScreen = () => {
   const [createMealServingAmount, setCreateMealServingAmount] = useState('1');
 
   const fdServingsInputRef = useRef(null);
+  const fdSlideAnim = useRef(new Animated.Value(0)).current;
+  const createMealSlideAnim = useRef(new Animated.Value(0)).current;
+  const addModalSlideAnim = useRef(new Animated.Value(0)).current;
 
   const savedFoodIds = useMemo(() => new Set(savedFoods.map((f) => f.food_id)), [savedFoods]);
 
@@ -1209,6 +1214,80 @@ const NutritionScreen = () => {
   }, [userId]);
 
   useEffect(() => {
+    if (selectedFood) {
+      fdSlideAnim.setValue(0);
+      Animated.timing(fdSlideAnim, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [selectedFood, fdSlideAnim]);
+
+  useEffect(() => {
+    if (createMealModalOpen) {
+      createMealSlideAnim.setValue(0);
+      Animated.timing(createMealSlideAnim, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [createMealModalOpen, createMealSlideAnim]);
+
+  const handleFoodDetailClose = useCallback(() => {
+    fdSlideAnim.stopAnimation(() => {});
+    Animated.timing(fdSlideAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setSelectedFood(null);
+        setEditingDiaryEntry(null);
+        setFdShowMicros(false);
+        setFdLoadingDetail(false);
+      }
+    });
+  }, [fdSlideAnim]);
+
+  const handleCreateMealClose = useCallback(() => {
+    createMealSlideAnim.stopAnimation(() => {});
+    Animated.timing(createMealSlideAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setCreateMealModalOpen(false);
+      }
+    });
+  }, [createMealSlideAnim]);
+
+  const handleAddModalOpen = useCallback(() => {
+    addModalSlideAnim.setValue(0);
+    Animated.timing(addModalSlideAnim, {
+      toValue: 1,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+    setAddModalVisible(true);
+  }, [addModalSlideAnim]);
+
+  const handleAddModalClose = useCallback(() => {
+    addModalSlideAnim.stopAnimation(() => {});
+    Animated.timing(addModalSlideAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setAddModalVisible(false);
+      }
+    });
+  }, [addModalSlideAnim]);
+
+  useEffect(() => {
     if (addModalVisible && addModalTab === 'mis_comidas') {
       loadUserMeals();
       setMisComidasSelectedByCard({});
@@ -1559,7 +1638,7 @@ const NutritionScreen = () => {
                                 setAddModalCategoryIndex(idx);
                                 setAddModalCategoryDropdownOpen(false);
                                 setAddModalTab('opciones');
-                                setAddModalVisible(true);
+                                handleAddModalOpen();
                               }}
                               activeOpacity={0.8}
                             >
@@ -1587,12 +1666,27 @@ const NutritionScreen = () => {
 
       <WakeModalOverlay
         visible={addModalVisible}
-        onClose={() => setAddModalVisible(false)}
+        onClose={handleAddModalClose}
         contentPlacement="full"
-        contentAnimation="slideUp"
+        contentAnimation="fade"
         closeOnBackdropClick={false}
       >
-        <View style={styles.addModalOverlay}>
+        <Animated.View
+          style={[
+            styles.addModalOverlay,
+            {
+              opacity: addModalSlideAnim,
+              transform: [
+                {
+                  translateY: addModalSlideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [60, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <View style={styles.addModalContent}>
             <View style={styles.addModalHeader}>
               <View style={styles.addModalTitleRow}>
@@ -1610,7 +1704,7 @@ const NutritionScreen = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.addModalCloseBtn}
-                  onPress={() => setAddModalVisible(false)}
+                  onPress={handleAddModalClose}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.addModalCloseText}>✕</Text>
@@ -1674,62 +1768,95 @@ const NutritionScreen = () => {
             <View style={styles.addModalBody}>
               {addModalTab === 'buscar' && (
                 <View style={styles.buscarSection}>
-                    <View style={styles.buscarSearchWrap}>
-                      <View style={styles.buscarSearchRow}>
-                        <TextInput
-                          style={styles.buscarSearchInput}
-                          value={buscarQuery}
-                          onChangeText={setBuscarQuery}
-                          placeholder="Buscar alimento…"
-                          placeholderTextColor="rgba(255,255,255,0.35)"
-                          onSubmitEditing={handleBuscarSearch}
-                          returnKeyType="search"
-                        />
-                        <TouchableOpacity
-                          style={[styles.buscarFilterToggle, (buscarFilterOpen || buscarSortBy !== 'relevance') && styles.buscarFilterToggleActive]}
-                          onPress={() => setBuscarFilterOpen((v) => !v)}
-                          activeOpacity={0.8}
+                  <View style={styles.buscarSearchWrap}>
+                    <View style={styles.buscarSearchRow}>
+                      <TextInput
+                        style={styles.buscarSearchInput}
+                        value={buscarQuery}
+                        onChangeText={setBuscarQuery}
+                        placeholder="Buscar alimento…"
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                        onSubmitEditing={handleBuscarSearch}
+                        returnKeyType="search"
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.buscarFilterToggle,
+                          (buscarFilterOpen || buscarSortBy !== 'relevance') && styles.buscarFilterToggleActive,
+                        ]}
+                        onPress={() => setBuscarFilterOpen((v) => !v)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.buscarFilterToggleIcon,
+                            buscarSortBy !== 'relevance' && styles.buscarFilterToggleIconActive,
+                          ]}
                         >
-                          <Text style={[styles.buscarFilterToggleIcon, buscarSortBy !== 'relevance' && styles.buscarFilterToggleIconActive]}>⇅</Text>
-                          {buscarSortBy !== 'relevance' && <View style={styles.buscarFilterDot} />}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.buscarSavedToggle, buscarShowSaved && styles.buscarSavedToggleActive]}
-                          onPress={() => { setBuscarShowSaved((v) => !v); setBuscarFilterOpen(false); }}
-                          activeOpacity={0.8}
+                          ⇅
+                        </Text>
+                        {buscarSortBy !== 'relevance' && <View style={styles.buscarFilterDot} />}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.buscarSavedToggle, buscarShowSaved && styles.buscarSavedToggleActive]}
+                        onPress={() => {
+                          setBuscarShowSaved((v) => !v);
+                          setBuscarFilterOpen(false);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.buscarSavedToggleIcon,
+                            buscarShowSaved && styles.buscarSavedToggleIconActive,
+                          ]}
                         >
-                          <Text style={[styles.buscarSavedToggleIcon, buscarShowSaved && styles.buscarSavedToggleIconActive]}>
-                            {buscarShowSaved ? '★' : '☆'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                          {buscarShowSaved ? '★' : '☆'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
 
-                      {buscarFilterOpen && (
-                        <View style={styles.buscarFilterPanel}>
-                          <Text style={styles.buscarFilterPanelTitle}>Ordenar por</Text>
-                          {[
-                            { key: 'relevance', label: 'Relevancia' },
-                            { key: 'cal_asc',   label: 'Calorías ↑' },
-                            { key: 'cal_desc',  label: 'Calorías ↓' },
-                            { key: 'protein_desc', label: 'Proteína ↓' },
-                            { key: 'name_asc',  label: 'Nombre A–Z' },
-                          ].map((opt) => (
-                            <TouchableOpacity
-                              key={opt.key}
-                              style={[styles.buscarFilterOption, buscarSortBy === opt.key && styles.buscarFilterOptionActive]}
-                              onPress={() => { setBuscarSortBy(opt.key); setBuscarFilterOpen(false); }}
-                              activeOpacity={0.7}
+                    {buscarFilterOpen && (
+                      <View style={styles.buscarFilterPanel}>
+                        <Text style={styles.buscarFilterPanelTitle}>Ordenar por</Text>
+                        {[
+                          { key: 'relevance', label: 'Relevancia' },
+                          { key: 'cal_asc', label: 'Calorías ↑' },
+                          { key: 'cal_desc', label: 'Calorías ↓' },
+                          { key: 'protein_desc', label: 'Proteína ↓' },
+                          { key: 'name_asc', label: 'Nombre A–Z' },
+                        ].map((opt) => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[
+                              styles.buscarFilterOption,
+                              buscarSortBy === opt.key && styles.buscarFilterOptionActive,
+                            ]}
+                            onPress={() => {
+                              setBuscarSortBy(opt.key);
+                              setBuscarFilterOpen(false);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.buscarFilterOptionText,
+                                buscarSortBy === opt.key && styles.buscarFilterOptionTextActive,
+                              ]}
                             >
-                              <Text style={[styles.buscarFilterOptionText, buscarSortBy === opt.key && styles.buscarFilterOptionTextActive]}>
-                                {opt.label}
-                              </Text>
-                              {buscarSortBy === opt.key && <Text style={styles.buscarFilterOptionCheck}>✓</Text>}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
+                              {opt.label}
+                            </Text>
+                            {buscarSortBy === opt.key && (
+                              <Text style={styles.buscarFilterOptionCheck}>✓</Text>
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
 
-                      {!buscarShowSaved && !buscarFilterOpen && buscarQuery.trim().length > 0 && (
+                    {!buscarShowSaved &&
+                      !buscarFilterOpen &&
+                      buscarQuery.trim().length > 0 && (
                         <TouchableOpacity
                           style={styles.buscarSearchBtn}
                           onPress={handleBuscarSearch}
@@ -1742,309 +1869,539 @@ const NutritionScreen = () => {
                         </TouchableOpacity>
                       )}
 
-                      {!buscarFilterOpen && (
-                        <ScrollView style={styles.buscarResultsList} showsVerticalScrollIndicator={false}>
-                          {buscarShowSaved ? (
-                            sortedSavedFoods.length === 0 ? (
-                              <View style={styles.buscarEmptyState}>
-                                <Text style={styles.buscarEmptyText}>No tienes alimentos guardados.{'\n'}Guarda uno con ☆ al verlo.</Text>
-                              </View>
-                            ) : (
-                              sortedSavedFoods.map((sf) => {
-                                const gpu = sf.grams_per_unit;
-                                let macroMeta;
-                                if (gpu && gpu > 0) {
-                                  const s = 100 / gpu;
-                                  macroMeta = `${Math.round((sf.calories_per_unit || 0) * s)} kcal · ${(Math.round((sf.protein_per_unit || 0) * s * 10) / 10)}g P · ${(Math.round((sf.carbs_per_unit || 0) * s * 10) / 10)}g C · ${(Math.round((sf.fat_per_unit || 0) * s * 10) / 10)}g G`;
-                                } else {
-                                  macroMeta = `${Math.round(sf.calories_per_unit || 0)} kcal · ${Math.round((sf.protein_per_unit || 0) * 10) / 10}g P · ${Math.round((sf.carbs_per_unit || 0) * 10) / 10}g C · ${Math.round((sf.fat_per_unit || 0) * 10) / 10}g G`;
-                                }
-                                return (
-                                  <TouchableOpacity
-                                    key={sf.id}
-                                    style={styles.buscarResultItem}
-                                    onPress={() => handleSelectSavedFood(sf)}
-                                    activeOpacity={0.8}
-                                  >
-                                    <View style={styles.buscarResultInfo}>
-                                      <Text style={styles.buscarResultName} numberOfLines={1}>{sf.name}</Text>
-                                      <Text style={styles.buscarResultMeta} numberOfLines={1}>{macroMeta}</Text>
-                                    </View>
-                                    <TouchableOpacity style={styles.buscarResultAddBtn} onPress={() => handleSelectSavedFood(sf)} activeOpacity={0.8}>
-                                      <Text style={styles.buscarResultAddBtnText}>+</Text>
-                                    </TouchableOpacity>
-                                  </TouchableOpacity>
-                                );
-                              })
-                            )
-                          ) : sortedBuscarResults.length === 0 ? (
-                            buscarLoading ? (
-                              <View style={styles.buscarEmptyState}>
-                                <WakeLoader size={48} />
-                              </View>
-                            ) : buscarQuery.trim() ? (
-                              <View style={styles.buscarEmptyState}>
-                                <Text style={styles.buscarEmptyText}>Sin resultados.</Text>
-                              </View>
-                            ) : buscarHistory.length > 0 ? (
-                              <>
-                                <Text style={styles.buscarHistoryLabel}>Recientes</Text>
-                                {buscarHistory.map((item) => (
-                                  <TouchableOpacity
-                                    key={item.food_id}
-                                    style={styles.buscarResultItem}
-                                    onPress={() => handleSelectFood({ food_id: item.food_id, food_name: item.food_name, food_category: item.food_category ?? null, servings: { serving: [] } })}
-                                    activeOpacity={0.8}
-                                  >
-                                    <Text style={styles.buscarHistoryIcon}>↺</Text>
-                                    <View style={styles.buscarResultInfo}>
-                                      <Text style={styles.buscarResultName} numberOfLines={1}>{item.food_name}</Text>
-                                    </View>
-                                    <TouchableOpacity
-                                      style={styles.buscarResultAddBtn}
-                                      onPress={() => handleSelectFood({ food_id: item.food_id, food_name: item.food_name, food_category: item.food_category ?? null, servings: { serving: [] } })}
-                                      activeOpacity={0.8}
-                                    >
-                                      <Text style={styles.buscarResultAddBtnText}>+</Text>
-                                    </TouchableOpacity>
-                                  </TouchableOpacity>
-                                ))}
-                              </>
-                            ) : (
-                              <View style={styles.buscarEmptyState}>
-                                <Text style={styles.buscarEmptyText}>Busca un alimento para empezar.</Text>
-                              </View>
-                            )
+                    {!buscarFilterOpen && (
+                      <ScrollView
+                        style={styles.buscarResultsList}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {buscarShowSaved ? (
+                          sortedSavedFoods.length === 0 ? (
+                            <View style={styles.buscarEmptyState}>
+                              <Text style={styles.buscarEmptyText}>
+                                No tienes alimentos guardados.{'\n'}Guarda uno con ☆ al
+                                verlo.
+                              </Text>
+                            </View>
                           ) : (
-                            sortedBuscarResults.map((food) => {
-                              const per100 = getPer100g(food);
-                              const macroMeta = per100
-                                ? `${per100.calories} kcal · ${per100.protein}g P · ${per100.carbs}g C · ${per100.fat}g G`
-                                : '—';
+                            sortedSavedFoods.map((sf) => {
+                              const gpu = sf.grams_per_unit;
+                              let macroMeta;
+                              if (gpu && gpu > 0) {
+                                const s = 100 / gpu;
+                                macroMeta = `${Math.round(
+                                  (sf.calories_per_unit || 0) * s,
+                                )} kcal · ${
+                                  Math.round((sf.protein_per_unit || 0) * s * 10) / 10
+                                }g P · ${
+                                  Math.round((sf.carbs_per_unit || 0) * s * 10) / 10
+                                }g C · ${
+                                  Math.round((sf.fat_per_unit || 0) * s * 10) / 10
+                                }g G`;
+                              } else {
+                                macroMeta = `${Math.round(
+                                  sf.calories_per_unit || 0,
+                                )} kcal · ${
+                                  Math.round((sf.protein_per_unit || 0) * 10) / 10
+                                }g P · ${
+                                  Math.round((sf.carbs_per_unit || 0) * 10) / 10
+                                }g C · ${
+                                  Math.round((sf.fat_per_unit || 0) * 10) / 10
+                                }g G`;
+                              }
                               return (
                                 <TouchableOpacity
-                                  key={food.food_id}
+                                  key={sf.id}
                                   style={styles.buscarResultItem}
-                                  onPress={() => handleSelectFood(food)}
+                                  onPress={() => handleSelectSavedFood(sf)}
                                   activeOpacity={0.8}
                                 >
                                   <View style={styles.buscarResultInfo}>
-                                    <Text style={styles.buscarResultName} numberOfLines={1}>{food.food_name}</Text>
-                                    <Text style={styles.buscarResultMeta} numberOfLines={1}>{macroMeta}</Text>
+                                    <Text
+                                      style={styles.buscarResultName}
+                                      numberOfLines={1}
+                                    >
+                                      {sf.name}
+                                    </Text>
+                                    <Text
+                                      style={styles.buscarResultMeta}
+                                      numberOfLines={1}
+                                    >
+                                      {macroMeta}
+                                    </Text>
                                   </View>
-                                  <TouchableOpacity style={styles.buscarResultAddBtn} onPress={() => handleSelectFood(food)} activeOpacity={0.8}>
+                                  <TouchableOpacity
+                                    style={styles.buscarResultAddBtn}
+                                    onPress={() => handleSelectSavedFood(sf)}
+                                    activeOpacity={0.8}
+                                  >
                                     <Text style={styles.buscarResultAddBtnText}>+</Text>
                                   </TouchableOpacity>
                                 </TouchableOpacity>
                               );
                             })
-                          )}
-                        </ScrollView>
-                      )}
-                    </View>
-                </View>
-              )}
-              {addModalTab === 'opciones' && (
-                <View style={styles.opcionesSection}>
-                  <View style={[styles.opcionesCarouselAndPagination, { marginHorizontal: -20, width: screenWidth }]}>
-                  <Animated.ScrollView
-                    ref={opcionesScrollRef}
-                    horizontal
-                    pagingEnabled={false}
-                    snapToInterval={opcionesCardStep}
-                    snapToAlignment="start"
-                    decelerationRate="fast"
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={[
-                      styles.opcionesCarouselContent,
-                      {
-                        paddingLeft: opcionesCardMargin,
-                        paddingRight: opcionesCardMargin,
-                        minHeight: opcionesCardViewHeight,
-                      },
-                    ]}
-                    style={[styles.opcionesCarousel, { minHeight: opcionesCardViewHeight }]}
-                    onScroll={Animated.event(
-                      [{ nativeEvent: { contentOffset: { x: opcionesScrollX } } }],
-                      { useNativeDriver: false }
-                    )}
-                    onMomentumScrollEnd={(e) => {
-                      const x = e.nativeEvent.contentOffset.x;
-                      const idx = Math.round(x / opcionesCardStep);
-                      setOpcionesCardIndex(Math.min(idx, Math.max(0, opcionesOptions.length - 1)));
-                    }}
-                    onScrollEndDrag={(e) => {
-                      const x = e.nativeEvent.contentOffset.x;
-                      const idx = Math.round(x / opcionesCardStep);
-                      setOpcionesCardIndex(Math.min(idx, Math.max(0, opcionesOptions.length - 1)));
-                    }}
-                  >
-                    {opcionesOptions.length === 0 ? (
-                      <View style={{ width: opcionesCardWidth, flex: 1, minHeight: opcionesCardViewHeight }}>
-                        <NoOpcionesEmptyCard />
-                      </View>
-                    ) : (
-                      opcionesOptions.map((opt, idx) => {
-                        const items = opt.items ?? opt.foods ?? [];
-                        const macros = optionMacros(opt);
-                        const categoryLabel = effectiveCategories[selectedCategoryIndex]?.label ?? 'comida';
-                        const isRecipe = opt.recipe === true;
-                        const optionTitle = opt.label ?? opt.name ?? `Opción ${idx + 1}`;
-                        const selectedSet = opcionesSelectedByCard[idx] ?? [];
-                        const selectedCount = selectedSet.length;
-                        const toggleItem = (itemIndex) => {
-                          setOpcionesSelectedByCard((prev) => {
-                            const arr = prev[idx] ?? [];
-                            const set = new Set(arr);
-                            if (set.has(itemIndex)) set.delete(itemIndex);
-                            else set.add(itemIndex);
-                            return { ...prev, [idx]: Array.from(set) };
-                          });
-                        };
-                        const inputRange = [
-                          (idx - 1) * opcionesCardStep,
-                          idx * opcionesCardStep,
-                          (idx + 1) * opcionesCardStep,
-                        ];
-                        const scale = opcionesScrollX.interpolate({
-                          inputRange,
-                          outputRange: [0.85, 1.0, 0.85],
-                          extrapolate: 'clamp',
-                        });
-                        const opacity = opcionesScrollX.interpolate({
-                          inputRange,
-                          outputRange: [0.5, 1.0, 0.5],
-                          extrapolate: 'clamp',
-                        });
-                        return (
-                          <Animated.View
-                            key={`opt-${idx}`}
-                            style={[
-                              styles.opcionesCard,
-                              { width: opcionesCardWidth, marginRight: idx < opcionesOptions.length - 1 ? opcionesCardGap : 0 },
-                              { opacity, transform: [{ scale }] },
-                            ]}
-                          >
-                            {items.length === 0 ? (
-                              <View style={[styles.noOpcionesOptionCardWrap, { minHeight: opcionesCardViewHeight }]}>
-                                <NoOpcionesEmptyCard />
-                              </View>
-                            ) : (
-                              <>
-                                <MealImageBanner items={items} colorIndex={idx} categoryIndex={selectedCategoryIndex} />
-                                <View style={styles.opcionesCardInner}>
-                                  <View style={styles.opcionesCardHeader}>
-                                    {isRecipe && (
-                                      <Text style={styles.opcionesCardTitle} numberOfLines={1}>{optionTitle}</Text>
-                                    )}
-                                    <Text style={styles.opcionesCardMacroLine}>
-                                      {`${Math.round(macros.calories)} kcal  ·  ${Math.round(macros.protein)}g Prot  ·  ${Math.round(macros.carbs)}g C  ·  ${Math.round(macros.fat)}g G`}
+                          )
+                        ) : sortedBuscarResults.length === 0 ? (
+                          buscarLoading ? (
+                            <View style={styles.buscarEmptyState}>
+                              <WakeLoader size={48} />
+                            </View>
+                          ) : buscarQuery.trim() ? (
+                            <View style={styles.buscarEmptyState}>
+                              <Text style={styles.buscarEmptyText}>Sin resultados.</Text>
+                            </View>
+                          ) : buscarHistory.length > 0 ? (
+                            <>
+                              <Text style={styles.buscarHistoryLabel}>Recientes</Text>
+                              {buscarHistory.map((item) => (
+                                <TouchableOpacity
+                                  key={item.food_id}
+                                  style={styles.buscarResultItem}
+                                  onPress={() =>
+                                    handleSelectFood({
+                                      food_id: item.food_id,
+                                      food_name: item.food_name,
+                                      food_category: item.food_category ?? null,
+                                      servings: { serving: [] },
+                                    })
+                                  }
+                                  activeOpacity={0.8}
+                                >
+                                  <Text style={styles.buscarHistoryIcon}>↺</Text>
+                                  <View style={styles.buscarResultInfo}>
+                                    <Text
+                                      style={styles.buscarResultName}
+                                      numberOfLines={1}
+                                    >
+                                      {item.food_name}
                                     </Text>
-                                  </View>
-                                  <View style={styles.opcionesCardIngredients}>
-                                    {items.map((it, i) => {
-                                      const selected = selectedSet.includes(i);
-                                      const right = formatIngredientRight(it);
-                                      return (
-                                        <TouchableOpacity
-                                          key={i}
-                                          style={styles.opcionesCardIngredientRow}
-                                          onPress={() => toggleItem(i)}
-                                          activeOpacity={0.7}
-                                        >
-                                          <Text style={styles.opcionesCardIngredientName} numberOfLines={1}>
-                                            {getFoodEmoji(it)}{'  '}{it.name ?? 'Alimento'}
-                                          </Text>
-                                          <View style={styles.opcionesCardIngredientRight}>
-                                            <View style={styles.opcionesCardIngredientAmountBlock}>
-                                              <Text style={styles.opcionesCardIngredientAmount} numberOfLines={1}>
-                                                {right.main}
-                                              </Text>
-                                              {right.sub != null && (
-                                                <Text style={styles.opcionesCardIngredientAmountSub} numberOfLines={1}>
-                                                  {right.sub}
-                                                </Text>
-                                              )}
-                                            </View>
-                                            <View style={[styles.opcionesCardCheckbox, selected && styles.opcionesCardCheckboxChecked]}>
-                                              {selected && <Text style={styles.opcionesCardCheckboxCheck}>✓</Text>}
-                                            </View>
-                                          </View>
-                                        </TouchableOpacity>
-                                      );
-                                    })}
                                   </View>
                                   <TouchableOpacity
-                                    style={[
-                                      styles.opcionesCardAddBtn,
-                                      (addOptionLoading || selectedCount === 0) && styles.opcionesCardAddBtnDisabled,
-                                    ]}
+                                    style={styles.buscarResultAddBtn}
+                                    onPress={() =>
+                                      handleSelectFood({
+                                        food_id: item.food_id,
+                                        food_name: item.food_name,
+                                        food_category: item.food_category ?? null,
+                                        servings: { serving: [] },
+                                      })
+                                    }
                                     activeOpacity={0.8}
-                                    onPress={() => handleAddOptionToMeal(opt, selectedCategory, selectedSet)}
-                                    disabled={addOptionLoading || selectedCount === 0}
                                   >
-                                    <Text style={[
-                                      styles.opcionesCardAddBtnText,
-                                      selectedCount === 0 && styles.opcionesCardAddBtnTextDisabled,
-                                    ]}>
-                                      {addOptionLoading ? 'Añadiendo…' : `Añadir a ${categoryLabel}`}
-                                    </Text>
+                                    <Text style={styles.buscarResultAddBtnText}>+</Text>
                                   </TouchableOpacity>
+                                </TouchableOpacity>
+                              ))}
+                            </>
+                          ) : (
+                            <View style={styles.buscarEmptyState}>
+                              <Text style={styles.buscarEmptyText}>
+                                Busca un alimento para empezar.
+                              </Text>
+                            </View>
+                          )
+                        ) : (
+                          sortedBuscarResults.map((food) => {
+                            const per100 = getPer100g(food);
+                            const macroMeta = per100
+                              ? `${per100.calories} kcal · ${per100.protein}g P · ${per100.carbs}g C · ${per100.fat}g G`
+                              : '—';
+                            return (
+                              <TouchableOpacity
+                                key={food.food_id}
+                                style={styles.buscarResultItem}
+                                onPress={() => handleSelectFood(food)}
+                                activeOpacity={0.8}
+                              >
+                                <View style={styles.buscarResultInfo}>
+                                  <Text
+                                    style={styles.buscarResultName}
+                                    numberOfLines={1}
+                                  >
+                                    {food.food_name}
+                                  </Text>
+                                  <Text
+                                    style={styles.buscarResultMeta}
+                                    numberOfLines={1}
+                                  >
+                                    {macroMeta}
+                                  </Text>
                                 </View>
-                              </>
-                            )}
-                          </Animated.View>
-                        );
-                      })
+                                <TouchableOpacity
+                                  style={styles.buscarResultAddBtn}
+                                  onPress={() => handleSelectFood(food)}
+                                  activeOpacity={0.8}
+                                >
+                                  <Text style={styles.buscarResultAddBtnText}>+</Text>
+                                </TouchableOpacity>
+                              </TouchableOpacity>
+                            );
+                          })
+                        )}
+                      </ScrollView>
                     )}
-                  </Animated.ScrollView>
-                  {opcionesOptions.length > 0 && (
-                    <View style={styles.opcionesPaginationContainer}>
-                      <View style={styles.opcionesPaginationDots}>
-                        {opcionesOptions.map((_, index) => {
-                          const inputRange = [
-                            (index - 1) * opcionesCardStep,
-                            index * opcionesCardStep,
-                            (index + 1) * opcionesCardStep,
-                          ];
-                          const opacity = opcionesScrollX.interpolate({
-                            inputRange,
-                            outputRange: [0.3, 1.0, 0.3],
-                            extrapolate: 'clamp',
-                          });
-                          const scale = opcionesScrollX.interpolate({
-                            inputRange,
-                            outputRange: [0.8, 1.3, 0.8],
-                            extrapolate: 'clamp',
-                          });
-                          return (
-                            <Animated.View
-                              key={index}
-                              style={[styles.opcionesPaginationDot, { opacity, transform: [{ scale }] }]}
-                            />
+                  </View>
+                </View>
+              )}
+
+              {addModalTab === 'opciones' && (
+                <View style={[styles.addModalPage, { width: screenWidth }]}>
+                  <View style={styles.opcionesSection}>
+                    <View
+                      style={[
+                        styles.opcionesCarouselAndPagination,
+                        { marginHorizontal: -20, width: screenWidth },
+                      ]}
+                    >
+                      <Animated.ScrollView
+                        ref={opcionesScrollRef}
+                        horizontal
+                        pagingEnabled={false}
+                        snapToInterval={opcionesCardStep}
+                        snapToAlignment="start"
+                        decelerationRate="fast"
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={[
+                          styles.opcionesCarouselContent,
+                          {
+                            paddingLeft: opcionesCardMargin,
+                            paddingRight: opcionesCardMargin,
+                            minHeight: opcionesCardViewHeight,
+                          },
+                        ]}
+                        style={[
+                          styles.opcionesCarousel,
+                          { minHeight: opcionesCardViewHeight },
+                        ]}
+                        onScroll={Animated.event(
+                          [{ nativeEvent: { contentOffset: { x: opcionesScrollX } } }],
+                          { useNativeDriver: false },
+                        )}
+                        onMomentumScrollEnd={(e) => {
+                          const x = e.nativeEvent.contentOffset.x;
+                          const idx = Math.round(x / opcionesCardStep);
+                          setOpcionesCardIndex(
+                            Math.min(idx, Math.max(0, opcionesOptions.length - 1)),
                           );
-                        })}
-                      </View>
+                        }}
+                        onScrollEndDrag={(e) => {
+                          const x = e.nativeEvent.contentOffset.x;
+                          const idx = Math.round(x / opcionesCardStep);
+                          setOpcionesCardIndex(
+                            Math.min(idx, Math.max(0, opcionesOptions.length - 1)),
+                          );
+                        }}
+                      >
+                        {opcionesOptions.length === 0 ? (
+                          <View
+                            style={{
+                              width: opcionesCardWidth,
+                              flex: 1,
+                              minHeight: opcionesCardViewHeight,
+                            }}
+                          >
+                            <NoOpcionesEmptyCard />
+                          </View>
+                        ) : (
+                          opcionesOptions.map((opt, idx) => {
+                            const items = opt.items ?? opt.foods ?? [];
+                            const macros = optionMacros(opt);
+                            const categoryLabel =
+                              effectiveCategories[selectedCategoryIndex]?.label ??
+                              'comida';
+                            const isRecipe = !!(
+                              opt.recipe_name || opt.recipe_video_url
+                            );
+                            const optionTitle =
+                              opt.recipe_name ??
+                              opt.label ??
+                              opt.name ??
+                              `Opción ${idx + 1}`;
+                            const selectedSet = opcionesSelectedByCard[idx] ?? [];
+                            const selectedCount = selectedSet.length;
+                            const toggleItem = (itemIndex) => {
+                              setOpcionesSelectedByCard((prev) => {
+                                const arr = prev[idx] ?? [];
+                                const set = new Set(arr);
+                                if (set.has(itemIndex)) set.delete(itemIndex);
+                                else set.add(itemIndex);
+                                return { ...prev, [idx]: Array.from(set) };
+                              });
+                            };
+                            const inputRange = [
+                              (idx - 1) * opcionesCardStep,
+                              idx * opcionesCardStep,
+                              (idx + 1) * opcionesCardStep,
+                            ];
+                            const scale = opcionesScrollX.interpolate({
+                              inputRange,
+                              outputRange: [0.85, 1.0, 0.85],
+                              extrapolate: 'clamp',
+                            });
+                            const opacity = opcionesScrollX.interpolate({
+                              inputRange,
+                              outputRange: [0.5, 1.0, 0.5],
+                              extrapolate: 'clamp',
+                            });
+                            return (
+                              <Animated.View
+                                key={`opt-${idx}`}
+                                style={[
+                                  styles.opcionesCard,
+                                  {
+                                    width: opcionesCardWidth,
+                                    marginRight:
+                                      idx < opcionesOptions.length - 1
+                                        ? opcionesCardGap
+                                        : 0,
+                                  },
+                                  { opacity, transform: [{ scale }] },
+                                ]}
+                              >
+                                {items.length === 0 ? (
+                                  <View
+                                    style={[
+                                      styles.noOpcionesOptionCardWrap,
+                                      { minHeight: opcionesCardViewHeight },
+                                    ]}
+                                  >
+                                    <NoOpcionesEmptyCard />
+                                  </View>
+                                ) : (
+                                  <>
+                                    {opt.recipe_video_url ? (
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.mealBanner,
+                                          {
+                                            backgroundColor:
+                                              MEAL_BANNER_COLORS[
+                                                (selectedCategoryIndex * 31 +
+                                                  idx * 7 +
+                                                  13) %
+                                                  MEAL_BANNER_COLORS.length
+                                              ],
+                                          },
+                                        ]}
+                                        onPress={() =>
+                                          setRecipeVideoModalUrl(
+                                            opt.recipe_video_url,
+                                          )
+                                        }
+                                        activeOpacity={0.9}
+                                      >
+                                        <View style={styles.recipeVideoPlayWrap}>
+                                          <View
+                                            style={styles.recipeVideoPlayCircle}
+                                          >
+                                            <Text style={styles.recipeVideoPlayIcon}>
+                                              ▶
+                                            </Text>
+                                          </View>
+                                          <Text style={styles.recipeVideoPlayLabel}>
+                                            Ver vídeo
+                                          </Text>
+                                        </View>
+                                      </TouchableOpacity>
+                                    ) : (
+                                      <MealImageBanner
+                                        items={items}
+                                        colorIndex={idx}
+                                        categoryIndex={selectedCategoryIndex}
+                                      />
+                                    )}
+                                    <View style={styles.opcionesCardInner}>
+                                      <View style={styles.opcionesCardHeader}>
+                                        {isRecipe && (
+                                          <Text
+                                            style={styles.opcionesCardTitle}
+                                            numberOfLines={1}
+                                          >
+                                            {optionTitle}
+                                          </Text>
+                                        )}
+                                        <Text style={styles.opcionesCardMacroLine}>
+                                          {`${Math.round(
+                                            macros.calories,
+                                          )} kcal  ·  ${Math.round(
+                                            macros.protein,
+                                          )}g Prot  ·  ${Math.round(
+                                            macros.carbs,
+                                          )}g C  ·  ${Math.round(
+                                            macros.fat,
+                                          )}g G`}
+                                        </Text>
+                                      </View>
+                                      <View style={styles.opcionesCardIngredients}>
+                                        {items.map((it, i) => {
+                                          const selected = selectedSet.includes(i);
+                                          const right = formatIngredientRight(it);
+                                          return (
+                                            <TouchableOpacity
+                                              key={i}
+                                              style={styles.opcionesCardIngredientRow}
+                                              onPress={() => toggleItem(i)}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Text
+                                                style={styles.opcionesCardIngredientName}
+                                                numberOfLines={1}
+                                              >
+                                                {getFoodEmoji(it)}{'  '}
+                                                {it.name ?? 'Alimento'}
+                                              </Text>
+                                              <View
+                                                style={
+                                                  styles.opcionesCardIngredientRight
+                                                }
+                                              >
+                                                <View
+                                                  style={
+                                                    styles.opcionesCardIngredientAmountBlock
+                                                  }
+                                                >
+                                                  <Text
+                                                    style={
+                                                      styles.opcionesCardIngredientAmount
+                                                    }
+                                                    numberOfLines={1}
+                                                  >
+                                                    {right.main}
+                                                  </Text>
+                                                  {right.sub != null && (
+                                                    <Text
+                                                      style={
+                                                        styles.opcionesCardIngredientAmountSub
+                                                      }
+                                                      numberOfLines={1}
+                                                    >
+                                                      {right.sub}
+                                                    </Text>
+                                                  )}
+                                                </View>
+                                                <View
+                                                  style={[
+                                                    styles.opcionesCardCheckbox,
+                                                    selected &&
+                                                      styles.opcionesCardCheckboxChecked,
+                                                  ]}
+                                                >
+                                                  {selected && (
+                                                    <Text
+                                                      style={
+                                                        styles.opcionesCardCheckboxCheck
+                                                      }
+                                                    >
+                                                      ✓
+                                                    </Text>
+                                                  )}
+                                                </View>
+                                              </View>
+                                            </TouchableOpacity>
+                                          );
+                                        })}
+                                      </View>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.opcionesCardAddBtn,
+                                          (addOptionLoading || selectedCount === 0) &&
+                                            styles.opcionesCardAddBtnDisabled,
+                                        ]}
+                                        activeOpacity={0.8}
+                                        onPress={() =>
+                                          handleAddOptionToMeal(
+                                            opt,
+                                            selectedCategory,
+                                            selectedSet,
+                                          )
+                                        }
+                                        disabled={addOptionLoading || selectedCount === 0}
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.opcionesCardAddBtnText,
+                                            selectedCount === 0 &&
+                                              styles.opcionesCardAddBtnTextDisabled,
+                                          ]}
+                                        >
+                                          {addOptionLoading
+                                            ? 'Añadiendo…'
+                                            : `Añadir a ${categoryLabel}`}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  </>
+                                )}
+                              </Animated.View>
+                            );
+                          })
+                        )}
+                      </Animated.ScrollView>
+                      {opcionesOptions.length > 0 && (
+                        <View style={styles.opcionesPaginationContainer}>
+                          <View style={styles.opcionesPaginationDots}>
+                            {opcionesOptions.map((_, index) => {
+                              const inputRange = [
+                                (index - 1) * opcionesCardStep,
+                                index * opcionesCardStep,
+                                (index + 1) * opcionesCardStep,
+                              ];
+                              const opacity = opcionesScrollX.interpolate({
+                                inputRange,
+                                outputRange: [0.3, 1.0, 0.3],
+                                extrapolate: 'clamp',
+                              });
+                              const scale = opcionesScrollX.interpolate({
+                                inputRange,
+                                outputRange: [0.8, 1.3, 0.8],
+                                extrapolate: 'clamp',
+                              });
+                              return (
+                                <Animated.View
+                                  key={index}
+                                  style={[
+                                    styles.opcionesPaginationDot,
+                                    { opacity, transform: [{ scale }] },
+                                  ]}
+                                />
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
                     </View>
-                  )}
                   </View>
                 </View>
               )}
             </View>
-            </View>
           </View>
+        </Animated.View>
       </WakeModalOverlay>
 
       <WakeModalOverlay
         visible={createMealModalOpen}
-        onClose={() => setCreateMealModalOpen(false)}
+        onClose={handleCreateMealClose}
         contentPlacement="full"
         contentAnimation="fade"
       >
-        <View style={styles.createMealModalRoot}>
+        <Animated.View
+          style={[
+            styles.createMealModalRoot,
+            {
+              opacity: createMealSlideAnim,
+              transform: [
+                {
+                  translateY: createMealSlideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [60, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <View style={styles.createMealModalHeader}>
             <Text style={styles.createMealModalTitle}>Crear comida</Text>
-            <TouchableOpacity onPress={() => setCreateMealModalOpen(false)} style={styles.createMealModalClose} activeOpacity={0.8}>
+            <TouchableOpacity onPress={handleCreateMealClose} style={styles.createMealModalClose} activeOpacity={0.8}>
               <Text style={styles.addModalCloseText}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -2155,20 +2512,35 @@ const NutritionScreen = () => {
               <Text style={styles.crearComidaBtnText}>{createMealSaving ? 'Guardando…' : 'Guardar comida'}</Text>
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </Animated.View>
       </WakeModalOverlay>
 
       <WakeModalOverlay
         visible={selectedFood !== null}
-        onClose={() => { setSelectedFood(null); setEditingDiaryEntry(null); }}
+        onClose={handleFoodDetailClose}
         contentPlacement="full"
         contentAnimation="fade"
       >
-        <View style={styles.fdScreen}>
+        <Animated.View
+          style={[
+            styles.fdScreen,
+            {
+              opacity: fdSlideAnim,
+              transform: [
+                {
+                  translateY: fdSlideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [60, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           {selectedFood && (
             <>
               <View style={styles.fdHeader}>
-                <TouchableOpacity style={styles.fdBackBtn} onPress={() => { setSelectedFood(null); setEditingDiaryEntry(null); }} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.fdBackBtn} onPress={handleFoodDetailClose} activeOpacity={0.7}>
                   <Text style={styles.fdBackBtnText}>←</Text>
                 </TouchableOpacity>
                 <Text style={styles.fdHeaderTitle}>{editingDiaryEntry ? 'Editar cantidad' : 'Alimento seleccionado'}</Text>
@@ -2335,6 +2707,32 @@ const NutritionScreen = () => {
               </View>
             </>
           )}
+        </Animated.View>
+      </WakeModalOverlay>
+
+      <WakeModalOverlay
+        visible={!!recipeVideoModalUrl}
+        onClose={() => setRecipeVideoModalUrl(null)}
+        contentPlacement="full"
+        closeOnBackdropClick={true}
+      >
+        <View style={styles.recipeVideoFullscreenWrap}>
+          {recipeVideoModalUrl ? (
+            <Video
+              source={{ uri: recipeVideoModalUrl }}
+              style={styles.recipeVideoFullscreenVideo}
+              useNativeControls
+              shouldPlay
+              resizeMode={ResizeMode.CONTAIN}
+            />
+          ) : null}
+          <TouchableOpacity
+            style={styles.recipeVideoCloseBtn}
+            onPress={() => setRecipeVideoModalUrl(null)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.recipeVideoCloseBtnText}>✕</Text>
+          </TouchableOpacity>
         </View>
       </WakeModalOverlay>
 
@@ -2384,10 +2782,11 @@ const styles = StyleSheet.create({
     paddingBottom: 320,
   },
   loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
+    width: '100%',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingTop: 320,
+    paddingBottom: 40,
   },
   dateRow: {
     width: '100%',
@@ -2666,6 +3065,9 @@ const styles = StyleSheet.create({
     top: 72,
     bottom: 0,
     backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
   },
   addModalContent: {
     flex: 1,
@@ -2848,6 +3250,60 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     userSelect: 'none',
     transform: 'translate(-50%, -50%)',
+  },
+  recipeVideoPlayWrap: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recipeVideoPlayCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recipeVideoPlayIcon: {
+    fontSize: 28,
+    color: '#fff',
+    marginLeft: 4,
+  },
+  recipeVideoPlayLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 8,
+  },
+  recipeVideoFullscreenWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+  },
+  recipeVideoFullscreenVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  recipeVideoCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  recipeVideoCloseBtnText: {
+    fontSize: 22,
+    color: '#fff',
+    fontWeight: '600',
   },
   opcionesCardEmpty: {
     fontSize: 14,
@@ -3627,6 +4083,9 @@ const styles = StyleSheet.create({
     height: '100%',
     flex: 1,
     backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
   },
   fdHeader: {
     flexDirection: 'row',

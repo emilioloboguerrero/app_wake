@@ -301,6 +301,7 @@ class PropagationService {
       try {
         const lib = await nutritionDb.getPlanById(creatorId, planId);
         if (lib) {
+          const expandedCategories = await nutritionDb.expandRecipeRefsInCategories(creatorId, lib.categories || []);
           planSnapshot = {
             name: lib.name,
             description: lib.description,
@@ -308,7 +309,7 @@ class PropagationService {
             daily_protein_g: lib.daily_protein_g,
             daily_carbs_g: lib.daily_carbs_g,
             daily_fat_g: lib.daily_fat_g,
-            categories: lib.categories,
+            categories: expandedCategories,
           };
         }
       } catch (e) {

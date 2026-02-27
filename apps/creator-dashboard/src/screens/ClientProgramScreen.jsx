@@ -356,16 +356,31 @@ const ClientProgramScreen = () => {
         setNutritionAssignModalPlan(null);
       } else {
         const planSnapshot = await nutritionDb.getPlanById(user.uid, planId);
-      await nutritionDb.createAssignment({
-        userId: client.clientUserId,
+        const expandedCategories = planSnapshot?.categories
+          ? await nutritionDb.expandRecipeRefsInCategories(user.uid, planSnapshot.categories)
+          : [];
+        const planForAssignment = planSnapshot
+          ? {
+              id: planSnapshot.id,
+              name: planSnapshot.name,
+              description: planSnapshot.description,
+              daily_calories: planSnapshot.daily_calories,
+              daily_protein_g: planSnapshot.daily_protein_g,
+              daily_carbs_g: planSnapshot.daily_carbs_g,
+              daily_fat_g: planSnapshot.daily_fat_g,
+              categories: expandedCategories,
+            }
+          : null;
+        await nutritionDb.createAssignment({
+          userId: client.clientUserId,
           planId,
-        plan: planSnapshot ? { id: planSnapshot.id, name: planSnapshot.name, description: planSnapshot.description, daily_calories: planSnapshot.daily_calories, daily_protein_g: planSnapshot.daily_protein_g, daily_carbs_g: planSnapshot.daily_carbs_g, daily_fat_g: planSnapshot.daily_fat_g, categories: planSnapshot.categories } : null,
-        assignedBy: user.uid,
-        source: 'one_on_one',
-        programId: selectedProgramId ?? null,
+          plan: planForAssignment,
+          assignedBy: user.uid,
+          source: 'one_on_one',
+          programId: selectedProgramId ?? null,
           startDate: startDate || null,
           endDate: noEndDate ? null : (endDate || null),
-      });
+        });
       setNutritionAssignPlanId('');
       setNutritionAssignEndDate('');
         setNutritionAssignModalPlan(null);

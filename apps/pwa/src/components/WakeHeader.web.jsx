@@ -98,6 +98,10 @@ export const FixedWakeHeader = ({
   const streakOpacity = isDead || isLoading ? OPACITY_DEAD : OPACITY_ACTIVE;
   const streakDisplayNum = isDead ? 0 : streakNumber;
   const showAllThree = isLoading || isDead;
+  const isWorkoutExecutionRoute =
+    typeof location?.pathname === 'string' &&
+    location.pathname.startsWith('/course/') &&
+    location.pathname.includes('/workout/execution');
   
   const handleProfilePress = () => {
     if (onProfilePress) {
@@ -183,12 +187,37 @@ export const FixedWakeHeader = ({
       )}
 
       {/* Logo - use require so Metro/Expo resolves asset URL in dev and build */}
-      <Image
-        source={require('../../assets/wake-logo-new.png')}
-        style={{ width: logoWidth, height: logoHeight }}
-        resizeMode="contain"
-        accessibilityLabel="WAKE"
-      />
+      {isWorkoutExecutionRoute ? (
+        <Image
+          source={require('../../assets/wake-logo-new.png')}
+          style={{ width: logoWidth, height: logoHeight }}
+          resizeMode="contain"
+          accessibilityLabel="WAKE"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          style={{
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-label="Ir al inicio"
+        >
+          <Image
+            source={require('../../assets/wake-logo-new.png')}
+            style={{ width: logoWidth, height: logoHeight }}
+            resizeMode="contain"
+            accessibilityLabel="WAKE"
+          />
+        </button>
+      )}
       
       {/* Menu Button - aligned with logo center, on the left */}
       {showMenuButton && (onMenuPress || menuButton) && (

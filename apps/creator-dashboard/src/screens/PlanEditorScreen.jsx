@@ -328,24 +328,29 @@ export default function PlanEditorScreen() {
 
     const t = setTimeout(async () => {
       try {
+        const expandedCategories = await nutritionDb.expandRecipeRefsInCategories(creatorId, planPayload.categories);
+        const payloadToSave = {
+          ...planPayload,
+          categories: expandedCategories,
+        };
         if (isAssignmentScope) {
           const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
           const effectivePlanId = assignmentPlanId || planId;
           if (!copy) {
             await clientNutritionPlanContentService.setFromLibrary(assignmentId, effectivePlanId, {
-              name: planPayload.name,
+              name: payloadToSave.name,
               description: '',
-              daily_calories: planPayload.daily_calories,
-              daily_protein_g: planPayload.daily_protein_g,
-              daily_carbs_g: planPayload.daily_carbs_g,
-              daily_fat_g: planPayload.daily_fat_g,
-              categories: planPayload.categories,
+              daily_calories: payloadToSave.daily_calories,
+              daily_protein_g: payloadToSave.daily_protein_g,
+              daily_carbs_g: payloadToSave.daily_carbs_g,
+              daily_fat_g: payloadToSave.daily_fat_g,
+              categories: payloadToSave.categories,
             });
           } else {
-            await clientNutritionPlanContentService.update(assignmentId, planPayload);
+            await clientNutritionPlanContentService.update(assignmentId, payloadToSave);
           }
         } else {
-          await nutritionDb.updatePlan(creatorId, planId, planPayload);
+          await nutritionDb.updatePlan(creatorId, planId, payloadToSave);
         }
         lastSavedRef.current = { name, macros, categoriesJson };
       } catch (e) {

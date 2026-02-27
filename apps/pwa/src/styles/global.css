@@ -308,6 +308,43 @@ body[data-tab-bar-hidden='true'] .wake-tab-bar-root {
   animation: slideUp 0.3s ease-out;
 }
 
+/* Modal exit animations (used by WakeModalOverlay) */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.wake-modal-backdrop-enter {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.wake-modal-backdrop-exit {
+  animation: fadeOut 0.25s ease-out forwards;
+}
+
+.wake-modal-content-enter {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+.wake-modal-content-exit {
+  animation: slideDown 0.25s ease-out forwards;
+}
+
 /* Media Queries */
 @media (max-width: 480px) {
   :root {
@@ -503,6 +540,14 @@ video::-webkit-media-controls-enclosure {
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
   z-index: 1;
+}
+
+/* Main screen program cards: per-pixel text color from image behind (each text pixel
+   blends with the image pixel directly behind it). Transparent background so backdrop
+   is the card's background-image; with difference, white image → black text. */
+[data-card-blend="true"] {
+  mix-blend-mode: difference;
+  background-color: transparent !important;
 }
 
 /* Lab nutrition pie (creator app style) – recharts */

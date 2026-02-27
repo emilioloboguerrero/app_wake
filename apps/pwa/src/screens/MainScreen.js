@@ -434,6 +434,49 @@ const MainScreen = ({ navigation, route }) => {
   const [libraryImageUri, setLibraryImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [upcomingCallCards, setUpcomingCallCards] = useState([]);
+  // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
+  const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
+
+  // Web: after cards with blend paint, read DOM to log computed style and diagnose why text may stay white
+  useEffect(() => {
+    if (!isWeb || cardImageLoadedIds.size === 0) return;
+    const id = setTimeout(() => {
+      const blendEls = typeof document !== 'undefined' ? document.querySelectorAll('[data-card-blend="true"]') : [];
+      blendEls.forEach((el, i) => {
+        const cs = el && window.getComputedStyle(el);
+        const courseId = el.getAttribute?.('data-card-course-id') || 'unknown';
+        if (!cs) return;
+        const mixBlend = cs.mixBlendMode || cs.getPropertyValue('mix-blend-mode');
+        const color = cs.color;
+        const parent = el.parentElement;
+        const parentCs = parent && window.getComputedStyle(parent);
+        const parentIsolation = parentCs ? parentCs.isolation || parentCs.getPropertyValue('isolation') : '';
+        const cardContainer = el.closest?.('[class*="cardContentWithImage"]') || el.parentElement?.parentElement;
+        const firstChildOfCard = cardContainer?.children?.[0];
+        logger.log('[CARD_CONTRAST] DOM after paint', {
+          courseId,
+          index: i,
+          mixBlendMode: mixBlend,
+          textColorComputed: color,
+          note: 'With blend, visual color is composited; computed color stays fill (#fff).',
+          parentIsolation: parentIsolation,
+          imageIsFirstChildOfCard: !!firstChildOfCard && (firstChildOfCard.tagName === 'IMG' || !!firstChildOfCard.querySelector?.('img')),
+          nextStep:
+            mixBlend !== 'difference'
+              ? 'mix-blend-mode not applied: check global.css [data-card-blend] or RN Web style override.'
+              : 'Blend is applied; if text still looks white, backdrop may not be the image (stacking/layer). Try ensuring image is direct sibling before overlay in DOM.',
+        });
+      });
+      if (blendEls.length === 0) {
+        logger.log('[CARD_CONTRAST] DOM after paint', {
+          noElementsFound: true,
+          nextStep: 'No [data-card-blend="true"] in DOM. Check that dataSet is set and selector in global.css matches.',
+        });
+      }
+    }, 100);
+    return () => clearTimeout(id);
+  }, [cardImageLoadedIds, isWeb]);
+
   // First name derived from auth state — stable across renders
   const firstName = useMemo(() => {
     const currentUser = auth.currentUser;
@@ -1334,18 +1377,31 @@ const MainScreen = ({ navigation, route }) => {
         logger.log(`🖼️ Course ${course.id || course.courseId || 'unknown'} has image URL:`, imageUrl);
       }
 
-      // Web: mix-blend-mode makes text contrast with image (no CORS, no canvas). Native: white text.
-      // Blend is computed at paint time. Until the image has loaded, the backdrop is the card bg (#2a2a2a),
-      // so the effective text color is fixed on first paint; it may not update after image load if the
-      // browser/RN Web doesn't repaint the blend layer. See [CARD_IMAGE_LOAD] log for load timing.
-      const textOverImageStyle = imageUrl && isWeb ? { mixBlendMode: 'difference' } : null;
+      // Web: per-pixel text color from image behind (mix-blend-mode: difference).
+      // Each text pixel is blended with the image pixel directly behind it (dark behind → light text, light behind → dark text).
+      // This is NOT "one color for all text" — that would require sampling the image (canvas/server). We use CSS blend for per-pixel.
+      // Apply blend ONLY after image has loaded so the first blend paint uses the image as backdrop.
+      const courseIdForCard = course.id || course.courseId;
+      const imageLoadedForBlend = isWeb && cardImageLoadedIds.has(courseIdForCard);
+      const textOverImageStyle =
+        imageUrl && isWeb && imageLoadedForBlend ? { mixBlendMode: 'difference' } : null;
+      const contrastPhase = imageLoadedForBlend ? 'after-image-load' : 'before-image-load';
+      const blendKey = imageLoadedForBlend ? 'blend-loaded' : 'blend-pending';
+      const textColorFromStyles = '#ffffff';
       logger.log('[CARD_CONTRAST]', {
-        courseId: course.id || course.courseId,
-        isWeb,
-        Platform_OS: Platform.OS,
-        hasImageUrl: !!imageUrl,
+        courseId: courseIdForCard,
+        phase: contrastPhase,
+        blendKey,
         blendStyleApplied: !!textOverImageStyle,
-        textOverImageStyle: textOverImageStyle ? 'mixBlendMode: difference' : 'null (white only)',
+        colorBeforeChange: contrastPhase === 'before-image-load' ? textColorFromStyles : '(was ' + textColorFromStyles + ' before image load)',
+        colorAfterChange:
+          contrastPhase === 'after-image-load'
+            ? 'computed by browser (mix-blend-mode: difference over image); getComputedStyle(el).color will still be ' + textColorFromStyles
+            : 'N/A (blend not applied yet)',
+        message:
+          contrastPhase === 'after-image-load'
+            ? 'Blend applied (first paint over image — color should reflect image)'
+            : 'No blend yet (solid white until image loads)',
       });
 
       // Render based on status
@@ -1479,6 +1535,16 @@ const MainScreen = ({ navigation, route }) => {
       }
       
       // Normal course card (ready status)
+      // Web + image loaded: use background-image on container so blend backdrop is the image (avoids stacking/layer issues with ExpoImage).
+      const useBackgroundImageForBlend = isWeb && imageLoadedForBlend && imageUrl;
+      const cardContentStyle = [
+        styles.cardContentWithImage,
+        useBackgroundImageForBlend && {
+          backgroundImage: `url(${imageUrl})`,
+          backgroundSize: 'cover',
+          backgroundColor: 'transparent',
+        },
+      ];
       return (
         <Animated.View style={[
           styles.swipeableCard, 
@@ -1488,24 +1554,43 @@ const MainScreen = ({ navigation, route }) => {
           }
         ]}>
           {imageUrl ? (
-            <View style={styles.cardContentWithImage}>
-              <ExpoImage
-                source={{ uri: imageUrl }}
-                style={styles.cardBackgroundImage}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                transition={200}
-                priority="high"
-                recyclingKey={course.id || course.courseId || 'unknown'}
-                onLoad={() => {
-                  logger.log('[CARD_IMAGE_LOAD]', {
-                    courseId: course.id || course.courseId,
-                    note: 'Image painted; blend should recompute on repaint if browser triggers it.',
-                  });
-                }}
-              />
+            <View style={cardContentStyle}>
+              {!useBackgroundImageForBlend && (
+                <ExpoImage
+                  source={{ uri: imageUrl }}
+                  style={styles.cardBackgroundImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={200}
+                  priority="high"
+                  recyclingKey={course.id || course.courseId || 'unknown'}
+                  onLoad={() => {
+                    const id = course.id || course.courseId;
+                    logger.log('[CARD_IMAGE_LOAD]', {
+                      courseId: id,
+                      step: 'image-painted',
+                      message: 'Image on screen; calling setState to force re-render so blend repaints.',
+                    });
+                    setCardImageLoadedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) return prev;
+                      next.add(id);
+                      logger.log('[CARD_CONTRAST]', {
+                        courseId: id,
+                        step: 'state-update',
+                        message: 'Adding course to cardImageLoadedIds → re-render will follow with phase after-image-load',
+                      });
+                      return next;
+                    });
+                  }}
+                />
+              )}
               <TouchableOpacity
-                style={[styles.cardOverlay, imageUrl && isWeb && { isolation: 'isolate' }]}
+                style={[
+                  styles.cardOverlay,
+                  imageUrl && isWeb && { isolation: 'isolate' },
+                  useBackgroundImageForBlend && { backgroundColor: 'transparent' },
+                ]}
                 onPress={() => handleCoursePress(item.data)}
               >
                 {trialMetadata.isTrial && (
@@ -1513,7 +1598,14 @@ const MainScreen = ({ navigation, route }) => {
                     <Text style={styles.trialBadgeText}>Prueba</Text>
                   </View>
                 )}
-                <View style={textOverImageStyle}>
+                <View
+                  key={blendKey}
+                  style={[
+                    textOverImageStyle,
+                    useBackgroundImageForBlend && { backgroundColor: 'transparent' },
+                  ]}
+                  {...(isWeb && imageLoadedForBlend && { dataSet: { cardBlend: 'true', cardCourseId: courseIdForCard } })}
+                >
                   <Text style={styles.cardTitle}>
                     {course.title || 'Curso sin título'}
                   </Text>

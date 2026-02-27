@@ -224,12 +224,72 @@ export async function deleteDiaryEntry(userId, entryId) {
   await deleteDoc(doc(firestore, 'users', userId, 'nutrition', 'diary', entryId));
 }
 
+/**
+ * Expand recipe refs in plan categories: replace each item with recipe===true by the meal's items
+ * and set recipe_meal_id, recipe_name, recipe_video_url on the option.
+ * @param {string} creatorId
+ * @param {Array<{ id, label, order, options: Array<{ id, label, items }> }>} categories
+ * @returns {Promise<Array>} categories with expanded items and recipe metadata on options
+ */
+export async function expandRecipeRefsInCategories(creatorId, categories) {
+  if (!creatorId || !Array.isArray(categories)) return categories;
+  const result = [];
+  for (const cat of categories) {
+    const options = [];
+    for (const opt of cat.options || []) {
+      const items = opt.items || [];
+      let newItems = [];
+      let recipe_meal_id = null;
+      let recipe_name = null;
+      let recipe_video_url = null;
+      for (const item of items) {
+        if (item.recipe === true && item.meal_id) {
+          const meal = await getMealById(creatorId, item.meal_id);
+          if (meal && Array.isArray(meal.items) && meal.items.length > 0) {
+            newItems = newItems.concat(meal.items);
+            recipe_meal_id = meal.id;
+            recipe_name = meal.name ?? item.name ?? '';
+            recipe_video_url = meal.video_url ?? meal.videoUrl ?? null;
+          } else {
+            newItems.push({ ...item, name: item.name || meal?.name || 'Receta' });
+          }
+        } else {
+          newItems.push(item);
+        }
+      }
+      const expandedOpt = {
+        id: opt.id,
+        label: opt.label ?? '',
+        items: newItems,
+      };
+      if (recipe_meal_id != null) {
+        expandedOpt.recipe_meal_id = recipe_meal_id;
+        expandedOpt.recipe_name = recipe_name;
+        expandedOpt.recipe_video_url = recipe_video_url;
+      } else if (opt.recipe_meal_id != null || opt.recipe_video_url != null) {
+        expandedOpt.recipe_meal_id = opt.recipe_meal_id;
+        expandedOpt.recipe_name = opt.recipe_name;
+        expandedOpt.recipe_video_url = opt.recipe_video_url;
+      }
+      options.push(expandedOpt);
+    }
+    result.push({
+      id: cat.id,
+      label: cat.label ?? '',
+      order: cat.order ?? result.length,
+      options,
+    });
+  }
+  return result;
+}
+
 export default {
   getMealsByCreator,
   getMealById,
   createMeal,
   updateMeal,
   deleteMeal,
+  expandRecipeRefsInCategories,
   getPlansByCreator,
   getPlanById,
   createPlan,
