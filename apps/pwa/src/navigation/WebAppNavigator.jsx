@@ -41,39 +41,23 @@ import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
 import LabScreen from '../screens/LabScreen.web';
-import OnboardingScreen from '../screens/OnboardingScreen';
+import OnboardingFlow from '../screens/onboarding/OnboardingFlow.web';
 
 import firestoreService from '../services/firestoreService';
 import webStorageService from '../services/webStorageService';
 import logger from '../utils/logger';
 import { isSafariWeb } from '../utils/platform';
 import BottomTabBar from '../components/BottomTabBar.web';
-import OnboardingNavigator from './OnboardingNavigator';
-import { NavigationContainer } from '@react-navigation/native';
+import ReadinessCheckModal from '../components/ReadinessCheckModal.web';
+import { getTodayReadiness } from '../services/readinessService';
 import UserRoleContext from '../contexts/UserRoleContext';
 
 export const RefreshProfileContext = createContext(null);
+export const OpenReadinessModalContext = createContext(null);
 
 
-// Wrapper so OnboardingScreen (profile step) can refetch profile and navigate to questions on web
-const OnboardingProfileRoute = () => {
-  const ctx = useContext(RefreshProfileContext);
-  const navigate = useNavigate();
-  const refreshUserProfile = ctx?.refreshUserProfile;
-  const onComplete = React.useCallback(() => {
-    if (refreshUserProfile) refreshUserProfile();
-    navigate('/onboarding/questions', { replace: true });
-  }, [refreshUserProfile, navigate]);
-  const route = { params: {}, name: 'Onboarding' };
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      {React.createElement(withErrorBoundary(() => <OnboardingScreen route={route} onComplete={onComplete} />, 'Onboarding'))}
-    </Suspense>
-  );
-};
-
-// Wrapper so OnboardingNavigator (questions flow) can refetch and go home on complete
-const OnboardingQuestionsRoute = () => {
+// Unified onboarding flow (profile + questions in one component)
+const OnboardingFlowRoute = ({ initialStep = 0 }) => {
   const ctx = useContext(RefreshProfileContext);
   const navigate = useNavigate();
   const refreshUserProfile = ctx?.refreshUserProfile;
@@ -84,10 +68,8 @@ const OnboardingQuestionsRoute = () => {
     }
     navigate('/', { replace: true });
   }, [refreshUserProfile, navigate]);
-  return (
-    <NavigationContainer independent={true}>
-      {React.createElement(withErrorBoundary(() => <OnboardingNavigator onComplete={onComplete} />, 'OnboardingQuestions'))}
-    </NavigationContainer>
+  return React.createElement(
+    withErrorBoundary(() => <OnboardingFlow initialStep={initialStep} onComplete={onComplete} />, 'OnboardingFlow')
   );
 };
 
@@ -363,6 +345,43 @@ const AuthenticatedLayout = ({ children }) => {
     }
   }, [shouldShowLoading, loadingTimeoutMs]);
 
+  const [showReadiness, setShowReadiness] = React.useState(false);
+  const [readinessMandatory, setReadinessMandatory] = React.useState(false);
+  const openReadinessModal = React.useCallback(() => {
+    setReadinessMandatory(false);
+    setShowReadiness(true);
+  }, []);
+  const readinessCheckedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (readinessCheckedRef.current) return;
+    if (!finalHasUser || profileLoading || userProfile === null) return;
+    const needsOnboardingCheck = userProfile && (
+      userProfile.onboardingCompleted === false ||
+      (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
+    );
+    if (needsOnboardingCheck) return;
+    readinessCheckedRef.current = true;
+    const uid = finalHasUser.uid;
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const lsKey = `wake_readiness_${dateStr}`;
+    try {
+      const cached = localStorage.getItem(lsKey);
+      if (cached === 'done' || cached === 'skipped') return;
+    } catch (_) {}
+    getTodayReadiness(uid, dateStr).then((existing) => {
+      if (existing) {
+        try { localStorage.setItem(lsKey, 'done'); } catch (_) {}
+      } else {
+        setReadinessMandatory(true);
+        setTimeout(() => setShowReadiness(true), 800);
+      }
+    }).catch(() => {});
+  }, [finalHasUser?.uid, profileLoading, userProfile]);
+
   if (shouldShowLoading && !loadingTimeout) {
     logger.prod('LAYOUT showing LoadingScreen', 'loading:', loading, 'loadingTimeout:', loadingTimeout);
     logger.debug('[AUTH LAYOUT] Showing loading screen - loading:', loading, 'hasFirebaseUser:', hasFirebaseUser);
@@ -448,6 +467,7 @@ const AuthenticatedLayout = ({ children }) => {
 
   logger.log('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
   const userRole = userProfile?.role ?? null;
+
   // Render tab bar in a portal to document.body so position:fixed is relative to viewport
   const tabBarEl =
     typeof document !== 'undefined' && document.body
@@ -455,12 +475,36 @@ const AuthenticatedLayout = ({ children }) => {
       : <BottomTabBar />;
   return (
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
-      <UserRoleContext.Provider value={{ role: userRole }}>
-        {children}
-        {tabBarEl}
-      </UserRoleContext.Provider>
+      <OpenReadinessModalContext.Provider value={{ openReadinessModal }}>
+        <UserRoleContext.Provider value={{ role: userRole }}>
+          {children}
+          {tabBarEl}
+          {showReadiness && typeof document !== 'undefined' && document.body
+            ? createPortal(
+                <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />,
+                document.body
+              )
+            : showReadiness
+              ? <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />
+              : null}
+        </UserRoleContext.Provider>
+      </OpenReadinessModalContext.Provider>
     </RefreshProfileContext.Provider>
   );
+};
+
+// Delay mounting NutritionScreen by one frame so we never show empty content.
+// When layout switches from LoadingScreen to children, React mounts NutritionScreen;
+// its first render is slow (many hooks), so the content area can flash empty before
+// NutritionScreen commits. This wrapper shows LoadingScreen until after first paint,
+// then mounts NutritionScreen, so we always have loading visible then NutritionScreen.
+const NutritionRouteWrapper = () => {
+  const [showScreen, setShowScreen] = React.useState(false);
+  React.useEffect(() => {
+    setShowScreen(true);
+  }, []);
+  if (!showScreen) return <LoadingScreen />;
+  return React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'));
 };
 
 // Main App Routes - SIMPLIFIED
@@ -520,7 +564,7 @@ const WebAppNavigator = () => {
         path="/onboarding"
         element={
           <AuthenticatedLayout>
-            <OnboardingProfileRoute />
+            <OnboardingFlowRoute initialStep={0} />
           </AuthenticatedLayout>
         }
       />
@@ -528,7 +572,7 @@ const WebAppNavigator = () => {
         path="/onboarding/questions"
         element={
           <AuthenticatedLayout>
-            <OnboardingQuestionsRoute />
+            <OnboardingFlowRoute initialStep={4} />
           </AuthenticatedLayout>
         }
       />
@@ -556,7 +600,7 @@ const WebAppNavigator = () => {
         path="/nutrition"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'))}
+            <NutritionRouteWrapper />
           </AuthenticatedLayout>
         }
       />

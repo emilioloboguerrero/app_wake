@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -41,14 +42,19 @@ import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
+import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
 import { calculateExpirationDate } from '../utils/durationHelper';
+import { getAverageColorFromImageUrl } from '../utils/imageColorUtils';
 
-const ProfileScreen = ({ navigation }) => {
+const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
+
+const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   
   const { user: contextUser } = useAuth();
@@ -101,6 +107,7 @@ const ProfileScreen = ({ navigation }) => {
   const [usernameError, setUsernameError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState(null);
+  const [profileAverageColor, setProfileAverageColor] = useState(null);
   
   const [userProfile, setUserProfile] = useState({
     displayName: '',
@@ -247,6 +254,23 @@ const ProfileScreen = ({ navigation }) => {
 
     loadProfileForDisplay();
   }, [user]);
+
+  // Extract average color from profile picture for gradient (web: canvas, native: no-op)
+  useEffect(() => {
+    if (!profilePictureUrl) {
+      setProfileAverageColor(null);
+      return;
+    }
+    let cancelled = false;
+    getAverageColorFromImageUrl(profilePictureUrl).then((color) => {
+      if (!cancelled && color) {
+        setProfileAverageColor(color);
+      } else if (!cancelled) {
+        setProfileAverageColor(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [profilePictureUrl]);
 
   // Ensure user has a display name (for existing users)
   const getUserName = () => {
@@ -428,6 +452,7 @@ const ProfileScreen = ({ navigation }) => {
       
       if (newPictureUrl) {
         setProfilePictureUrl(newPictureUrl);
+        hybridDataService.patchUserProfileCache(user.uid, { profilePictureUrl: newPictureUrl });
         Alert.alert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
       }
     } catch (error) {
@@ -879,10 +904,44 @@ const ProfileScreen = ({ navigation }) => {
 
 
 
+  const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
+  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
+  const gradientHeight = headerHeight + safeAreaTop + 140;
+
   return (
     <>
       <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
-        <FixedWakeHeader />
+        {profileAverageColor && (
+          <View
+            style={[
+              styles.profileGradientOverlay,
+              {
+                height: gradientHeight,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            {Platform.OS === 'web' ? (
+              <View
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {
+                    backgroundImage: `linear-gradient(to bottom, ${profileAverageColor} 0%, rgba(26,26,26,0.6) 50%, transparent 100%)`,
+                  },
+                ]}
+              />
+            ) : LinearGradient ? (
+              <LinearGradient
+                colors={[profileAverageColor, 'rgba(26,26,26,0.6)', 'transparent']}
+                locations={[0, 0.5, 1]}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+              />
+            ) : null}
+          </View>
+        )}
+        <FixedWakeHeader backgroundColor={profileAverageColor ? 'transparent' : '#1a1a1a'} />
 
       {/* Settings Modal */}
       <Modal animationType="slide" transparent={true} visible={isSettingsModalVisible} onRequestClose={hideSettingsModal}>
@@ -1490,6 +1549,16 @@ const ProfileScreen = ({ navigation }) => {
 
           {/* User Profile Card */}
           <View style={styles.userProfileCard}>
+            {onOpenReadinessModal ? (
+              <TouchableOpacity
+                style={styles.readinessIconButton}
+                onPress={onOpenReadinessModal}
+                activeOpacity={0.7}
+                accessibilityLabel="Registro de bienestar"
+              >
+                <Heart01 width={20} height={20} stroke="#ffffff" strokeWidth={2} />
+              </TouchableOpacity>
+            ) : null}
             <View style={styles.profileInfoContainer}>
               <TouchableOpacity 
                 style={styles.profilePictureButton}
@@ -1625,6 +1694,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
+  profileGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+  },
   scrollView: {
     flex: 1,
   },
@@ -1649,6 +1725,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: 20,
   },
   userProfileCard: {
+    position: 'relative',
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
     borderWidth: 1,
@@ -1662,6 +1739,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     padding: Math.max(12, screenWidth * 0.03), // Reduced padding
     marginBottom: Math.max(15, screenHeight * 0.02), // Responsive margin
     marginHorizontal: Math.max(24, screenWidth * 0.06), // Responsive horizontal margin
+  },
+  readinessIconButton: {
+    position: 'absolute',
+    top: Math.max(12, screenWidth * 0.03),
+    right: Math.max(12, screenWidth * 0.03),
+    padding: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    zIndex: 1,
   },
   programsSubscriptionsContainer: {
     flexDirection: 'row',

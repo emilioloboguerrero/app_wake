@@ -242,16 +242,35 @@ const BottomTabBar = () => {
         return;
       }
       if (activeAssignments.length === 1) {
+        const assignment = activeAssignments[0];
+        const planSnapshot = assignment.plan && typeof assignment.plan === 'object'
+          ? { id: assignment.planId, ...assignment.plan }
+          : null;
         closeMenu();
         setMenuActionLoading(false);
-        navigate('/nutrition', { state: { preferredAssignmentId: activeAssignments[0].id } });
+        navigate('/nutrition', {
+          state: {
+            preferredAssignmentId: assignment.id,
+            initialAssignment: assignment,
+            initialPlan: planSnapshot,
+          },
+        });
         return;
       }
       const pinned = pinnedId ? activeAssignments.find((a) => a.id === pinnedId) : null;
       if (pinned) {
+        const planSnapshot = pinned.plan && typeof pinned.plan === 'object'
+          ? { id: pinned.planId, ...pinned.plan }
+          : null;
         closeMenu();
         setMenuActionLoading(false);
-        navigate('/nutrition', { state: { preferredAssignmentId: pinned.id } });
+        navigate('/nutrition', {
+          state: {
+            preferredAssignmentId: pinned.id,
+            initialAssignment: pinned,
+            initialPlan: planSnapshot,
+          },
+        });
         return;
       }
       closeMenu();
@@ -277,8 +296,18 @@ const BottomTabBar = () => {
     const userId = user?.uid ?? auth.currentUser?.uid;
     if (!userId) return;
     setProgramPickerNutrition((prev) => ({ ...prev, visible: false }));
-    firestoreService.setPinnedNutritionAssignmentId(userId, item.assignmentId || item.id).then(() => {
-      navigate('/nutrition', { state: { preferredAssignmentId: item.assignmentId || item.id } });
+    const assignmentId = item.assignmentId || item.id;
+    const planSnapshot = item.plan && typeof item.plan === 'object'
+      ? { id: item.planId, ...item.plan }
+      : null;
+    firestoreService.setPinnedNutritionAssignmentId(userId, assignmentId).then(() => {
+      navigate('/nutrition', {
+        state: {
+          preferredAssignmentId: assignmentId,
+          initialAssignment: item,
+          initialPlan: planSnapshot,
+        },
+      });
     }).catch((err) => {
       logger.error('[Registrar comida] setPinnedNutritionAssignmentId failed', err?.message ?? err);
     });
@@ -289,8 +318,7 @@ const BottomTabBar = () => {
   };
 
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
-  const showNutritionTab = role !== null && isAdmin(role);
-  const showLabTab = false; // disabled for now — lab/progress tab hidden
+  const showLabTab = true;
 
   // Determine if tab bar should be visible based on current route (nutrition has its own header back, no tab bar)
   const shouldShowTabBar = () => {
@@ -303,7 +331,6 @@ const BottomTabBar = () => {
   // Determine which tab is active
   const isMainActive = location.pathname === '/';
   const isProfileActive = location.pathname === '/profile';
-  const isNutritionActive = location.pathname === '/nutrition';
   const isProgressActive = location.pathname === '/progress';
 
   // Icon styling based on focus state
@@ -317,11 +344,6 @@ const BottomTabBar = () => {
       style: { opacity: isActive ? 1 : 0.6 }
     };
   };
-  const getSteakIconProps = (isActive) => ({
-    ...getIconProps(isActive),
-    strokeWidth: isActive ? 3.4 : 3,
-  });
-
   if (!show) {
     return null;
   }
@@ -441,7 +463,7 @@ const BottomTabBar = () => {
                 <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Entrenar</span>
               </div>
               <div style={actionCardStyle} onClick={handleRegistrarComidaPress} role="button" tabIndex={0}>
-                <SvgSteak width={28} height={28} stroke="#ffffff" fill="#ffffff" />
+                <SvgSteak width={28} height={28} stroke="#ffffff" fill="none" />
                 <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar comida</span>
               </div>
             </>
@@ -476,18 +498,6 @@ const BottomTabBar = () => {
                       strokeWidth={isProgressActive ? 2.8 : 2.5}
                       style={{ opacity: isProgressActive ? 1 : 0.6 }}
                     />
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {showNutritionTab && (
-                <TouchableOpacity
-                  style={styles.tabButton}
-                  onPress={() => navigate('/nutrition')}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.tabIconWrap}>
-                    <SvgSteak {...getSteakIconProps(isNutritionActive)} />
                   </View>
                 </TouchableOpacity>
               )}

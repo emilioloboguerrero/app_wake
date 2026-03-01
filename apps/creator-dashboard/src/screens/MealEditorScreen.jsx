@@ -658,6 +658,9 @@ export default function MealEditorScreen() {
             </div>
           </div>
         </div>
+        <div className="meal-editor-attribution">
+          <span>Powered by fatsecret</span>
+        </div>
       </div>
 
       {/* Manual food (add your own) modal */}

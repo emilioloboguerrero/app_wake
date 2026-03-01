@@ -40,6 +40,16 @@ async function getPlanModuleFull(planId, moduleId, creatorId = null) {
   const sessions = await plansService.getSessionsByModule(planId, moduleId);
   const sessionsWithExercises = await Promise.all(
     sessions.map(async (session) => {
+      if (session.useLocalContent) {
+        const exercises = await plansService.getExercisesBySession(planId, moduleId, session.id);
+        const exercisesWithSets = await Promise.all(
+          exercises.map(async (ex) => {
+            const sets = await plansService.getSetsByExercise(planId, moduleId, session.id, ex.id);
+            return { ...ex, sets };
+          })
+        );
+        return { ...session, exercises: exercisesWithSets };
+      }
       const librarySessionRef = session.librarySessionRef;
       let mergedSession = session;
       if (creatorId && librarySessionRef) {
@@ -413,19 +423,26 @@ class ClientPlanContentService {
    */
   async ensureClientPlanContentForWeek(clientId, programId, weekKey, options = {}) {
     const existing = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (existing) return;
     const { planId, moduleId, creatorId } = options;
+    // If a copy exists and has sessions, it's complete — nothing to do.
+    if (existing?.sessions?.length > 0) return;
+    // If a copy exists but has zero sessions AND we have plan info, it was likely created
+    // empty due to a previous bug (moduleIndex out of bounds). Re-copy from the plan so
+    // original plan sessions are available alongside any manually added sessions.
     if (planId && moduleId) {
       await this.copyFromPlan(clientId, programId, weekKey, planId, moduleId, creatorId);
       return;
     }
-    const id = docId(clientId, programId, weekKey);
-    await setDoc(doc(firestore, COLLECTION, id), {
-      title: 'Semana personalizada',
-      order: 0,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    });
+    // No plan info — create a minimal root doc only if none exists yet.
+    if (!existing) {
+      const id = docId(clientId, programId, weekKey);
+      await setDoc(doc(firestore, COLLECTION, id), {
+        title: 'Semana personalizada',
+        order: 0,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+    }
   }
 
   /**

@@ -550,9 +550,11 @@ video::-webkit-media-controls-enclosure {
   background-color: transparent !important;
 }
 
-/* Lab nutrition pie (creator app style) – recharts */
+/* Lab nutrition pie – visual only; legend/labels hidden to avoid duplicate macro text */
+.lab-nutrition-pie-chart .recharts-legend-wrapper {
+  display: none !important;
+}
 .lab-nutrition-pie-chart .recharts-pie-label text,
 .lab-nutrition-pie-chart .recharts-label-list text {
-  font-size: 6px !important;
-  fill: rgba(255, 255, 255, 0.6);
+  display: none !important;
 }

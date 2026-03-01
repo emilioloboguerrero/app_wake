@@ -12,121 +12,77 @@ import {
 import { SvgXml } from 'react-native-svg';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../../components/WakeHeader';
 
+const targetIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+  <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2"/>
+  <circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="2"/>
+</svg>`;
+
+const muscleIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none">
+  <path d="M2.01792 20.3051C3.14656 21.9196 8.05942 23.1871 10.3797 20.1645C12.8894 21.3649 17.0289 20.9928 20.3991 19.1134C20.8678 18.8521 21.3112 18.5222 21.5827 18.0593C22.1957 17.0143 22.2102 15.5644 21.0919 13.4251C19.2274 8.77072 15.874 4.68513 14.5201 3.04212C14.2421 2.78865 12.4687 2.42868 11.3872 2.08279C10.9095 1.93477 10.02 1.83664 8.95612 3.23862C8.45176 3.90329 6.16059 5.5357 9.06767 6.63346C9.51805 6.74806 9.84912 6.95939 11.9038 6.58404C12.1714 6.53761 12.8395 6.58404 13.3103 7.41041L14.2936 8.81662C14.3851 8.94752 14.4445 9.09813 14.4627 9.25682C14.635 10.7557 14.6294 12.6323 15.4651 13.5826C14.1743 12.6492 10.8011 11.5406 8.2595 14.6951M2.00189 12.94C3.21009 11.791 6.71197 9.97592 10.4179 12.5216" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const boltIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const heartIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M19.2373 6.23731C20.7839 7.78395 20.8432 10.2727 19.3718 11.8911L11.9995 20.0001L4.62812 11.8911C3.15679 10.2727 3.21605 7.7839 4.76269 6.23726C6.48961 4.51034 9.33372 4.66814 10.8594 6.5752L12 8.00045L13.1396 6.57504C14.6653 4.66798 17.5104 4.51039 19.2373 6.23731Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const trophyIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M4 22h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const OPTIONS = [
+  { id: 'fat_loss', text: 'Perder grasa corporal', icon: targetIcon },
+  { id: 'muscle', text: 'Ganar músculo y fuerza', icon: muscleIcon },
+  { id: 'performance', text: 'Mejorar mi rendimiento deportivo', icon: boltIcon },
+  { id: 'health', text: 'Sentirme más saludable y con más energía', icon: heartIcon },
+  { id: 'event', text: 'Prepararme para un evento o competencia', icon: trophyIcon },
+];
+
 const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const [selected, setSelected] = useState(null);
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
 
-  // Icon SVGs (simplified versions for the available icons)
-  const heartIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M19.2373 6.23731C20.7839 7.78395 20.8432 10.2727 19.3718 11.8911L11.9995 20.0001L4.62812 11.8911C3.15679 10.2727 3.21605 7.7839 4.76269 6.23726C6.48961 4.51034 9.33372 4.66814 10.8594 6.5752L12 8.00045L13.1396 6.57504C14.6653 4.66798 17.5104 4.51039 19.2373 6.23731Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-
-  const starIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-
-  const flagIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-
-  const targetIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-    <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2"/>
-    <circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="2"/>
-  </svg>`;
-
-  const muscleIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" color="#000000" fill="none">
-    <path d="M2.01792 20.3051C3.14656 21.9196 8.05942 23.1871 10.3797 20.1645C12.8894 21.3649 17.0289 20.9928 20.3991 19.1134C20.8678 18.8521 21.3112 18.5222 21.5827 18.0593C22.1957 17.0143 22.2102 15.5644 21.0919 13.4251C19.2274 8.77072 15.874 4.68513 14.5201 3.04212C14.2421 2.78865 12.4687 2.42868 11.3872 2.08279C10.9095 1.93477 10.02 1.83664 8.95612 3.23862C8.45176 3.90329 6.16059 5.5357 9.06767 6.63346C9.51805 6.74806 9.84912 6.95939 11.9038 6.58404C12.1714 6.53761 12.8395 6.58404 13.3103 7.41041L14.2936 8.81662C14.3851 8.94752 14.4445 9.09813 14.4627 9.25682C14.635 10.7557 14.6294 12.6323 15.4651 13.5826C14.1743 12.6492 10.8011 11.5406 8.2595 14.6951M2.00189 12.94C3.21009 11.791 6.71197 9.97592 10.4179 12.5216" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
-  </svg>`;
-
-  const usersIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-
-  const options = [
-    { id: 1, text: 'Ganar más energía y sentirme mejor en mi día a día', icon: heartIcon },
-    { id: 2, text: 'Alcanzar una meta específica (competencia, carrera, evento)', icon: flagIcon },
-    { id: 3, text: 'Perder peso o grasa corporal', icon: targetIcon },
-    { id: 4, text: 'Ganar músculo o fuerza', icon: muscleIcon },
-    { id: 5, text: 'Conocer gente nueva y ser parte de una comunidad', icon: usersIcon },
-  ];
-
-  const handleOptionSelect = (optionId) => {
-    setSelectedAnswers(prev => {
-      if (prev.includes(optionId)) {
-        // Remove if already selected
-        return prev.filter(id => id !== optionId);
-      } else if (prev.length < 2) {
-        // Add if less than 2 selected
-        return [...prev, optionId];
-      } else {
-        // Replace first selected with new one if already at max
-        return [prev[1], optionId];
-      }
-    });
-  };
-
   const handleNext = () => {
-    if (selectedAnswers.length > 0) {
-      // Convert selected IDs to actual text answers
-      const selectedMotivations = selectedAnswers.map(id => {
-        const option = options.find(opt => opt.id === id);
-        return option ? option.text : null;
-      }).filter(Boolean); // Remove any null values
-      
-      onAnswer('motivation', selectedMotivations);
-      navigation.navigate('OnboardingQuestion2');
-    }
+    if (!selected) return;
+    const opt = OPTIONS.find(o => o.id === selected);
+    onAnswer('primaryGoal', opt.id);
+    navigation.navigate('OnboardingQuestion2');
   };
 
   return (
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
-
       <WakeHeaderContent style={styles.contentColumn}>
         <WakeHeaderSpacer />
-        {/* Question fixed at top – not scrollable */}
         <View style={styles.questionContainer}>
           <Text style={styles.question}>
-            ¿Cuál es tu motivación principal para hacer deporte?
+            ¿Cuál es tu objetivo número uno ahora mismo?
           </Text>
         </View>
-
-        {/* Only the options list scrolls */}
-        <ScrollView
-          style={styles.optionsScrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={true}
-          nestedScrollEnabled
-        >
-          <View style={styles.optionsGrid}>
-            {options.map((option) => (
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+          <View style={styles.cardList}>
+            {OPTIONS.map(opt => (
               <TouchableOpacity
-                key={option.id}
-                style={[
-                  styles.optionCube,
-                  selectedAnswers.includes(option.id) && styles.optionCubeSelected
-                ]}
-                onPress={() => handleOptionSelect(option.id)}
+                key={opt.id}
+                style={[styles.card, selected === opt.id && styles.cardSelected]}
+                onPress={() => setSelected(opt.id)}
+                activeOpacity={0.7}
               >
-                <View style={styles.optionIcon}>
-                  <SvgXml 
-                    xml={option.icon} 
-                    width={32} 
-                    height={32} 
-                    color={selectedAnswers.includes(option.id) ? '#BFA84D' : '#ffffff'}
-                  />
+                <View style={styles.cardIcon}>
+                  <SvgXml xml={opt.icon} width={28} height={28} color={selected === opt.id ? 'rgba(255,255,255,0.95)' : '#ffffff'} />
                 </View>
-                <Text style={[
-                  styles.optionText,
-                  selectedAnswers.includes(option.id) && styles.optionTextSelected
-                ]}>
-                  {option.text}
+                <Text style={[styles.cardText, selected === opt.id && styles.cardTextSelected]}>
+                  {opt.text}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -134,179 +90,69 @@ const OnboardingQuestion1 = ({ navigation, onAnswer }) => {
         </ScrollView>
       </WakeHeaderContent>
 
-      {/* Fixed bottom bar: button + progress + selection info */}
-      <View style={styles.bottomButtonContainer}>
+      <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[
-            styles.nextButton,
-            selectedAnswers.length === 0 && styles.nextButtonDisabled
-          ]}
+          style={[styles.nextButton, !selected && styles.nextButtonDisabled]}
           onPress={handleNext}
-          disabled={selectedAnswers.length === 0}
+          disabled={!selected}
         >
-          <Text style={[
-            styles.nextButtonText,
-            selectedAnswers.length === 0 && styles.nextButtonTextDisabled
-          ]}>
-            Continuar
-          </Text>
-          <Text
-            style={[
-              styles.progress,
-              selectedAnswers.length === 0 && styles.progressDisabled
-            ]}
-          >
-            1 de 5
-          </Text>
+          <Text style={[styles.nextButtonText, !selected && styles.nextButtonTextDisabled]}>Continuar</Text>
+          <Text style={[styles.progress, !selected && styles.progressDisabled]}>1 de 7</Text>
         </TouchableOpacity>
-        {selectedAnswers.length > 0 && (
-          <Text style={styles.selectionInfo}>
-            {selectedAnswers.length} de 2 seleccionado{selectedAnswers.length > 1 ? 's' : ''}
-          </Text>
-        )}
       </View>
     </SafeAreaView>
   );
 };
 
 const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
-  contentColumn: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
-  },
-  optionsScrollView: {
-    flex: 1,
-    minHeight: 0,
-    // Web: Stack doesn't constrain height, so give ScrollView a ceiling so it can scroll
-    ...(Platform.OS === 'web' ? { maxHeight: Math.max(220, screenHeight - 300) } : {}),
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    // Reserve space for fixed bar at max height (button + progress + "X de Y seleccionado(s)" + padding)
-    paddingBottom: 180,
-  },
-  progress: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#BFA84D',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  selectionInfo: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '400',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  progressDisabled: {
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  questionContainer: {
-    minHeight: screenHeight * 0.16,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    marginTop: 0,
-  },
-  question: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    lineHeight: 36,
-    textAlign: 'center',
-  },
-  optionsGrid: {
+  container: { flex: 1, backgroundColor: '#1a1a1a' },
+  contentColumn: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  scrollView: { flex: 1, minHeight: 0, ...(Platform.OS === 'web' ? { maxHeight: Math.max(220, screenHeight - 300) } : {}) },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 160 },
+  questionContainer: { minHeight: screenHeight * 0.15, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: 10 },
+  question: { fontSize: 26, fontWeight: '700', color: '#ffffff', lineHeight: 34, textAlign: 'center' },
+  cardList: { gap: 10, marginTop: 4 },
+  card: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 5,
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  optionCube: {
-    width: (screenWidth - 60) / 2, // 2 columns with margins
-    backgroundColor: '#2a2a2a',
-    padding: 20,
-    borderRadius: 12, // Match OnboardingScreen.js
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)', // Match OnboardingScreen.js default
-    shadowColor: 'rgba(255, 255, 255, 0.4)', // Match OnboardingScreen.js
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
     alignItems: 'center',
-    minHeight: 140,
-    justifyContent: 'center',
-  },
-  optionCubeSelected: {
-    borderColor: 'rgba(191, 168, 77, 0.7)', // Match OnboardingScreen.js success
+    backgroundColor: '#222222',
+    borderRadius: 12,
     borderWidth: 1,
-    shadowColor: 'rgba(191, 168, 77, 0.8)', // Match OnboardingScreen.js success
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    backgroundColor: '#2a2a2a', // Keep same background
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
-  optionIcon: {
-    marginBottom: 12,
+  cardSelected: {
+    borderLeftColor: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  optionText: {
-    fontSize: 14,
-    color: '#ffffff',
-    lineHeight: 20,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  optionTextSelected: {
-    color: '#BFA84D',
-    fontWeight: '600',
-  },
-  bottomButtonContainer: {
+  cardIcon: { width: 32, alignItems: 'center' },
+  cardText: { flex: 1, fontSize: 15, fontWeight: '500', color: 'rgba(255,255,255,0.85)', lineHeight: 20 },
+  cardTextSelected: { color: 'rgba(255,255,255,0.95)', fontWeight: '600' },
+  bottomBar: {
     position: Platform.OS === 'web' ? 'fixed' : 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: Math.max(20, screenHeight * 0.025),
-    backgroundColor: '#1a1a1a',
-    alignItems: 'center',
-    justifyContent: 'center',
+    bottom: 80, left: 0, right: 0,
+    paddingHorizontal: 20, paddingTop: 16,
+    paddingBottom: 24,
+    backgroundColor: '#1a1a1a', alignItems: 'center',
   },
   nextButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)', // Match OnboardingScreen.js
+    backgroundColor: 'rgba(255,255,255,0.12)',
     minHeight: Math.max(50, screenHeight * 0.06),
     paddingVertical: 6,
-    width: Math.max(200, screenWidth * 0.5), // Primary button dimensions
-    borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    width: Math.max(200, screenWidth * 0.5),
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
   },
-  nextButtonDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Match OnboardingScreen.js disabled
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  nextButtonText: {
-    color: 'rgba(191, 168, 77, 1)', // Match OnboardingScreen.js
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  nextButtonTextDisabled: {
-    color: 'rgba(255, 255, 255, 0.5)', // Match OnboardingScreen.js disabled
-  },
+  nextButtonDisabled: { backgroundColor: 'rgba(255,255,255,0.1)' },
+  nextButtonText: { color: 'rgba(255,255,255,0.95)', fontSize: 18, fontWeight: '600' },
+  nextButtonTextDisabled: { color: 'rgba(255,255,255,0.3)' },
+  progress: { marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
+  progressDisabled: { color: 'rgba(255,255,255,0.3)' },
 });
 
 export default OnboardingQuestion1;

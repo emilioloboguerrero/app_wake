@@ -4,19 +4,19 @@ import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import hybridDataService from '../services/hybridDataService';
-import firestoreService from '../services/firestoreService';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import OnboardingQuestion1 from '../screens/onboarding/OnboardingQuestion1';
 import OnboardingQuestion2 from '../screens/onboarding/OnboardingQuestion2';
 import OnboardingQuestion3 from '../screens/onboarding/OnboardingQuestion3';
 import OnboardingQuestion4 from '../screens/onboarding/OnboardingQuestion4';
 import OnboardingQuestion5 from '../screens/onboarding/OnboardingQuestion5';
+import OnboardingQuestion6 from '../screens/onboarding/OnboardingQuestion6';
+import OnboardingQuestion7 from '../screens/onboarding/OnboardingQuestion7';
 import OnboardingComplete from '../screens/onboarding/OnboardingComplete';
 import logger from '../utils/logger';
 
 const Stack = createStackNavigator();
 
-// On web, AuthContext can be null in Safari after reload; auth.currentUser is the fallback.
 const getEffectiveUid = (user) => {
   if (user?.uid) return user.uid;
   if (Platform.OS === 'web') {
@@ -36,15 +36,12 @@ const OnboardingNavigator = ({ onComplete }) => {
   const effectiveUid = getEffectiveUid(user);
 
   useEffect(() => {
-    logger.log('[ONBOARDING_NAV] BREAKPOINT: OnboardingNavigator mounted. uid:', effectiveUid);
-    if (!effectiveUid) logger.warn('[ONBOARDING_NAV] BREAKPOINT: No uid in OnboardingNavigator');
+    logger.log('[ONBOARDING_NAV] mounted. uid:', effectiveUid);
+    if (!effectiveUid) logger.warn('[ONBOARDING_NAV] No uid in OnboardingNavigator');
   }, [effectiveUid]);
 
   const handleAnswer = (questionKey, answer) => {
-    setOnboardingAnswers(prev => ({
-      ...prev,
-      [questionKey]: answer
-    }));
+    setOnboardingAnswers(prev => ({ ...prev, [questionKey]: answer }));
   };
 
   const handleComplete = async () => {
@@ -58,11 +55,15 @@ const OnboardingNavigator = ({ onComplete }) => {
     try {
       const userData = {
         onboardingData: {
-          motivation: onboardingAnswers.motivation || [],
-          interests: onboardingAnswers.interests || [],
-          activityLevel: onboardingAnswers.activityLevel || null,
-          workoutPreference: onboardingAnswers.workoutPreference || null,
-          obstacles: onboardingAnswers.obstacles || null,
+          primaryGoal: onboardingAnswers.primaryGoal || null,
+          trainingExperience: onboardingAnswers.trainingExperience || null,
+          trainingDaysPerWeek: onboardingAnswers.trainingDaysPerWeek || null,
+          sessionDuration: onboardingAnswers.sessionDuration || null,
+          equipment: onboardingAnswers.equipment || null,
+          nutritionGoal: onboardingAnswers.nutritionGoal || null,
+          dietaryRestrictions: onboardingAnswers.dietaryRestrictions || [],
+          sleepHours: onboardingAnswers.sleepHours || null,
+          stressLevel: onboardingAnswers.stressLevel || null,
           completedAt: new Date().toISOString(),
         },
         onboardingCompleted: true,
@@ -71,28 +72,24 @@ const OnboardingNavigator = ({ onComplete }) => {
 
       logger.debug('📝 Saving onboarding data. uid:', uid, userData.onboardingData);
 
-      // Cache onboarding status locally for offline access
       try {
         await AsyncStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
           onboardingCompleted: true,
           profileCompleted: true,
-          cachedAt: Date.now()
+          cachedAt: Date.now(),
         }));
-        logger.debug('💾 Onboarding status cached locally');
       } catch (cacheError) {
         logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
       }
 
-      // Web: update the same cache AuthenticatedLayout reads so refetch sees completed status
       if (Platform.OS === 'web') {
         try {
           const webStorageService = require('../services/webStorageService').default;
           await webStorageService.setItem(`onboarding_status_${uid}`, JSON.stringify({
             onboardingCompleted: true,
             profileCompleted: true,
-            cachedAt: Date.now()
+            cachedAt: Date.now(),
           }));
-          logger.debug('💾 Onboarding status written to web cache for layout');
         } catch (e) {
           logger.warn('[ONBOARDING_NAV] Web cache write failed:', e?.message);
         }
@@ -101,24 +98,21 @@ const OnboardingNavigator = ({ onComplete }) => {
       await hybridDataService.updateUserProfile(uid, userData);
       logger.debug('✅ Onboarding completed successfully. uid:', uid);
 
-      if (onComplete) {
-        onComplete();
-      }
+      if (onComplete) onComplete();
     } catch (error) {
       logger.error('Error completing onboarding:', error);
-      if (onComplete) {
-        onComplete();
-      }
+      if (onComplete) onComplete();
     }
   };
 
-  // Create wrapped components with error boundaries - memoized to prevent recreation
   const WrappedQuestion1 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion1 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion1'), [handleAnswer]);
   const WrappedQuestion2 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion2 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion2'), [handleAnswer]);
   const WrappedQuestion3 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion3 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion3'), [handleAnswer]);
   const WrappedQuestion4 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion4 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion4'), [handleAnswer]);
   const WrappedQuestion5 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion5 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion5'), [handleAnswer]);
-  const WrappedComplete = useMemo(() => withErrorBoundary((props) => <OnboardingComplete {...props} onComplete={handleComplete} />, 'OnboardingComplete'), [handleComplete]);
+  const WrappedQuestion6 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion6 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion6'), [handleAnswer]);
+  const WrappedQuestion7 = useMemo(() => withErrorBoundary((props) => <OnboardingQuestion7 {...props} onAnswer={handleAnswer} />, 'OnboardingQuestion7'), [handleAnswer]);
+  const WrappedComplete = useMemo(() => withErrorBoundary((props) => <OnboardingComplete {...props} onComplete={handleComplete} answers={onboardingAnswers} />, 'OnboardingComplete'), [handleComplete, onboardingAnswers]);
 
   return (
     <Stack.Navigator
@@ -133,6 +127,8 @@ const OnboardingNavigator = ({ onComplete }) => {
       <Stack.Screen name="OnboardingQuestion3" component={WrappedQuestion3} />
       <Stack.Screen name="OnboardingQuestion4" component={WrappedQuestion4} />
       <Stack.Screen name="OnboardingQuestion5" component={WrappedQuestion5} />
+      <Stack.Screen name="OnboardingQuestion6" component={WrappedQuestion6} />
+      <Stack.Screen name="OnboardingQuestion7" component={WrappedQuestion7} />
       <Stack.Screen name="OnboardingComplete" component={WrappedComplete} options={{ headerShown: false }} />
     </Stack.Navigator>
   );

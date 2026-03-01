@@ -106,6 +106,7 @@ class HybridDataService {
         phoneNumber: userData?.phoneNumber || '',
         gender: userData?.gender || '',
         interests: userData?.interests || [],
+        profilePictureUrl: userData?.profilePictureUrl || null,
         lastSync: Date.now()
       };
       
@@ -119,6 +120,26 @@ class HybridDataService {
       
     } catch (error) {
       logger.error('❌ Error syncing user profile:', error);
+    }
+  }
+
+  /**
+   * Patch the cached user profile (e.g. after profile picture update).
+   * Merges patch into cached data so loadUserProfile returns updated values without refetch.
+   */
+  async patchUserProfileCache(userId, patch) {
+    try {
+      const cached = await AsyncStorage.getItem(this.STORAGE_KEYS.USER_PROFILE);
+      if (!cached) return;
+      const cacheData = JSON.parse(cached);
+      const data = cacheData.data || {};
+      const merged = { ...data, ...patch };
+      await AsyncStorage.setItem(
+        this.STORAGE_KEYS.USER_PROFILE,
+        JSON.stringify({ data: merged, lastSync: cacheData.lastSync || Date.now() })
+      );
+    } catch (error) {
+      logger.error('❌ Error patching user profile cache:', error);
     }
   }
 

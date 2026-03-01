@@ -80,6 +80,14 @@ function AppContent() {
               } 
             />
             <Route 
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit" 
+              element={
+                <ProtectedRoute>
+                  <LibrarySessionDetailScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
               path="/plans/:planId/modules/:moduleId/sessions/:sessionId" 
               element={
                 <ProtectedRoute>

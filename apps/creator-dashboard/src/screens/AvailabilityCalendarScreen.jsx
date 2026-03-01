@@ -932,49 +932,150 @@ export default function AvailabilityCalendarScreen() {
                   </div>
                 )}
 
-                {/* Goals – motivation, interests, etc. */}
+                {/* Goals – onboarding data (supports both new and legacy formats) */}
                 {clientUserData?.onboardingData && typeof clientUserData.onboardingData === 'object' && (
                   (() => {
                     const od = clientUserData.onboardingData;
-                    const hasGoals = od.motivation?.length || od.interests?.length || od.activityLevel || od.workoutPreference || od.obstacles;
-                    if (!hasGoals) return null;
+
+                    // New format labels
+                    const GOAL_LABELS = {
+                      fat_loss: 'Perder grasa corporal',
+                      muscle: 'Ganar músculo y fuerza',
+                      performance: 'Mejorar rendimiento deportivo',
+                      health: 'Salud y más energía',
+                      event: 'Preparación para evento',
+                    };
+                    const EXPERIENCE_LABELS = {
+                      beginner: 'Sin experiencia previa',
+                      less_1yr: 'Menos de 1 año',
+                      '1_3yrs': '1 a 3 años',
+                      over_3yrs: 'Más de 3 años',
+                    };
+                    const EQUIPMENT_LABELS = {
+                      full_gym: 'Gimnasio completo',
+                      home_gym: 'Gimnasio en casa',
+                      bodyweight: 'Peso corporal / básico',
+                      mixed: 'Varía',
+                    };
+                    const NUTRITION_LABELS = {
+                      cut: 'Definición (déficit calórico)',
+                      bulk: 'Ganar masa muscular',
+                      maintain: 'Mantener peso actual',
+                      energy: 'Mejorar energía y recuperación',
+                      unsure: 'Sin objetivo claro aún',
+                    };
+                    const SLEEP_LABELS = { under_6: '< 6h', '6_7': '6–7h', '7_8': '7–8h', over_8: '+8h' };
+                    const STRESS_LABELS = { low: 'Bajo', medium: 'Moderado', high: 'Alto', very_high: 'Muy alto' };
+                    const DIETARY_LABELS = {
+                      none: 'Ninguna', veg: 'Vegetariano/a', vegan: 'Vegano/a',
+                      gluten: 'Sin gluten', lactose: 'Sin lácteos', other: 'Otra intolerancia',
+                    };
+
+                    const isNewFormat = od.primaryGoal || od.trainingExperience || od.trainingDaysPerWeek || od.equipment;
+                    const isLegacyFormat = od.motivation?.length || od.interests?.length || od.activityLevel || od.workoutPreference || od.obstacles;
+
+                    if (!isNewFormat && !isLegacyFormat) return null;
+
                     return (
                       <div className="slot-detail-card slot-detail-card--goals">
                         <h3 className="slot-detail-card-title">Objetivos y preferencias</h3>
                         <div className="slot-detail-goals-list">
-                          {od.motivation?.length > 0 && (
-                            <div className="slot-detail-goals-item">
-                              <span className="slot-detail-goals-label">Motivación</span>
-                              <span className="slot-detail-goals-value">
-                                {Array.isArray(od.motivation) ? od.motivation.join(', ') : od.motivation}
-                              </span>
-                            </div>
-                          )}
-                          {od.interests?.length > 0 && (
-                            <div className="slot-detail-goals-item">
-                              <span className="slot-detail-goals-label">Intereses</span>
-                              <span className="slot-detail-goals-value">
-                                {Array.isArray(od.interests) ? od.interests.join(', ') : od.interests}
-                              </span>
-                            </div>
-                          )}
-                          {od.activityLevel && (
-                            <div className="slot-detail-goals-item">
-                              <span className="slot-detail-goals-label">Nivel de actividad</span>
-                              <span className="slot-detail-goals-value">{od.activityLevel}</span>
-                            </div>
-                          )}
-                          {od.workoutPreference && (
-                            <div className="slot-detail-goals-item">
-                              <span className="slot-detail-goals-label">Preferencia de entrenamiento</span>
-                              <span className="slot-detail-goals-value">{od.workoutPreference}</span>
-                            </div>
-                          )}
-                          {od.obstacles && (
-                            <div className="slot-detail-goals-item">
-                              <span className="slot-detail-goals-label">Obstáculos</span>
-                              <span className="slot-detail-goals-value">{od.obstacles}</span>
-                            </div>
+                          {isNewFormat ? (
+                            <>
+                              {od.primaryGoal && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Objetivo principal</span>
+                                  <span className="slot-detail-goals-value">{GOAL_LABELS[od.primaryGoal] || od.primaryGoal}</span>
+                                </div>
+                              )}
+                              {od.trainingExperience && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Experiencia</span>
+                                  <span className="slot-detail-goals-value">{EXPERIENCE_LABELS[od.trainingExperience] || od.trainingExperience}</span>
+                                </div>
+                              )}
+                              {od.trainingDaysPerWeek && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Días/semana</span>
+                                  <span className="slot-detail-goals-value">{od.trainingDaysPerWeek} días</span>
+                                </div>
+                              )}
+                              {od.sessionDuration && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Duración por sesión</span>
+                                  <span className="slot-detail-goals-value">{od.sessionDuration}</span>
+                                </div>
+                              )}
+                              {od.equipment && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Dónde entrena</span>
+                                  <span className="slot-detail-goals-value">{EQUIPMENT_LABELS[od.equipment] || od.equipment}</span>
+                                </div>
+                              )}
+                              {od.nutritionGoal && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Meta nutricional</span>
+                                  <span className="slot-detail-goals-value">{NUTRITION_LABELS[od.nutritionGoal] || od.nutritionGoal}</span>
+                                </div>
+                              )}
+                              {od.dietaryRestrictions?.length > 0 && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Restricciones</span>
+                                  <span className="slot-detail-goals-value">
+                                    {od.dietaryRestrictions.map(r => DIETARY_LABELS[r] || r).join(', ')}
+                                  </span>
+                                </div>
+                              )}
+                              {od.sleepHours && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Sueño</span>
+                                  <span className="slot-detail-goals-value">{SLEEP_LABELS[od.sleepHours] || od.sleepHours}</span>
+                                </div>
+                              )}
+                              {od.stressLevel && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Nivel de estrés</span>
+                                  <span className="slot-detail-goals-value">{STRESS_LABELS[od.stressLevel] || od.stressLevel}</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {od.motivation?.length > 0 && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Motivación</span>
+                                  <span className="slot-detail-goals-value">
+                                    {Array.isArray(od.motivation) ? od.motivation.join(', ') : od.motivation}
+                                  </span>
+                                </div>
+                              )}
+                              {od.interests?.length > 0 && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Intereses</span>
+                                  <span className="slot-detail-goals-value">
+                                    {Array.isArray(od.interests) ? od.interests.join(', ') : od.interests}
+                                  </span>
+                                </div>
+                              )}
+                              {od.activityLevel && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Nivel de actividad</span>
+                                  <span className="slot-detail-goals-value">{od.activityLevel}</span>
+                                </div>
+                              )}
+                              {od.workoutPreference && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Preferencia de entrenamiento</span>
+                                  <span className="slot-detail-goals-value">{od.workoutPreference}</span>
+                                </div>
+                              )}
+                              {od.obstacles && (
+                                <div className="slot-detail-goals-item">
+                                  <span className="slot-detail-goals-label">Obstáculos</span>
+                                  <span className="slot-detail-goals-value">{od.obstacles}</span>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>

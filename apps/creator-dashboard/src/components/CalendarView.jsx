@@ -1013,7 +1013,7 @@ const CalendarView = ({
               }}
               disabled={isRemovingPlanFromWeek}
             >
-              {isRemovingPlanFromWeek && removingPlanWeekKey === planBarMenuContext.weekKey ? 'Quitando...' : 'Quitar plan de esta semana'}
+              {isRemovingPlanFromWeek && removingPlanWeekKey === planBarMenuContext.weekKey ? 'Quitando...' : 'Quitar plan'}
             </button>
           </div>,
           document.body

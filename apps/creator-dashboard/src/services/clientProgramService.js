@@ -600,6 +600,10 @@ class ClientProgramService {
       const currentData = clientProgramDoc.data() || {};
       const planAssignments = currentData.planAssignments || {};
 
+      // Fetch modules first so we can store moduleId (stable ID, not fragile position index)
+      const modules = await plansService.getModulesByPlan(planId);
+      const mod = modules?.[moduleIndex] ?? null;
+
       // Delete client_plan_content for this week so overwrites show new plan content (not stale personalized copy)
       try {
         await clientPlanContentService.deleteClientPlanContent(userId, programId, weekKey);
@@ -611,6 +615,7 @@ class ClientProgramService {
       planAssignments[weekKey] = {
         planId,
         moduleIndex,
+        moduleId: mod?.id ?? null,
         assignedAt: serverTimestamp()
       };
 
@@ -620,23 +625,18 @@ class ClientProgramService {
         updated_at: serverTimestamp()
       });
 
-      // Create client_sessions for each day of the week so the PWA can show today's session
-      const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
-      const modules = await plansService.getModulesByPlan(planId);
-      const mod = modules?.[moduleIndex];
+      // Create client_sessions for each session so the PWA can show today's session
       if (mod) {
         const sessions = await plansService.getSessionsByModule(planId, mod.id);
-        // Monday = 0, Tuesday = 1, ... Sunday = 6 (match CalendarView getWeekdayIndex)
-        const getWeekdayIndex = (d) => (d.getDay() + 6) % 7;
-        for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-          const date = new Date(d);
-          const weekdayIndex = getWeekdayIndex(date);
-          const sessionForDay = sessions.find((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex);
-          if (sessionForDay) {
-            await clientSessionService.assignSessionToDate(userId, programId, planId, sessionForDay.id, date, mod.id, {
-              day_index: sessionForDay.dayIndex != null ? sessionForDay.dayIndex : 0
-            });
-          }
+        const { start: weekStart } = getWeekDates(weekKey);
+        for (const session of sessions) {
+          const sessionDayIndex = session.dayIndex != null ? session.dayIndex : 0;
+          const sessionDate = new Date(weekStart);
+          sessionDate.setDate(weekStart.getDate() + sessionDayIndex);
+          await clientSessionService.assignSessionToDate(userId, programId, planId, session.id, sessionDate, mod.id, {
+            day_index: sessionDayIndex,
+            week_key: weekKey
+          });
         }
       }
 
@@ -692,6 +692,7 @@ class ClientProgramService {
       planAssignments[wk] = {
         planId,
         moduleIndex: i,
+        moduleId: modules[i].id,
         assignedAt: serverTimestamp()
       };
     }
@@ -701,22 +702,20 @@ class ClientProgramService {
       updated_at: serverTimestamp()
     });
 
-    const getWeekdayIndex = (d) => (d.getDay() + 6) % 7;
     for (let i = 0; i < weekKeys.length; i++) {
       const weekKey = weekKeys[i];
       const mod = modules[i];
       if (!mod) continue;
       const sessions = await plansService.getSessionsByModule(planId, mod.id);
-      const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
-      for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-        const date = new Date(d);
-        const weekdayIndex = getWeekdayIndex(date);
-        const sessionForDay = sessions.find((s) => (s.dayIndex != null ? s.dayIndex : 0) === weekdayIndex);
-        if (sessionForDay) {
-          await clientSessionService.assignSessionToDate(userId, programId, planId, sessionForDay.id, date, mod.id, {
-            day_index: sessionForDay.dayIndex != null ? sessionForDay.dayIndex : 0
-          });
-        }
+      const { start: weekStart } = getWeekDates(weekKey);
+      for (const session of sessions) {
+        const sessionDayIndex = session.dayIndex != null ? session.dayIndex : 0;
+        const sessionDate = new Date(weekStart);
+        sessionDate.setDate(weekStart.getDate() + sessionDayIndex);
+        await clientSessionService.assignSessionToDate(userId, programId, planId, session.id, sessionDate, mod.id, {
+          day_index: sessionDayIndex,
+          week_key: weekKey
+        });
       }
     }
 
@@ -770,6 +769,54 @@ class ClientProgramService {
       console.log('✅ Plan removed from week:', { programId, userId, weekKey });
     } catch (error) {
       console.error('❌ Error removing plan from week:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a plan in its entirety from the client (all weeks where this plan is assigned).
+   * Cleans planAssignments for those weeks, client_plan_content, and client_sessions (preserving completed).
+   * @param {string} programId - Program ID
+   * @param {string} userId - User ID
+   * @param {string} planId - Plan ID to remove
+   * @returns {Promise<string[]>} Week keys that were removed
+   */
+  async removePlanEntirely(programId, userId, planId) {
+    if (!planId) return [];
+    try {
+      const clientProgramId = `${userId}_${programId}`;
+      const clientProgramRef = doc(firestore, 'client_programs', clientProgramId);
+
+      const clientProgramDoc = await getDoc(clientProgramRef);
+      if (!clientProgramDoc.exists()) return [];
+
+      const currentData = clientProgramDoc.data();
+      const planAssignments = currentData.planAssignments || {};
+      const weekKeysToRemove = Object.keys(planAssignments).filter(
+        (wk) => planAssignments[wk]?.planId === planId
+      );
+      if (weekKeysToRemove.length === 0) return [];
+
+      const completedIds = await this.getClientCompletedSessionIds(programId, userId);
+      for (const weekKey of weekKeysToRemove) {
+        try {
+          await clientPlanContentService.deleteClientPlanContent(userId, programId, weekKey);
+        } catch (err) {
+          console.warn('[clientProgramService] removePlanEntirely: could not delete client_plan_content:', weekKey, err?.message);
+        }
+        await clientSessionService.deleteClientSessionsForWeek(userId, programId, weekKey, completedIds);
+        delete planAssignments[weekKey];
+      }
+
+      await updateDoc(clientProgramRef, {
+        planAssignments,
+        updated_at: serverTimestamp()
+      });
+
+      console.log('✅ Plan removed entirely:', { programId, userId, planId, weekKeysRemoved: weekKeysToRemove.length });
+      return weekKeysToRemove;
+    } catch (error) {
+      console.error('❌ Error removing plan entirely:', error);
       throw error;
     }
   }

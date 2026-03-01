@@ -1,6 +1,7 @@
 // Web wrapper for ProfileScreen - provides React Router navigation
-import React from 'react';
+import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { OpenReadinessModalContext } from '../navigation/WebAppNavigator';
 // Import the base component - Metro should resolve ProfileScreen.js (not .web.js) when we use explicit .js extension
 // The metro.config.js is configured to prioritize .js over .web.js for explicit imports
 const ProfileScreenModule = require('./ProfileScreen.js');
@@ -8,6 +9,8 @@ const ProfileScreenBase = ProfileScreenModule.ProfileScreenBase || ProfileScreen
 
 const ProfileScreen = () => {
   const navigate = useNavigate();
+  const readinessContext = useContext(OpenReadinessModalContext);
+  const onOpenReadinessModal = readinessContext?.openReadinessModal ?? null;
 
   // Create navigation adapter that matches React Navigation API
   const navigation = {
@@ -55,7 +58,7 @@ const ProfileScreen = () => {
     params: {}
   };
 
-  return <ProfileScreenBase navigation={navigation} route={route} />;
+  return <ProfileScreenBase navigation={navigation} route={route} onOpenReadinessModal={onOpenReadinessModal} />;
 };
 
 export default ProfileScreen;

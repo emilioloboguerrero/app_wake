@@ -11,22 +11,33 @@ import {
 } from 'react-native';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../../components/WakeHeader';
 
-const OPTIONS = [
-  { id: 'full_gym', text: 'Gimnasio completo', sub: 'Máquinas, pesas libres, todo disponible' },
-  { id: 'home_gym', text: 'Gimnasio en casa', sub: 'Mancuernas, barra, rack' },
-  { id: 'bodyweight', text: 'Peso corporal / básico', sub: 'Sin equipamiento o muy poco' },
-  { id: 'mixed', text: 'Varía según el día', sub: 'A veces gimnasio, a veces casa' },
+const SLEEP_OPTIONS = [
+  { id: 'under_6', text: '< 6h' },
+  { id: '6_7', text: '6–7h' },
+  { id: '7_8', text: '7–8h' },
+  { id: 'over_8', text: '+8h' },
 ];
 
-const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
+const STRESS_OPTIONS = [
+  { id: 'low', text: 'Bajo', sub: 'Mucho tiempo y energía disponibles' },
+  { id: 'medium', text: 'Moderado', sub: 'Cargas normales de trabajo o estudio' },
+  { id: 'high', text: 'Alto', sub: 'Mucha responsabilidad, poco tiempo' },
+  { id: 'very_high', text: 'Muy alto', sub: 'Agotado la mayoría de los días' },
+];
+
+const OnboardingQuestion7 = ({ navigation, onAnswer, onComplete }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const [selected, setSelected] = useState(null);
+  const [selectedSleep, setSelectedSleep] = useState(null);
+  const [selectedStress, setSelectedStress] = useState(null);
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
 
+  const canContinue = selectedSleep !== null && selectedStress !== null;
+
   const handleNext = () => {
-    if (!selected) return;
-    onAnswer('equipment', selected);
-    navigation.navigate('OnboardingQuestion5');
+    if (!canContinue) return;
+    onAnswer('sleepHours', selectedSleep);
+    onAnswer('stressLevel', selectedStress);
+    navigation.navigate('OnboardingComplete');
   };
 
   return (
@@ -35,19 +46,35 @@ const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
       <WakeHeaderContent style={styles.contentColumn}>
         <WakeHeaderSpacer />
         <View style={styles.questionContainer}>
-          <Text style={styles.question}>¿Dónde entrenas principalmente?</Text>
+          <Text style={styles.question}>Un último detalle sobre tu día a día</Text>
         </View>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} nestedScrollEnabled>
-          <View style={styles.cardList}>
-            {OPTIONS.map(opt => (
+          <Text style={styles.subLabel}>¿Cuántas horas duermes normalmente?</Text>
+          <View style={styles.pillRow}>
+            {SLEEP_OPTIONS.map(opt => (
               <TouchableOpacity
                 key={opt.id}
-                style={[styles.card, selected === opt.id && styles.cardSelected]}
-                onPress={() => setSelected(opt.id)}
+                style={[styles.sleepPill, selectedSleep === opt.id && styles.pillSelected]}
+                onPress={() => setSelectedSleep(opt.id)}
+              >
+                <Text style={[styles.sleepPillText, selectedSleep === opt.id && styles.pillTextSelected]}>
+                  {opt.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.subLabel, { marginTop: 28 }]}>Nivel de estrés en el día a día</Text>
+          <View style={styles.cardList}>
+            {STRESS_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.id}
+                style={[styles.card, selectedStress === opt.id && styles.cardSelected]}
+                onPress={() => setSelectedStress(opt.id)}
                 activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.cardText, selected === opt.id && styles.cardTextSelected]}>{opt.text}</Text>
+                  <Text style={[styles.cardText, selectedStress === opt.id && styles.cardTextSelected]}>{opt.text}</Text>
                   <Text style={styles.cardSub}>{opt.sub}</Text>
                 </View>
               </TouchableOpacity>
@@ -58,12 +85,12 @@ const OnboardingQuestion4 = ({ navigation, onAnswer }) => {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.nextButton, !selected && styles.nextButtonDisabled]}
+          style={[styles.nextButton, !canContinue && styles.nextButtonDisabled]}
           onPress={handleNext}
-          disabled={!selected}
+          disabled={!canContinue}
         >
-          <Text style={[styles.nextButtonText, !selected && styles.nextButtonTextDisabled]}>Continuar</Text>
-          <Text style={[styles.progress, !selected && styles.progressDisabled]}>4 de 7</Text>
+          <Text style={[styles.nextButtonText, !canContinue && styles.nextButtonTextDisabled]}>Finalizar</Text>
+          <Text style={[styles.progress, !canContinue && styles.progressDisabled]}>7 de 7</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -77,6 +104,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 160 },
   questionContainer: { minHeight: screenHeight * 0.14, justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: 10 },
   question: { fontSize: 26, fontWeight: '700', color: '#ffffff', lineHeight: 34, textAlign: 'center' },
+  subLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.5, marginBottom: 12 },
+  pillRow: { flexDirection: 'row', gap: 10 },
+  sleepPill: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#222222',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  pillSelected: { borderColor: 'rgba(255,255,255,0.35)', backgroundColor: 'rgba(255,255,255,0.1)' },
+  sleepPillText: { fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+  pillTextSelected: { color: 'rgba(255,255,255,0.95)' },
   cardList: { gap: 10, marginTop: 4 },
   card: {
     backgroundColor: '#222222',
@@ -118,4 +159,4 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   progressDisabled: { color: 'rgba(255,255,255,0.3)' },
 });
 
-export default OnboardingQuestion4;
+export default OnboardingQuestion7;

@@ -59,6 +59,11 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
         allow write: if isOwner(userId);
       }
+
+      // Readiness check-in (one doc per day)
+      match /readiness/{date} {
+        allow read, write: if isOwner(userId);
+      }
     }
     
     // Creator-client access: doc id = creatorId_userId; allows creator to read/update that user's document (e.g. set access end date)

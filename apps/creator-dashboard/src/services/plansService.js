@@ -556,6 +556,8 @@ class PlansService {
 
   /**
    * Duplicate a module (week) with all its sessions, exercises and sets.
+   * If a source session has useLocalContent: true (edited only for that week), the duplicate
+   * gets the same inline content and useLocalContent: true so it shows the edited version, not the library.
    * New module is appended at the end (order = max + 1). Title is "Semana N" where N = current count + 1.
    * @param {string} planId - Plan ID
    * @param {string} sourceModuleId - Module ID to copy
@@ -574,6 +576,9 @@ class PlansService {
     const newModule = await this.createModule(planId, newTitle, nextOrder);
     const newModuleId = newModule.id;
 
+    const EXERCISE_SKIP_KEYS = ['id', 'sets', 'created_at', 'updated_at'];
+    const SET_SKIP_KEYS = ['id', 'created_at', 'updated_at'];
+
     const sessions = await this.getSessionsByModule(planId, sourceModuleId);
     for (const session of sessions) {
       const createdSession = await this.createSession(
@@ -587,33 +592,115 @@ class PlansService {
       );
       const newSessionId = createdSession.id;
 
+      if (session.useLocalContent) {
+        await this.updateSession(planId, newModuleId, newSessionId, { useLocalContent: true });
+      }
+
       const exercises = await this.getExercisesBySession(planId, sourceModuleId, session.id);
       for (const exercise of exercises) {
+        const title = exercise.title || exercise.name || 'Ejercicio';
         const createdEx = await this.createExercise(
           planId,
           newModuleId,
           newSessionId,
-          exercise.title || exercise.name || 'Ejercicio',
+          title,
           exercise.order ?? null
         );
-        const newExerciseId = createdEx.id;
+
+        const exerciseUpdates = {};
+        for (const [key, value] of Object.entries(exercise)) {
+          if (EXERCISE_SKIP_KEYS.includes(key)) continue;
+          if (value === undefined) continue;
+          exerciseUpdates[key] = value;
+        }
+        if (Object.keys(exerciseUpdates).length > 0) {
+          await this.updateExercise(planId, newModuleId, newSessionId, createdEx.id, exerciseUpdates);
+        }
 
         const sets = await this.getSetsByExercise(planId, sourceModuleId, session.id, exercise.id);
-        for (let i = 0; i < sets.length; i++) {
-          const set = sets[i];
-          const createdSet = await this.createSet(planId, newModuleId, newSessionId, newExerciseId, i);
-          const updates = {};
-          if (set.title != null) updates.title = set.title;
-          if (set.reps != null) updates.reps = set.reps;
-          if (set.intensity != null) updates.intensity = set.intensity;
-          if (Object.keys(updates).length > 0) {
-            await this.updateSet(planId, newModuleId, newSessionId, newExerciseId, createdSet.id, updates);
+        for (let j = 0; j < sets.length; j++) {
+          const set = sets[j];
+          const createdSet = await this.createSet(planId, newModuleId, newSessionId, createdEx.id, set.order ?? j);
+
+          const setUpdates = {};
+          for (const [key, value] of Object.entries(set)) {
+            if (SET_SKIP_KEYS.includes(key)) continue;
+            if (value === undefined) continue;
+            setUpdates[key] = value;
+          }
+          if (Object.keys(setUpdates).length > 0) {
+            await this.updateSet(planId, newModuleId, newSessionId, createdEx.id, createdSet.id, setUpdates);
           }
         }
       }
     }
 
     return { ...newModule, id: newModuleId };
+  }
+
+  /**
+   * Copy library session content (exercises + sets) into a plan session. Used when detaching
+   * a plan session so it can be edited only for that week. Clears any existing inline content
+   * first, then copies all exercise and set fields from the library session.
+   * @param {string} planId
+   * @param {string} moduleId
+   * @param {string} sessionId - Plan session document id
+   * @param {Object} librarySession - Full library session from getLibrarySessionById (has exercises with sets)
+   */
+  async copyLibraryContentToPlanSession(planId, moduleId, sessionId, librarySession) {
+    const existingExercises = await this.getExercisesBySession(planId, moduleId, sessionId);
+    for (const ex of existingExercises) {
+      await this.deleteExercise(planId, moduleId, sessionId, ex.id);
+    }
+
+    const EXERCISE_SKIP_KEYS = ['id', 'sets', 'created_at', 'updated_at'];
+    const SET_SKIP_KEYS = ['id', 'created_at', 'updated_at'];
+
+    const exercises = librarySession?.exercises || [];
+    for (let i = 0; i < exercises.length; i++) {
+      const ex = exercises[i];
+      let displayName = ex.title || ex.name || 'Ejercicio';
+      if ((!ex.title && !ex.name) && ex.primary && typeof ex.primary === 'object') {
+        const first = Object.values(ex.primary)[0];
+        displayName = typeof first === 'string' ? first : (first && (first.name || first.title || first.id)) || displayName;
+      }
+      const title = displayName;
+      const createdEx = await this.createExercise(planId, moduleId, sessionId, title, ex.order ?? i);
+
+      const exerciseUpdates = {};
+      for (const [key, value] of Object.entries(ex)) {
+        if (EXERCISE_SKIP_KEYS.includes(key)) continue;
+        if (value === undefined) continue;
+        exerciseUpdates[key] = value;
+      }
+      if (!exerciseUpdates.name && !exerciseUpdates.title) {
+        exerciseUpdates.name = displayName;
+        exerciseUpdates.title = displayName;
+      } else if (!exerciseUpdates.name) {
+        exerciseUpdates.name = exerciseUpdates.title || displayName;
+      } else if (!exerciseUpdates.title) {
+        exerciseUpdates.title = exerciseUpdates.name || displayName;
+      }
+      if (Object.keys(exerciseUpdates).length > 0) {
+        await this.updateExercise(planId, moduleId, sessionId, createdEx.id, exerciseUpdates);
+      }
+
+      const sets = ex.sets || [];
+      for (let j = 0; j < sets.length; j++) {
+        const set = sets[j];
+        const createdSet = await this.createSet(planId, moduleId, sessionId, createdEx.id, set.order ?? j);
+
+        const setUpdates = {};
+        for (const [key, value] of Object.entries(set)) {
+          if (SET_SKIP_KEYS.includes(key)) continue;
+          if (value === undefined) continue;
+          setUpdates[key] = value;
+        }
+        if (Object.keys(setUpdates).length > 0) {
+          await this.updateSet(planId, moduleId, sessionId, createdEx.id, createdSet.id, setUpdates);
+        }
+      }
+    }
   }
 
   /**

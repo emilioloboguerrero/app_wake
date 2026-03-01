@@ -30,6 +30,19 @@ const MONTH_NAMES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
 const MINI_DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const NUTRITION_DRAG_TYPE = 'nutrition_plan';
 
+// Resolves a plan module from the sorted modules array using the stable moduleId when
+// available, falling back to the positional moduleIndex for assignments created before
+// moduleId was stored. This prevents the wrong week showing up when the plan's module
+// list has changed since the assignment was made.
+function resolveModule(modules, assignment) {
+  if (!modules?.length) return null;
+  if (assignment?.moduleId) {
+    const byId = modules.find((m) => m.id === assignment.moduleId);
+    if (byId) return byId;
+  }
+  return modules?.[assignment?.moduleIndex ?? 0] ?? null;
+}
+
 function getMiniCalendarDays(monthFirst) {
   const year = monthFirst.getFullYear();
   const month = monthFirst.getMonth();
@@ -614,7 +627,7 @@ const ClientProgramScreen = () => {
         } catch (_) {}
         try {
           const modules = await plansService.getModulesByPlan(assignment.planId);
-          const mod = modules?.[assignment.moduleIndex ?? 0];
+          const mod = resolveModule(modules, assignment);
           if (mod) {
             const sessions = await plansService.getSessionsByModule(assignment.planId, mod.id);
             next[weekKey] = {
@@ -947,6 +960,14 @@ const ClientProgramScreen = () => {
         client.clientUserId
       );
       setPlanAssignments(assignments || {});
+      // Clear stale weekContentByWeekKey entries for reassigned weeks. assignPlanToConsecutiveWeeks
+      // deletes client_plan_content for those weeks, so any cached fromClientCopy:true state is now
+      // stale and would cause handleEditPlanSession to skip copyFromPlan → "session not found".
+      setWeekContentByWeekKey((prev) => {
+        const next = { ...prev };
+        assignedWeekKeys.forEach((wk) => { delete next[wk]; });
+        return next;
+      });
 
       // Preload week content for all assigned weeks so session cards show immediately
       try {
@@ -983,15 +1004,17 @@ const ClientProgramScreen = () => {
 
   const handleRemovePlanFromWeek = async (weekKey) => {
     if (!client?.clientUserId || !selectedProgramId || !weekKey) return;
+    const planId = planAssignments[weekKey]?.planId;
+    if (!planId) return;
     setIsRemovingPlanFromWeek(true);
     setRemovingPlanWeekKey(weekKey);
     try {
-      await clientProgramService.removePlanFromWeek(selectedProgramId, client.clientUserId, weekKey);
+      const weekKeysRemoved = await clientProgramService.removePlanEntirely(selectedProgramId, client.clientUserId, planId);
       const assignments = await clientProgramService.getPlanAssignments(selectedProgramId, client.clientUserId);
       setPlanAssignments(assignments || {});
       setWeekContentByWeekKey((prev) => {
         const next = { ...prev };
-        delete next[weekKey];
+        weekKeysRemoved.forEach((wk) => { delete next[wk]; });
         return next;
       });
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -1005,8 +1028,8 @@ const ClientProgramScreen = () => {
       const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
-      console.error('Error removing plan from week:', error);
-      alert(`Error al quitar el plan de la semana: ${error.message || 'Error desconocido'}`);
+      console.error('Error removing plan:', error);
+      alert(`Error al quitar el plan: ${error.message || 'Error desconocido'}`);
     } finally {
       setIsRemovingPlanFromWeek(false);
       setRemovingPlanWeekKey(null);
@@ -1053,10 +1076,30 @@ const ClientProgramScreen = () => {
     }
   };
 
-  const handleEditSessionAssignment = ({ session, date }) => {
+  const handleEditSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId || !session?.session_id) return;
     const returnState = { tab: currentTabIndex };
     if (session.plan_id) {
+      const weekKey = session.week_key || getMondayWeek(date);
+      try {
+        const existingCopy = await clientPlanContentService.getClientPlanContent(
+          client.clientUserId, selectedProgramId, weekKey
+        );
+        if (!existingCopy) {
+          await clientPlanContentService.copyFromPlan(
+            client.clientUserId,
+            selectedProgramId,
+            weekKey,
+            session.plan_id,
+            session.module_id,
+            user?.uid
+          );
+        }
+      } catch (error) {
+        console.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
+        alert('Error al preparar la sesión para editar');
+        return;
+      }
       navigate(`/content/sessions/${session.session_id}`, {
         state: {
           returnTo: location.pathname,
@@ -1064,7 +1107,7 @@ const ClientProgramScreen = () => {
           editScope: 'client_plan',
           clientId: client.clientUserId,
           programId: selectedProgramId,
-          weekKey: getMondayWeek(date),
+          weekKey,
           clientName: client?.clientName || client?.name || client?.displayName || 'Cliente'
         }
       });
@@ -1148,8 +1191,7 @@ const ClientProgramScreen = () => {
     setIsPersonalizingPlanWeek(true);
     try {
       const modules = await plansService.getModulesByPlan(assignment.planId);
-      const moduleIndex = assignment.moduleIndex ?? 0;
-      const module = modules?.[moduleIndex];
+      const module = resolveModule(modules, assignment);
       if (!module) {
         alert('Módulo del plan no encontrado');
         return;
@@ -1179,7 +1221,7 @@ const ClientProgramScreen = () => {
       await clientPlanContentService.deleteClientPlanContent(client.clientUserId, selectedProgramId, weekKey);
       setHasClientPlanCopy(false);
       const modules = await plansService.getModulesByPlan(assignment.planId);
-      const mod = modules?.[assignment.moduleIndex ?? 0];
+      const mod = resolveModule(modules, assignment);
       if (mod) {
         const sessions = await plansService.getSessionsByModule(assignment.planId, mod.id);
         setWeekContentByWeekKey((p) => ({ ...p, [weekKey]: { sessions: sessions || [], title: mod.title, fromClientCopy: false, planId: assignment.planId, moduleId: mod.id } }));
@@ -1332,9 +1374,9 @@ const ClientProgramScreen = () => {
     setIsMovingPlanSession(true);
     try {
       let targetAssignment = targetPlanAssignment;
-      if (targetPlanAssignment && !targetPlanAssignment.moduleId) {
+      if (targetPlanAssignment) {
         const modules = await plansService.getModulesByPlan(targetPlanAssignment.planId);
-        const mod = modules?.[targetPlanAssignment.moduleIndex ?? 0];
+        const mod = resolveModule(modules, targetPlanAssignment);
         if (mod) targetAssignment = { ...targetPlanAssignment, moduleId: mod.id };
       }
       await clientPlanContentService.moveSessionToWeek(
@@ -1354,7 +1396,7 @@ const ClientProgramScreen = () => {
         const ass = planAssignments[wk];
         if (ass?.planId) {
           const modules = await plansService.getModulesByPlan(ass.planId);
-          const mod = modules?.[ass.moduleIndex ?? 0];
+          const mod = resolveModule(modules, ass);
           if (mod) {
             const sessions = await plansService.getSessionsByModule(ass.planId, mod.id);
             return { sessions: sessions || [], title: mod.title, fromClientCopy: false, planId: ass.planId, moduleId: mod.id };
@@ -1381,7 +1423,7 @@ const ClientProgramScreen = () => {
     const assignment = planAssignments[weekKey];
     if (assignment?.planId) {
       const modules = await plansService.getModulesByPlan(assignment.planId);
-      const mod = modules?.[assignment.moduleIndex ?? 0];
+      const mod = resolveModule(modules, assignment);
       if (mod) {
         await clientPlanContentService.ensureClientPlanContentForWeek(
           client.clientUserId,
@@ -1403,6 +1445,7 @@ const ClientProgramScreen = () => {
     const payload = {
       title: libSession.title || libSession.name || 'Sesión',
       dayIndex,
+      librarySessionRef: librarySessionId,
       exercises: (libSession.exercises || []).map((ex) => ({
         title: ex.title || ex.name || 'Ejercicio',
         sets: (ex.sets || []).map((s) => ({

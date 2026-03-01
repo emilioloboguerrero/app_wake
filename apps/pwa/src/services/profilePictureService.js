@@ -83,29 +83,53 @@ class ProfilePictureService {
   // Pick image from library
   async pickImage() {
     if (isWeb) {
-      // Web: Use HTML5 file input
+      // Web: Use HTML5 file input. Do NOT remove input before user selects - removing
+      // it right after click() can prevent the change event from firing in some browsers.
       return new Promise((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => {
+          try {
+            if (input.parentNode) input.parentNode.removeChild(input);
+          } catch (_) {}
+          window.removeEventListener('focus', onWindowFocus);
+        };
+        const done = (value) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(value);
+        };
+
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.style.display = 'none';
-        
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
+
+        input.onchange = () => {
+          const file = input.files && input.files[0];
           if (!file) {
-            resolve(null);
+            done(null);
             return;
           }
-
-          // Create object URL for the file
           const objectUrl = URL.createObjectURL(file);
-          resolve(objectUrl);
+          done(objectUrl);
         };
 
-        input.onerror = reject;
+        input.onerror = () => {
+          done(null);
+        };
+
+        const onWindowFocus = () => {
+          // User may have closed the file dialog without selecting (cancel).
+          // After a short delay, if we haven't resolved yet, treat as cancel.
+          setTimeout(() => {
+            if (!settled) done(null);
+          }, 500);
+        };
+
         document.body.appendChild(input);
         input.click();
-        document.body.removeChild(input);
+        window.addEventListener('focus', onWindowFocus, { once: true });
       });
     } else {
       // React Native: Use expo-image-picker
@@ -145,8 +169,8 @@ class ProfilePictureService {
       const response = await fetch(compressedUri);
       const blob = await response.blob();
       
-      // Upload file
-      await uploadBytes(storageRef, blob);
+      // Upload file (explicit contentType for Storage rules: image/.*)
+      await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
       
       // Get download URL
       const downloadUrl = await getDownloadURL(storageRef);

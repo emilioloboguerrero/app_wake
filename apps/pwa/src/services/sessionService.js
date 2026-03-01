@@ -233,9 +233,22 @@ class SessionService {
 
       // One-on-one with minimal list: current session may have no exercises yet; fetch full content for this slot only
       const needsFullContent = isOneOnOne && (!currentSession.exercises || currentSession.exercises.length === 0);
+      logger.prod('[sessionService] needsFullContent check:', {
+        isOneOnOne,
+        slotId: currentSession.id,
+        clientSessionId: currentSession.clientSessionId ?? 'none',
+        exercisesBefore: currentSession.exercises?.length ?? 0,
+        needsFullContent,
+      });
       if (needsFullContent) {
         const creatorId = inner?.creator_id ?? inner?.creatorId ?? null;
         const fullContent = await firestoreService.getPlannedSessionContentBySlotId(userId, courseId, currentSession.id, creatorId);
+        logger.prod('[sessionService] getPlannedSessionContentBySlotId result:', {
+          slotId: currentSession.id,
+          gotContent: !!fullContent,
+          contentTitle: fullContent?.title ?? 'null',
+          exercisesAfter: fullContent?.exercises?.length ?? 0,
+        });
         if (fullContent) {
           Object.assign(currentSession, {
             title: fullContent.title ?? currentSession.title,

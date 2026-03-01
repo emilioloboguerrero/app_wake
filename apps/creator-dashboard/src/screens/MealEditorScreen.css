@@ -596,3 +596,10 @@
   outline: none;
   border-color: rgba(191, 168, 77, 0.5);
 }
+
+.meal-editor-attribution {
+  margin-top: 16px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  opacity: 0.6;
+}

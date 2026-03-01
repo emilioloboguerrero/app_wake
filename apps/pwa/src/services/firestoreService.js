@@ -253,7 +253,8 @@ class FirestoreService {
 
   async getCourseModules(courseId, userId = null, options = {}) {
     logger.log('📦 [getCourseModules] called:', { courseId, userId: userId ?? 'none' });
-    const cacheKey = userId ? `${courseId}_${userId}` : null;
+    const effectiveWeekKey = options.weekKey ?? getMondayWeek();
+    const cacheKey = userId ? `${courseId}_${userId}_${effectiveWeekKey}` : null;
     if (options.cacheInMemory && cacheKey && options.ttlMs !== undefined) {
       const entry = this._oneOnOneModulesCache[cacheKey];
       if (entry && (Date.now() - entry.timestamp) < options.ttlMs) {
@@ -261,7 +262,7 @@ class FirestoreService {
         return entry.modules;
       }
     }
-    const inFlightKey = `${courseId}_${userId ?? 'anon'}`;
+    const inFlightKey = `${courseId}_${userId ?? 'anon'}_${effectiveWeekKey}`;
     if (this._getCourseModulesInFlight[inFlightKey]) {
       return await this._getCourseModulesInFlight[inFlightKey];
     }
@@ -276,7 +277,8 @@ class FirestoreService {
 
   async _loadCourseModules(courseId, userId = null, options = {}) {
     try {
-      const cacheKey = userId ? `${courseId}_${userId}` : null;
+      const effectiveWeekKey = options.weekKey ?? getMondayWeek();
+      const cacheKey = userId ? `${courseId}_${userId}_${effectiveWeekKey}` : null;
       const courseData = await this.getCourse(courseId);
       const isWeeklyProgram = courseData?.weekly === true;
       const creatorId = courseData?.creator_id;
@@ -1143,9 +1145,21 @@ class FirestoreService {
         if (client_id && program_id) {
           let personalizedSession = options.preloadedWeekCopy?.sessions?.find((s) => s.id === session_id) ?? null;
           if (!personalizedSession) {
-            const plannedDate = date_timestamp?.toDate?.() || (date_timestamp ? new Date(date_timestamp) : new Date());
-            const weekKey = getMondayWeek(plannedDate);
+            const weekKey = clientSession.week_key
+              || getMondayWeek(date_timestamp?.toDate?.() || (date_timestamp ? new Date(date_timestamp) : new Date()));
+            logger.prod('[firestoreService] resolvePlannedSessionContent client_plan_content lookup:', {
+              session_id,
+              weekKey,
+              weekKeySource: clientSession.week_key ? 'week_key_field' : 'computed_from_date',
+              docId: `${client_id}_${program_id}_${weekKey}`,
+            });
             const clientCopy = await this.getClientPlanContentCopy(client_id, program_id, weekKey, options);
+            logger.prod('[firestoreService] resolvePlannedSessionContent clientCopy result:', {
+              hasCopy: !!clientCopy,
+              sessionCount: clientCopy?.sessions?.length ?? 0,
+              sessionIds: clientCopy?.sessions?.map((s) => s.id) ?? [],
+              lookingFor: session_id,
+            });
             personalizedSession = clientCopy?.sessions?.find((s) => s.id === session_id) ?? null;
           }
           if (personalizedSession) {
@@ -1239,8 +1253,21 @@ class FirestoreService {
     try {
       const plannedRef = doc(firestore, 'client_sessions', clientSessionId);
       const plannedSnap = await getDoc(plannedRef);
-      if (!plannedSnap.exists()) return null;
+      if (!plannedSnap.exists()) {
+        logger.prod('[firestoreService] getPlannedSessionContentBySlotId: client_sessions doc NOT FOUND:', clientSessionId);
+        return null;
+      }
       const planned = { id: plannedSnap.id, ...plannedSnap.data() };
+      logger.prod('[firestoreService] getPlannedSessionContentBySlotId planned doc:', {
+        clientSessionId,
+        session_id: planned.session_id ?? 'none',
+        plan_id: planned.plan_id ?? 'none',
+        module_id: planned.module_id ?? 'none',
+        week_key: planned.week_key ?? 'NOT SET',
+        date: planned.date ?? 'none',
+        client_id_match: planned.client_id === userId,
+        program_id_match: planned.program_id === courseId,
+      });
       if (planned.client_id !== userId || planned.program_id !== courseId) return null;
       let creatorId = creatorIdFromCourse ?? planned.creator_id ?? null;
       if (!creatorId && planned.program_id) {
@@ -1309,6 +1336,11 @@ class FirestoreService {
       const docId = `${userId}_${programId}_${weekKey}`;
       const ref = doc(firestore, 'client_plan_content', docId);
       const snap = await getDoc(ref);
+      logger.prod('[firestoreService] getClientPlanContentCopy:', {
+        docId,
+        exists: snap.exists(),
+        minimal: !!options.minimal,
+      });
       if (!snap.exists()) return null;
 
       const data = { id: snap.id, ...snap.data() };
@@ -1359,6 +1391,12 @@ class FirestoreService {
       } else {
         data.sessions = sessions;
       }
+      logger.prod('[firestoreService] getClientPlanContentCopy sessions loaded:', {
+        docId,
+        sessionCount: data.sessions?.length ?? 0,
+        sessionIds: data.sessions?.map((s) => s.id) ?? [],
+        minimal: !!options.minimal,
+      });
       return data;
     } catch (error) {
       logger.debug('getClientPlanContentCopy:', error?.message);

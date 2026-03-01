@@ -313,11 +313,21 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
       
       const newState = await sessionService.getCurrentSession(
-        user.uid, 
-        course.courseId, 
+        user.uid,
+        course.courseId,
         options
       );
-      
+
+      logger.prod('[DailyWorkout] loadSessionState result:', {
+        targetDate: options.targetDate ?? 'none',
+        emptyReason: newState.emptyReason ?? 'none',
+        sessionTitle: newState.session?.title ?? 'null',
+        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
+        workoutExercises: newState.workout?.exercises?.length ?? 0,
+        allSessionsCount: newState.allSessions?.length ?? 0,
+        error: newState.error ?? 'none',
+      });
+
       setSessionState(newState);
 
       // Check for tutorials after session is loaded
@@ -492,9 +502,18 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         session.sessionId || session.id,
         sessionIndex
       );
-      
+
+      logger.prod('[DailyWorkout] selectSession result:', {
+        requestedId: session.sessionId || session.id,
+        sessionTitle: newState.session?.title ?? 'null',
+        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
+        workoutExercises: newState.workout?.exercises?.length ?? 0,
+        emptyReason: newState.emptyReason ?? 'none',
+        error: newState.error ?? 'none',
+      });
+
       setSessionState(newState);
-      
+
       // Clear preview state after successful load
       setPreviewSessionId(null);
       logger.log('🔄 previewSessionId cleared after successful load');

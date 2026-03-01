@@ -353,6 +353,26 @@ export async function saveFood(userId, data) {
   return ref.id;
 }
 
+export async function updateSavedFood(userId, savedFoodId, data) {
+  const ref = doc(firestore, 'users', userId, 'saved_foods', savedFoodId);
+  const first = Array.isArray(data.servings) && data.servings.length > 0 ? data.servings[0] : null;
+  const update = {
+    name: data.name,
+    food_category: data.food_category ?? null,
+    servings: data.servings ?? [],
+  };
+  if (first) {
+    update.serving_id = first.serving_id ?? '0';
+    update.serving_description = first.serving_description ?? null;
+    update.calories_per_unit = first.calories != null ? first.calories : null;
+    update.protein_per_unit = first.protein != null ? first.protein : null;
+    update.carbs_per_unit = first.carbohydrate != null ? first.carbohydrate : null;
+    update.fat_per_unit = first.fat != null ? first.fat : null;
+    update.grams_per_unit = first.metric_serving_amount != null ? first.metric_serving_amount : null;
+  }
+  await updateDoc(ref, update);
+}
+
 export async function deleteSavedFood(userId, savedFoodId) {
   await deleteDoc(doc(firestore, 'users', userId, 'saved_foods', savedFoodId));
 }
@@ -376,5 +396,6 @@ export default {
   deleteUserMeal,
   getSavedFoods,
   saveFood,
+  updateSavedFood,
   deleteSavedFood,
 };
