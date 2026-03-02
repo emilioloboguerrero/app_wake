@@ -223,6 +223,53 @@ body {
   }
 }
 
+/* ─── Wake Animation System ──────────────────────────────────────────────
+   Shared keyframes consumed by screen transitions, card staggers,
+   skeleton loaders, and per-screen micro-animations.
+   All use only opacity/transform so they stay on the compositor thread.
+──────────────────────────────────────────────────────────────────────── */
+
+/* 1 — Screen enter: fade only */
+@keyframes wakePageEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.wake-page-enter {
+  animation: wakePageEnter 220ms ease-out both;
+}
+
+/* 3A — Card/item enter: slide-up 12px + fade */
+@keyframes wakeCardEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.wake-card-enter {
+  animation: wakeCardEnter 180ms ease-out both;
+}
+
+/* 2A — Skeleton shimmer */
+@keyframes wakeShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.wake-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 300% 100%;
+  animation: wakeShimmer 1.5s infinite linear;
+  border-radius: 12px;
+}
+
+/* 9E — Modal two-step content enter (backdrop uses existing wake-modal-backdrop-enter) */
+.wake-modal-content-enter-twostep {
+  animation: slideUp 0.26s ease-out both;
+  animation-delay: 0.13s;
+}
+
 /* Bottom tab bar (portaled to body) - padding-bottom set in JS via useFrozenBottomInset to avoid pop */
 .wake-tab-bar-root {
   position: fixed !important;

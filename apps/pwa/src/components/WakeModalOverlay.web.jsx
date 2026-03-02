@@ -95,7 +95,7 @@ export function WakeModalOverlay({
     : 'wake-modal-backdrop-enter';
 
   const contentClass = useSlideUp
-    ? (isClosing ? 'wake-modal-content-exit' : 'wake-modal-content-enter')
+    ? (isClosing ? 'wake-modal-content-exit' : 'wake-modal-content-enter-twostep')
     : (isClosing ? 'wake-modal-backdrop-exit' : 'wake-modal-backdrop-enter');
 
   const backdropStyle = {

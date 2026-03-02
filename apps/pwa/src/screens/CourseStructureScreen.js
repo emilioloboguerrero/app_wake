@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,14 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   Platform,
+  Animated,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
-import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
-import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
+import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
 // Component to handle async exercise resolution
@@ -84,6 +84,26 @@ const CourseStructureScreen = ({ navigation, route }) => {
   const [error, setError] = useState(null);
   const [expandedModules, setExpandedModules] = useState({});
   const [expandedSessions, setExpandedSessions] = useState({});
+  const moduleAnimsRef = useRef(new Map());
+  const sessionAnimsRef = useRef(new Map());
+
+  const getOrCreateAnim = (mapRef, id, isExpanded) => {
+    if (!mapRef.current.has(id)) {
+      mapRef.current.set(id, {
+        expand: new Animated.Value(isExpanded ? 1 : 0),
+        chevron: new Animated.Value(isExpanded ? 1 : 0),
+      });
+    }
+    return mapRef.current.get(id);
+  };
+
+  const runExpandAnim = (mapRef, id, toExpanded) => {
+    const anim = getOrCreateAnim(mapRef, id, !toExpanded);
+    Animated.parallel([
+      Animated.timing(anim.expand, { toValue: toExpanded ? 1 : 0, duration: 220, useNativeDriver: false }),
+      Animated.timing(anim.chevron, { toValue: toExpanded ? 1 : 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(() => StyleSheet.create({
@@ -263,17 +283,19 @@ const CourseStructureScreen = ({ navigation, route }) => {
   };
 
   const toggleModule = (moduleId) => {
-    setExpandedModules(prev => ({
-      ...prev,
-      [moduleId]: !prev[moduleId]
-    }));
+    setExpandedModules(prev => {
+      const next = !prev[moduleId];
+      runExpandAnim(moduleAnimsRef, moduleId, next);
+      return { ...prev, [moduleId]: next };
+    });
   };
 
   const toggleSession = (sessionId) => {
-    setExpandedSessions(prev => ({
-      ...prev,
-      [sessionId]: !prev[sessionId]
-    }));
+    setExpandedSessions(prev => {
+      const next = !prev[sessionId];
+      runExpandAnim(sessionAnimsRef, sessionId, next);
+      return { ...prev, [sessionId]: next };
+    });
   };
 
 
@@ -318,27 +340,26 @@ const CourseStructureScreen = ({ navigation, route }) => {
 
   const renderSession = (session, sessionIndex, moduleId) => {
     const isExpanded = expandedSessions[session.id];
-    
+    const anim = getOrCreateAnim(sessionAnimsRef, session.id, isExpanded);
+    const chevronRotate = anim.chevron.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
+
     return (
       <View key={session.id || sessionIndex} style={styles.sessionContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.sessionHeader}
           onPress={() => toggleSession(session.id)}
         >
           <Text style={styles.sessionTitle}>{session.title}</Text>
-          {isExpanded ? (
-            <SvgChevronDown width={20} height={20} stroke="#ffffff" />
-          ) : (
-            <SvgChevronRight width={20} height={20} stroke="#ffffff" />
-          )}
+          <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+            <SvgChevronLeft width={20} height={20} stroke="#ffffff" />
+          </Animated.View>
         </TouchableOpacity>
-        
-        {isExpanded && (
+
+        <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 800] }), opacity: anim.expand, overflow: 'hidden' }}>
           <View style={styles.sessionContent}>
             {session.exercises && session.exercises.length > 0 ? (
               <>
                 <ExerciseList exercises={session.exercises} styles={styles} />
-                {/* Add button to navigate to workout */}
                 <TouchableOpacity
                   style={styles.startSessionButton}
                   onPress={() => handleSessionPress(session, sessionIndex, moduleId)}
@@ -351,39 +372,39 @@ const CourseStructureScreen = ({ navigation, route }) => {
               <Text style={styles.noContentText}>No hay ejercicios</Text>
             )}
           </View>
-        )}
+        </Animated.View>
       </View>
     );
   };
 
   const renderModule = (module, moduleIndex) => {
     const isExpanded = expandedModules[module.id];
-    
+    const anim = getOrCreateAnim(moduleAnimsRef, module.id, isExpanded);
+    const chevronRotate = anim.chevron.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
+
     return (
       <View key={module.id || moduleIndex} style={styles.moduleContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.moduleHeader}
           onPress={() => toggleModule(module.id)}
         >
           <Text style={styles.moduleTitle}>{module.title}</Text>
-          {isExpanded ? (
-            <SvgChevronDown width={24} height={24} stroke="#ffffff" />
-          ) : (
-            <SvgChevronRight width={24} height={24} stroke="#ffffff" />
-          )}
+          <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+            <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
+          </Animated.View>
         </TouchableOpacity>
-        
-        {isExpanded && (
+
+        <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] }), opacity: anim.expand, overflow: 'hidden' }}>
           <View style={styles.moduleContent}>
             {module.sessions && module.sessions.length > 0 ? (
-              module.sessions.map((session, sessionIndex) => 
+              module.sessions.map((session, sessionIndex) =>
                 renderSession(session, sessionIndex, module.id)
               )
             ) : (
               <Text style={styles.noContentText}>No hay sesiones</Text>
             )}
           </View>
-        )}
+        </Animated.View>
       </View>
     );
   };

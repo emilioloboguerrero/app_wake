@@ -322,6 +322,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const [creatorAge, setCreatorAge] = useState(null);
   const [creatorLocation, setCreatorLocation] = useState(null);
   const muscleScrollX = useRef(new Animated.Value(0)).current;
+  const headerEntranceAnim = useRef(new Animated.Value(0)).current;
 
   // General programs carousel (same style as MainScreen active programs)
   const generalPrograms = useMemo(
@@ -555,6 +556,13 @@ const CreatorProfileScreen = ({ navigation, route }) => {
       isMounted = false;
     };
   }, [creatorId, initialImageUrl, effectiveViewer?.uid]);
+
+  useEffect(() => {
+    if (!loading && displayName) {
+      headerEntranceAnim.setValue(0);
+      Animated.timing(headerEntranceAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    }
+  }, [loading, !!displayName]);
 
   const detectCardType = (rawValue) => {
     if (!rawValue || typeof rawValue !== 'string') {
@@ -1892,7 +1900,10 @@ const CreatorProfileScreen = ({ navigation, route }) => {
             scrollEventThrottle={8}
           >
             <View style={styles.tabPageContent}>
-                  <View style={styles.titleSection}>
+                  <Animated.View style={[styles.titleSection, {
+                    opacity: headerEntranceAnim,
+                    transform: [{ translateY: headerEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                  }]}>
                     <Text style={styles.screenTitle}>
                       {displayName || 'Creador'}
                     </Text>
@@ -1914,7 +1925,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                       ) : null}
                     </View>
                   )}
-                  </View>
+                  </Animated.View>
                   {storyCardsWithFallback.length > 0 && (
                     <View style={styles.storyCardsSection}>
                       <AnimatedFlatList

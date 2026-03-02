@@ -134,6 +134,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
   const scrollOffsetXRef = useRef(0);
   const swipeStartXRef = useRef(0);
+  const creatorAnimsRef = useRef([]);
+  const courseAnimsRef = useRef([]);
 
   // Keep scroll offset ref in sync for PanResponder-driven scroll
   useEffect(() => {
@@ -142,6 +144,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     });
     return () => scrollX.removeListener(listenerId);
   }, [scrollX]);
+
 
   // Capture horizontal swipes anywhere below search (tab bar + pager) to scroll between pages
   const librarySwipeResponder = useMemo(
@@ -233,6 +236,22 @@ const ProgramLibraryScreen = ({ navigation }) => {
     });
     return list;
   }, [state.courses]);
+
+  useEffect(() => {
+    if (!creatorsList.length) return;
+    creatorAnimsRef.current = creatorsList.map(() => new Animated.Value(0));
+    Animated.stagger(75, creatorAnimsRef.current.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+    )).start();
+  }, [creatorsList.length]);
+
+  useEffect(() => {
+    if (!state.filteredCourses.length) return;
+    courseAnimsRef.current = state.filteredCourses.map(() => new Animated.Value(0));
+    Animated.stagger(75, courseAnimsRef.current.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+    )).start();
+  }, [state.filteredCourses.length]);
 
   // Check for tutorials to show (defined before fetchCourses since fetchCourses calls it)
   const checkForTutorials = useCallback(async () => {
@@ -533,13 +552,19 @@ const ProgramLibraryScreen = ({ navigation }) => {
   };
 
   const renderCreatorCard = useCallback((creator, index) => {
+    const anim = creatorAnimsRef.current[index];
+    const animStyle = anim ? {
+      opacity: anim,
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+    } : {};
     return (
-      <CreatorCard
-        key={creator.id}
-        creator={creator}
-        onPress={() => handleCreatorPress(creator)}
-        styles={styles}
-      />
+      <Animated.View key={creator.id} style={animStyle}>
+        <CreatorCard
+          creator={creator}
+          onPress={() => handleCreatorPress(creator)}
+          styles={styles}
+        />
+      </Animated.View>
     );
   }, [handleCreatorPress]);
 
@@ -587,9 +612,14 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const renderCourseCard = useCallback((course, index) => {
     const isSwipedRight = state.swipedCourses[course.id];
     const isOneOnOne = course?.userCourseData?.deliveryType === 'one_on_one';
+    const anim = courseAnimsRef.current[index];
+    const animStyle = anim ? {
+      opacity: anim,
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+    } : {};
 
     return (
-      <View key={course.id || index} style={styles.courseCardWrapper}>
+      <Animated.View key={course.id || index} style={[styles.courseCardWrapper, animStyle]}>
         <View style={styles.courseCardContainer}>
           {isSwipedRight ? (
             renderModulesView(course)
@@ -643,7 +673,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </Animated.View>
     );
   }, [state.swipedCourses, handleCoursePress, handleImageLoadStart, handleImageLoad, handleImageError, renderModulesView]); // Removed state.imageLoadingStates to prevent infinite loop
 

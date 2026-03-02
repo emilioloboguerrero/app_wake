@@ -85,6 +85,10 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const [userDisplayName, setUserDisplayName] = useState('');
   const [username, setUsername] = useState('');
   
+  const prEntranceAnim = useRef(new Animated.Value(0)).current;
+  const prGlowAnim = useRef(new Animated.Value(0)).current;
+  const [animatedMetricValues, setAnimatedMetricValues] = useState({});
+
   // Scroll handler for pagination indicator
   const onMuscleScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { x: scrollX } } }],
@@ -198,6 +202,49 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       setInitialNotes(sessionData?.userNotes ?? '');
     }
   }, [sessionData?.sessionId, sessionData?.userNotes, initialNotes]);
+
+  useEffect(() => {
+    if (personalRecords && personalRecords.length > 0) {
+      prEntranceAnim.setValue(0);
+      prGlowAnim.setValue(0);
+      Animated.sequence([
+        Animated.timing(prEntranceAnim, { toValue: 1, duration: 230, useNativeDriver: true }),
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(prGlowAnim, { toValue: 1, duration: 550, useNativeDriver: true }),
+            Animated.timing(prGlowAnim, { toValue: 0, duration: 550, useNativeDriver: true }),
+          ]),
+          { iterations: 2 }
+        ),
+      ]).start();
+    }
+  }, [personalRecords?.length]);
+
+  useEffect(() => {
+    if (!completionStats) return;
+    const metrics = getDisciplineMetrics(completionStats.discipline, completionStats);
+    if (!metrics || metrics.length === 0) return;
+    const duration = 900;
+    const steps = 30;
+    const interval = duration / steps;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      const progress = Math.min(step / steps, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const newVals = {};
+      metrics.forEach((m, i) => {
+        const num = parseFloat(String(m.value).replace(/[^0-9.]/g, ''));
+        if (!isNaN(num) && num > 0) {
+          const raw = eased * num;
+          newVals[i] = Number.isInteger(num) ? Math.round(raw) : Math.round(raw * 10) / 10;
+        }
+      });
+      setAnimatedMetricValues(newVals);
+      if (step >= steps) clearInterval(timer);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [completionStats]);
 
   useEffect(() => {
     // Set random phrase when component mounts
@@ -1403,20 +1450,25 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
           {/* Personal Records Section (only show if PRs exist) */}
           {personalRecords && personalRecords.length > 0 && (
-            <View style={styles.personalRecordsSection}>
+            <Animated.View style={[styles.personalRecordsSection, {
+              opacity: prEntranceAnim,
+              transform: [{ scale: prEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }],
+            }]}>
               <View style={styles.personalRecordsTitleContainer}>
                 <SvgChampion width={28} height={28} color="rgba(191, 168, 77, 1)" />
                 <Text style={styles.personalRecordsTitle}>Nuevos Récords Personales</Text>
               </View>
               {personalRecords.map((pr, index) => (
-                <View key={`pr-${index}`} style={styles.prCard}>
+                <Animated.View key={`pr-${index}`} style={[styles.prCard, {
+                  transform: [{ scale: prGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }],
+                }]}>
                   <Text style={styles.prExerciseName}>{pr.exerciseName}</Text>
                   <Text style={styles.prDetails}>
                     {pr.achievedWith.weight}kg × {pr.achievedWith.reps} reps (serie {pr.achievedWith.setNumber})
                   </Text>
-                </View>
+                </Animated.View>
               ))}
-            </View>
+            </Animated.View>
           )}
 
             {/* Muscle Volume Section (show if discipline supports it) */}
@@ -1553,7 +1605,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               
               return metrics.map((metric, index) => (
                 <View key={index} style={styles.disciplineMetric}>
-                  <Text style={styles.metricValue}>{metric.value} {metric.unit}</Text>
+                  <Text style={styles.metricValue}>{animatedMetricValues[index] ?? metric.value} {metric.unit}</Text>
                   <Text style={styles.metricLabel}>{metric.label}</Text>
                 </View>
               ));

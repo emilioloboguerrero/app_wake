@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
@@ -139,6 +140,14 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
   // Track previous user ID to detect changes
   const previousUserIdRef = useRef(null);
+  const profileEntranceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (userProfile) {
+      profileEntranceAnim.setValue(0);
+      Animated.timing(profileEntranceAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    }
+  }, [!!userProfile]);
 
   // Load user profile data when screen mounts (for display)
   useEffect(() => {
@@ -1559,7 +1568,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                 <Heart01 width={20} height={20} stroke="#ffffff" strokeWidth={2} />
               </TouchableOpacity>
             ) : null}
-            <View style={styles.profileInfoContainer}>
+            <Animated.View style={[styles.profileInfoContainer, { opacity: profileEntranceAnim, transform: [{ translateY: profileEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }]}>
               <TouchableOpacity 
                 style={styles.profilePictureButton}
                 onPress={handleChangeProfilePicture}
@@ -1591,7 +1600,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                   @{getUsername()}
                 </Text>
               </View>
-            </View>
+            </Animated.View>
           </View>
 
         {/* Programs and Subscriptions Section */}

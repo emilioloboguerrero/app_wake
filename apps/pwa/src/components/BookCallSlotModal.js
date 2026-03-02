@@ -36,6 +36,38 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
   const [slotsByDate, setSlotsByDate] = useState({});
   const [expandedDate, setExpandedDate] = useState(null);
   const [rescheduleMode, setRescheduleMode] = useState(false);
+  const dateAnimsRef = useRef(new Map());
+
+  const getOrCreateDateAnim = (dateStr) => {
+    if (!dateAnimsRef.current.has(dateStr)) {
+      dateAnimsRef.current.set(dateStr, {
+        expand: new Animated.Value(0),
+        chevron: new Animated.Value(0),
+      });
+    }
+    return dateAnimsRef.current.get(dateStr);
+  };
+
+  const toggleDate = (dateStr) => {
+    setExpandedDate((prev) => {
+      const closing = prev === dateStr;
+      // Animate previous (close it)
+      if (prev && prev !== dateStr) {
+        const prevAnim = getOrCreateDateAnim(prev);
+        Animated.parallel([
+          Animated.timing(prevAnim.expand, { toValue: 0, duration: 220, useNativeDriver: false }),
+          Animated.timing(prevAnim.chevron, { toValue: 0, duration: 200, useNativeDriver: true }),
+        ]).start();
+      }
+      // Animate current
+      const currAnim = getOrCreateDateAnim(dateStr);
+      Animated.parallel([
+        Animated.timing(currAnim.expand, { toValue: closing ? 0 : 1, duration: 220, useNativeDriver: false }),
+        Animated.timing(currAnim.chevron, { toValue: closing ? 0 : 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+      return closing ? null : dateStr;
+    });
+  };
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const isManageMode = existingBooking && new Date(existingBooking.slotEndUtc) > new Date();
@@ -180,10 +212,6 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
 
   const styles = createStyles(screenWidth, screenHeight);
 
-  const toggleDate = (dateStr) => {
-    setExpandedDate((prev) => (prev === dateStr ? null : dateStr));
-  };
-
   return (
     <Modal
       visible={visible || isClosing}
@@ -271,8 +299,9 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                     <Text style={styles.sectionLabel}>Elige una nueva fecha</Text>
                     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
                       {dates.map((dateStr) => {
-                        const isExpanded = expandedDate === dateStr;
                         const slots = slotsByDate[dateStr] || [];
+                        const anim = getOrCreateDateAnim(dateStr);
+                        const chevronRotate = anim.chevron.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
                         return (
                           <View key={dateStr} style={styles.dateCard}>
                             <TouchableOpacity
@@ -284,14 +313,11 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                 <Text style={styles.dateCardTitle}>{formatDateLabel(dateStr)}</Text>
                                 <Text style={styles.dateCardSub}>{slots.length} horario(s)</Text>
                               </View>
-                              <SvgChevronLeft
-                                width={20}
-                                height={20}
-                                stroke="rgba(191, 168, 77, 1)"
-                                style={[styles.dateCardChevron, !isExpanded && styles.chevronRight, isExpanded && styles.chevronDown]}
-                              />
+                              <Animated.View style={[styles.dateCardChevron, { transform: [{ rotate: chevronRotate }] }]}>
+                                <SvgChevronLeft width={20} height={20} stroke="rgba(191, 168, 77, 1)" />
+                              </Animated.View>
                             </TouchableOpacity>
-                            {isExpanded && (
+                            <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }), opacity: anim.expand, overflow: 'hidden' }}>
                               <View style={styles.slotsContainer}>
                                 {slots.map((slot, index) => (
                                   <TouchableOpacity
@@ -314,7 +340,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                   </TouchableOpacity>
                                 ))}
                               </View>
-                            )}
+                            </Animated.View>
                           </View>
                         );
                       })}
@@ -327,8 +353,9 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                     <Text style={styles.sectionLabel}>Elige una fecha</Text>
                     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
                       {dates.map((dateStr) => {
-                        const isExpanded = expandedDate === dateStr;
                         const slots = slotsByDate[dateStr] || [];
+                        const anim = getOrCreateDateAnim(dateStr);
+                        const chevronRotate = anim.chevron.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
                         return (
                           <View key={dateStr} style={styles.dateCard}>
                             <TouchableOpacity
@@ -342,14 +369,11 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                   {slots.length} horario(s)
                                 </Text>
                               </View>
-                              <SvgChevronLeft
-                                width={20}
-                                height={20}
-                                stroke="rgba(191, 168, 77, 1)"
-                                style={[styles.dateCardChevron, !isExpanded && styles.chevronRight, isExpanded && styles.chevronDown]}
-                              />
+                              <Animated.View style={[styles.dateCardChevron, { transform: [{ rotate: chevronRotate }] }]}>
+                                <SvgChevronLeft width={20} height={20} stroke="rgba(191, 168, 77, 1)" />
+                              </Animated.View>
                             </TouchableOpacity>
-                            {isExpanded && (
+                            <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }), opacity: anim.expand, overflow: 'hidden' }}>
                               <View style={styles.slotsContainer}>
                                 {slots.map((slot, index) => (
                                   <TouchableOpacity
@@ -372,7 +396,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                   </TouchableOpacity>
                                 ))}
                               </View>
-                            )}
+                            </Animated.View>
                           </View>
                         );
                       })}

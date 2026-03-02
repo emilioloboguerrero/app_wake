@@ -488,6 +488,7 @@ const MainScreen = ({ navigation, route }) => {
   }, [userProfile?.displayName, user?.displayName, user?.email]);
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
+  const cardEntranceAnim = useRef(new Animated.Value(0)).current;
 
   // Load library card image from local bundle (preferred) or Firestore URL (fallback)
   useEffect(() => {
@@ -814,6 +815,13 @@ const MainScreen = ({ navigation, route }) => {
 
     return cards;
   }, [upcomingCallCards, purchasedCourses, downloadedCourses]);
+
+  useEffect(() => {
+    if (!loading && swipeableCards.length > 0) {
+      cardEntranceAnim.setValue(0);
+      Animated.timing(cardEntranceAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    }
+  }, [loading, swipeableCards.length]);
 
   // Load saved scroll position when screen loads or data changes
   useEffect(() => {
@@ -1791,7 +1799,7 @@ const MainScreen = ({ navigation, route }) => {
                 
               </View>
             ) : (
-              <View style={styles.swipeableContainer}>
+              <Animated.View style={[styles.swipeableContainer, { opacity: cardEntranceAnim, transform: [{ translateY: cardEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>
                 <View style={{ flex: 1, position: 'relative', overflow: 'visible' }}>
                     <View style={styles.cardsAndPaginationWrapper}>
                       <Animated.FlatList
@@ -1832,7 +1840,7 @@ const MainScreen = ({ navigation, route }) => {
                       </View>
                     </View>
                   </View>
-              </View>
+              </Animated.View>
             )}
           </View>
 

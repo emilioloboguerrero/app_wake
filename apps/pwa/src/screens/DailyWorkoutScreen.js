@@ -139,6 +139,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     !sessionState.emptyReason
   );
 
+  const sessionListAnimsRef = useRef([]);
+
   // Subtle pulse on entire session image card once, 1.5s after load (affordance: card is tappable)
   const pulseScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -163,6 +165,14 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     animation.start();
     return () => animation.stop();
   }, [canStartWorkout]);
+
+  useEffect(() => {
+    if (sessionState.isLoading || !sessionState.allSessions.length) return;
+    sessionListAnimsRef.current = sessionState.allSessions.map(() => new Animated.Value(0));
+    Animated.stagger(60, sessionListAnimsRef.current.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+    )).start();
+  }, [sessionState.isLoading, sessionState.allSessions.length]);
 
   // Reset scroll position to show correct pagination indicator
   const resetScrollPosition = () => {
@@ -597,8 +607,15 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       logger.log('🔄 Loading overlay should be visible for session:', session.title);
     }
 
+    const anim = sessionListAnimsRef.current[index];
+    const animStyle = anim ? {
+      opacity: anim,
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+    } : {};
+
     return (
-      <TouchableOpacity 
+      <Animated.View style={animStyle}>
+      <TouchableOpacity
         style={[
           styles.sessionListCard,
           isPreviewSession && styles.selectedSessionCard,
@@ -748,6 +765,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           </View>
         )}
       </TouchableOpacity>
+      </Animated.View>
     );
   };
 

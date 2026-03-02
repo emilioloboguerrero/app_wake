@@ -477,7 +477,13 @@ const AuthenticatedLayout = ({ children }) => {
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
       <OpenReadinessModalContext.Provider value={{ openReadinessModal }}>
         <UserRoleContext.Provider value={{ role: userRole }}>
-          {children}
+          <div
+            key={location.key}
+            className="wake-page-enter"
+            style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+          >
+            {children}
+          </div>
           {tabBarEl}
           {showReadiness && typeof document !== 'undefined' && document.body
             ? createPortal(

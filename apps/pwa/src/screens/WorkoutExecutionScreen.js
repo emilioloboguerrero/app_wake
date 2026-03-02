@@ -431,6 +431,18 @@ const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue
 
 // List view exercise card: at module level so re-renders (e.g. from useWindowDimensions when keyboard opens) do not remount rows and dismiss the focused input.
 const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, renderSetHeaders, renderSetInputFields, styles }) => {
+  const expandAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
+  const chevronAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(expandAnim, { toValue: isExpanded ? 1 : 0, duration: 220, useNativeDriver: false }),
+      Animated.timing(chevronAnim, { toValue: isExpanded ? 1 : 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [isExpanded]);
+
+  const chevronRotate = chevronAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
+
   return (
     <View key={`exercise-${exerciseIndex}-${exercise.id}`} style={styles.exerciseListItem}>
       <TouchableOpacity
@@ -443,15 +455,20 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             {exercise.name}
           </Text>
         </View>
-        <SvgChevronLeft
-          width={20}
-          height={20}
-          stroke="#007AFF"
-          style={[styles.exerciseItemArrow, !isExpanded && styles.arrowRight, isExpanded && styles.arrowDown]}
-        />
+        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+          <SvgChevronLeft
+            width={20}
+            height={20}
+            stroke="#007AFF"
+          />
+        </Animated.View>
       </TouchableOpacity>
 
-      {isExpanded && (
+      <Animated.View style={{
+        maxHeight: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 800] }),
+        opacity: expandAnim,
+        overflow: 'hidden',
+      }}>
         <View style={styles.setsContainer}>
           <View style={styles.exerciseControlsRow}>
             <TouchableOpacity
@@ -493,6 +510,9 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             return (
               <View key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`} style={styles.setTrackingRow}>
                 {isCurrentSet && <View style={styles.currentSetOverlay} />}
+                {isCurrentSet && (
+                  <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, backgroundColor: '#BFA84D', borderRadius: 2 }} />
+                )}
                 <TouchableOpacity
                   style={styles.setNumberContainer}
                   onPress={() => onSelectSet(exerciseIndex, setIndex)}
@@ -506,7 +526,7 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             );
           })}
         </View>
-      )}
+      </Animated.View>
     </View>
   );
 });
@@ -1041,6 +1061,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [currentIntensity, setCurrentIntensity] = useState(null);
   const [selectedIntensity, setSelectedIntensity] = useState(null);
   const [remoteIntensityVideos, setRemoteIntensityVideos] = useState({});
+  const intensityAnimsRef = useRef(new Map());
+
+  const getOrCreateIntensityAnim = (intensity) => {
+    if (!intensityAnimsRef.current.has(intensity)) {
+      intensityAnimsRef.current.set(intensity, new Animated.Value(0));
+    }
+    return intensityAnimsRef.current.get(intensity);
+  };
 
   // Intensity video mapping (compressed preset videos as safe fallback)
   // These are used only if Firebase download fails or hasn't completed yet
@@ -2842,18 +2870,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Handle intensity card press - expand/collapse video
   const handleIntensityCardPress = useCallback((intensity) => {
     if (selectedIntensity === intensity) {
-      // Collapse the card
+      Animated.timing(getOrCreateIntensityAnim(intensity), { toValue: 0, duration: 200, useNativeDriver: true }).start();
       setSelectedIntensity(null);
       intensityVideoPlayer.pause();
       setIsIntensityVideoPaused(true);
     } else {
-      // Expand the card and load video (bundled preset only)
+      if (selectedIntensity != null) {
+        Animated.timing(getOrCreateIntensityAnim(selectedIntensity), { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      }
+      Animated.timing(getOrCreateIntensityAnim(intensity), { toValue: 1, duration: 200, useNativeDriver: true }).start();
       setSelectedIntensity(intensity);
       const videoUri = intensityVideoMap[intensity];
       setIntensityVideoUri(videoUri);
       setCurrentIntensity(intensity);
       intensityVideoPlayer.replace(videoUri);
-      // Play will be handled by useEffect when video is ready
       setIsIntensityVideoPaused(false);
     }
   }, [selectedIntensity, intensityVideoMap, intensityVideoPlayer]);
@@ -6323,12 +6353,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         >
                           <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%'}}>
                             <Text style={{color: '#ffffff', fontSize: Math.min(screenWidth * 0.05, 20), fontWeight: '600', textAlign: 'center'}}>{intensity}/10</Text>
-                            <SvgChevronLeft 
-                              width={20} 
-                              height={20} 
-                              stroke="#ffffff" 
-                              style={[selectedIntensity === intensity ? {transform: [{ rotate: '270deg' }]} : {transform: [{ rotate: '180deg' }]}]}
-                            />
+                            <Animated.View style={{ transform: [{ rotate: getOrCreateIntensityAnim(intensity).interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] }) }] }}>
+                              <SvgChevronLeft width={20} height={20} stroke="#ffffff" />
+                            </Animated.View>
                           </View>
                           
                           {/* Video Container - Show when expanded */}
