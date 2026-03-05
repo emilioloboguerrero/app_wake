@@ -22,10 +22,10 @@ const STEPS = [
   {
     key: 'soreness',
     question: '¿Cómo sientes\ntus músculos hoy?',
-    lowLabel: 'Fresco',
+    lowLabel: 'Muy adolorido',
     midLabel: 'Moderado',
-    highLabel: 'Muy adolorido',
-    invertColor: true,
+    highLabel: 'Fresco',
+    invertColor: false,
     accentColor: '#f87171',
   },
   {
@@ -86,11 +86,15 @@ function EnergyIcon({ value }) {
 }
 
 function SorenessIcon({ value }) {
-  const intensity = value ? value / 10 : 0.3;
-  // Shifts from green (low/fresh) to red (high/sore)
-  const r = value ? Math.round(74 + ((value - 1) / 9) * (248 - 74)) : 160;
-  const g = value ? Math.round(222 - ((value - 1) / 9) * (222 - 113)) : 180;
-  const b = value ? Math.round(128 - ((value - 1) / 9) * (128 - 113)) : 120;
+  // Internally, readinessService exposes soreness as 1 = muy adolorido, 10 = fresco.
+  // For the icon we still want the visual to go from red (peor) to verde (mejor).
+  const freshness = value ? value : null;
+  const internalSoreness = freshness ? (11 - freshness) : null;
+  const intensity = internalSoreness ? internalSoreness / 10 : 0.3;
+  // Shifts from green (fresh) to red (sore) based on internalSoreness
+  const r = internalSoreness ? Math.round(74 + ((internalSoreness - 1) / 9) * (248 - 74)) : 160;
+  const g = internalSoreness ? Math.round(222 - ((internalSoreness - 1) / 9) * (222 - 113)) : 180;
+  const b = internalSoreness ? Math.round(128 - ((internalSoreness - 1) / 9) * (128 - 113)) : 120;
   const a = 0.15 + intensity * 0.25;
   return (
     <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"

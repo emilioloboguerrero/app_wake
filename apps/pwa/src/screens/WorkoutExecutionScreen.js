@@ -430,7 +430,9 @@ const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue
 });
 
 // List view exercise card: at module level so re-renders (e.g. from useWindowDimensions when keyboard opens) do not remount rows and dismiss the focused input.
-const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, renderSetHeaders, renderSetInputFields, styles }) => {
+const SKIP_SET_FIELDS = ['id','order','notes','description','title','name','created_at','updated_at','createdAt','updatedAt','type','status','category','tags','metadata'];
+
+const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, lastSavedKey, renderSetHeaders, renderSetInputFields, styles }) => {
   const expandAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
   const chevronAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
 
@@ -442,6 +444,13 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
   }, [isExpanded]);
 
   const chevronRotate = chevronAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '270deg'] });
+
+  const isExerciseDone = exercise.sets?.every((set, setIndex) => {
+    const key = `${exerciseIndex}_${setIndex}`;
+    const data = setData[key] || {};
+    const measurableFields = Object.keys(set).filter(f => !SKIP_SET_FIELDS.includes(f));
+    return measurableFields.some(f => data[f] !== undefined && data[f] !== null && data[f] !== '');
+  }) ?? false;
 
   return (
     <View key={`exercise-${exerciseIndex}-${exercise.id}`} style={styles.exerciseListItem}>
@@ -455,6 +464,9 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             {exercise.name}
           </Text>
         </View>
+        {isExerciseDone && Platform.OS === 'web' && (
+          <div className="wake-exercise-done-badge">✓</div>
+        )}
         <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
           <SvgChevronLeft
             width={20}
@@ -507,11 +519,16 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             const key = `${exerciseIndex}_${setIndex}`;
             const currentSetData = setData[key] || {};
             const isCurrentSet = exerciseIndex === currentExerciseIndex && setIndex === currentSetIndex;
+            const justSaved = Platform.OS === 'web' && lastSavedKey === key;
             return (
-              <View key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`} style={styles.setTrackingRow}>
+              <View
+                key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`}
+                style={styles.setTrackingRow}
+                {...(justSaved ? { className: 'wake-set-saved' } : {})}
+              >
                 {isCurrentSet && <View style={styles.currentSetOverlay} />}
                 {isCurrentSet && (
-                  <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, backgroundColor: '#BFA84D', borderRadius: 2 }} />
+                  <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, backgroundColor: '#FFFFFF', borderRadius: 2 }} />
                 )}
                 <TouchableOpacity
                   style={styles.setNumberContainer}
@@ -866,6 +883,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [isMenuVisible, setIsMenuVisible] = useState(false); // Menu visibility state
   const [isSetInputVisible, setIsSetInputVisible] = useState(false); // Set input popup visibility
   const [currentSetInputData, setCurrentSetInputData] = useState({}); // Current set input data
+  const [lastSavedKey, setLastSavedKey] = useState(null); // Web: track last saved set key for flash animation
+  const savedKeyTimerRef = useRef(null);
+  const [showPostSave, setShowPostSave] = useState(false); // Web: triggers post-save animations
+  const postSaveTimerRef = useRef(null);
   const [isSwapModalVisible, setIsSwapModalVisible] = useState(false); // Swap exercise modal visibility
   const [currentSwapExerciseIndex, setCurrentSwapExerciseIndex] = useState(null); // Which exercise is being swapped
   const [alternativeExercises, setAlternativeExercises] = useState([]); // Loaded alternative exercises
@@ -1009,6 +1030,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const isRestPausedRef = useRef(false);
   const timerJustEndedRef = useRef(false);
   const [showTimerEndedObjectivesModal, setShowTimerEndedObjectivesModal] = useState(false);
+  const [timerEndedPulse, setTimerEndedPulse] = useState(false);
   const minutesScrollRef = useRef(null);
   const secondsScrollRef = useRef(null);
   const TIMER_PICKER_ITEM_HEIGHT = 44;
@@ -2321,40 +2343,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const handleSaveSetData = useCallback(async () => {
     try {
       const key = `${currentExerciseIndex}_${currentSetIndex}`;
-      
+
       // Update local state
       setSetData(prev => ({
         ...prev,
         [key]: { ...prev[key], ...currentSetInputData }
       }));
-      
+
       // Get current exercise and set info
       const currentExercise = workout.exercises[currentExerciseIndex];
       const currentSet = currentExercise.sets[currentSetIndex];
-      
+
       // Get all sets for this exercise - SIMPLE FIX
       const allSets = [];
       for (let i = 0; i < currentExercise.sets.length; i++) {
         const setKey = `${currentExerciseIndex}_${i}`;
         const currentSetData = setData[setKey] || {};
-        
+
         // If this is the current set, merge with new input data
-        const setMetrics = i === currentSetIndex 
+        const setMetrics = i === currentSetIndex
           ? { ...currentSetData, ...currentSetInputData }
           : currentSetData;
-          
+
         allSets.push(setMetrics);
       }
-      
+
       // Add exercise data to session manager
-      await sessionManager.addExerciseData(
-        currentExercise.id,
-        currentExercise.name,
-        allSets
-      );
+      await sessionManager.addExerciseData(currentExercise.id, currentExercise.name, allSets);
       logger.log('✅ Exercise data saved to session:', allSets);
-      
-      // Animate modal out
+
+      // Animate modal out, then trigger the saved-row sweep once it's gone
       Animated.parallel([
         Animated.timing(modalOpacity, {
           toValue: 0,
@@ -2369,13 +2387,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       ]).start(() => {
         setIsSetInputVisible(false);
         setCurrentSetInputData({});
-        
+
+        if (Platform.OS === 'web') {
+          // Row sweep on the saved set
+          if (savedKeyTimerRef.current) clearTimeout(savedKeyTimerRef.current);
+          setLastSavedKey(key);
+          savedKeyTimerRef.current = setTimeout(() => setLastSavedKey(null), 700);
+
+          // Button sweep + objectives cascade
+          if (postSaveTimerRef.current) clearTimeout(postSaveTimerRef.current);
+          setShowPostSave(true);
+          postSaveTimerRef.current = setTimeout(() => setShowPostSave(false), 1600);
+        }
+
         // Automatically move to next set using ref
         if (handleNextSetRef.current) {
           handleNextSetRef.current();
         }
       });
-      
+
     } catch (error) {
       logger.error('❌ Error saving set data:', error);
       Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
@@ -2525,11 +2555,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (restSecondsRemaining === 0) setIsRestPaused(false);
   }, [restSecondsRemaining]);
 
-  // When timer ends (countdown hit 0), show objectives modal
+  // When timer ends (countdown hit 0), show objectives modal + pulse
   useEffect(() => {
     if (restSecondsRemaining === 0 && timerJustEndedRef.current) {
       timerJustEndedRef.current = false;
       setShowTimerEndedObjectivesModal(true);
+      if (Platform.OS === 'web') {
+        setTimerEndedPulse(true);
+        setTimeout(() => setTimerEndedPulse(false), 1800);
+      }
     }
   }, [restSecondsRemaining]);
 
@@ -4279,6 +4313,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         setData={setData}
         currentExerciseIndex={currentExerciseIndex}
         currentSetIndex={currentSetIndex}
+        lastSavedKey={lastSavedKey}
         renderSetHeaders={renderSetHeaders}
         renderSetInputFields={renderSetInputFields}
         styles={styles}
@@ -4294,6 +4329,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setData,
     currentExerciseIndex,
     currentSetIndex,
+    lastSavedKey,
     renderSetHeaders,
     renderSetInputFields,
     styles,
@@ -4358,13 +4394,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // List footer component
   const ListFooterComponent = useMemo(() => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[
         styles.endWorkoutButton,
         checkAllExercisesCompleted() && styles.endWorkoutButtonActive,
         hasValidationErrors() && styles.endWorkoutButtonDisabled,
         isEditMode && styles.endWorkoutButtonDisabled
       ]}
+      {...(checkAllExercisesCompleted() && Platform.OS === 'web' ? { className: 'wake-finalizar-glow' } : {})}
       onPress={() => {
         if (!isEditMode) {
           logger.log('🏋️ End workout button pressed');
@@ -4546,22 +4583,32 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
       
+      // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
+      const currentUser = user || auth.currentUser;
+      logger.log('🔍 [WorkoutExecution] initializeWorkout user snapshot:', {
+        userFromHook: !!user,
+        userUidFromHook: user?.uid,
+        firebaseCurrentUser: !!auth.currentUser,
+        firebaseCurrentUserUid: auth.currentUser?.uid,
+        effectiveUserUid: currentUser?.uid
+      });
+      
       logger.log('🏋️ Initializing workout with params:', { course: course?.courseId, workout: workout?.id, sessionId });
       logger.log('🏋️ Workout exercises:', workout?.exercises?.length || 0);
       
       // Load previous session data
       const loadDataStartTime = performance.now();
       logger.debug(`[ASYNC] [CHECKPOINT] About to call loadPreviousSessionData() - ${loadDataStartTime.toFixed(2)}ms`);
-      await loadPreviousSessionData();
+      await loadPreviousSessionData(currentUser);
       const loadDataDuration = performance.now() - loadDataStartTime;
       logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() returned - took ${loadDataDuration.toFixed(2)}ms`);
       
       // Load 1RM estimates for weight suggestions
-      if (user?.uid) {
+      if (currentUser?.uid) {
         const oneRmStartTime = performance.now();
         logger.debug(`[ASYNC] [CHECKPOINT] About to load 1RM estimates - ${oneRmStartTime.toFixed(2)}ms`);
-        logger.log('💪 Loading 1RM estimates for user:', user.uid);
-        const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
+        logger.log('💪 Loading 1RM estimates for user:', currentUser.uid);
+        const estimates = await oneRepMaxService.getEstimatesForUser(currentUser.uid);
         const oneRmDuration = performance.now() - oneRmStartTime;
         logger.debug(`[ASYNC] [CHECKPOINT] 1RM estimates loaded - took ${oneRmDuration.toFixed(2)}ms`);
         if (oneRmDuration > 2000) {
@@ -4588,11 +4635,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         if (!session) {
         // Start a new workout session if none exists
         logger.log('🏋️ Starting new workout session...');
+          const currentUserForSession = currentUser || user || auth.currentUser;
+          if (!currentUserForSession?.uid) {
+            logger.warn('⚠️ [WorkoutExecution] Cannot start workout session: no resolved user (hook/auth.currentUser both missing)');
+            return;
+          }
           const sessionIdValue = workout.sessionId || sessionId;
           
           session = await sessionManager.startSession(
-            user.uid,
-          course.courseId, 
+            currentUserForSession.uid,
+            course.courseId, 
             sessionIdValue,
             workout.title || 'Workout Session'
         );
@@ -4621,15 +4673,26 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   };
 
-  const loadPreviousSessionData = async () => {
+  const loadPreviousSessionData = async (resolvedUser = null) => {
     const asyncStartTime = performance.now();
     logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() started - ${asyncStartTime.toFixed(2)}ms`);
     try {
       logger.log('📖 Loading previous session data from exercise history...');
       
+      // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
+      const currentUser = resolvedUser || user || auth.currentUser;
+      logger.log('🔍 [WorkoutExecution] loadPreviousSessionData user snapshot:', {
+        userFromHook: !!user,
+        userUidFromHook: user?.uid,
+        firebaseCurrentUser: !!auth.currentUser,
+        firebaseCurrentUserUid: auth.currentUser?.uid,
+        resolvedUserUid: resolvedUser?.uid,
+        effectiveUserUid: currentUser?.uid
+      });
+      
       // Check if user exists before proceeding
-      if (!user?.uid) {
-        logger.log('⚠️ No user found, skipping exercise history loading');
+      if (!currentUser?.uid) {
+        logger.log('⚠️ No resolved user found, skipping exercise history loading');
         const duration = performance.now() - asyncStartTime;
         logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed early (no user) - took ${duration.toFixed(2)}ms`);
         return;
@@ -4643,9 +4706,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
       
       const exercisesCount = workout.exercises.length;
-      logger.debug(`[ASYNC] [CHECKPOINT] Starting exercise history loading for ${exercisesCount} exercises (user: ${user.uid})`);
+      logger.debug(`[ASYNC] [CHECKPOINT] Starting exercise history loading for ${exercisesCount} exercises (user: ${currentUser.uid})`);
       
-      // Load previous data for each exercise from exercise history
+      // Load previous data for each exercise from last performance cache
       const exerciseHistoryPromises = workout.exercises.map(async (exercise, index) => {
         const exerciseStartTime = performance.now();
         try {
@@ -4654,24 +4717,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           const exerciseName = exercise.primary[libraryId];
           const exerciseKey = `${libraryId}_${exerciseName}`;
           
-          logger.debug(`[ASYNC] [CHECKPOINT] Loading exercise history ${index + 1}/${exercisesCount}: ${exerciseKey} - ${exerciseStartTime.toFixed(2)}ms`);
-          logger.log(`📊 Loading exercise history for: ${exerciseKey}`);
+          logger.debug(`[ASYNC] [CHECKPOINT] Loading last performance ${index + 1}/${exercisesCount}: ${exerciseKey} - ${exerciseStartTime.toFixed(2)}ms`);
+          logger.log(`📊 Loading last exercise performance for: ${exerciseKey}`);
           
           // Double-check user exists before making the call
-          if (!user?.uid) {
+          if (!currentUser?.uid) {
             logger.warn(`[ASYNC] ⚠️ User became null during exercise history loading for ${exerciseKey}`);
             return; // Skip this exercise
           }
           
-          // Get exercise history with timeout protection
+          // Get last exercise performance with timeout protection
           const historyStartTime = performance.now();
           let timeoutId = null;
-          const exerciseHistoryData = await Promise.race([
-            exerciseHistoryService.getExerciseHistory(user.uid, exerciseKey),
+          const lastPerformanceData = await Promise.race([
+            exerciseHistoryService.getLastExercisePerformance(currentUser.uid, exerciseKey),
             new Promise((_, reject) => {
               timeoutId = setTimeout(() => {
                 if (isMountedRef.current) {
-                  reject(new Error('Exercise history request timeout'));
+                  reject(new Error('Last exercise performance request timeout'));
                 }
               }, 10000);
               allTimeoutIdsRef.current.push(timeoutId);
@@ -4684,39 +4747,35 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             }
           });
           const historyDuration = performance.now() - historyStartTime;
-          logger.debug(`[ASYNC] [CHECKPOINT] Exercise history loaded for ${exerciseKey} - took ${historyDuration.toFixed(2)}ms`);
-          
-          const sessions = exerciseHistoryData.sessions || [];
-          
-          if (sessions.length > 0) {
-            // Get the most recent session data (first in array since they're sorted by date descending)
-            const mostRecentSession = sessions[0];
-            
-            logger.log(`✅ Found exercise history for ${exerciseKey}:`, {
-              sessionCount: sessions.length,
-              mostRecentDate: mostRecentSession.date,
-              setsCount: mostRecentSession.sets?.length || 0
+          logger.debug(`[ASYNC] [CHECKPOINT] Last performance loaded for ${exerciseKey} - took ${historyDuration.toFixed(2)}ms`);
+
+          if (lastPerformanceData && lastPerformanceData.bestSet) {
+            logger.log(`✅ Found last performance for ${exerciseKey}:`, {
+              lastPerformedAt: lastPerformanceData.lastPerformedAt,
+              totalSets: lastPerformanceData.totalSets,
+              bestSet: lastPerformanceData.bestSet
             });
-            
-            // Attach previous data to exercise
+
+            // Attach previous data (best set of last session) to exercise
             exercise.previousData = {
-              sets: mostRecentSession.sets || [],
+              bestSet: lastPerformanceData.bestSet,
+              totalSets: lastPerformanceData.totalSets,
               exerciseName: exerciseName,
-              lastPerformed: mostRecentSession.date
+              lastPerformed: lastPerformanceData.lastPerformedAt
             };
           } else {
-            logger.log(`ℹ️ No exercise history found for ${exerciseKey}`);
+            logger.log(`ℹ️ No last performance found for ${exerciseKey}`);
           }
           
           const exerciseDuration = performance.now() - exerciseStartTime;
-          logger.debug(`[ASYNC] [CHECKPOINT] Exercise history ${index + 1}/${exercisesCount} completed - took ${exerciseDuration.toFixed(2)}ms`);
+          logger.debug(`[ASYNC] [CHECKPOINT] Last performance ${index + 1}/${exercisesCount} completed - took ${exerciseDuration.toFixed(2)}ms`);
           if (exerciseDuration > 2000) {
-            logger.warn(`[ASYNC] ⚠️ SLOW: Exercise history ${index + 1} took ${exerciseDuration.toFixed(2)}ms (threshold: 2000ms)`);
+            logger.warn(`[ASYNC] ⚠️ SLOW: Last performance ${index + 1} took ${exerciseDuration.toFixed(2)}ms (threshold: 2000ms)`);
           }
         } catch (error) {
           const exerciseDuration = performance.now() - exerciseStartTime;
-          logger.error(`[ASYNC] [ERROR] Exercise history ${index + 1}/${exercisesCount} failed after ${exerciseDuration.toFixed(2)}ms:`, error);
-          logger.error(`❌ Error loading exercise history for exercise:`, error);
+          logger.error(`[ASYNC] [ERROR] Last performance ${index + 1}/${exercisesCount} failed after ${exerciseDuration.toFixed(2)}ms:`, error);
+          logger.error(`❌ Error loading last performance for exercise:`, error);
         }
       });
       
@@ -4730,7 +4789,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.warn(`[ASYNC] ⚠️ SLOW: Promise.all() took ${promiseAllDuration.toFixed(2)}ms (threshold: 5000ms)`);
       }
       
-      logger.log('✅ Exercise history loading completed');
+      logger.log('✅ Last performance loading completed');
+      try {
+        logger.log('📊 [Objectives] PreviousData snapshot after loadPreviousSessionData:', {
+          exercisesCount: workout?.exercises?.length || 0,
+          exercises: (workout?.exercises || []).map((ex, idx) => ({
+            index: idx,
+            name: ex?.name,
+            hasPreviousData: !!ex?.previousData,
+            previousData: ex?.previousData || null,
+            objectives: ex?.objectives || [],
+            measures: ex?.measures || []
+          }))
+        });
+      } catch (snapshotError) {
+        logger.error('❌ [Objectives] Error logging PreviousData snapshot:', snapshotError);
+      }
       const totalDuration = performance.now() - asyncStartTime;
       logger.debug(`[ASYNC] [CHECKPOINT] loadPreviousSessionData() completed - total time: ${totalDuration.toFixed(2)}ms`);
       if (totalDuration > 10000) {
@@ -4788,7 +4862,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     // Special handling for "previous"
     if (metricName.toLowerCase() === 'previous') {
-      const prevSetData = workout.exercises[currentExerciseIndex]?.previousData?.sets?.[currentSetIndex];
+      const previousData = workout.exercises[currentExerciseIndex]?.previousData;
+      // Prefer bestSet (single summary of last performance); fallback to legacy per-set array if present
+      const prevSetData = previousData?.bestSet || previousData?.sets?.[currentSetIndex];
+
+      try {
+        logger.log('📊 [Objectives] previous metric debug:', {
+          metricName,
+          exerciseIndex: currentExerciseIndex,
+          setIndex: currentSetIndex,
+          hasPreviousData: !!previousData,
+          previousData,
+          usingBestSet: !!previousData?.bestSet,
+          prevSetData,
+          measures: currentExercise.measures || []
+        });
+      } catch (logError) {
+        logger.error('❌ [Objectives] Error logging previous metric debug:', logError);
+      }
       
       if (prevSetData && currentExercise.measures) {
         const parts = [];
@@ -4835,63 +4926,80 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Get weight suggestion for current set (if available)
   const getWeightSuggestion = () => {
     logger.log('💪 getWeightSuggestion: Checking availability...');
-    
+
     // Check 1: Program has weight suggestions enabled
     if (!course.weight_suggestions) {
       logger.log('  ⏭️ weight_suggestions not enabled in course');
       return null;
     }
-    
-    // Check 2: Discipline is Fuerza - Hipertrofia (case-insensitive, flexible matching)
-    const disciplineStr = course.discipline?.toLowerCase().replace(/\s+/g, '-') || '';
-    const isFuerzaHipertrofia = disciplineStr.includes('fuerza') && disciplineStr.includes('hipertrofia');
-    
-    if (!isFuerzaHipertrofia) {
-      logger.log('  ⏭️ Discipline is not Fuerza - Hipertrofia:', course.discipline);
+
+    // Defensive checks for workout/indices
+    const exercise = workout?.exercises?.[currentExerciseIndex];
+    if (!exercise || !exercise.sets || exercise.sets.length === 0) {
+      logger.log('  ⏭️ No current exercise or sets available for suggestion');
       return null;
     }
-    
-    logger.log('  ✅ Discipline check passed:', course.discipline);
-    
-    const exercise = workout.exercises[currentExerciseIndex];
     const set = exercise.sets[currentSetIndex];
-    
-    logger.log('  📋 Current exercise:', exercise.name);
-    logger.log('  📋 Current set:', currentSetIndex + 1);
-    
-    // Check 3: Set has reps and intensity
-    if (!set.reps || !set.intensity) {
-      logger.log('  ⏭️ Set missing reps or intensity:', { reps: set.reps, intensity: set.intensity });
+
+    logger.log('  📋 Current exercise for suggestion:', {
+      name: exercise.name,
+      index: currentExerciseIndex,
+      hasPrimary: !!exercise.primary,
+      primaryKeys: exercise.primary ? Object.keys(exercise.primary) : [],
+    });
+    logger.log('  📋 Current set for suggestion:', {
+      setIndex: currentSetIndex,
+      reps: set?.reps,
+      intensity: set?.intensity,
+    });
+
+    // Check 2: Set has reps and intensity objectives
+    if (!set?.reps || !set?.intensity) {
+      logger.log('  ⏭️ Set missing reps or intensity:', {
+        reps: set?.reps,
+        intensity: set?.intensity,
+      });
       return null;
     }
-    
+
     // Parse objectives
     const objectiveReps = oneRepMaxService.parseReps(set.reps);
     const objectiveIntensity = oneRepMaxService.parseIntensity(set.intensity);
-    
-    logger.log('  🔢 Parsed objectives:', { objectiveReps, objectiveIntensity });
-    
+
+    logger.log('  🔢 Parsed objectives for suggestion:', {
+      objectiveReps,
+      objectiveIntensity,
+    });
+
     if (!objectiveIntensity) {
-      logger.log('  ⏭️ Invalid intensity format');
+      logger.log('  ⏭️ Invalid intensity format for suggestion');
       return null;
     }
-    
+
     // Get 1RM estimate for this exercise
+    if (!exercise.primary || Object.keys(exercise.primary).length === 0) {
+      logger.log('  ⏭️ Exercise has no primary reference - cannot build exerciseKey');
+      return null;
+    }
     const libraryId = Object.keys(exercise.primary)[0];
     const exerciseName = exercise.primary[libraryId];
     const exerciseKey = `${libraryId}_${exerciseName}`;
-    
-    logger.log('  🔑 Exercise key:', exerciseKey);
-    
-    const estimate = oneRepMaxEstimates[exerciseKey]?.current;
-    
-    logger.log('  💾 1RM estimate from DB:', estimate);
-    
+
+    logger.log('  🔑 Exercise key for suggestion:', {
+      exerciseKey,
+      libraryId,
+      exerciseName,
+    });
+
+    const estimate = oneRepMaxEstimates?.[exerciseKey]?.current;
+
+    logger.log('  💾 1RM estimate from user document:', estimate);
+
     if (!estimate) {
-      logger.log('  ⏭️ No 1RM estimate found for this exercise');
+      logger.log('  ⏭️ No 1RM estimate found for this exerciseKey in oneRepMaxEstimates');
       return null;
     }
-    
+
     // Calculate suggestion
     const suggestion = oneRepMaxService.calculateWeightSuggestion(
       estimate,
@@ -4899,7 +5007,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       objectiveIntensity,
       exercise.muscle_activation
     );
-    
+
     logger.log('  ✅ Weight suggestion calculated:', suggestion);
     return suggestion;
   };
@@ -4947,39 +5055,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [workout, currentExerciseIndex, currentSetIndex]);
 
   const handleCompleteWorkout = useCallback(async () => {
+    // Legacy path: delegate to the unified end‑workout flow so that
+    // session history, exercise history, last performance and 1RM updates
+    // all go through the same pipeline as the explicit "Finalizar" button.
     try {
-      logger.log('🏁 Completing workout session...');
-      const currentUser = user || auth.currentUser;
-      if (currentUser?.uid && course?.courseId) {
-        // Get current session data
-        const currentSession = await sessionManager.getCurrentSession();
-        if (currentSession) {
-          // Complete the session using new session service
-          const result = await sessionService.completeSession(
-            currentUser.uid,
-            course.courseId,
-            currentSession,
-            { userNotes: sessionNotes }
-          );
-          
-          if (result) {
-            logger.log('✅ Workout completed successfully!');
-            
-            // Navigate back to daily workout screen
-            navigation.navigate('DailyWorkout', { course });
-          } else {
-            alert('No se encontró una sesión activa para completar.');
-          }
-        } else {
-          alert('No se pudo completar el entrenamiento: datos de usuario o curso faltantes.');
-        }
+      logger.log('🏁 handleCompleteWorkout: delegating to executeEndWorkoutRef');
+      if (executeEndWorkoutRef.current) {
+        await executeEndWorkoutRef.current();
+      } else {
+        logger.warn('⚠️ handleCompleteWorkout: executeEndWorkoutRef.current is null');
       }
-      
     } catch (error) {
-      logger.error('❌ Error completing workout:', error);
-      alert('Error al completar el entrenamiento. Inténtalo de nuevo.');
+      logger.error('❌ Error in handleCompleteWorkout (delegated):', error);
+      Alert.alert('Error', 'Error al completar el entrenamiento. Inténtalo de nuevo.');
     }
-  }, [workout, setData, user, course, navigation, confirmEndWorkout]);
+  }, []);
 
   // Store handleCompleteWorkout in ref so it can be called before it's defined
   useEffect(() => {
@@ -5204,7 +5294,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             left: 0,
             right: 0,
             alignSelf: 'center',
-            backgroundColor: '#BFA84D',
+            backgroundColor: '#FFFFFF',
             paddingHorizontal: 40,
             paddingVertical: 15,
             borderRadius: 25,
@@ -5238,14 +5328,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         return null;
       })()}
       {/* Fixed Header without Back Button */}
-      <FixedWakeHeader 
+      <FixedWakeHeader
         showMenuButton={true}
         onMenuPress={() => {
           logger.log('🏋️ Three-dot menu pressed');
           setIsMenuVisible(true);
         }}
       />
-      
+
+      {/* Post-save ring+check overlay (web only) */}
+      {isWeb && showPostSave && React.createElement('div', { className: 'wake-set-overlay' },
+        React.createElement('svg', { width: 70, height: 70, viewBox: '0 0 60 60' },
+          React.createElement('circle', { className: 'wake-ring', cx: 30, cy: 30, r: 20 }),
+          React.createElement('path', { className: 'wake-check', d: 'M 22 30 L 28 36 L 39 22' })
+        )
+      )}
+
       {/* Menu Modal */}
       <Modal
         animationType="fade"
@@ -5366,7 +5464,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               </ScrollView>
               
               <View style={styles.setInputModalFooter}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
                     styles.saveSetButton,
                     !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val))) && styles.saveSetButtonDisabled
@@ -5454,8 +5552,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               items.push({ label: 'Peso Sugerido', value: `${suggestion}kg` });
                             }
                             sortedObjectives.forEach((objective) => {
+                              const baseLabel = translateMetric(objective, currentExercise) || 'Objetivo';
                               items.push({
-                                label: translateMetric(objective, currentExercise) || 'Objetivo',
+                                label: baseLabel.toUpperCase(),
                                 value: getMetricValueForCard(objective),
                               });
                             });
@@ -5481,7 +5580,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     </>
                   ) : (
                     <>
-                  <View style={styles.timerRestHero}>
+                  <View style={styles.timerRestHero} {...(timerEndedPulse && Platform.OS === 'web' ? { className: 'wake-timer-ended' } : {})}>
                     <View style={styles.timerRestHeroHollowWrap}>
                         {(() => {
                           const isActive = restSecondsRemaining > 0 || selectedRestSeconds > 0;
@@ -5933,6 +6032,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   logger.log('DEBUG: Objectives array:', workout?.exercises?.[currentExerciseIndex]?.objectives);
                   logger.log('DEBUG: Measures array:', workout?.exercises?.[currentExerciseIndex]?.measures);
                   logger.log('DEBUG: Has weight suggestion:', hasWeightSuggestion);
+                  try {
+                    const currentExercise = workout?.exercises?.[currentExerciseIndex];
+                    const previousData = currentExercise?.previousData;
+                    logger.log('📊 [Objectives] Current exercise snapshot:', {
+                      index: currentExerciseIndex,
+                      name: currentExercise?.name,
+                      objectives: currentExercise?.objectives || [],
+                      measures: currentExercise?.measures || [],
+                      hasPreviousData: !!previousData,
+                      previousData,
+                      courseWeightSuggestionsFlag: !!course?.weight_suggestions
+                    });
+                  } catch (snapshotError) {
+                    logger.error('❌ [Objectives] Error logging current exercise snapshot:', snapshotError);
+                  }
                   
                   // Get all objectives (no filtering)
                   const objectives = workout?.exercises?.[currentExerciseIndex]?.objectives || [];
@@ -5955,11 +6069,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   
                   logger.log('DEBUG: Sorted objectives:', sortedObjectives);
                   
+                  let _cardIdx = 0;
                   return (
                     <>
                       {/* Weight Suggestion Card FIRST (if available) */}
                       {hasWeightSuggestion && (() => {
                         const hasInfo = objectivesInfoService.hasInfo('weight_suggestion');
+                        const _idx = _cardIdx++;
                         return (
                           <TouchableOpacity
                             key="weight-suggestion"
@@ -5967,8 +6083,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             onPress={() => handleObjectiveCardPress('weight_suggestion')}
                             disabled={!hasInfo}
                             activeOpacity={hasInfo ? 0.7 : 1}
+                            {...(isWeb && showPostSave ? { className: `wake-obj-cascade wake-obj-i${_idx}` } : {})}
                           >
-                            <Text style={styles.metricTitle}>Peso Sugerido</Text>
+                            <Text style={styles.metricTitle}>PESO SUGERIDO</Text>
                             <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{suggestion}kg</Text>
                             
                             {/* Info icon indicator */}
@@ -5985,6 +6102,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       {sortedObjectives.map((objective, index) => {
                         const hasInfo = objectivesInfoService.hasInfo(objective);
                         const currentExercise = workout?.exercises?.[currentExerciseIndex];
+                        const _idx = _cardIdx++;
                         return (
                           <TouchableOpacity
                             key={`objective-${currentExerciseIndex}-${index}-${objective}`}
@@ -5992,9 +6110,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             onPress={() => handleObjectiveCardPress(objective)}
                             disabled={!hasInfo}
                             activeOpacity={hasInfo ? 0.7 : 1}
+                            {...(isWeb && showPostSave ? { className: `wake-obj-cascade wake-obj-i${_idx}` } : {})}
                           >
                             <Text style={styles.metricTitle}>
-                              {translateMetric(objective, currentExercise) || 'Objetivo'}
+                              {(translateMetric(objective, currentExercise) || 'Objetivo').toUpperCase()}
                             </Text>
                             <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                               {getMetricValueForCard(objective)}
@@ -6016,8 +6135,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         style={styles.horizontalCard}
                         onPress={handleViewExerciseProgress}
                         activeOpacity={0.7}
+                        {...(isWeb && showPostSave ? { className: `wake-obj-cascade wake-obj-i${_cardIdx}` } : {})}
                       >
-                        <Text style={styles.metricTitle}>Progreso</Text>
+                        <Text style={styles.metricTitle}>PROGRESO</Text>
                         <View style={styles.metricValueContainer}>
                           <SvgChartLine width={28} height={28} color="#ffffff" strokeWidth={2} />
                         </View>
@@ -6035,13 +6155,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   {/* Button Container */}
                   <View style={styles.buttonContainer}>
                     {/* Simple Set Input Button */}
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={[
                         styles.inputSetButton,
                         isEditMode && styles.inputSetButtonDisabled
                       ]}
                       onPress={handleOpenSetInput}
                       disabled={isEditMode}
+                      {...(isWeb && showPostSave ? { className: 'wake-btn-sweep' } : {})}
           >
                       <Text style={[
                         styles.inputSetButtonText,
@@ -6057,7 +6178,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       onPress={handleOpenTimerModal}
                       accessibilityLabel="Abrir cronómetro de descanso"
                     >
-                      <SvgTimer width={24} height={24} color="rgba(191, 168, 77, 1)" />
+                      <SvgTimer width={24} height={24} color="#1a1a1a" />
                     </TouchableOpacity>
                   </View>
                 </WakeHeaderContent>

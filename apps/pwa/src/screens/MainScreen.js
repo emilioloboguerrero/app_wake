@@ -313,11 +313,11 @@ const MainScreen = ({ navigation, route }) => {
       paddingVertical: 4,
       borderRadius: 999,
       borderWidth: 1,
-      borderColor: 'rgba(191, 168, 77, 0.3)',
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      borderColor: 'rgba(255, 255, 255, 0.3)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
     trialBadgeText: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 13,
       fontWeight: '600',
       textTransform: 'uppercase',
@@ -1785,11 +1785,29 @@ const MainScreen = ({ navigation, route }) => {
           {/* Swipeable Cards Section */}
           <View style={styles.cardsSection}>
             {loading ? (
-              <LoadingSpinner 
-                size="large" 
-                text="Cargando programas..." 
-                containerStyle={styles.loadingContainer}
-              />
+              Platform.OS === 'web' ? (
+                <View style={[styles.loadingContainer, { alignItems: 'center', justifyContent: 'center', paddingHorizontal: CARD_MARGIN }]}>
+                  {/* Main card skeleton */}
+                  <div className="wake-skeleton" style={{ width: '100%', height: CARD_HEIGHT, borderRadius: 16 }} />
+                  {/* Side ghost cards for carousel feel */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, width: '80%' }}>
+                    <div className="wake-skeleton" style={{ flex: 2, height: 14, borderRadius: 4 }} />
+                    <div className="wake-skeleton" style={{ flex: 1, height: 14, borderRadius: 4 }} />
+                  </View>
+                  {/* Pagination dots skeleton */}
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
+                    {[1,2,3].map(i => (
+                      <div key={i} className="wake-skeleton" style={{ width: i === 2 ? 10 : 6, height: i === 2 ? 10 : 6, borderRadius: '50%', opacity: i === 2 ? 1 : 0.4 }} />
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <LoadingSpinner
+                  size="large"
+                  text="Cargando programas..."
+                  containerStyle={styles.loadingContainer}
+                />
+              )
             ) : error ? (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>{error}</Text>

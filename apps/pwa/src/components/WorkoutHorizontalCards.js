@@ -59,7 +59,7 @@ const WorkoutHorizontalCards = ({
             }
           }}
         >
-          <SvgListChecklist width={24} height={24} color="rgba(191, 168, 77, 1)" />
+          <SvgListChecklist width={24} height={24} color="rgba(255, 255, 255, 1)" />
         </TouchableOpacity>
       </View>
     </>

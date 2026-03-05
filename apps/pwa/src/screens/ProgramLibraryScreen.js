@@ -1184,7 +1184,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     width: Math.max(200, screenWidth * 0.5),
     height: Math.max(44, screenHeight * 0.055),
     borderRadius: Math.max(12, screenWidth * 0.04),
@@ -1193,7 +1193,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignSelf: 'center',
   },
   retryButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
     fontWeight: '700',
   },

@@ -261,7 +261,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     labels: filteredLabels,
     datasets: [{
       data: maxWeights,
-      color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`,
+      color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
       strokeWidth: 3
     }]
   };
@@ -280,7 +280,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     backgroundGradientFrom: '#2a2a2a',
     backgroundGradientTo: '#2a2a2a',
     decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`,
+    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     style: {
       borderRadius: 16
@@ -557,7 +557,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'transparent',
   },
   modalItemSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalItemText: {
     color: '#ffffff',
@@ -566,11 +566,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
   },
   modalItemTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   modalCheckmark: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginLeft: 8,
@@ -668,7 +668,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderRadius: Math.max(8, screenWidth * 0.02),
     padding: Math.max(12, screenWidth * 0.03),
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     shadowColor: 'rgba(0, 0, 0, 0.5)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
@@ -680,7 +680,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
   },
   tooltipDate: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     marginBottom: Math.max(6, screenHeight * 0.007),

@@ -314,7 +314,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                 <Text style={styles.dateCardSub}>{slots.length} horario(s)</Text>
                               </View>
                               <Animated.View style={[styles.dateCardChevron, { transform: [{ rotate: chevronRotate }] }]}>
-                                <SvgChevronLeft width={20} height={20} stroke="rgba(191, 168, 77, 1)" />
+                                <SvgChevronLeft width={20} height={20} stroke="rgba(255, 255, 255, 1)" />
                               </Animated.View>
                             </TouchableOpacity>
                             <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }), opacity: anim.expand, overflow: 'hidden' }}>
@@ -370,7 +370,7 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
                                 </Text>
                               </View>
                               <Animated.View style={[styles.dateCardChevron, { transform: [{ rotate: chevronRotate }] }]}>
-                                <SvgChevronLeft width={20} height={20} stroke="rgba(191, 168, 77, 1)" />
+                                <SvgChevronLeft width={20} height={20} stroke="rgba(255, 255, 255, 1)" />
                               </Animated.View>
                             </TouchableOpacity>
                             <Animated.View style={{ maxHeight: anim.expand.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }), opacity: anim.expand, overflow: 'hidden' }}>
@@ -546,9 +546,9 @@ function createStyles(screenWidth, screenHeight) {
       alignItems: 'center',
     },
     manageButtonPrimary: {
-      backgroundColor: 'rgba(191, 168, 77, 0.25)',
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
       borderWidth: 1,
-      borderColor: 'rgba(191, 168, 77, 0.6)',
+      borderColor: 'rgba(255, 255, 255, 0.6)',
     },
     manageButtonSecondary: {
       backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -630,7 +630,7 @@ function createStyles(screenWidth, screenHeight) {
     },
     backToManageText: {
       fontSize: 14,
-      color: 'rgba(191, 168, 77, 0.95)',
+      color: 'rgba(255, 255, 255, 0.95)',
     },
     sectionLabel: {
       fontSize: 15,

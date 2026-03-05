@@ -100,6 +100,9 @@ class ExerciseHistoryService {
       
       // Update document
       await setDoc(docRef, cleanExistingData);
+
+      // Update per-exercise last performance cache (best set of this session)
+      await this.updateLastExercisePerformance(userId, exercise, sessionData, filteredSets);
       
       logger.log('✅ Exercise history updated:', exerciseKey);
     } catch (error) {
@@ -457,6 +460,131 @@ class ExerciseHistoryService {
         stack: error.stack
       });
       return {};
+    }
+  }
+
+  /**
+   * Choose the best-performing set from a list of sets.
+   * Currently prioritizes weight, with reps as a tiebreaker.
+   */
+  getBestSetFromFilteredSets(filteredSets) {
+    if (!Array.isArray(filteredSets) || filteredSets.length === 0) return null;
+
+    const getScore = (set) => {
+      const weight = set && set.weight ? parseFloat(set.weight) : 0;
+      const reps = set && set.reps ? parseFloat(set.reps) : 0;
+      if (isNaN(weight) && isNaN(reps)) return 0;
+      const w = isNaN(weight) ? 0 : weight;
+      const r = isNaN(reps) ? 0 : reps;
+      // Give weight much higher importance than reps
+      return w * 1000 + r;
+    };
+
+    let bestSet = filteredSets[0];
+    let bestScore = getScore(bestSet);
+
+    for (let i = 1; i < filteredSets.length; i++) {
+      const candidate = filteredSets[i];
+      const candidateScore = getScore(candidate);
+      if (candidateScore > bestScore) {
+        bestSet = candidate;
+        bestScore = candidateScore;
+      }
+    }
+
+    return bestSet || null;
+  }
+
+  /**
+   * Update per-user, per-exercise last performance document with the best set of this session.
+   * Stored under: users/{userId}/exerciseLastPerformance/{exerciseKey}
+   */
+  async updateLastExercisePerformance(userId, exercise, sessionData, filteredSets) {
+    try {
+      if (!userId || !exercise || !sessionData || !Array.isArray(filteredSets) || filteredSets.length === 0) {
+        return;
+      }
+
+      if (!exercise.libraryId || exercise.libraryId === 'unknown' ||
+          !exercise.exerciseName || exercise.exerciseName === 'Unknown Exercise') {
+        logger.log('⚠️ Skipping last performance update - invalid exercise data:', {
+          libraryId: exercise.libraryId,
+          exerciseName: exercise.exerciseName
+        });
+        return;
+      }
+
+      const exerciseKey = `${exercise.libraryId}_${exercise.exerciseName}`;
+      const bestSet = this.getBestSetFromFilteredSets(filteredSets);
+      if (!bestSet) return;
+
+      const lastPerformedAt = sessionData.completedAt || new Date().toISOString();
+
+      const normalizeDate = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') {
+          const d = new Date(value);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        if (value && typeof value.toDate === 'function') {
+          const d = value.toDate();
+          return isNaN(d.getTime()) ? null : d;
+        }
+        const d = new Date(value);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      const docRef = doc(firestore, 'users', userId, 'exerciseLastPerformance', exerciseKey);
+      const existingSnap = await getDoc(docRef);
+
+      if (existingSnap.exists()) {
+        const existing = existingSnap.data();
+        const existingDate = normalizeDate(existing?.lastPerformedAt);
+        const newDate = normalizeDate(lastPerformedAt);
+
+        if (existingDate && newDate && existingDate >= newDate) {
+          logger.log('ℹ️ Skipping last performance update - existing entry is newer or same date:', {
+            exerciseKey,
+            existingLastPerformedAt: existing.lastPerformedAt,
+            newLastPerformedAt: lastPerformedAt
+          });
+          return;
+        }
+      }
+
+      const lastPerformanceData = this.cleanFirestoreData({
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        libraryId: exercise.libraryId,
+        lastSessionId: sessionData.sessionId,
+        lastPerformedAt,
+        totalSets: filteredSets.length,
+        bestSet
+      });
+
+      await setDoc(docRef, lastPerformanceData);
+      logger.log('✅ Exercise last performance updated:', { exerciseKey, lastPerformedAt });
+    } catch (error) {
+      logger.error('❌ Error updating last exercise performance:', {
+        exerciseName: exercise?.exerciseName,
+        libraryId: exercise?.libraryId,
+        error
+      });
+      // Non-critical; do not throw
+    }
+  }
+
+  /**
+   * Get last performance document for an exercise (best set of most recent session).
+   */
+  async getLastExercisePerformance(userId, exerciseKey) {
+    try {
+      const docRef = doc(firestore, 'users', userId, 'exerciseLastPerformance', exerciseKey);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? docSnap.data() : null;
+    } catch (error) {
+      logger.error('❌ Error getting last exercise performance:', { userId, exerciseKey, error });
+      return null;
     }
   }
 

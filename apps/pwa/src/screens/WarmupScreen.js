@@ -71,7 +71,7 @@ const WarmupScreen = ({ navigation, route }) => {
     skipWarmupButtonText: {
       fontSize: Math.min(screenWidth * 0.035, 14), // Responsive font size
       fontWeight: '500',
-      color: 'rgba(191, 168, 77, 0.72)',
+      color: 'rgba(255, 255, 255, 0.72)',
       textAlign: 'center',
     },
     warmupContent: {
@@ -187,7 +187,7 @@ const WarmupScreen = ({ navigation, route }) => {
       textAlign: 'center',
     },
     skipButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.85)',
       paddingVertical: Math.max(12, screenHeight * 0.015), // Responsive padding
       paddingHorizontal: 0,
       borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
@@ -201,7 +201,7 @@ const WarmupScreen = ({ navigation, route }) => {
     skipButtonText: {
       fontSize: Math.min(screenWidth * 0.04, 16), // Responsive font size
       fontWeight: '600',
-      color: 'rgba(191, 168, 77, 1)',
+      color: '#1a1a1a',
       textAlign: 'center',
       numberOfLines: 1,
     },

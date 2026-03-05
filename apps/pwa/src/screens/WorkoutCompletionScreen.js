@@ -816,13 +816,13 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       textAlign: 'center',
     },
     prCard: {
-      backgroundColor: 'rgba(191, 168, 77, 0.15)',
+      backgroundColor: 'rgba(255, 255, 255, 0.15)',
       borderRadius: 12,
       padding: 16,
       marginBottom: 12,
       borderWidth: 1,
-      borderColor: 'rgba(191, 168, 77, 0.3)',
-      shadowColor: 'rgba(191, 168, 77, 0.25)',
+      borderColor: 'rgba(255, 255, 255, 0.3)',
+      shadowColor: 'rgba(255, 255, 255, 0.25)',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 1,
       shadowRadius: 6,
@@ -838,7 +838,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     prDetails: {
       fontSize: Math.min(screenWidth * 0.04, 16),
       fontWeight: '500',
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       textAlign: 'center',
     },
     // Discipline metrics row (restored from first commit: larger values, centered)
@@ -881,12 +881,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       marginBottom: 8,
     },
     exerciseVolumeValue: {
-      color: '#bfa84d',
+      color: '#ffffff',
       fontSize: 20,
       fontWeight: '700',
     },
     shareButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.85)',
       paddingHorizontal: Math.max(18, screenWidth * 0.04),
       height: Math.max(50, screenHeight * 0.06),
       borderRadius: Math.max(12, screenWidth * 0.04),
@@ -894,7 +894,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       justifyContent: 'center',
     },
     finishButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.85)',
       height: Math.max(50, screenHeight * 0.06), // Match WorkoutExecutionScreen endWorkoutButton
       width: Math.max(280, screenWidth * 0.7), // Match WorkoutExecutionScreen endWorkoutButton width
       borderRadius: Math.max(12, screenWidth * 0.04), // Match WorkoutExecutionScreen
@@ -905,12 +905,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       marginBottom: Math.max(20, screenHeight * 0.025), // Match WorkoutExecutionScreen
     },
     finishButtonText: {
-      color: '#bfa84d',
+      color: '#1a1a1a',
       fontSize: Math.min(screenWidth * 0.045, 18),
       fontWeight: '600',
     },
     shareButtonText: {
-      color: '#bfa84d',
+      color: '#1a1a1a',
       fontSize: Math.min(screenWidth * 0.045, 18),
       fontWeight: '600',
     },
@@ -948,7 +948,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     },
     paginationDotActive: {
       width: 24,
-      backgroundColor: '#bfa84d',
+      backgroundColor: '#ffffff',
     },
     muscleVolumeInfoModalOverlay: {
       flex: 1,
@@ -1025,7 +1025,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       marginBottom: Math.max(20, screenHeight * 0.025),
     },
     disclaimersTitle: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: Math.min(screenWidth * 0.045, 18),
       fontWeight: '600',
       marginBottom: Math.max(12, screenHeight * 0.015),
@@ -1238,7 +1238,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       marginTop: 0,
     },
     shareModalButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.85)',
       height: Math.max(50, screenHeight * 0.06),
       paddingHorizontal: Math.max(32, screenWidth * 0.08),
       borderRadius: Math.max(12, screenWidth * 0.04),
@@ -1251,7 +1251,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       opacity: 0.5,
     },
     shareModalButtonText: {
-      color: '#bfa84d',
+      color: '#1a1a1a',
       fontSize: Math.min(screenWidth * 0.045, 18),
       fontWeight: '600',
     },
@@ -1450,18 +1450,33 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
           {/* Personal Records Section (only show if PRs exist) */}
           {personalRecords && personalRecords.length > 0 && (
-            <Animated.View style={[styles.personalRecordsSection, {
+            <Animated.View style={[styles.personalRecordsSection, Platform.OS !== 'web' ? {
               opacity: prEntranceAnim,
               transform: [{ scale: prEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }],
-            }]}>
+            } : undefined]}>
               <View style={styles.personalRecordsTitleContainer}>
-                <SvgChampion width={28} height={28} color="rgba(191, 168, 77, 1)" />
+                {Platform.OS === 'web' ? (
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0 }}>
+                    <svg className="ck-ring-svg" width="52" height="52" viewBox="0 0 52 52">
+                      <circle className="ck-circle" cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+                    </svg>
+                    <div className="ck-logo-enter" style={{ position: 'relative', zIndex: 2 }}>
+                      <SvgChampion width={28} height={28} color="rgba(255,255,255,1)" />
+                    </div>
+                  </div>
+                ) : (
+                  <SvgChampion width={28} height={28} color="rgba(255, 255, 255, 1)" />
+                )}
                 <Text style={styles.personalRecordsTitle}>Nuevos Récords Personales</Text>
               </View>
               {personalRecords.map((pr, index) => (
-                <Animated.View key={`pr-${index}`} style={[styles.prCard, {
-                  transform: [{ scale: prGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }],
-                }]}>
+                <Animated.View
+                  key={`pr-${index}`}
+                  style={[styles.prCard, Platform.OS !== 'web' ? {
+                    transform: [{ scale: prGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }],
+                  } : undefined]}
+                  {...(Platform.OS === 'web' ? { className: 'wake-pr-glow' } : {})}
+                >
                   <Text style={styles.prExerciseName}>{pr.exerciseName}</Text>
                   <Text style={styles.prDetails}>
                     {pr.achievedWith.weight}kg × {pr.achievedWith.reps} reps (serie {pr.achievedWith.setNumber})

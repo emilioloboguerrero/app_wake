@@ -8,25 +8,17 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   Platform,
-  TextInput,
 } from 'react-native';
 import WakeLoader from '../components/WakeLoader';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import exerciseHistoryService from '../services/exerciseHistoryService';
-import logger from '../utils/logger.js';
 
 const SessionDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
     () => createStyles(screenWidth, screenHeight),
@@ -36,31 +28,12 @@ const SessionDetailScreen = ({ navigation, route }) => {
   const { sessionId, sessionName, date, sessionData } = route.params;
   const { user } = useAuth();
   const [session, setSession] = useState(sessionData);
-  const [editNotes, setEditNotes] = useState(sessionData?.userNotes ?? '');
-  const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [notesSaving, setNotesSaving] = useState(false);
 
   useEffect(() => {
     if (sessionData) {
       setSession(sessionData);
-      setEditNotes(sessionData.userNotes ?? '');
     }
   }, [sessionData]);
-
-  const handleSaveNotes = async () => {
-    const currentUser = user || auth.currentUser;
-    if (!currentUser?.uid || !sessionId) return;
-    setNotesSaving(true);
-    try {
-      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionId, editNotes);
-      setSession(prev => (prev ? { ...prev, userNotes: editNotes } : null));
-      setIsEditingNotes(false);
-    } catch (error) {
-      logger.error('Error saving session notes:', error);
-    } finally {
-      setNotesSaving(false);
-    }
-  };
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -190,115 +163,73 @@ const SessionDetailScreen = ({ navigation, route }) => {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Spacer for fixed header - matches header height */}
-          <View style={{ height: headerTotalHeight }} />
-          <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
-          {/* Session Header */}
-          <View style={styles.sessionHeader}>
-            <Text style={styles.sessionName}>{sessionName}</Text>
-            <View style={styles.sessionDateTime}>
-              <Text style={styles.sessionDate}>{formatDate(date)}</Text>
-              <Text style={styles.sessionTime}>{formatTime(date)}</Text>
-            </View>
-          </View>
-          
-          {/* Session Stats */}
-          <View style={styles.statsCard}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{exerciseKeys.length}</Text>
-              <Text style={styles.statLabel}>Ejercicios</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {Object.values(exercises).reduce((total, exercise) => 
-                  total + (exercise.sets?.length || 0), 0
-                )}
-              </Text>
-              <Text style={styles.statLabel}>Series</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {session.duration ? (
-                  <>
-                    <Text style={styles.durationNumber}>{Math.round(session.duration / 60)}</Text>
-                    <Text style={styles.durationUnit}>min</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.durationNumber}>0</Text>
-                    <Text style={styles.durationUnit}>min</Text>
-                  </>
-                )}
-              </Text>
-              <Text style={styles.statLabel}>Duración</Text>
-            </View>
-          </View>
-          
-          {/* Session notes */}
-          <View style={styles.notesCard}>
-            <Text style={styles.notesCardTitle}>Notas de la sesión</Text>
-            {isEditingNotes ? (
-              <>
-                <TextInput
-                  style={styles.notesCardInput}
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  placeholder="Añade notas..."
-                  placeholderTextColor="rgba(255, 255, 255, 0.4)"
-                  multiline
-                  numberOfLines={3}
-                />
-                <View style={styles.notesCardActions}>
-                  <TouchableOpacity
-                    style={[styles.notesCardButton, styles.notesCardButtonSecondary]}
-                    onPress={() => { setIsEditingNotes(false); setEditNotes(session?.userNotes ?? ''); }}
-                  >
-                    <Text style={styles.notesCardButtonTextSecondary}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.notesCardButton, notesSaving && styles.notesCardButtonDisabled]}
-                    onPress={handleSaveNotes}
-                    disabled={notesSaving}
-                  >
-                    <Text style={styles.notesCardButtonText}>
-                      {notesSaving ? 'Guardando...' : 'Guardar'}
-                    </Text>
-                  </TouchableOpacity>
+          <WakeHeaderContent>
+            <WakeHeaderSpacer />
+            <View style={{ paddingTop: Math.max(16, screenHeight * 0.02) }}>
+              {/* Session Header */}
+              <View style={styles.sessionHeader}>
+                <Text style={styles.sessionName}>{sessionName}</Text>
+                <View style={styles.sessionDateTime}>
+                  <Text style={styles.sessionDate}>{formatDate(date)}</Text>
+                  <Text style={styles.sessionTime}>{formatTime(date)}</Text>
                 </View>
-              </>
-            ) : (
-              <>
-                {session.userNotes && String(session.userNotes).trim() ? (
-                  <Text style={styles.notesCardText}>{session.userNotes}</Text>
-                ) : (
-                  <Text style={styles.notesCardPlaceholder}>Sin notas</Text>
-                )}
-                <TouchableOpacity
-                  style={styles.notesCardButton}
-                  onPress={() => setIsEditingNotes(true)}
-                >
-                  <Text style={styles.notesCardButtonText}>
-                    {session.userNotes && String(session.userNotes).trim() ? 'Editar notas' : 'Añadir notas'}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* Exercises List */}
-          <View style={styles.exercisesList}>
-            {exerciseKeys.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No hay ejercicios registrados</Text>
               </View>
-            ) : (
-              exerciseKeys.map(exerciseKey => 
-                renderExerciseCard(exerciseKey, exercises[exerciseKey])
-              )
-            )}
-          </View>
-          <BottomSpacer />
-          </View>
+              
+              {/* Session Stats */}
+              <View style={styles.statsCard}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{exerciseKeys.length}</Text>
+                  <Text style={styles.statLabel}>Ejercicios</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {Object.values(exercises).reduce((total, exercise) => 
+                      total + (exercise.sets?.length || 0), 0
+                    )}
+                  </Text>
+                  <Text style={styles.statLabel}>Series</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {session.duration ? (
+                      <>
+                        <Text style={styles.durationNumber}>{Math.round(session.duration / 60)}</Text>
+                        <Text style={styles.durationUnit}>min</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.durationNumber}>0</Text>
+                        <Text style={styles.durationUnit}>min</Text>
+                      </>
+                    )}
+                  </Text>
+                  <Text style={styles.statLabel}>Duración</Text>
+                </View>
+              </View>
+              
+              {/* Session notes (read-only) */}
+              {session.userNotes && String(session.userNotes).trim() ? (
+                <View style={styles.notesCard}>
+                  <Text style={styles.notesCardTitle}>Notas de la sesión</Text>
+                  <Text style={styles.notesCardText}>{session.userNotes}</Text>
+                </View>
+              ) : null}
+
+              {/* Exercises List */}
+              <View style={styles.exercisesList}>
+                {exerciseKeys.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No hay ejercicios registrados</Text>
+                  </View>
+                ) : (
+                  exerciseKeys.map(exerciseKey => 
+                    renderExerciseCard(exerciseKey, exercises[exerciseKey])
+                  )
+                )}
+              </View>
+              <BottomSpacer />
+            </View>
+          </WakeHeaderContent>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -367,7 +298,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   statValue: {
     fontSize: Math.min(screenWidth * 0.08, 32),
     fontWeight: '700',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     marginBottom: Math.max(4, screenHeight * 0.005),
   },
   statLabel: {
@@ -378,12 +309,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   durationNumber: {
     fontSize: Math.min(screenWidth * 0.08, 32),
     fontWeight: '700',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   durationUnit: {
     fontSize: Math.min(screenWidth * 0.035, 14),
     fontWeight: '500',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   notesCard: {
     backgroundColor: '#2a2a2a',
@@ -429,7 +360,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   notesCardButton: {
     flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: Math.max(10, screenWidth * 0.025),
     paddingVertical: Math.max(12, screenHeight * 0.015),
     alignItems: 'center',
@@ -442,7 +373,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.6,
   },
   notesCardButtonText: {
-    color: '#bfa84d',
+    color: '#ffffff',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
   },

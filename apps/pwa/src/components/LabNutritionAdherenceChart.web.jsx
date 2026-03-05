@@ -22,7 +22,7 @@ function formatDateAxis(dateStr) {
 function getBarColor(pct) {
   if (pct == null) return 'rgba(255,255,255,0.08)';
   if (pct >= 90) return 'rgba(74,222,128,0.55)';
-  if (pct >= 70) return 'rgba(191,168,77,0.55)';
+  if (pct >= 70) return 'rgba(255,255,255,0.55)';
   return 'rgba(248,113,113,0.55)';
 }
 

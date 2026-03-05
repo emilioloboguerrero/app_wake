@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   retryButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 12,

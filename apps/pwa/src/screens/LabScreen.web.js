@@ -11,6 +11,10 @@ const LabScreen = () => {
     navigate: (routeName, params) => {
       const routeMap = {
         'Sessions': () => navigate('/sessions'),
+        'SessionDetail': () => {
+          const sessionId = params?.sessionId || params?.session?.id || '';
+          navigate(`/sessions/${sessionId}`, { state: params });
+        },
         'ExercisePanel': () => navigate('/prs'),
         'WeeklyVolumeHistory': () => navigate('/volume'),
         'Main': () => navigate('/'),

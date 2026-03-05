@@ -11,9 +11,9 @@
   --color-text: #ffffff;
   --color-text-secondary: rgba(255, 255, 255, 0.8);
   --color-text-tertiary: rgba(255, 255, 255, 0.6);
-  --color-primary: rgba(191, 168, 77, 1);
-  --color-primary-dark: rgba(191, 168, 77, 0.8);
-  --color-primary-light: rgba(191, 168, 77, 0.2);
+  --color-primary: rgba(255, 255, 255, 1);
+  --color-primary-dark: rgba(255, 255, 255, 0.8);
+  --color-primary-light: rgba(255, 255, 255, 0.2);
   --color-accent: #007AFF;
   --color-border: rgba(255, 255, 255, 0.2);
   --color-shadow: rgba(255, 255, 255, 0.4);
@@ -197,7 +197,7 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* No extra focus outline on inputs – border is controlled by app (neutral / error red / success gold) */
+/* No extra focus outline on inputs – border is controlled by app (neutral / error red / success white) */
 input:focus-visible,
 textarea:focus-visible {
   outline: none;
@@ -478,15 +478,15 @@ body[data-login-route="true"] #root {
   z-index: 1 !important;
 }
 
-/* Login screen buttons: original flat style (rounded corners, no border, no gradient/shadow) */
+/* Login screen buttons: match Continuar button from WarmupScreen (rgba(255,255,255,0.85)) */
 [data-testid="login-primary-button"] {
   border-radius: 12px !important;
   border: none !important;
-  background: rgba(191, 168, 77, 0.2) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
   box-shadow: none !important;
 }
 [data-testid="login-primary-button"]:hover:not([aria-disabled="true"]) {
-  background: rgba(191, 168, 77, 0.28) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
   box-shadow: none !important;
 }
 [data-testid="login-primary-button"][aria-disabled="true"] {
@@ -597,6 +597,332 @@ video::-webkit-media-controls-enclosure {
   background-color: transparent !important;
 }
 
+/* ═══ WAKE MICRO-ANIMATION SYSTEM ════════════════════════════════════════
+   All keyframes consumed by the 12 animation sections.
+   CSS-only, compositor-safe (opacity + transform only except PR border/shadow).
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── S1: Workout Completion — Ring Draw + Logo Pop ── */
+@keyframes ck-draw-circle {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes ck-logo-pop {
+  0%   { opacity: 0; transform: scale(0.72); }
+  60%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.ck-ring-svg {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ck-circle {
+  stroke-dasharray: 377;
+  stroke-dashoffset: 377;
+  animation: ck-draw-circle 0.7s ease forwards;
+}
+.ck-logo-enter {
+  opacity: 0;
+  animation: ck-logo-pop 0.65s cubic-bezier(0.34,1.56,0.64,1) 0.68s forwards;
+}
+
+/* ── S2: Set Save — Green Sweep ── */
+@keyframes wake-flash-sweep {
+  0%   { transform: translateX(-105%); }
+  100% { transform: translateX(105%); }
+}
+.wake-set-saved {
+  position: relative;
+  overflow: hidden;
+}
+.wake-set-saved::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(76, 175, 80, 0.18) 30%,
+    rgba(76, 175, 80, 0.38) 52%,
+    rgba(76, 175, 80, 0.18) 74%,
+    transparent 100%
+  );
+  animation: wake-flash-sweep 520ms cubic-bezier(0.25, 0, 0.45, 1) forwards;
+  pointer-events: none;
+}
+.wake-set-check {
+  animation: wake-check-pop 0.3s 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+/* ── Button sweep (reuses wake-flash-sweep) ── */
+.wake-btn-sweep {
+  overflow: hidden !important;
+  position: relative !important;
+}
+.wake-btn-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(76, 175, 80, 0.18) 30%,
+    rgba(76, 175, 80, 0.38) 52%,
+    rgba(76, 175, 80, 0.18) 74%,
+    transparent 100%
+  );
+  animation: wake-flash-sweep 520ms cubic-bezier(0.25, 0, 0.45, 1) forwards;
+  pointer-events: none;
+}
+
+/* ── Objectives cascade (option B, post-save) ── */
+@keyframes wake-obj-cascade {
+  0%   { opacity: 0; transform: translateX(10px) scale(0.97); }
+  100% { opacity: 1; transform: translateX(0)    scale(1);    }
+}
+.wake-obj-cascade {
+  animation: wake-obj-cascade 260ms ease-out both;
+}
+.wake-obj-i0 { animation-delay:   0ms; }
+.wake-obj-i1 { animation-delay:  75ms; }
+.wake-obj-i2 { animation-delay: 150ms; }
+.wake-obj-i3 { animation-delay: 225ms; }
+.wake-obj-i4 { animation-delay: 300ms; }
+
+/* ── Set complete overlay (ring + check) ── */
+.wake-set-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 9999;
+  background: radial-gradient(ellipse 160% 70% at 50% 50%,
+    rgba(30,110,40,0.82) 0%,
+    rgba(30,110,40,0.60) 20%,
+    rgba(30,110,40,0.32) 45%,
+    rgba(30,110,40,0.12) 68%,
+    rgba(30,110,40,0.03) 85%,
+    transparent 100%);
+  animation: wake-set-bg-fade 1500ms ease-out forwards;
+}
+@keyframes wake-set-bg-fade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.wake-set-overlay svg { overflow: visible; }
+.wake-ring {
+  fill: none;
+  stroke: rgba(255,255,255,0.6);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-dasharray: 126;
+  stroke-dashoffset: 126;
+  transform-origin: 30px 30px;
+  transform: rotate(-90deg);
+  animation: wake-ring-draw 700ms cubic-bezier(0.5,0,0.3,1) forwards;
+}
+@keyframes wake-ring-draw {
+  0%   { stroke-dashoffset: 126; }
+  100% { stroke-dashoffset: 0; }
+}
+.wake-check {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 27;
+  stroke-dashoffset: 27;
+  animation: wake-check-draw 380ms cubic-bezier(0.4,0,0.2,1) 580ms forwards;
+}
+@keyframes wake-check-draw {
+  0%   { stroke-dashoffset: 27; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* ── S3: Meal Logged — Slide Down from Top ── */
+@keyframes wake-item-slide-in {
+  0%   { opacity: 0; transform: translateY(-8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.wake-item-enter {
+  animation: wake-item-slide-in 0.35s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* ── S4: Onboarding Completion — Rise from Below + Glow ── */
+@keyframes ob-rise {
+  0%   { opacity: 0; transform: translateY(32px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes ob-glow-fade {
+  0%   { opacity: 0; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+.ob-logo-rise {
+  animation: ob-rise 0.85s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+}
+.ob-logo-glow {
+  position: absolute;
+  width: 220px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.22) 0%, transparent 70%);
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: ob-glow-fade 1s ease 0.4s both;
+}
+
+/* ── S5: Post-Purchase — Shimmer Reveal Card ── */
+@keyframes wake-shimmer-pass {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes wake-icon-drop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes wake-purchase-card-fade {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.wake-purchase-card {
+  position: relative;
+  overflow: hidden;
+  animation: wake-purchase-card-fade 0.4s ease both;
+}
+.wake-purchase-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: wake-shimmer-pass 1s ease 0.3s forwards;
+  pointer-events: none;
+}
+.wake-purchase-icon {
+  animation: wake-icon-drop 0.4s cubic-bezier(0.34,1.56,0.64,1) 0.9s both;
+  opacity: 0;
+}
+.wake-purchase-title {
+  opacity: 0;
+  animation: ob-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.5s forwards;
+}
+.wake-purchase-sub {
+  opacity: 0;
+  animation: ob-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.75s forwards;
+}
+
+/* ── S6: Streak Milestone — Counter Row ── */
+@keyframes sr-flame-in {
+  0%   { opacity: 0; transform: scale(0.5) translateX(-12px); }
+  60%  { opacity: 1; transform: scale(1.1) translateX(0); }
+  100% { opacity: 1; transform: scale(1) translateX(0); }
+}
+@keyframes sr-num-in {
+  0%   { opacity: 0; transform: scale(0.7); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes sr-lbl-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.wake-streak-flame  { animation: sr-flame-in 0.55s cubic-bezier(0.16,1,0.3,1) both; }
+.wake-streak-num    { animation: sr-num-in 0.55s cubic-bezier(0.16,1,0.3,1) 0.1s both; }
+.wake-streak-label  { animation: sr-lbl-in 0.4s cubic-bezier(0.16,1,0.3,1) 0.3s both; }
+
+/* ── S7: Button Press — Scale ── */
+.wake-btn-primary:active,
+[data-wake-btn]:active {
+  transform: scale(0.96);
+  transition: transform 0.08s ease;
+}
+.wake-btn-primary,
+[data-wake-btn] {
+  transition: transform 0.12s ease;
+}
+
+/* ── S8: Empty State — Staggered Fade-Up ── */
+@keyframes wake-empty-fade-up {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.wake-empty-icon  { opacity: 0; animation: wake-empty-fade-up 0.4s 0.00s ease both; }
+.wake-empty-title { opacity: 0; animation: wake-empty-fade-up 0.4s 0.15s ease both; }
+.wake-empty-sub   { opacity: 0; animation: wake-empty-fade-up 0.4s 0.25s ease both; }
+.wake-empty-cta   { opacity: 0; animation: wake-empty-fade-up 0.4s 0.40s ease both; }
+
+/* ── S9: Screen Transitions ── */
+@keyframes wake-slide-in-right {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+@keyframes wake-slide-out-left {
+  0%   { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-28%); opacity: 0.45; }
+}
+@keyframes wake-slide-in-up {
+  0%   { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+@keyframes wake-slide-in-left {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+.wake-screen-enter      { animation: wake-slide-in-right 0.32s cubic-bezier(0.16,1,0.3,1) both; }
+.wake-screen-enter-up   { animation: wake-slide-in-up    0.42s cubic-bezier(0.16,1,0.3,1) both; }
+.wake-screen-enter-back { animation: wake-slide-in-left  0.32s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* ── S10: Skeleton Shapes (shimmer keyframe already defined above) ── */
+.wake-skel-avatar { width: 48px; height: 48px; border-radius: 50% !important; }
+.wake-skel-row-sm { height: 12px; border-radius: 4px !important; }
+.wake-skel-row-md { height: 16px; border-radius: 4px !important; }
+.wake-skel-card   { height: 72px; border-radius: 12px !important; }
+.wake-skel-row-lg { height: 20px; border-radius: 4px !important; }
+
+/* ── S11: PR Glow — Border Scan ── */
+@keyframes wake-pr-border-scan {
+  0%   { box-shadow: none; }
+  30%  { box-shadow: 0 0 20px rgba(255,255,255,0.3); border-color: #ffffff !important; }
+  70%  { box-shadow: 0 0 12px rgba(255,255,255,0.2); border-color: #ffffff !important; }
+  100% { box-shadow: 0 0 4px rgba(255,255,255,0.1);  border-color: rgba(255,255,255,0.3) !important; }
+}
+.wake-pr-glow {
+  animation: wake-pr-border-scan 1.2s ease both;
+}
+
+/* ── S12: Date Transition — Crossfade ── */
+@keyframes wake-date-crossfade {
+  0%   { opacity: 1; }
+  25%  { opacity: 0; }
+  65%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+.wake-date-transition {
+  animation: wake-date-crossfade 0.4s ease both;
+}
+
+/* ── Streak Milestone Overlay (used by HeaderStreakBadge milestone variant) ── */
+.wake-streak-milestone-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  background: rgba(0,0,0,0.7);
+  animation: wake-empty-fade-up 0.3s ease both;
+  pointer-events: none;
+}
+
 /* Lab nutrition pie – visual only; legend/labels hidden to avoid duplicate macro text */
 .lab-nutrition-pie-chart .recharts-legend-wrapper {
   display: none !important;
@@ -604,4 +930,187 @@ video::-webkit-media-controls-enclosure {
 .lab-nutrition-pie-chart .recharts-pie-label text,
 .lab-nutrition-pie-chart .recharts-label-list text {
   display: none !important;
+}
+
+/* ═══ WAKE UI POLISH — Additional Animations ══════════════════════════════
+   Toast, exercise completion, finalizar glow, rest timer pulse,
+   skeleton cards, module accordion chevron.
+════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Toast — Slide Down from Top + Fade ── */
+@keyframes wake-toast-enter {
+  0%   { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wake-toast-exit {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-8px) scale(0.97); }
+}
+.wake-toast-root {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 32px);
+  max-width: 398px;
+}
+.wake-toast {
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #2a2a2a;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  width: 100%;
+  box-sizing: border-box;
+  animation: wake-toast-enter 0.28s cubic-bezier(0.16,1,0.3,1) both;
+}
+.wake-toast.exiting {
+  animation: wake-toast-exit 0.22s ease forwards;
+}
+.wake-toast.success { border-left: 3px solid #4caf50; }
+.wake-toast.info    { border-left: 3px solid rgba(255,255,255,1); }
+.wake-toast.pr      { border-left: 3px solid rgba(255,255,255,1); background: rgba(30,25,10,0.95); }
+.wake-toast-action {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,1);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  min-height: unset;
+  min-width: unset;
+}
+
+/* ── Skeleton Card for MainScreen course cards ── */
+.wake-skeleton-card {
+  width: 100%;
+  height: 200px;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+.wake-skeleton-session {
+  width: 100%;
+  height: 80px;
+  border-radius: 12px;
+}
+.wake-skeleton-text-sm {
+  height: 10px;
+  border-radius: 4px;
+  width: 60%;
+}
+.wake-skeleton-text-md {
+  height: 14px;
+  border-radius: 4px;
+  width: 80%;
+}
+
+/* ── Exercise Completion Checkmark ── */
+@keyframes wake-exercise-complete {
+  0%   { opacity: 0; transform: scale(0) rotate(-10deg); }
+  60%  { opacity: 1; transform: scale(1.15) rotate(3deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.wake-exercise-done-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(76,175,80,0.2);
+  border: 1.5px solid rgba(76,175,80,0.7);
+  animation: wake-exercise-complete 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
+  flex-shrink: 0;
+}
+.wake-exercise-done-badge svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ── Finalizar Button — White Pulse Glow when all exercises done ── */
+@keyframes wake-finalizar-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.35); }
+  50%  { box-shadow: 0 0 0 8px rgba(255,255,255,0.08); }
+  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+}
+.wake-finalizar-glow {
+  animation: wake-finalizar-pulse 1.4s ease-in-out infinite;
+  border-color: rgba(255,255,255,0.7) !important;
+}
+
+/* ── Rest Timer End — Red Pulse ── */
+@keyframes wake-timer-end-pulse {
+  0%   { background: rgba(244,67,54,0.25); border-color: rgba(244,67,54,0.6); }
+  50%  { background: rgba(244,67,54,0.1); border-color: rgba(244,67,54,0.3); }
+  100% { background: rgba(244,67,54,0.25); border-color: rgba(244,67,54,0.6); }
+}
+.wake-timer-ended {
+  animation: wake-timer-end-pulse 0.6s ease 3;
+}
+
+/* ── Module Accordion ── */
+.wake-module-sessions {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.28s cubic-bezier(0.4,0,0.2,1);
+}
+.wake-module-sessions.expanded {
+  max-height: 2000px;
+}
+.wake-module-chevron {
+  display: inline-flex;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.wake-module-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+/* ── Macro Stepper Buttons (+/-) ── */
+.wake-qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wake-qty-step-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.85);
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+.wake-qty-step-btn:active {
+  background: rgba(255,255,255,0.14);
+  transform: scale(0.93);
 }

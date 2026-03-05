@@ -111,7 +111,7 @@ const PRHistoryChart = ({ history }) => {
     datasets: [
       {
         data: estimates,
-        color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`, // Golden color
+        color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`, // Golden color
         strokeWidth: 3 // Line thickness
       }
     ]
@@ -122,7 +122,7 @@ const PRHistoryChart = ({ history }) => {
     backgroundGradientFrom: '#2a2a2a',
     backgroundGradientTo: '#2a2a2a',
     decimalPlaces: 1, // 1 decimal for weight
-    color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`,
+    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     style: {
       borderRadius: 16
@@ -130,7 +130,7 @@ const PRHistoryChart = ({ history }) => {
     propsForDots: {
       r: '4',
       strokeWidth: '2',
-      stroke: 'rgba(191, 168, 77, 1)'
+      stroke: 'rgba(255, 255, 255, 1)'
     },
     propsForBackgroundLines: {
       strokeDasharray: '', // Solid lines
@@ -265,7 +265,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderRadius: Math.max(8, screenWidth * 0.02),
     padding: Math.max(12, screenWidth * 0.03),
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     shadowColor: 'rgba(0, 0, 0, 0.5)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
@@ -277,7 +277,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
   },
   tooltipDate: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     marginBottom: Math.max(6, screenHeight * 0.007),

@@ -200,7 +200,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'transparent',
   },
   modalItemSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalItemLast: {
     borderBottomWidth: 0,
@@ -212,11 +212,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
   },
   modalItemTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   modalCheckmark: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginLeft: 8,

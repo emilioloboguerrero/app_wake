@@ -8,13 +8,24 @@ function readinessRef(userId) {
   return collection(firestore, 'users', userId, COLLECTION);
 }
 
+function transformReadinessData(raw, id) {
+  if (!raw) return raw;
+  const data = { ...(id ? { id } : {}), ...raw };
+  if (typeof raw.soreness === 'number') {
+    data.soreness = 11 - raw.soreness;
+  }
+  return data;
+}
+
 /**
  * Get today's readiness doc. Returns null if none logged yet.
  */
 export async function getTodayReadiness(userId, dateStr) {
   try {
     const snap = await getDoc(doc(firestore, 'users', userId, COLLECTION, dateStr));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    if (!snap.exists()) return null;
+    const raw = snap.data();
+    return transformReadinessData(raw, snap.id);
   } catch (err) {
     logger.error('[readinessService] getTodayReadiness', err?.message);
     return null;
@@ -26,11 +37,14 @@ export async function getTodayReadiness(userId, dateStr) {
  */
 export async function saveReadiness(userId, dateStr, { energy, soreness, sleep }) {
   const ref = doc(firestore, 'users', userId, COLLECTION, dateStr);
+  const numericSoreness = Number(soreness);
   await setDoc(ref, {
     userId,
     date: dateStr,
     energy: Number(energy),
-    soreness: Number(soreness),
+    // Store soreness internally as 1 = fresco, 10 = muy adolorido (legacy),
+    // but expose it through the service as 1 = peor, 10 = mejor para los músculos.
+    soreness: Number.isFinite(numericSoreness) ? (11 - numericSoreness) : null,
     sleep: Number(sleep),
     completedAt: serverTimestamp(),
   });
@@ -49,7 +63,7 @@ export async function getReadinessInRange(userId, startDateStr, endDateStr) {
       orderBy('date', 'asc')
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return snap.docs.map((d) => transformReadinessData(d.data(), d.id));
   } catch (err) {
     logger.error('[readinessService] getReadinessInRange', err?.message);
     return [];

@@ -125,7 +125,7 @@ const MuscleSilhouette = ({
           <Text style={styles.legendText}>1-6 sets</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#BFA84D', opacity: 0.6 }]} />
+          <View style={[styles.legendColor, { backgroundColor: '#FFFFFF', opacity: 0.6 }]} />
           <Text style={styles.legendText}>6-18 sets</Text>
         </View>
         <View style={styles.legendItem}>
@@ -371,7 +371,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: 'transparent',
   },
   modalItemSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalItemLast: {
     borderBottomWidth: 0,
@@ -383,7 +383,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flex: 1,
   },
   modalItemTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   modalItemRight: {
@@ -392,16 +392,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     gap: 8,
   },
   currentWeekIndicator: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 12,
     fontWeight: '600',
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
   modalCheckmark: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginLeft: 8,

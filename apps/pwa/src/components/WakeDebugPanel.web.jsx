@@ -26,7 +26,7 @@ const styles = {
   },
   row: { marginBottom: 2 },
   label: { color: '#888' },
-  value: { color: '#bfa84d' },
+  value: { color: '#ffffff' },
   section: { marginTop: 6, marginBottom: 2, color: '#888', fontWeight: 'bold' },
 };
 

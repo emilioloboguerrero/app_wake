@@ -203,7 +203,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         marginBottom: Math.max(15, screenHeight * 0.018),
       },
       horizontalCardsScrollView: {
-        marginBottom: Math.max(15, screenHeight * 0.018),
+        marginBottom: Math.max(10, screenHeight * 0.012),
         overflow: 'visible',
         // Break out of content padding so objectives cards spill laterally (like top cards)
         marginHorizontal: -Math.max(24, screenWidth * 0.06),
@@ -213,6 +213,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         gap: Math.max(10, screenWidth * 0.025),
         overflow: 'visible',
         paddingHorizontal: Math.max(24, screenWidth * 0.06),
+        paddingBottom: Math.max(6, screenHeight * 0.007),
       },
       horizontalCard: {
         minWidth: Math.max(140, screenWidth * 0.35),
@@ -234,7 +235,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         overflow: 'visible',
       },
       metricTitle: {
-        fontSize: Math.min(screenWidth * 0.03, 12),
+        fontSize: Math.min(screenWidth * 0.026, 10),
         fontWeight: '500',
         color: '#ffffff',
         opacity: 0.8,
@@ -618,20 +619,13 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   saveButtonText: {
-    color: '#ffffff',
+    color: '#1a1a1a',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -890,8 +884,8 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   filterButtonActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: '#BFA84D',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: '#FFFFFF',
   },
   filterButtonText: {
     color: '#ffffff',
@@ -899,10 +893,10 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   filterButtonTextActive: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
   },
   filterButtonBadge: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
   },
   activeFiltersContainer: {
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
@@ -914,16 +908,16 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     flexDirection: 'row',
   },
   activeFilterChip: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: Math.max(8, screenWidth * 0.02),
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#BFA84D',
+    borderColor: '#FFFFFF',
   },
   activeFilterChipText: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '500',
   },
@@ -989,21 +983,21 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: Math.max(8, screenWidth * 0.02),
     borderWidth: 1,
-    borderColor: '#BFA84D',
+    borderColor: '#FFFFFF',
     gap: 8,
   },
   filterChipText: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
   },
   filterChipRemove: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -1021,8 +1015,8 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   implementChipSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: '#BFA84D',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: '#FFFFFF',
   },
   implementChipText: {
     color: '#ffffff',
@@ -1030,7 +1024,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '500',
   },
   implementChipTextSelected: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
   },
   filterModalActions: {
     flexDirection: 'row',
@@ -1058,16 +1052,16 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   filterApplyButton: {
     flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingVertical: 14,
     borderRadius: Math.max(12, screenWidth * 0.04),
     borderWidth: 1,
-    borderColor: '#BFA84D',
+    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterApplyButtonText: {
-    color: '#BFA84D',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1295,20 +1289,17 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   // Set Input Button Styles
   inputSetButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(16, screenHeight * 0.02),
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
     marginBottom: Math.max(16, screenHeight * 0.02),
     alignItems: 'center',
-    borderWidth: 0.2,
-    borderColor: '#ffffff',
-    // Shadow removed - was causing offset bottom shadow
     shadowOpacity: 0,
     elevation: 0,
   },
   inputSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
   },
@@ -1418,19 +1409,17 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   saveSetButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(18, screenHeight * 0.022),
     paddingHorizontal: Math.max(40, screenWidth * 0.1),
     alignItems: 'center',
-    borderColor: '#ffffff',
     minWidth: Math.max(200, screenWidth * 0.5),
-    // Shadow removed - was causing offset bottom shadow
     shadowOpacity: 0,
     elevation: 0,
   },
   saveSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
   },
@@ -1442,10 +1431,9 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   saveSetButtonTextDisabled: {
     color: '#cccccc',
   },
-  // Timer button — gold when available (matches inputSetButton)
   timerButton: {
     width: Math.max(60, screenWidth * 0.15),
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(14, screenHeight * 0.017),
     alignItems: 'center',
@@ -1591,13 +1579,13 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   timerPrimaryBtn: {
     width: '100%',
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(16, screenHeight * 0.02),
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   timerPrimaryBtnStop: {
     backgroundColor: '#3a3a3a',
@@ -1611,7 +1599,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   timerPrimaryBtnText: {
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   timerPrimaryBtnTextStop: {
     color: '#ffffff',
@@ -1623,8 +1611,8 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   timerPrimaryBtnResume: {
     flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.25)',
-    borderColor: 'rgba(191, 168, 77, 0.6)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.6)',
   },
   timerPrimaryBtnDiscard: {
     flex: 1,
@@ -1632,7 +1620,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   timerPrimaryBtnTextResume: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   timerPrimaryBtnTextDiscard: {
     color: 'rgba(255, 255, 255, 0.9)',
@@ -1668,7 +1656,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     width: '100%',
   },
   timerObjectiveCardLabel: {
-    fontSize: Math.min(screenWidth * 0.032, 13),
+    fontSize: Math.min(screenWidth * 0.028, 11),
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.75)',
     marginBottom: Math.max(4, screenHeight * 0.005),
@@ -1892,9 +1880,8 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     elevation: 0,
   },
   endWorkoutButtonActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     opacity: 1,
-    // Shadow removed - was causing offset bottom shadow
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -1909,7 +1896,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   endWorkoutButtonTextActive: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '700',
   },
@@ -1919,7 +1906,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   endWorkoutButtonTextLoading: {
-    color: 'rgba(191, 168, 77, 0.8)',
+    color: 'rgba(255, 255, 255, 0.8)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
   },
@@ -1955,18 +1942,17 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   // Main save button
   inputSetButton: {
     flex: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(16, screenHeight * 0.02),
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
     alignItems: 'center',
     justifyContent: 'center',
-    // Shadow removed - was causing offset bottom shadow
     shadowOpacity: 0,
     elevation: 0,
   },
   inputSetButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     textAlign: 'center',
@@ -1982,7 +1968,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   // Small list screen button
   listScreenButton: {
     width: Math.max(60, screenWidth * 0.15),
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: Math.max(12, screenWidth * 0.04),
     paddingVertical: Math.max(14, screenHeight * 0.017),
     alignItems: 'center',
@@ -2380,7 +2366,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   disclaimersTitle: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginBottom: Math.max(12, screenHeight * 0.015),
@@ -2483,15 +2469,15 @@ const confirmModalStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   confirmModalButtonConfirm: {
-    backgroundColor: 'rgba(191, 168, 77, 0.25)',
-    borderColor: 'rgba(191, 168, 77, 0.7)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.7)',
   },
   confirmModalButtonDestructive: {
     backgroundColor: 'rgba(255, 59, 48, 0.15)',
     borderColor: 'rgba(255, 59, 48, 0.6)',
   },
   confirmModalButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
   },

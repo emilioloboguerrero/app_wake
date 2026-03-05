@@ -641,7 +641,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       }
 
       setOriginalProfile({...userProfile}); // Update original to match current
-      Alert.alert('Éxito', 'Tu perfil ha sido actualizado');
+      if (Platform.OS !== 'web') Alert.alert('Éxito', 'Tu perfil ha sido actualizado');
       hideSettingsModal();
       
       // Navigate back to Main tab to refresh profile data
@@ -1118,7 +1118,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                     <SvgChevronRight 
                       width={16} 
                       height={16} 
-                      stroke={!valuesAreEqual(userProfile.gender, originalProfile.gender) && userProfile.gender ? 'rgba(191, 168, 77, 1)' : '#ffffff'}
+                      stroke={!valuesAreEqual(userProfile.gender, originalProfile.gender) && userProfile.gender ? 'rgba(255, 255, 255, 1)' : '#ffffff'}
                       style={[
                         styles.dropdownChevron,
                         isGenderDropdownOpen && styles.dropdownChevronRotated
@@ -1538,9 +1538,27 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       </Modal>
       
       {profileLoading ? (
-        <View style={styles.loadingContainer}>
-          <WakeLoader />
-        </View>
+        Platform.OS === 'web' ? (
+          <View style={[styles.loadingContainer, { justifyContent: 'flex-start', paddingTop: 80, paddingHorizontal: 24, gap: 16 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <div className="wake-skeleton wake-skel-avatar" />
+              <View style={{ flex: 1, gap: 8 }}>
+                <div className="wake-skeleton wake-skel-row-lg" style={{ width: '60%' }} />
+                <div className="wake-skeleton wake-skel-row-sm" style={{ width: '40%' }} />
+              </View>
+            </View>
+            <div className="wake-skeleton wake-skel-card" style={{ width: '100%' }} />
+            <div className="wake-skeleton wake-skel-card" style={{ width: '100%' }} />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <div className="wake-skeleton wake-skel-card" style={{ flex: 1 }} />
+              <div className="wake-skeleton wake-skel-card" style={{ flex: 1 }} />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.loadingContainer}>
+            <WakeLoader />
+          </View>
+        )
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -2160,9 +2178,9 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     backgroundColor: '#3a3a3a',
   },
   deleteModalButtonContinue: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.72)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
   },
   deleteModalButtonConfirm: {
     backgroundColor: '#dc3545',
@@ -2176,7 +2194,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
   },
   deleteModalButtonContinueText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -2326,8 +2344,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     minHeight: 50,
   },
   disciplineCardSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
   },
   disciplineName: {
     fontSize: 16,
@@ -2336,10 +2354,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
   },
   disciplineNameSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   updateInterestsButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingVertical: 16,
     paddingHorizontal: 40,
     borderRadius: 12,
@@ -2351,7 +2369,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.5,
   },
   updateInterestsButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -2419,7 +2437,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: '#ffffff',
   },
   updateProfileButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     paddingVertical: 16,
     paddingHorizontal: 40,
     borderRadius: 12,
@@ -2431,7 +2449,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.5,
   },
   updateProfileButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -2459,8 +2477,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
   },
   genderOptionSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
   },
   genderOptionText: {
     fontSize: 14,
@@ -2469,7 +2487,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
   },
   genderOptionTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   // Username validation styles
@@ -2478,9 +2496,9 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderWidth: 1,
   },
   textInputChanged: {
-    borderColor: 'rgba(191, 168, 77, 0.72)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
     borderWidth: 1,
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   errorText: {
     fontSize: 12,
@@ -2489,7 +2507,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   successText: {
     fontSize: 12,
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     marginTop: 4,
   },
   checkingText: {
@@ -2531,11 +2549,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     transform: [{ rotate: '90deg' }],
   },
   dropdownButtonSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
   },
   dropdownButtonTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   dropdownOptions: {
@@ -2568,14 +2586,14 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
   },
   dropdownOptionSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   dropdownOptionText: {
     fontSize: 16,
     color: '#ffffff',
   },
   dropdownOptionTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   bodyweightHeightRow: {

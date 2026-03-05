@@ -74,6 +74,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
   const [showTopGradient, setShowTopGradient] = useState(false);
   const [showModulesTopGradient, setShowModulesTopGradient] = useState(false); // Modules top gradient visibility
+  const [expandedModules, setExpandedModules] = useState(new Set());
   const [processingPurchase, setProcessingPurchase] = useState(false); // Processing purchase flag
   const processingPurchaseRef = useRef(false); // Fix #8: Use ref for timeout
   const firestoreListenerRef = useRef(null); // Firestore listener reference
@@ -94,6 +95,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [ownershipReady, setOwnershipReady] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
+  const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [mercadoPagoEmail, setMercadoPagoEmail] = useState('');
   const [emailModalError, setEmailModalError] = useState('');
@@ -277,13 +279,16 @@ const CourseDetailScreen = ({ navigation, route }) => {
       postPurchaseFlowTriggeredRef.current = false;
       
       logger.log('✅ Post-purchase flow completed, showing success alert...');
-      
+
       // Show success message - use setTimeout to ensure it shows after state updates
       setTimeout(() => {
-        logger.log('📢 Displaying Alert.alert now...');
+        logger.log('📢 Displaying purchase success now...');
         try {
+          if (Platform.OS === 'web') {
+            setShowPurchaseSuccess(true);
+          } else {
           Alert.alert(
-            '¡Compra exitosa!', 
+            '¡Compra exitosa!',
             'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
             [
               {
@@ -302,7 +307,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
               }
             ]
           );
-          logger.log('✅ Alert.alert called successfully');
+          }
+          logger.log('✅ Purchase success shown');
         } catch (alertError) {
           logger.error('❌ Error showing alert:', alertError);
         }
@@ -1279,7 +1285,7 @@ useEffect(() => {
         >
           {purchasing ? (
             <>
-              <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" style={{ marginRight: 8 }} />
+              <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
               <Text style={styles.primaryButtonText}>Procesando acceso...</Text>
             </>
           ) : (
@@ -1316,7 +1322,7 @@ useEffect(() => {
       >
         {purchasing ? (
           <>
-            <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" style={{ marginRight: 8 }} />
+            <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
             <Text style={styles.primaryButtonText}>Procesando compra...</Text>
           </>
         ) : (
@@ -1636,13 +1642,45 @@ useEffect(() => {
                     scrollEventThrottle={16}
                   >
                     {modules.length > 0 ? (
-                      modules.map((module, index) => (
-                        <View key={module.id || index} style={styles.simpleModuleItem}>
-                          <Text style={styles.simpleModuleText} numberOfLines={1} ellipsizeMode="tail">
-                            {module.title || `Módulo ${index + 1}`}{module.description ? `: ${module.description}` : ''}
-                          </Text>
-                        </View>
-                      ))
+                      modules.map((module, index) => {
+                        const moduleKey = module.id || String(index);
+                        const isExpanded = expandedModules.has(moduleKey);
+                        const hasSessions = Array.isArray(module.sessions) && module.sessions.length > 0;
+                        return (
+                          <View key={moduleKey} style={styles.simpleModuleItem}>
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                              onPress={() => {
+                                setExpandedModules(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(moduleKey)) next.delete(moduleKey);
+                                  else next.add(moduleKey);
+                                  return next;
+                                });
+                              }}
+                              activeOpacity={hasSessions ? 0.7 : 1}
+                            >
+                              <Text style={[styles.simpleModuleText, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
+                                {module.title || `Módulo ${index + 1}`}{module.description ? `: ${module.description}` : ''}
+                              </Text>
+                              {hasSessions && Platform.OS === 'web' && (
+                                <div className={`wake-module-chevron${isExpanded ? ' rotated' : ''}`}>›</div>
+                              )}
+                            </TouchableOpacity>
+                            {hasSessions && Platform.OS === 'web' && (
+                              <div className={`wake-module-sessions${isExpanded ? ' expanded' : ''}`}>
+                                {module.sessions.map((session, sIdx) => (
+                                  <div key={session.id || sIdx} style={{ paddingVertical: 6, paddingLeft: 8, borderLeft: '2px solid rgba(255,255,255,0.15)', marginTop: 6, marginLeft: 4 }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+                                      {session.title || session.name || `Sesión ${sIdx + 1}`}
+                                    </Text>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </View>
+                        );
+                      })
                     ) : (
                       <View style={styles.simpleModuleItem}>
                         <Text style={styles.simpleModuleText}>
@@ -1737,7 +1775,7 @@ useEffect(() => {
                 disabled={purchasing}
               >
                 {purchasing ? (
-                  <ActivityIndicator size="small" color="rgba(191, 168, 77, 1)" />
+                  <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" />
                 ) : (
                   <Text style={styles.emailModalButtonSubmitText}>Continuar</Text>
                 )}
@@ -1778,6 +1816,30 @@ useEffect(() => {
         onPaymentSuccess={handlePaymentSuccess}
         onPaymentError={handlePaymentError}
       />
+
+      {Platform.OS === 'web' && showPurchaseSuccess && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+          onClick={() => { setShowPurchaseSuccess(false); navigation.navigate('MainScreen'); }}
+        >
+          <div
+            className="wake-purchase-card"
+            style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 16, padding: '24px 28px', width: '85%', maxWidth: 340, position: 'relative', overflow: 'hidden' }}
+          >
+            <div className="wake-purchase-icon" style={{ textAlign: 'center', marginBottom: 12 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 2h12v7a6 6 0 0 1-12 0V2z" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 5H3a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 15v4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M8 21h8" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <p className="wake-purchase-title" style={{ color: '#fff', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 22, letterSpacing: 2, textAlign: 'center', margin: 0 }}>¡BIENVENIDO!</p>
+            <p className="wake-purchase-sub" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '8px 0 0' }}>{course?.title}</p>
+          </div>
+        </div>
+      )}
     </SafeAreaView>
   );
 };
@@ -2301,7 +2363,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginTop: 10,
   },
   primaryButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     height: Math.max(50, screenHeight * 0.06), // Primary button dimensions
     width: Math.max(280, screenWidth * 0.7), // Increased width to fit "Procesando compra..." text
     borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
@@ -2314,20 +2376,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
   buttonPriceText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
   },
   trialPriceText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
@@ -2339,7 +2401,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.7,
   },
   ownedButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    opacity: 0.45,
   },
   secondaryButton: {
     backgroundColor: 'transparent',
@@ -2586,12 +2649,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
   },
   emailModalButtonSubmit: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 1)',
+    borderColor: 'rgba(255, 255, 255, 1)',
   },
   emailModalButtonSubmitText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '700',
   },

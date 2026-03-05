@@ -245,7 +245,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
       textAlign: 'center',
     },
     startSessionButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
       borderRadius: Math.max(12, screenWidth * 0.04),
       paddingVertical: Math.max(12, screenHeight * 0.015),
       paddingHorizontal: Math.max(16, screenWidth * 0.04),
@@ -253,10 +253,10 @@ const CourseStructureScreen = ({ navigation, route }) => {
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
-      borderColor: 'rgba(191, 168, 77, 0.5)',
+      borderColor: 'rgba(255, 255, 255, 0.5)',
     },
     startSessionButtonText: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: Math.min(screenWidth * 0.04, 16),
       fontWeight: '600',
     },

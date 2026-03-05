@@ -1,10 +1,19 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 
 const MODAL_ROOT_ID = 'wake-training-nutrition-choice-modal-root';
 const MODAL_Z_INDEX = 2147483646;
 const CARD_MAX_WIDTH = 320;
+
+const ANIMATION_MS = 220;
+
+const CHOICE_MODAL_KEYFRAMES = `
+  @keyframes wakeChoiceBackdropIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes wakeChoiceBackdropOut { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes wakeChoiceContentIn   { from { opacity: 0; transform: translate(-50%, calc(-50% - 8px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
+  @keyframes wakeChoiceContentOut  { from { opacity: 1; transform: translate(-50%, -50%); } to { opacity: 0; transform: translate(-50%, calc(-50% - 8px)); } }
+`;
 
 function getOrCreateModalRoot() {
   if (typeof document === 'undefined') return null;
@@ -46,6 +55,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    color: '#ffffff',
+    fontSize: 14,
+  },
   buttonsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -78,6 +97,36 @@ export function TrainingNutritionChoiceModal({
   onChooseTraining,
   onChooseNutrition,
 }) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [closing, setClosing] = useState(false);
+  const pendingActionRef = useRef(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setIsLoading(true);
+      return;
+    }
+    const t = setTimeout(() => setIsLoading(false), ANIMATION_MS + 80);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  const modalRoot = getOrCreateModalRoot();
+  useEffect(() => {
+    if (visible && modalRoot) ensureModalRootLastChild(modalRoot);
+  }, [visible, modalRoot]);
+
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(() => {
+      const action = pendingActionRef.current;
+      pendingActionRef.current = null;
+      setClosing(false);
+      if (action) action();
+      onClose();
+    }, ANIMATION_MS);
+    return () => clearTimeout(t);
+  }, [closing, onClose]);
+
   if (!visible || typeof document === 'undefined') {
     return null;
   }
@@ -89,31 +138,48 @@ export function TrainingNutritionChoiceModal({
       ? `¿Qué quieres hacer en ${programTitle}?`
       : '¿Qué quieres hacer?';
 
+  const requestClose = (afterClose) => {
+    if (closing) return;
+    pendingActionRef.current = afterClose || null;
+    setClosing(true);
+  };
+
+  const handleBackdropClick = () => {
+    requestClose();
+  };
+
   const handleTraining = () => {
-    onClose();
-    if (onChooseTraining) onChooseTraining();
+    requestClose(() => {
+      if (onChooseTraining) onChooseTraining();
+    });
   };
 
   const handleNutrition = () => {
-    onClose();
-    if (onChooseNutrition) onChooseNutrition();
+    requestClose(() => {
+      if (onChooseNutrition) onChooseNutrition();
+    });
   };
 
-  const modalRoot = getOrCreateModalRoot();
-  useEffect(() => {
-    if (visible && modalRoot) ensureModalRootLastChild(modalRoot);
-  }, [visible, modalRoot]);
+  const backdropAnim = closing
+    ? `wakeChoiceBackdropOut ${ANIMATION_MS}ms ease-out forwards`
+    : `wakeChoiceBackdropIn ${ANIMATION_MS}ms ease-out forwards`;
+
+  const contentAnim = closing
+    ? `wakeChoiceContentOut ${ANIMATION_MS}ms ease-out forwards`
+    : `wakeChoiceContentIn ${ANIMATION_MS}ms ease-out forwards`;
 
   const fullCover = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 };
   const overlay = (
     <div style={{ pointerEvents: 'auto', ...fullCover }}>
+      <style>{CHOICE_MODAL_KEYFRAMES}</style>
       <div
         style={{
           ...fullCover,
           backgroundColor: 'rgba(0,0,0,0.62)',
           zIndex: 1,
+          animation: backdropAnim,
         }}
-        onClick={onClose}
+        onClick={handleBackdropClick}
       />
       <div
         style={{
@@ -124,25 +190,33 @@ export function TrainingNutritionChoiceModal({
           zIndex: 2,
           width: 'calc(100vw - 32px)',
           maxWidth: CARD_MAX_WIDTH,
+          animation: contentAnim,
         }}
-        onClick={onClose}
+        onClick={handleBackdropClick}
       >
         <View style={styles.card}>
           <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
             {titleText}
           </Text>
-          <View style={styles.buttonsRow}>
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
-              <TouchableOpacity style={styles.button} onPress={handleTraining} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Entrenar</Text>
-              </TouchableOpacity>
-            </div>
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
-              <TouchableOpacity style={styles.button} onPress={handleNutrition} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Comer</Text>
-              </TouchableOpacity>
-            </div>
-          </View>
+          {isLoading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color="#ffffff" />
+              <Text style={styles.loadingText}>Cargando opciones…</Text>
+            </View>
+          ) : (
+            <View style={styles.buttonsRow}>
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
+                <TouchableOpacity style={styles.button} onPress={handleTraining} activeOpacity={0.8}>
+                  <Text style={styles.buttonText}>Entrenar</Text>
+                </TouchableOpacity>
+              </div>
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block' }}>
+                <TouchableOpacity style={styles.button} onPress={handleNutrition} activeOpacity={0.8}>
+                  <Text style={styles.buttonText}>Comer</Text>
+                </TouchableOpacity>
+              </div>
+            </View>
+          )}
         </View>
       </div>
     </div>

@@ -729,7 +729,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
 
     // Define distinct colors for each exercise line
     const exerciseColors = [
-      'rgba(191, 168, 77, 1)',   // Gold
+      'rgba(255, 255, 255, 1)',   // Gold
       'rgba(255, 255, 255, 1)',  // White
       'rgba(150, 150, 150, 1)',  // Gray
     ];
@@ -2395,7 +2395,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     backgroundColor: 'transparent',
   },
   periodModalItemSelected: {
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   periodModalItemLast: {
     borderBottomWidth: 0,
@@ -2407,11 +2407,11 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     flex: 1,
   },
   periodModalItemTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   periodModalCheckmark: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginLeft: 8,
@@ -2536,7 +2536,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   },
   prValue: {
     fontSize: 16,
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   chartContainer: {
@@ -2590,7 +2590,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
   },
   legendPRValue: {
     fontSize: 11,
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   // PR Data Point Tooltip Styles
@@ -2602,7 +2602,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     borderRadius: Math.max(8, screenWidth * 0.02),
     padding: Math.max(12, screenWidth * 0.03),
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     shadowColor: 'rgba(0, 0, 0, 0.5)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
@@ -2614,7 +2614,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     alignItems: 'flex-start',
   },
   prDataPointTooltipExerciseName: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     marginBottom: Math.max(4, screenHeight * 0.005),
@@ -3324,7 +3324,7 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   disclaimersTitle: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     marginBottom: Math.max(12, screenHeight * 0.015),

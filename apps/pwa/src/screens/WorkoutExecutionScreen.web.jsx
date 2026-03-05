@@ -63,6 +63,27 @@ const WorkoutExecutionScreen = () => {
       sessionId: location.state?.sessionId || null,
     }
   }), [location.state]);
+
+  // Debug: log route params and first exercise snapshot when wrapper mounts/updates
+  React.useEffect(() => {
+    const workout = route?.params?.workout;
+    const firstExercise = workout?.exercises?.[0] || null;
+    logger.log('[WORKOUT_TEST_WEB] Route params snapshot for WorkoutExecutionScreen:', {
+      courseIdFromUrl: courseId,
+      hasCourseInState: !!location.state?.course,
+      hasWorkoutInState: !!location.state?.workout,
+      routeParamsKeys: route?.params ? Object.keys(route.params) : [],
+      workoutHasExercises: !!workout?.exercises,
+      workoutExercisesCount: workout?.exercises?.length || 0,
+      firstExercise: firstExercise ? {
+        name: firstExercise.name,
+        libraryId: firstExercise.libraryId,
+        objectives: firstExercise.objectives || [],
+        measures: firstExercise.measures || [],
+        primary: firstExercise.primary || null
+      } : null
+    });
+  }, [courseId, location.state, route]);
   
   return (
     <WorkoutExecutionScreenBase 

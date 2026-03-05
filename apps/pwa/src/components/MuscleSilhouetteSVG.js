@@ -42,7 +42,7 @@ const MuscleSilhouetteSVG = memo(({
               d={pathData}
               fill={color}
               fillOpacity={opacity}
-              stroke={isSelected ? '#BFA84D' : 'none'}
+              stroke={isSelected ? '#FFFFFF' : 'none'}
               strokeWidth={isSelected ? '2' : '0'}
               strokeOpacity={isSelected ? '0.3' : '0'}
             />

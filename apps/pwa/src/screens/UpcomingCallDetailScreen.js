@@ -18,9 +18,9 @@ import { getBookingById } from '../services/callBookingService';
 import firestoreService from '../services/firestoreService';
 import profilePictureService from '../services/profilePictureService';
 
-const GOLD_ACCENT = 'rgba(191, 168, 77, 1)';
-const GOLD_ACCENT_15 = 'rgba(191, 168, 77, 0.15)';
-const GOLD_ACCENT_25 = 'rgba(191, 168, 77, 0.25)';
+const GOLD_ACCENT = 'rgba(255, 255, 255, 1)';
+const GOLD_ACCENT_15 = 'rgba(255, 255, 255, 0.15)';
+const GOLD_ACCENT_25 = 'rgba(255, 255, 255, 0.25)';
 const CARD_BG = 'rgba(255, 255, 255, 0.06)';
 const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 const LABEL_COLOR = 'rgba(255, 255, 255, 0.55)';
@@ -288,7 +288,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
           backgroundColor: GOLD_ACCENT_15,
           borderRadius: 10,
           borderWidth: 1,
-          borderColor: 'rgba(191, 168, 77, 0.35)',
+          borderColor: 'rgba(255, 255, 255, 0.35)',
         },
         daysLeftText: {
           fontSize: 14,
@@ -314,7 +314,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
           alignItems: 'center',
           justifyContent: 'center',
           borderWidth: 1,
-          borderColor: 'rgba(191, 168, 77, 0.45)',
+          borderColor: 'rgba(255, 255, 255, 0.45)',
         },
         joinButtonText: {
           color: '#ffffff',

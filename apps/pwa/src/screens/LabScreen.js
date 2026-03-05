@@ -110,8 +110,15 @@ function formatDaysAgo(isoString) {
 function getAdherenceColor(pct) {
   if (pct == null) return 'rgba(255,255,255,0.45)';
   if (pct >= 90) return '#4ade80';
-  if (pct >= 70) return 'rgba(191,168,77,0.95)';
+  if (pct >= 70) return 'rgba(255,255,255,0.95)';
   return '#f87171';
+}
+
+function formatSetsNumber(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return '0';
+  const rounded = Math.round(n * 100) / 100;
+  return parseFloat(rounded.toFixed(2)).toString();
 }
 
 // ─── LabScreen ─────────────────────────────────────────────────────────────────
@@ -533,7 +540,8 @@ const LabScreen = ({ navigation }) => {
         energy: entry ? entry.energy : null,
         soreness: entry ? entry.soreness : null,
         sleep: entry ? entry.sleep : null,
-        sorenessInverted: entry ? (11 - entry.soreness) : null,
+        // Expose muscle freshness directly on a 1–10 scale where 10 = mejor.
+        sorenessInverted: entry ? entry.soreness : null,
       });
     }
     return result;
@@ -629,8 +637,9 @@ const LabScreen = ({ navigation }) => {
     if (last3.length < 2) return null;
     const avgEnergy = last3.reduce((s, e) => s + e.energy, 0) / last3.length;
     const avgSoreness = last3.reduce((s, e) => s + e.soreness, 0) / last3.length;
-    if (avgEnergy <= 4 && avgSoreness >= 7) {
-      return `Energía baja (${avgEnergy.toFixed(1)}/10) y dolor muscular alto (${avgSoreness.toFixed(1)}/10) en los últimos días — considera una sesión de recuperación activa o un día de descanso.`;
+    // With new scale (1 = peor, 10 = mejor), low freshness (≤4) es señal de alerta.
+    if (avgEnergy <= 4 && avgSoreness <= 4) {
+      return `Energía baja (${avgEnergy.toFixed(1)}/10) y musculatura muy cargada (${avgSoreness.toFixed(1)}/10) en los últimos días — considera una sesión de recuperación activa o un día de descanso.`;
     }
     if (avgEnergy <= 3) {
       return `Tu energía ha estado muy baja estos días (${avgEnergy.toFixed(1)}/10). Revisa tu calidad de sueño y nutrición.`;
@@ -702,7 +711,7 @@ const LabScreen = ({ navigation }) => {
       while (cur <= end) {
         const ds = toYYYYMMDD(cur);
         const r = readinessByDay[ds];
-        if (r) scores.push((r.energy + r.sleep + (11 - r.soreness)) / 3);
+        if (r) scores.push((r.energy + r.sleep + r.soreness) / 3);
         cur.setDate(cur.getDate() + 1);
       }
       return { ...wk, wellness: scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null };
@@ -877,7 +886,7 @@ const LabScreen = ({ navigation }) => {
               {/* ── Resumen semanal ── */}
               <View style={styles.muscleCardSummary}>
                 <View>
-                  <Text style={styles.muscleCardTotal}>{weekTotals.total}</Text>
+                  <Text style={styles.muscleCardTotal}>{formatSetsNumber(weekTotals.total)}</Text>
                   <Text style={styles.muscleCardTotalLabel}>series esta semana</Text>
                 </View>
                 {weekTotals.pct != null && (
@@ -902,7 +911,7 @@ const LabScreen = ({ navigation }) => {
                   const barColor = current === 0
                     ? 'rgba(255,255,255,0.06)'
                     : current <= 6 ? 'rgba(255,255,255,0.35)'
-                    : current <= 15 ? 'rgba(191,168,77,0.7)'
+                    : current <= 15 ? 'rgba(255,255,255,0.7)'
                     : 'rgba(139,0,0,0.7)';
                   const trendLabel = trendPct == null ? '' : trendPct > 10 ? `↑${trendPct}%` : trendPct < -10 ? `↓${Math.abs(trendPct)}%` : '→';
                   return (
@@ -911,7 +920,7 @@ const LabScreen = ({ navigation }) => {
                       <View style={styles.muscleGroupBar}>
                         <View style={[styles.muscleGroupBarFill, { width: `${Math.min(100, Math.round(barFrac * 100))}%`, backgroundColor: barColor }]} />
                       </View>
-                      <Text style={styles.muscleGroupSets}>{current > 0 ? `${current}s` : '—'}</Text>
+                      <Text style={styles.muscleGroupSets}>{current > 0 ? `${formatSetsNumber(current)}s` : '—'}</Text>
                       <Text style={[styles.muscleGroupTrend, { color: trendColor }]}>{trendLabel}</Text>
                     </View>
                   );
@@ -955,7 +964,7 @@ const LabScreen = ({ navigation }) => {
                   {recentRpeAvg != null && (
                     <View style={[styles.muscleContextRow, { marginTop: 8 }]}>
                       <Text style={styles.muscleContextLabel}>RPE promedio (últimas 3 sesiones)</Text>
-                      <Text style={[styles.muscleContextVal, { color: recentRpeAvg >= 7 ? '#BFA84D' : 'rgba(255,255,255,0.65)' }]}>
+                      <Text style={[styles.muscleContextVal, { color: recentRpeAvg >= 7 ? '#FFFFFF' : 'rgba(255,255,255,0.65)' }]}>
                         {recentRpeAvg.toFixed(1)}
                       </Text>
                     </View>
@@ -1318,13 +1327,13 @@ const LabScreen = ({ navigation }) => {
             <View style={styles.readinessWeekRow}>
               {[
                 { label: 'Energía', key: 'energy', invert: false },
-                { label: 'Frescura', key: 'soreness', invert: true },
+                { label: 'Frescura', key: 'soreness', invert: false },
                 { label: 'Sueño', key: 'sleep', invert: false },
               ].map(({ label, key, invert }) => {
                 const val = readinessWeeklyAvg.this[key];
                 const prevVal = readinessWeeklyAvg.last[key];
-                const displayVal = invert && val != null ? (11 - val) : val;
-                const displayPrev = invert && prevVal != null ? (11 - prevVal) : prevVal;
+                const displayVal = val;
+                const displayPrev = prevVal;
                 const delta = displayVal != null && displayPrev != null
                   ? ((displayVal - displayPrev) / displayPrev * 100) : null;
                 return (
@@ -1368,6 +1377,86 @@ const LabScreen = ({ navigation }) => {
     </>
   );
 
+  // ─── Historial Tab ─────────────────────────────────────────────────────────
+
+  const handleSessionPress = (session, completedAtIso) => {
+    if (!navigation || typeof navigation.navigate !== 'function') return;
+    const sessionId = session.completionDocId || session.sessionId || session.id;
+    if (!sessionId) return;
+
+    navigation.navigate('SessionDetail', {
+      sessionId,
+      sessionName: session.sessionName || session.courseName || 'Sesión de entrenamiento',
+      date: completedAtIso || session.completedAt || null,
+      sessionData: session,
+    });
+  };
+
+  const renderHistorialTab = () => (
+    <>
+      {renderCard(
+        'Historial de sesiones',
+        <>
+          {sessionList.length === 0 ? (
+            <Text style={styles.emptyText}>Completa sesiones para ver tu historial.</Text>
+          ) : (
+            <View style={styles.sessionList}>
+              {sessionList.map((s) => {
+                const id = s.id || s.sessionId;
+                let completedAtIso = null;
+                if (typeof s.completedAt === 'string') {
+                  completedAtIso = s.completedAt;
+                } else if (s.completedAt && typeof s.completedAt.toDate === 'function') {
+                  completedAtIso = s.completedAt.toDate().toISOString();
+                }
+                const relative = completedAtIso ? formatDaysAgo(completedAtIso) : '';
+                const completedDate = completedAtIso ? new Date(completedAtIso) : null;
+                const absoluteDate = completedDate
+                  ? completedDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+                  : '';
+                const exerciseEntries = Object.values(s.exercises || {});
+                const exerciseCount = exerciseEntries.length;
+                const totalSets = exerciseEntries.reduce(
+                  (sum, ex) => sum + (ex.sets ? ex.sets.length : 0),
+                  0
+                );
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.sessionHistoryCard}
+                    onPress={() => handleSessionPress(s, completedAtIso)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.sessionRow}>
+                      <View style={styles.sessionRowMain}>
+                        <Text style={styles.sessionRowTitle} numberOfLines={1}>
+                          {s.sessionName || 'Sesión de entrenamiento'}
+                        </Text>
+                        {s.courseName ? (
+                          <Text style={styles.sessionRowCourse} numberOfLines={1}>
+                            {s.courseName}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.sessionRowMeta}>
+                          {absoluteDate}
+                          {relative ? ` · ${relative}` : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.sessionRowRight}>
+                        <Text style={styles.sessionRowStat}>{exerciseCount} ej.</Text>
+                        <Text style={styles.sessionRowStat}>{totalSets} series</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </>
+      )}
+    </>
+  );
+
   // ─── main render ───────────────────────────────────────────────────────────
 
   if (loading) {
@@ -1390,11 +1479,17 @@ const LabScreen = ({ navigation }) => {
           </View>
 
           {/* Tab bar */}
-          <View style={styles.tabBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabBar}
+            contentContainerStyle={styles.tabBarContent}
+          >
             {[
               { key: 'fuerza', label: 'Fuerza' },
               { key: 'nutricion', label: 'Nutrición' },
               { key: 'habitos', label: 'Hábitos' },
+              { key: 'historial', label: 'Historial' },
             ].map(({ key, label }) => (
               <TouchableOpacity
                 key={key}
@@ -1405,11 +1500,12 @@ const LabScreen = ({ navigation }) => {
                 <Text style={[styles.tabLabel, activeTab === key && styles.tabLabelActive]}>{label}</Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
           {activeTab === 'fuerza' && renderFuerzaTab()}
           {activeTab === 'nutricion' && renderNutricionTab()}
           {activeTab === 'habitos' && renderHabitosTab()}
+          {activeTab === 'historial' && renderHistorialTab()}
 
           <BottomSpacer />
           <View style={{ height: Math.max(80, screenHeight * 0.1) }} />
@@ -1442,7 +1538,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: Math.max(16, screenHeight * 0.02),
   },
   tabPill: {
-    flex: 1,
+    paddingHorizontal: Math.max(14, screenWidth * 0.06),
     paddingVertical: 9,
     borderRadius: 999,
     borderWidth: 1,
@@ -1461,6 +1557,56 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   tabLabelActive: {
     color: '#1a1a1a',
     fontWeight: '600',
+  },
+  tabBarContent: {
+    paddingHorizontal: 0,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  sessionList: {
+    marginTop: 4,
+    gap: 10,
+  },
+  sessionHistoryCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  sessionRowMain: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  sessionRowTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 2,
+  },
+  sessionRowCourse: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.65)',
+    marginBottom: 2,
+  },
+  sessionRowMeta: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  sessionRowRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 72,
+  },
+  sessionRowStat: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
   },
   card: {
     width: screenWidth - 2 * CARD_MARGIN,

@@ -44,6 +44,21 @@ const DailyWorkoutScreen = () => {
   const hasFetchedRef = React.useRef(false);
 
   const [selectedDate, setSelectedDate] = useState(() => toYYYYMMDD(new Date()));
+  const [dateTransitioning, setDateTransitioning] = useState(false);
+  const dateTransitionTimeoutRef = React.useRef(null);
+
+  const handleDateChange = useCallback((date) => {
+    setSelectedDate(date);
+    setDateTransitioning(true);
+    if (dateTransitionTimeoutRef.current) clearTimeout(dateTransitionTimeoutRef.current);
+    dateTransitionTimeoutRef.current = setTimeout(() => setDateTransitioning(false), 420);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (dateTransitionTimeoutRef.current) clearTimeout(dateTransitionTimeoutRef.current);
+    };
+  }, []);
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
 
@@ -255,7 +270,7 @@ const DailyWorkoutScreen = () => {
     <View style={dateRowStyle.dateRow}>
       <WeekDateSelector
         selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
+        onDateChange={handleDateChange}
         fetchDatesWithEntries={fetchDatesWithEntries}
         fetchDatesWithPlanned={isOneOnOne ? fetchDatesWithPlanned : undefined}
         initialDatesWithPlanned={passInitialPlanned}
@@ -266,14 +281,19 @@ const DailyWorkoutScreen = () => {
   );
 
   return (
-    <DailyWorkoutScreenBase
-      navigation={navigation}
-      route={route}
-      selectedDate={selectedDate}
-      onDateChange={setSelectedDate}
-      showSessionsList={!isOneOnOne}
-      renderBeforeContent={renderBeforeContent}
-    />
+    <div
+      className={dateTransitioning ? 'wake-date-transition' : undefined}
+      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+    >
+      <DailyWorkoutScreenBase
+        navigation={navigation}
+        route={route}
+        selectedDate={selectedDate}
+        onDateChange={handleDateChange}
+        showSessionsList={!isOneOnOne}
+        renderBeforeContent={renderBeforeContent}
+      />
+    </div>
   );
 };
 

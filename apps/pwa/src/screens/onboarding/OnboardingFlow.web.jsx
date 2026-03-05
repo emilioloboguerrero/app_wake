@@ -1066,8 +1066,11 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
       case 12:
         return (
           <View style={s.stepCenter}>
-            <View style={s.completionLogoWrap}>
-              <CompletionLogo width={200} height={130} />
+            <View style={[s.completionLogoWrap, { position: 'relative' }]}>
+              <div className="ob-logo-glow" />
+              <div className="ob-logo-rise">
+                <CompletionLogo width={200} height={130} />
+              </div>
             </View>
             <View style={s.completionBadgeWrap}>
               <Svg width={56} height={56} viewBox="0 0 56 56">
@@ -1652,9 +1655,7 @@ const s = StyleSheet.create({
   },
   // ── Primary button
   primaryBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderRadius: 14,
     paddingVertical: 15,
     paddingHorizontal: 48,
@@ -1678,7 +1679,7 @@ const s = StyleSheet.create({
   primaryBtnText: {
     fontSize: 17,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.95)',
+    color: '#1a1a1a',
   },
   primaryBtnTextDisabled: {
     color: 'rgba(255,255,255,0.3)',

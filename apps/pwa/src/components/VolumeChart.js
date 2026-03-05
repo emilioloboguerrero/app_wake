@@ -57,7 +57,7 @@ const VolumeChart = ({ volumeHistory }) => {
     datasets: [
       {
         data: volumes,
-        color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`, // Golden color
+        color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`, // Golden color
         strokeWidth: 3 // Line thickness
       }
     ]
@@ -68,7 +68,7 @@ const VolumeChart = ({ volumeHistory }) => {
     backgroundGradientFrom: '#2a2a2a',
     backgroundGradientTo: '#2a2a2a',
     decimalPlaces: 0, // No decimals for volume
-    color: (opacity = 1) => `rgba(191, 168, 77, ${opacity})`,
+    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
     style: {
       borderRadius: 16
@@ -76,7 +76,7 @@ const VolumeChart = ({ volumeHistory }) => {
     propsForDots: {
       r: '5',
       strokeWidth: '2',
-      stroke: 'rgba(191, 168, 77, 1)'
+      stroke: 'rgba(255, 255, 255, 1)'
     },
     propsForBackgroundLines: {
       strokeDasharray: '', // solid lines

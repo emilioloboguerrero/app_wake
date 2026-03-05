@@ -28,7 +28,7 @@ function getVolumeStyle(sets) {
   }
   if (n <= 15) {
     const alpha = (0.58 + ((n - 5) / 10) * 0.28).toFixed(2);
-    return { fill: `rgba(191,168,77,${alpha})`, stroke: 'rgba(191,168,77,0.48)' };
+    return { fill: `rgba(255,255,255,${alpha})`, stroke: 'rgba(255,255,255,0.48)' };
   }
   return { fill: 'rgba(139,0,0,0.85)', stroke: 'rgba(139,0,0,0.55)' };
 }
@@ -38,23 +38,23 @@ function getTrendStyle(current, previous) {
   const cur = current || 0;
   const prev = previous || 0;
   if (cur === 0 && prev === 0) return { fill: 'rgba(255,255,255,0.09)', stroke: 'rgba(255,255,255,0.12)' };
-  if (prev === 0) return { fill: 'rgba(191,168,77,0.32)', stroke: 'rgba(191,168,77,0.26)' };
+  if (prev === 0) return { fill: 'rgba(255,255,255,0.32)', stroke: 'rgba(255,255,255,0.26)' };
   if (cur === 0) return { fill: 'rgba(139,0,0,0.75)', stroke: 'rgba(139,0,0,0.5)' };
   const pct = (cur - prev) / prev;
-  if (pct > 0.1) return { fill: 'rgba(191,168,77,0.35)', stroke: 'rgba(191,168,77,0.28)' };
+  if (pct > 0.1) return { fill: 'rgba(255,255,255,0.35)', stroke: 'rgba(255,255,255,0.28)' };
   if (pct > -0.1) return { fill: 'rgba(255,255,255,0.52)', stroke: 'rgba(255,255,255,0.32)' };
   return { fill: 'rgba(139,0,0,0.78)', stroke: 'rgba(139,0,0,0.5)' };
 }
 
 const VOLUME_LEGEND = [
   { color: 'rgba(255,255,255,0.55)', label: 'Poca carga' },
-  { color: 'rgba(191,168,77,0.78)', label: 'Carga media' },
+  { color: 'rgba(255,255,255,0.78)', label: 'Carga media' },
   { color: 'rgba(139,0,0,0.85)', label: 'Alta carga' },
   { color: 'rgba(255,255,255,0.09)', label: 'Sin datos' },
 ];
 
 const TENDENCIA_LEGEND = [
-  { color: 'rgba(191,168,77,0.35)', label: 'Aumentó' },
+  { color: 'rgba(255,255,255,0.35)', label: 'Aumentó' },
   { color: 'rgba(255,255,255,0.52)', label: 'Similar' },
   { color: 'rgba(139,0,0,0.78)', label: 'Bajó' },
   { color: 'rgba(255,255,255,0.09)', label: 'Sin datos' },

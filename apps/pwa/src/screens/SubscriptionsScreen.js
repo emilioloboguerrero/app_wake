@@ -964,14 +964,14 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   actionButtonPrimary: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   actionButtonDisabled: {
     opacity: 0.6,
   },
   actionButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
     fontSize: 14,
   },
@@ -1014,15 +1014,15 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     fontWeight: '600',
   },
   infoModalButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   infoModalButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   surveyModalContent: {
@@ -1061,19 +1061,19 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     backgroundColor: '#2a2a2a',
   },
   surveyOptionSelected: {
-    borderColor: 'rgba(191, 168, 77, 0.8)',
-    backgroundColor: 'rgba(191, 168, 77, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
   surveyOptionText: {
     color: '#cccccc',
     fontSize: 14,
   },
   surveyOptionTextSelected: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
   },
   surveySubmitButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     height: Math.max(44, screenHeight * 0.05),
     width: Math.max(160, screenWidth * 0.4),
     borderRadius: Math.max(10, screenWidth * 0.035),
@@ -1089,7 +1089,7 @@ const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleShee
     elevation: 0,
   },
   surveySubmitButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
   mealBlockTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     marginBottom: 8,
   },
   entryRow: {
@@ -736,15 +736,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     padding: 18,
     borderRadius: 14,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.4)',
+    borderColor: 'rgba(255, 255, 255, 0.4)',
     alignItems: 'center',
   },
   logButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
   },
   modalOverlay: {
     flex: 1,
@@ -775,7 +775,7 @@ const styles = StyleSheet.create({
   },
   modalClose: {
     fontSize: 15,
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '500',
   },
   mealPills: {
@@ -791,7 +791,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   mealPillActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   mealPillText: {
     fontSize: 14,
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   logModeTabActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   logModeTabText: {
     fontSize: 14,
@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: 'rgba(191, 168, 77, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   searchBtnText: {
     fontSize: 15,
@@ -862,8 +862,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   searchResultItemActive: {
-    borderColor: 'rgba(191, 168, 77, 0.5)',
-    backgroundColor: 'rgba(191, 168, 77, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   searchResultName: {
     fontSize: 15,
@@ -894,8 +894,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   servingChipActive: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
-    borderColor: 'rgba(191, 168, 77, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   servingChipText: {
     fontSize: 14,
@@ -929,7 +929,7 @@ const styles = StyleSheet.create({
   submitBtn: {
     padding: 16,
     borderRadius: 12,
-    backgroundColor: 'rgba(191, 168, 77, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     alignItems: 'center',
   },
   submitBtnDisabled: {

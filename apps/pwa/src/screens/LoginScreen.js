@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   inputSuccess: {
-    borderColor: 'rgba(191, 168, 77, 0.7)',
+    borderColor: 'rgba(255, 255, 255, 0.7)',
     borderWidth: 1,
   },
   errorText: {
@@ -632,11 +632,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a2a',
   },
   checkboxChecked: {
-    backgroundColor: 'rgba(191, 168, 77, 0.3)',
-    borderColor: 'rgba(191, 168, 77, 1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 1)',
   },
   checkmark: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 50,
     borderRadius: 12,
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 18,
     fontWeight: '700',
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
   },
   buttonTextDisabled: {
     color: '#ffffff',
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   toggleLink: {
-    color: 'rgba(191, 168, 77, 0.72)',
+    color: 'rgba(255, 255, 255, 0.72)',
     fontWeight: '500',
   },
   forgotButton: {
@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 14,
-    color: 'rgba(191, 168, 77, 0.72)',
+    color: 'rgba(255, 255, 255, 0.72)',
     textAlign: 'center',
     textDecorationLine: 'underline',
   },

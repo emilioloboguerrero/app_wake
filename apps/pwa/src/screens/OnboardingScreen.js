@@ -305,7 +305,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       elevation: 0,
     },
     inputSuccess: {
-      borderColor: 'rgba(191, 168, 77, 0.7)',
+      borderColor: 'rgba(255, 255, 255, 0.7)',
       borderWidth: 1,
       shadowColor: 'transparent',
       shadowOpacity: 0,
@@ -319,7 +319,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       marginTop: 5,
     },
     successText: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 12,
       fontWeight: '400',
       marginTop: 5,
@@ -435,7 +435,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       backgroundColor: 'rgba(255,255,255,0.06)',
     },
     calendarDaySelected: {
-      backgroundColor: 'rgba(191, 168, 77, 0.4)',
+      backgroundColor: 'rgba(255, 255, 255, 0.4)',
     },
     calendarDayDisabled: {
       opacity: 0.3,
@@ -472,7 +472,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       backgroundColor: 'rgba(255,255,255,0.06)',
     },
     calendarMonthCellSelected: {
-      backgroundColor: 'rgba(191, 168, 77, 0.35)',
+      backgroundColor: 'rgba(255, 255, 255, 0.35)',
     },
     calendarMonthCellText: {
       fontSize: 14,
@@ -508,7 +508,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       borderBottomWidth: 0,
     },
     calendarYearOptionSelected: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
     calendarYearOptionText: {
       fontSize: 15,
@@ -516,17 +516,17 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       color: '#ffffff',
     },
     calendarYearOptionTextSelected: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontWeight: '700',
     },
     datePickerSaveButtonTopRight: {
-      backgroundColor: 'rgba(191, 168, 77, 0)',
+      backgroundColor: 'rgba(255, 255, 255, 0)',
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 6,
     },
     datePickerSaveTextTopRight: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 16,
       fontWeight: '600',
     },
@@ -542,13 +542,13 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       zIndex: 10,
     },
     datePickerSaveButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0)',
+      backgroundColor: 'rgba(255, 255, 255, 0)',
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 6,
     },
     datePickerSaveText: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 16,
       fontWeight: '600',
     },
@@ -570,9 +570,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       borderBottomRightRadius: 0,
     },
     dropdownButtonSelected: {
-      borderColor: 'rgba(191, 168, 77, 0.7)',
+      borderColor: 'rgba(255, 255, 255, 0.7)',
       borderWidth: 1,
-      shadowColor: 'rgba(191, 168, 77, 0.8)',
+      shadowColor: 'rgba(255, 255, 255, 0.8)',
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 1,
       shadowRadius: 2,
@@ -584,7 +584,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       fontWeight: '400',
     },
     dropdownButtonTextSelected: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
     },
     dropdownChevron: {
       // No rotation - SvgChevronRight already points right
@@ -659,7 +659,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       fontWeight: '400',
     },
     dropdownOptionTextSelected: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontWeight: '600',
     },
     loadingContainer: {
@@ -684,8 +684,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       borderColor: '#ffffff',
     },
     disciplineCardSelected: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
-      borderColor: 'rgba(191, 168, 77, 1)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      borderColor: 'rgba(255, 255, 255, 1)',
       borderWidth: 1.5,
     },
     disciplineName: {
@@ -695,7 +695,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       marginBottom: 4,
     },
     disciplineNameSelected: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
     },
     disciplineDescription: {
       fontSize: 14,
@@ -706,7 +706,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       color: '#ffffff',
     },
     submitButton: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
       height: Math.max(50, screenHeight * 0.06), // Primary button dimensions
       width: Math.max(200, screenWidth * 0.5), // Primary button dimensions
       borderRadius: Math.max(12, screenWidth * 0.04), // Primary button dimensions
@@ -722,7 +722,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       elevation: 0,
     },
     submitButtonText: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 18,
       fontWeight: '600',
     },
@@ -778,7 +778,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       borderBottomWidth: 0,
     },
     objectiveOptionSelected: {
-      backgroundColor: 'rgba(191, 168, 77, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
     objectiveOptionText: {
       color: '#ffffff',
@@ -786,11 +786,11 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       fontWeight: '400',
     },
     objectiveOptionTextSelected: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontWeight: '600',
     },
     objectiveCheckmark: {
-      color: 'rgba(191, 168, 77, 1)',
+      color: 'rgba(255, 255, 255, 1)',
       fontSize: 16,
       fontWeight: '600',
     },
@@ -1700,7 +1700,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                     <SvgChevronRight 
                       width={20} 
                       height={20} 
-                      stroke={formData.gender ? 'rgba(191, 168, 77, 1)' : '#ffffff'} 
+                      stroke={formData.gender ? 'rgba(255, 255, 255, 1)' : '#ffffff'} 
                       strokeWidth={2} 
                     />
                   </View>
@@ -1758,7 +1758,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                       <SvgChevronRight 
                         width={20} 
                         height={20} 
-                        stroke={formData.birthDate ? 'rgba(191, 168, 77, 1)' : '#ffffff'} 
+                        stroke={formData.birthDate ? 'rgba(255, 255, 255, 1)' : '#ffffff'} 
                         strokeWidth={2} 
                       />
                     </View>
@@ -1951,7 +1951,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                       <SvgChevronRight 
                         width={20} 
                         height={20} 
-                        stroke={formData.country ? 'rgba(191, 168, 77, 1)' : '#ffffff'} 
+                        stroke={formData.country ? 'rgba(255, 255, 255, 1)' : '#ffffff'} 
                         strokeWidth={2} 
                       />
                     </View>
@@ -2049,7 +2049,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
                       <SvgChevronRight 
                         width={20} 
                         height={20} 
-                        stroke={formData.city ? 'rgba(191, 168, 77, 1)' : '#ffffff'} 
+                        stroke={formData.city ? 'rgba(255, 255, 255, 1)' : '#ffffff'} 
                         strokeWidth={2} 
                       />
                     </View>

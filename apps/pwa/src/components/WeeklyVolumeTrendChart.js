@@ -161,7 +161,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   tendenciesNumber: {
     fontSize: Math.min(screenWidth * 0.08, 32),
     fontWeight: '700',
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     marginRight: Math.max(4, screenWidth * 0.01),
   },
   tendenciesUnit: {

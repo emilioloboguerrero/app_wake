@@ -30,16 +30,19 @@ import Steak from '../components/icons/Steak';
 import Wheat from '../components/icons/Wheat';
 import Avocado from '../components/icons/Avocado';
 import SvgChevronDown from '../components/icons/vectors_fig/Arrow/ChevronDown';
+import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
 import SvgBarcodeFile from '../components/icons/vectors_fig/System/BarcodeFile';
 import WakeLoader from '../components/WakeLoader';
+import WakeEmptyState from '../components/WakeEmptyState.web';
+import WakeToast, { useWakeToast } from '../components/WakeToast.web';
+import SvgListChecklist from '../components/icons/SvgListChecklist';
 import { Video, ResizeMode } from 'expo-av';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { NotFoundException } from '@zxing/library';
 
-const GOLD = 'rgba(191, 168, 77, 1)';
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
 const REMAINING_GRAY = 'rgba(255, 255, 255, 0.12)';
-const GOLD_FILL = 'rgba(255, 255, 255, 0.75)';
+const WHITE_FILL = 'rgba(255, 255, 255, 0.75)';
 const OVER_LIMIT_RED = 'rgba(255, 68, 68, 0.3)';
 
 const NUTRITION_SPACER_SAFE_TOP_FALLBACK = 59;
@@ -775,6 +778,10 @@ const NutritionScreen = () => {
   const [assignment, setAssignment] = useState(initialAssignment);
   const [plan, setPlan] = useState(initialPlan);
   const [diaryEntries, setDiaryEntries] = useState([]);
+  const [newlyAddedIds, setNewlyAddedIds] = useState(() => new Set());
+  const newlyAddedTimerRef = useRef(null);
+  // Set this to the current entry ID set before an add so loadData can detect new entries
+  const trackNewEntriesRef = useRef(null);
   const needsInitialLoad = !initialPlan && !initialAssignment;
   const [loading, setLoading] = useState(needsInitialLoad);
   const [hasLoaded, setHasLoaded] = useState(!!initialPlan || !!initialAssignment);
@@ -859,6 +866,9 @@ const NutritionScreen = () => {
   const [createFoodSaving, setCreateFoodSaving] = useState(false);
 
   const fdServingsInputRef = useRef(null);
+  const { toasts, removeToast, showToast } = useWakeToast();
+  const goalsToastedRef = useRef(new Set());
+  const lastDeletedRef = useRef(null);
   const fdSlideAnim = useRef(new Animated.Value(0)).current;
   const createMealSlideAnim = useRef(new Animated.Value(0)).current;
   const addModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -881,6 +891,50 @@ const NutritionScreen = () => {
       return 0;
     });
   }, [buscarResults, buscarSortBy]);
+
+  const buscarResultAnimRef = useRef({});
+
+  useEffect(() => {
+    if (
+      !addModalVisible ||
+      addModalTab !== 'buscar' ||
+      buscarShowSaved ||
+      buscarLoading ||
+      sortedBuscarResults.length === 0
+    ) {
+      return;
+    }
+    const animations = sortedBuscarResults
+      .map((food, index) => {
+        const key = food.food_id || `idx-${index}`;
+        let rowAnim = buscarResultAnimRef.current[key];
+        if (!rowAnim) {
+          rowAnim = {
+            translateY: new Animated.Value(8),
+            opacity: new Animated.Value(0),
+          };
+          buscarResultAnimRef.current[key] = rowAnim;
+        }
+        rowAnim.translateY.setValue(8);
+        rowAnim.opacity.setValue(0);
+        return Animated.parallel([
+          Animated.timing(rowAnim.translateY, {
+            toValue: 0,
+            duration: DROP_DURATION,
+            useNativeDriver: true,
+          }),
+          Animated.timing(rowAnim.opacity, {
+            toValue: 1,
+            duration: DROP_DURATION,
+            useNativeDriver: true,
+          }),
+        ]);
+      })
+      .filter(Boolean);
+    if (animations.length > 0) {
+      Animated.stagger(DROP_STAGGER_MS, animations).start();
+    }
+  }, [addModalVisible, addModalTab, buscarShowSaved, buscarLoading, sortedBuscarResults]);
 
   const sortedSavedFoods = useMemo(() => {
     if (buscarSortBy === 'relevance') return savedFoods;
@@ -951,8 +1005,19 @@ const NutritionScreen = () => {
     try {
       const entries = await nutritionDb.getDiaryEntries(userId, selectedDate);
       setDiaryEntries(entries);
+      const prevIds = trackNewEntriesRef.current;
+      trackNewEntriesRef.current = null;
+      if (prevIds) {
+        const newIds = entries.filter((e) => !prevIds.has(e.id)).map((e) => e.id);
+        if (newIds.length > 0) {
+          setNewlyAddedIds(new Set(newIds));
+          if (newlyAddedTimerRef.current) clearTimeout(newlyAddedTimerRef.current);
+          newlyAddedTimerRef.current = setTimeout(() => setNewlyAddedIds(new Set()), 600);
+        }
+      }
     } catch (e) {
       logger.error('[NutritionScreen] getDiaryEntries error:', e);
+      trackNewEntriesRef.current = null;
     }
     setLoading(false);
     setHasLoaded(true);
@@ -1013,6 +1078,7 @@ const NutritionScreen = () => {
           });
         }
         activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+        trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await loadData();
         setAddModalVisible(false);
       } catch (e) {
@@ -1077,6 +1143,7 @@ const NutritionScreen = () => {
           });
         }
         activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+        trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await loadData();
         setAddModalVisible(false);
       } catch (e) {
@@ -1279,12 +1346,42 @@ const NutritionScreen = () => {
   const handleDeleteDiaryEntry = useCallback(async (entry) => {
     setMenuEntryId(null);
     try {
-      await nutritionDb.deleteDiaryEntry(userId, entry.id);
+      lastDeletedRef.current = entry;
       setDiaryEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      await nutritionDb.deleteDiaryEntry(userId, entry.id);
+      showToast('Eliminado', 'info', {
+        actionLabel: 'Deshacer',
+        onAction: async () => {
+          const deleted = lastDeletedRef.current;
+          if (!deleted) return;
+          try {
+            await nutritionDb.addDiaryEntry(userId, {
+              date: deleted.date ?? selectedDate,
+              meal: deleted.meal ?? 'snack',
+              food_id: deleted.food_id,
+              serving_id: deleted.serving_id ?? '0',
+              number_of_units: deleted.number_of_units ?? 1,
+              name: deleted.name ?? 'Alimento',
+              food_category: deleted.food_category ?? null,
+              calories: deleted.calories ?? null,
+              protein: deleted.protein ?? null,
+              carbs: deleted.carbs ?? null,
+              fat: deleted.fat ?? null,
+              serving_unit: deleted.serving_unit ?? null,
+              grams_per_unit: deleted.grams_per_unit ?? null,
+              servings: deleted.servings ?? null,
+            });
+            await loadData();
+          } catch (err) {
+            logger.error('[NutritionScreen] undo delete error:', err);
+          }
+        },
+        duration: 5000,
+      });
     } catch (err) {
       logger.error('[NutritionScreen] deleteDiaryEntry error:', err);
     }
-  }, [userId]);
+  }, [userId, selectedDate, showToast, loadData]);
 
   const addCreateMealIngredientFromFood = useCallback((food, serving, amount) => {
     const mult = Number(amount) || 1;
@@ -1381,15 +1478,39 @@ const NutritionScreen = () => {
           servings: selectedFood.servings ?? null,
         });
         activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+        const addedCals = Math.round((Number(serving.calories) || 0) * qty);
+        const addedProtein = Math.round((Number(serving.protein) || 0) * qty * 10) / 10;
+        const addedCarbs = Math.round((Number(serving.carbohydrate) || 0) * qty * 10) / 10;
+        const addedFat = Math.round((Number(serving.fat) || 0) * qty * 10) / 10;
         await loadData();
         setAddModalVisible(false);
+        const cur = consumedRef.current;
+        const pl = plannedRef.current;
+        const newCals = cur.calories + addedCals;
+        const newProtein = cur.protein + addedProtein;
+        const newCarbs = cur.carbs + addedCarbs;
+        const newFat = cur.fat + addedFat;
+        const gt = goalsToastedRef.current;
+        if (pl.calories > 0 && newCals >= pl.calories && !gt.has('calories')) {
+          gt.add('calories');
+          showToast('¡Meta calórica alcanzada!', 'pr', { icon: <SvgFire width={14} height={14} stroke="rgba(255,255,255,0.9)" fill="none" /> });
+        } else if (pl.protein > 0 && newProtein >= pl.protein && !gt.has('protein')) {
+          gt.add('protein');
+          showToast('¡Meta de proteína lograda!', 'success', { icon: <Steak width={14} height={14} stroke="rgba(255,255,255,0.9)" /> });
+        } else if (pl.carbs > 0 && newCarbs >= pl.carbs && !gt.has('carbs')) {
+          gt.add('carbs');
+          showToast('¡Meta de carbohidratos alcanzada!', 'success');
+        } else if (pl.fat > 0 && newFat >= pl.fat && !gt.has('fat')) {
+          gt.add('fat');
+          showToast('¡Meta de grasas alcanzada!', 'success');
+        }
       }
     } catch (e) {
       logger.error('[NutritionScreen] handleBuscarLog:', e);
     } finally {
       setBuscarAddLoading(false);
     }
-  }, [userId, selectedDate, selectedFood, buscarServingIndex, buscarAmount, plan, addModalCategoryIndex, loadData, editingDiaryEntry, fdCreateMeal, createMealEditingItemIndex, addCreateMealIngredientFromFood]);
+  }, [userId, selectedDate, selectedFood, buscarServingIndex, buscarAmount, plan, addModalCategoryIndex, loadData, editingDiaryEntry, fdCreateMeal, createMealEditingItemIndex, addCreateMealIngredientFromFood, showToast]);
 
   const handleToggleSaveFood = useCallback(async () => {
     if (!userId || !selectedFood) return;
@@ -1466,6 +1587,12 @@ const NutritionScreen = () => {
     [planned, consumed]
   );
 
+  const consumedRef = useRef(consumed);
+  const plannedRef = useRef(planned);
+  useEffect(() => { consumedRef.current = consumed; }, [consumed]);
+  useEffect(() => { plannedRef.current = planned; }, [planned]);
+  useEffect(() => { goalsToastedRef.current.clear(); }, [selectedDate]);
+
   const caloriesPieData = useMemo(() => {
     const cap = planned.calories || 1;
     const eaten = Math.min(consumed.calories, cap);
@@ -1474,7 +1601,7 @@ const NutritionScreen = () => {
     if (planned.calories <= 0) return [{ name: 'Sin meta', value: 1, fill: REMAINING_GRAY }];
     if (eaten <= 0 && over <= 0 && remaining <= 0) return [{ name: 'Restante', value: 1, fill: REMAINING_GRAY }];
     const data = [];
-    const fillConsumed = consumed.calories > (planned.calories || 0) ? OVER_LIMIT_RED : GOLD_FILL;
+    const fillConsumed = consumed.calories > (planned.calories || 0) ? OVER_LIMIT_RED : WHITE_FILL;
     if (eaten > 0) data.push({ name: 'Consumido', value: eaten, fill: fillConsumed });
     if (over > 0) data.push({ name: 'Exceso', value: over, fill: OVER_LIMIT_RED });
     if (remaining > 0) data.push({ name: 'Restante', value: remaining, fill: REMAINING_GRAY });
@@ -1487,7 +1614,7 @@ const NutritionScreen = () => {
     const over = Math.max(0, consumedVal - p);
     const r = Math.max(0, p - inPlan);
     const data = [];
-    const fillConsumed = consumedVal > p ? OVER_LIMIT_RED : GOLD_FILL;
+    const fillConsumed = consumedVal > p ? OVER_LIMIT_RED : WHITE_FILL;
     if (inPlan > 0) data.push({ name: 'c', value: inPlan, fill: fillConsumed });
     if (over > 0) data.push({ name: 'over', value: over, fill: OVER_LIMIT_RED });
     if (r > 0) data.push({ name: 'r', value: r, fill: REMAINING_GRAY });
@@ -2182,8 +2309,13 @@ const NutritionScreen = () => {
                             )}
                             {mealEntries.map((entry) => {
                               const serving = formatDiaryServing(entry);
+                              const isNew = newlyAddedIds.has(entry.id);
                               return (
-                                <View key={entry.id} style={styles.diaryItemRow}>
+                                <View
+                                  key={entry.id}
+                                  style={styles.diaryItemRow}
+                                  {...(isNew ? { className: 'wake-item-enter' } : {})}
+                                >
                                   <TouchableOpacity
                                     style={styles.diaryItemContent}
                                     onPress={() => handleEditDiaryEntry(entry)}
@@ -2232,6 +2364,21 @@ const NutritionScreen = () => {
                     </View>
                   )}
                 </>
+              )}
+
+              {plan && diaryEntries.length === 0 && hasLoaded && !loading && (
+                <WakeEmptyState
+                  icon={<SvgListChecklist width={40} height={40} color="rgba(255,255,255,0.45)" />}
+                  title="Sin registros hoy"
+                  subtitle="Registra tu primera comida del día"
+                  ctaLabel="Agregar comida"
+                  onCta={() => {
+                    setAddModalCategoryIndex(0);
+                    setAddModalCategoryDropdownOpen(false);
+                    setAddModalTab('buscar');
+                    handleAddModalOpen();
+                  }}
+                />
               )}
 
               {!plan && hasLoaded && !loading && (
@@ -2448,24 +2595,10 @@ const NutritionScreen = () => {
                       </View>
                     )}
 
-                    {!buscarShowSaved &&
-                      !buscarFilterOpen &&
-                      buscarQuery.trim().length > 0 && (
-                        <TouchableOpacity
-                          style={styles.buscarSearchBtn}
-                          onPress={handleBuscarSearch}
-                          disabled={buscarLoading}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.buscarSearchBtnText}>
-                            {buscarLoading ? 'Buscando…' : 'Buscar en base de datos'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
                     {!buscarFilterOpen && (
                       <ScrollView
                         style={styles.buscarResultsList}
+                        contentContainerStyle={styles.buscarResultsContent}
                         showsVerticalScrollIndicator={false}
                       >
                         {buscarShowSaved ? (
@@ -2610,46 +2743,72 @@ const NutritionScreen = () => {
                             </>
                           ) : (
                             <View style={styles.buscarEmptyState}>
+                              <View style={styles.buscarEmptyIcon}>
+                                <SvgSearchMagnifyingGlass
+                                  width={32}
+                                  height={32}
+                                  stroke="rgba(255,255,255,0.24)"
+                                  strokeWidth={1.6}
+                                />
+                              </View>
                               <Text style={styles.buscarEmptyText}>
                                 Busca un alimento para empezar.
                               </Text>
                             </View>
                           )
                         ) : (
-                          sortedBuscarResults.map((food) => {
+                          sortedBuscarResults.map((food, index) => {
                             const per100 = getPer100g(food);
                             const macroMeta = per100
                               ? `${per100.calories} kcal · ${per100.protein}g P · ${per100.carbs}g C · ${per100.fat}g G`
                               : '—';
+                            const key = food.food_id || `idx-${index}`;
+                            if (!buscarResultAnimRef.current[key]) {
+                              buscarResultAnimRef.current[key] = {
+                                translateY: new Animated.Value(8),
+                                opacity: new Animated.Value(0),
+                              };
+                            }
+                            const rowAnim = buscarResultAnimRef.current[key];
                             return (
-                              <TouchableOpacity
-                                key={food.food_id}
-                                style={styles.buscarResultItem}
-                                onPress={() => handleSelectFood(food)}
-                                activeOpacity={0.8}
+                              <Animated.View
+                                key={key}
+                                style={[
+                                  styles.buscarResultItem,
+                                  {
+                                    opacity: rowAnim.opacity,
+                                    transform: [{ translateY: rowAnim.translateY }],
+                                  },
+                                ]}
                               >
-                                <View style={styles.buscarResultInfo}>
-                                  <Text
-                                    style={styles.buscarResultName}
-                                    numberOfLines={1}
-                                  >
-                                    {food.food_name}
-                                  </Text>
-                                  <Text
-                                    style={styles.buscarResultMeta}
-                                    numberOfLines={1}
-                                  >
-                                    {macroMeta}
-                                  </Text>
-                                </View>
                                 <TouchableOpacity
-                                  style={styles.buscarResultAddBtn}
                                   onPress={() => handleSelectFood(food)}
                                   activeOpacity={0.8}
+                                  style={styles.buscarResultInner}
                                 >
-                                  <Text style={styles.buscarResultAddBtnText}>+</Text>
+                                  <View style={styles.buscarResultInfo}>
+                                    <Text
+                                      style={styles.buscarResultName}
+                                      numberOfLines={1}
+                                    >
+                                      {food.food_name}
+                                    </Text>
+                                    <Text
+                                      style={styles.buscarResultMeta}
+                                      numberOfLines={1}
+                                    >
+                                      {macroMeta}
+                                    </Text>
+                                  </View>
+                                  <TouchableOpacity
+                                    style={styles.buscarResultAddBtn}
+                                    onPress={() => handleSelectFood(food)}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Text style={styles.buscarResultAddBtnText}>+</Text>
+                                  </TouchableOpacity>
                                 </TouchableOpacity>
-                              </TouchableOpacity>
+                              </Animated.View>
                             );
                           })
                         )}
@@ -3482,18 +3641,7 @@ const NutritionScreen = () => {
               </View>
 
               {!createMealSearchShowSaved &&
-                createMealSearchQuery.trim().length > 0 && (
-                  <TouchableOpacity
-                    style={styles.buscarSearchBtn}
-                    onPress={runCreateMealSearch}
-                    disabled={createMealSearchLoading}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.buscarSearchBtnText}>
-                      {createMealSearchLoading ? 'Buscando…' : 'Buscar en base de datos'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                createMealSearchQuery.trim().length > 0 && null}
             </View>
 
             <ScrollView
@@ -3951,35 +4099,53 @@ const NutritionScreen = () => {
 
                 <View style={styles.fdServingsRow}>
                   <Text style={styles.fdServingsLabel}>Número de porciones</Text>
-                  <TouchableOpacity
-                    style={styles.fdServingsPill}
-                    onPress={() => fdServingsInputRef.current?.focus()}
-                    activeOpacity={1}
-                  >
+                  <div className="wake-qty-stepper">
                     {(() => {
                       const s = selectedFood.servings[buscarServingIndex];
-                      const qty = Number(buscarAmount) || 1;
-                      const displayMain = (() => {
-                        const desc = s?.serving_description ?? '';
-                        const gpu = s?.metric_serving_amount != null ? Number(s.metric_serving_amount) : (s?.grams_per_unit != null ? Number(s.grams_per_unit) : null);
-                        const main = formatQuantityAndServing(qty, desc, gpu).main;
-                        return main.replace(/^\d+([.,]\d+)?\s+/i, '');
-                      })();
+                      const is1g = s?.serving_id === 'derived-1g' || /^1\s*g$|^1g$/i.test(String(s?.serving_description || '').trim());
+                      const step = is1g ? 25 : 0.5;
                       return (
-                        <View style={styles.fdServingsCenter}>
-                          <TextInput
-                            ref={fdServingsInputRef}
-                            style={styles.fdServingsInput}
-                            value={buscarAmount}
-                            onChangeText={setBuscarAmount}
-                            keyboardType="decimal-pad"
-                            selectTextOnFocus
-                          />
-                          <Text style={styles.fdServingsDesc} numberOfLines={1}>{displayMain}</Text>
-                        </View>
+                        <>
+                          <button
+                            className="wake-qty-step-btn"
+                            onClick={() => setBuscarAmount(prev => String(Math.max(0, (parseFloat(prev) || 0) - step)))}
+                          >−</button>
+                          <TouchableOpacity
+                            style={styles.fdServingsPill}
+                            onPress={() => fdServingsInputRef.current?.focus()}
+                            activeOpacity={1}
+                          >
+                            {(() => {
+                              const qty = Number(buscarAmount) || 1;
+                              const displayMain = (() => {
+                                const desc = s?.serving_description ?? '';
+                                const gpu = s?.metric_serving_amount != null ? Number(s.metric_serving_amount) : (s?.grams_per_unit != null ? Number(s.grams_per_unit) : null);
+                                const main = formatQuantityAndServing(qty, desc, gpu).main;
+                                return main.replace(/^\d+([.,]\d+)?\s+/i, '');
+                              })();
+                              return (
+                                <View style={styles.fdServingsCenter}>
+                                  <TextInput
+                                    ref={fdServingsInputRef}
+                                    style={styles.fdServingsInput}
+                                    value={buscarAmount}
+                                    onChangeText={setBuscarAmount}
+                                    keyboardType="decimal-pad"
+                                    selectTextOnFocus
+                                  />
+                                  <Text style={styles.fdServingsDesc} numberOfLines={1}>{displayMain}</Text>
+                                </View>
+                              );
+                            })()}
+                          </TouchableOpacity>
+                          <button
+                            className="wake-qty-step-btn"
+                            onClick={() => setBuscarAmount(prev => String((parseFloat(prev) || 0) + step))}
+                          >+</button>
+                        </>
                       );
                     })()}
-                  </TouchableOpacity>
+                  </div>
                 </View>
 
                 {(() => {
@@ -4137,6 +4303,8 @@ const NutritionScreen = () => {
           </View>
         </View>
       </WakeModalOverlay>
+
+      <WakeToast toasts={toasts} removeToast={removeToast} />
     </SafeAreaView>
   );
 };
@@ -4899,8 +5067,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5536,7 +5704,13 @@ const styles = StyleSheet.create({
   buscarResultsList: {
     flex: 1,
   },
+  buscarResultsContent: {
+    flexGrow: 1,
+  },
   buscarResultItem: {
+    overflow: 'hidden',
+  },
+  buscarResultInner: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 11,
@@ -5564,11 +5738,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   buscarResultAddBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5579,8 +5749,14 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
   buscarEmptyState: {
-    paddingTop: 40,
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+    paddingBottom: 172,
+  },
+  buscarEmptyIcon: {
+    marginBottom: 12,
   },
   buscarEmptyText: {
     fontSize: 14,

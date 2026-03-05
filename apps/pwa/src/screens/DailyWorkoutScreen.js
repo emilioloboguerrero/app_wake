@@ -115,11 +115,19 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const [courseMetadata, setCourseMetadata] = useState(null);
   const [previewSessionId, setPreviewSessionId] = useState(null);
   const [isChangingSession, setIsChangingSession] = useState(false);
+  const [isRevealDelayed, setIsRevealDelayed] = useState(false);
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
-  
+  // One-on-one: show full-screen logo overlay when user tapped card while loading, wait for load then go to Warmup
+  const [showLoadingOverlayForStart, setShowLoadingOverlayForStart] = useState(false);
+
+  // One-on-one: track which date we're waiting for so we only navigate when that load completes
+  const pendingStartAfterLoadRef = useRef(false);
+  const pendingStartForDateRef = useRef(null);
+  const lastLoadedForDateRef = useRef(null);
+
   // Cache for service calls to prevent redundant requests
   const serviceCache = useRef({
     courses: null,
@@ -135,9 +143,42 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     sessionState.workout &&
     sessionState.workout.exercises?.length > 0 &&
     !sessionState.isLoading &&
+    !isRevealDelayed &&
     !sessionState.error &&
     !sessionState.emptyReason
   );
+
+  // One-on-one: card is tappable when loading (show overlay and wait) or when workout is ready
+  const canTapSessionCard = isOneOnOne && selectedDateProp
+    ? (sessionState.isLoading || !!(sessionState.workout?.exercises?.length && !sessionState.error && !sessionState.emptyReason))
+    : canStartWorkout;
+
+  useEffect(() => {
+    if (sessionState.isLoading) {
+      setIsRevealDelayed(false);
+      return;
+    }
+    if (sessionState.todaySessionAlreadyCompleted) {
+      setIsRevealDelayed(true);
+      const timer = setTimeout(() => setIsRevealDelayed(false), 2700);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionState.isLoading, sessionState.todaySessionAlreadyCompleted]);
+
+  // One-on-one: when user tapped card while loading, navigate to Warmup once this load completes
+  useEffect(() => {
+    if (sessionState.isLoading || !pendingStartAfterLoadRef.current) return;
+    const loadedForDate = lastLoadedForDateRef.current;
+    const pendingForDate = pendingStartForDateRef.current;
+    if (sessionState.workout?.exercises?.length && pendingForDate === loadedForDate) {
+      pendingStartAfterLoadRef.current = false;
+      setShowLoadingOverlayForStart(false);
+      handleStartWorkout();
+    } else if (!sessionState.workout || sessionState.error) {
+      pendingStartAfterLoadRef.current = false;
+      setShowLoadingOverlayForStart(false);
+    }
+  }, [sessionState.isLoading, sessionState.workout, sessionState.error]);
 
   const sessionListAnimsRef = useRef([]);
 
@@ -205,13 +246,19 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   }, [user?.uid]); // Re-run when user becomes available
 
-  // When selectedDate changes (web date picker) and one-on-one, reload session for that day (skip initial mount to avoid double load)
+  // When selectedDate changes (web date picker), reload session for that day (skip initial mount to avoid double load)
   const prevSelectedDateRef = useRef(selectedDateProp);
   useEffect(() => {
-    if (!user?.uid || !course?.courseId || !isOneOnOne || !selectedDateProp) return;
+    if (!user?.uid || !course?.courseId || !selectedDateProp) return;
     if (prevSelectedDateRef.current === selectedDateProp) return;
     prevSelectedDateRef.current = selectedDateProp;
-    loadSessionState({ targetDate: selectedDateProp });
+    pendingStartAfterLoadRef.current = false;
+    setShowLoadingOverlayForStart(false);
+    if (isOneOnOne) {
+      loadSessionState({ targetDate: selectedDateProp });
+    } else {
+      loadSessionState({ forceRefresh: true });
+    }
   }, [selectedDateProp, isOneOnOne, user?.uid, course?.courseId]);
 
   // Handle pre-selected session from CourseStructureScreen
@@ -289,20 +336,18 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   }, [route.params?.selectedSessionId, user?.uid]);
 
   // Refresh data when screen comes into focus
-  // On web, this runs on mount since there's no focus event
+  // On web, this runs on mount since there's no focus event.
+  // Skip when one-on-one: the user/selectedDate effects already load with targetDate.
   const webLoadCalledRef = React.useRef(false);
   
   React.useEffect(() => {
-    if (isWeb && !webLoadCalledRef.current) {
-      // On web, load once on mount
+    if (isWeb && !webLoadCalledRef.current && !isOneOnOne) {
       if (!sessionState.isManual && user?.uid && course?.courseId) {
         webLoadCalledRef.current = true;
         loadSessionState();
       }
     }
-    // On native, this would be handled by useFocusEffect which doesn't work on web
-    // The web wrapper ensures fresh data on navigation
-  }, [isWeb, user?.uid, course?.courseId, sessionState.isManual]);
+  }, [isWeb, isOneOnOne, user?.uid, course?.courseId, sessionState.isManual]);
 
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
@@ -338,6 +383,9 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         error: newState.error ?? 'none',
       });
 
+      if (options.targetDate && newState.workout) {
+        lastLoadedForDateRef.current = options.targetDate;
+      }
       setSessionState(newState);
 
       // Check for tutorials after session is loaded
@@ -353,6 +401,12 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         ...prev, 
         isLoading: false, 
         error: error.message 
+      }));
+    } finally {
+      // Defensive: ensure loading flag is always cleared even if newState.isLoading was true
+      setSessionState(prev => ({ 
+        ...prev, 
+        isLoading: false 
       }));
     }
   };
@@ -450,6 +504,20 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     } catch (error) {
       logger.error('❌ Failed to start workout:', error);
       Alert.alert('Error', 'Error al iniciar el entrenamiento. Inténtalo de nuevo.');
+    }
+  };
+
+  const handleSessionCardPress = () => {
+    if (isOneOnOne && selectedDateProp) {
+      if (sessionState.isLoading) {
+        pendingStartForDateRef.current = selectedDateProp;
+        pendingStartAfterLoadRef.current = true;
+        setShowLoadingOverlayForStart(true);
+      } else if (sessionState.workout?.exercises?.length && !sessionState.error && !sessionState.emptyReason) {
+        handleStartWorkout();
+      }
+    } else if (canStartWorkout) {
+      handleStartWorkout();
     }
   };
 
@@ -623,11 +691,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         ]}
         onPress={() => {
           const sessionIndexToUse = indexInAllSessions >= 0 ? indexInAllSessions : index;
-          if (isPreviewSession) {
-            handleSelectSession(session, sessionIndexToUse);
-          } else {
-            setPreviewSessionId(sessionId);
-          }
+          setPreviewSessionId(sessionId);
+          handleSelectSession(session, sessionIndexToUse);
         }}
         disabled={isChangingSession}
         activeOpacity={0.7}
@@ -698,7 +763,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
             {LinearGradient ? (
               <>
                 <LinearGradient
-                  colors={['rgba(191,168,77,0.35)', 'rgba(191,168,77,0.18)', 'rgba(255,255,255,0.14)']}
+                  colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0.14)']}
                   start={{ x: 1, y: 0 }}
                   end={{ x: 0, y: 1 }}
                   style={StyleSheet.absoluteFill}
@@ -742,7 +807,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
             {LinearGradient ? (
               <>
                 <LinearGradient
-                  colors={['rgba(191,168,77,0.35)', 'rgba(191,168,77,0.18)', 'rgba(255,255,255,0.14)']}
+                  colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0.14)']}
                   start={{ x: 1, y: 0 }}
                   end={{ x: 0, y: 1 }}
                   style={StyleSheet.absoluteFill}
@@ -855,15 +920,25 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
                   sessionState.workout?.image_url && styles.sessionImageCardNoBorder,
                   { transform: [{ scale: pulseScale }] },
               ]} 
-              onPress={canStartWorkout ? handleStartWorkout : undefined}
-              disabled={!canStartWorkout}
+              onPress={canTapSessionCard ? handleSessionCardPress : undefined}
+              disabled={!canTapSessionCard}
                 activeOpacity={0.9}
             >
-            {sessionState.isLoading ? (
+            {sessionState.isLoading || isRevealDelayed ? (
+              Platform.OS === 'web' ? (
+                <View style={[styles.cardLoadingContainer, { alignItems: 'stretch', padding: 20, gap: 12 }]}>
+                  <div className="wake-skeleton wake-skel-row-lg" style={{ width: '55%' }} />
+                  <div className="wake-skeleton wake-skel-row-sm" style={{ width: '35%' }} />
+                  <div className="wake-skeleton wake-skel-card" style={{ width: '100%', marginTop: 8 }} />
+                  <div className="wake-skeleton wake-skel-card" style={{ width: '100%' }} />
+                  <div className="wake-skeleton wake-skel-card" style={{ width: '100%' }} />
+                </View>
+              ) : (
                 <View style={styles.cardLoadingContainer}>
                   <WakeLoader size={64} />
                   <Text style={styles.cardLoadingText}>Cargando entrenamiento...</Text>
-              </View>
+                </View>
+              )
             ) : sessionState.error ? (
                 <View style={styles.cardErrorContainer}>
                   <Text style={styles.cardErrorText}>{sessionState.error}</Text>
@@ -1038,7 +1113,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
                                 </Text>
                   <TouchableOpacity 
                     style={{ 
-                      backgroundColor: 'rgba(191, 168, 77, 0.72)', 
+                      backgroundColor: 'rgba(255, 255, 255, 0.72)', 
                       paddingHorizontal: 20, 
                       paddingVertical: 10, 
                       borderRadius: 12,
@@ -1153,6 +1228,14 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           <BottomSpacer />
           </WakeHeaderContent>
         </ScrollView>
+
+      {/* One-on-one: full-screen logo overlay when user tapped card while session was loading */}
+      {showLoadingOverlayForStart && (
+        <View style={styles.loadingOverlayForStart} pointerEvents="box-none">
+          <WakeLoader size={100} />
+          <Text style={styles.loadingOverlayForStartText}>Cargando sesión...</Text>
+        </View>
+      )}
 
       {/* Tutorial Overlay */}
       <TutorialOverlay
@@ -1560,8 +1643,8 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
   },
   badgeGlassActual: {
-    borderColor: 'rgba(191, 168, 77, 0.5)',
-    ...(isWeb && { shadowColor: 'rgba(191, 168, 77, 0.3)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    ...(isWeb && { shadowColor: 'rgba(255, 255, 255, 0.3)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
   },
   badgeGlassHoy: {
     borderColor: 'rgba(255, 255, 255, 0.28)',
@@ -1572,7 +1655,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     ...(isWeb && { shadowColor: 'rgba(34, 139, 34, 0.3)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 }),
   },
   badgeGlassWebActual: isWeb ? {
-    backgroundImage: 'linear-gradient(to left bottom, rgba(191,168,77,0.35) 0%, rgba(191,168,77,0.18) 50%, rgba(255,255,255,0.14) 100%)',
+    backgroundImage: 'linear-gradient(to left bottom, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.14) 100%)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
   } : {},
@@ -1596,7 +1679,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginRight: 12,
     alignSelf: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191, 168, 77, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
     overflow: 'hidden',
   },
   previewBadgeText: {
@@ -1605,7 +1688,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
   },
   selectSessionButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -1615,7 +1698,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.5,
   },
   selectSessionButtonText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1896,6 +1979,18 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+  loadingOverlayForStart: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26, 26, 26, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  loadingOverlayForStartText: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 16,
+    marginTop: 20,
+  },
   cardErrorContainer: {
     flex: 1,
     alignItems: 'center',
@@ -1909,7 +2004,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: 16,
   },
   cardRetryButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 12,

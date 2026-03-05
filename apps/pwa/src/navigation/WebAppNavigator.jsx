@@ -73,6 +73,22 @@ const OnboardingFlowRoute = ({ initialStep = 0 }) => {
   );
 };
 
+// Derive the CSS transition class for a navigation event.
+// Completion screens always slide up; going shallower (back) slides from left;
+// going deeper (forward) slides from right.
+const getScreenEnterClass = (currentPath, prevPath) => {
+  if (currentPath.includes('/workout/completion')) return 'wake-screen-enter-up';
+  const depth = (p) => {
+    const baseDepth = p.split('/').filter(Boolean).length;
+    // Treat warmup as part of the deep workout flow so its transition
+    // direction matches WorkoutExecution instead of looking like a "back" nav.
+    if (p === '/warmup') return 4;
+    return baseDepth;
+  };
+  if (depth(currentPath) < depth(prevPath)) return 'wake-screen-enter-back';
+  return 'wake-screen-enter';
+};
+
 // Layout component for authenticated routes
 const AuthenticatedLayout = ({ children }) => {
   const { user, loading } = useAuth();
@@ -85,6 +101,7 @@ const AuthenticatedLayout = ({ children }) => {
   const checkedUserIdRef = React.useRef(null);
   const refreshResolveRef = React.useRef(null);
   const skipCacheNextRef = React.useRef(false);
+  const prevPathRef = React.useRef(location.pathname);
 
   const refreshUserProfile = React.useCallback(() => {
     logger.log('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
@@ -473,13 +490,16 @@ const AuthenticatedLayout = ({ children }) => {
     typeof document !== 'undefined' && document.body
       ? createPortal(<BottomTabBar />, document.body)
       : <BottomTabBar />;
+  const screenClass = getScreenEnterClass(location.pathname, prevPathRef.current);
+  prevPathRef.current = location.pathname;
+
   return (
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
       <OpenReadinessModalContext.Provider value={{ openReadinessModal }}>
         <UserRoleContext.Provider value={{ role: userRole }}>
           <div
             key={location.key}
-            className="wake-page-enter"
+            className={screenClass}
             style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
           >
             {children}

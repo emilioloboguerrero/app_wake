@@ -76,7 +76,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.9,
   },
   muscleVolume: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
   },

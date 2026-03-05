@@ -275,12 +275,23 @@ class SessionService {
       logger.log('⏱️ [getCurrentSession] buildWorkoutFromSession:', tAfterBuild - tBeforeBuild, 'ms (exercises:', currentSession.exercises?.length ?? 0, ')');
       logger.log('⏱️ [getCurrentSession] TOTAL (uncached):', tAfterBuild - t0, 'ms');
 
-      // Detect if the session we're showing was already completed (e.g. one-on-one user re-entering after completing today)
+      // Detect if the session we're showing was already completed TODAY (not just ever).
+      // Exclude manual selections — if the user explicitly tapped a session, never block it.
       const completedSet = new Set(progress?.allSessionsCompleted || []);
       const currentSessionId = currentSession.sessionId || currentSession.id;
-      const todaySessionAlreadyCompleted = !!(
+      const isSessionInCompleted = !!(
         currentSessionId && (completedSet.has(currentSessionId) || completedSet.has(currentSession.id) || completedSet.has(currentSession.sessionId))
       );
+      const isCompletedToday = (() => {
+        const lastActivity = progress?.lastActivity;
+        if (!lastActivity) return false;
+        const lastDate = lastActivity?.toDate ? lastActivity.toDate() : new Date(lastActivity);
+        const now = new Date();
+        return lastDate.getFullYear() === now.getFullYear() &&
+          lastDate.getMonth() === now.getMonth() &&
+          lastDate.getDate() === now.getDate();
+      })();
+      const todaySessionAlreadyCompleted = !isManual && isSessionInCompleted && isCompletedToday;
 
       const sessionState = {
         session: currentSession,
@@ -1147,7 +1158,9 @@ class SessionService {
               measures: exercise.measures || [],
               order: exercise.order || 0,
               primary: exercise.primary,
-              alternatives: exercise.alternatives || {}
+              alternatives: exercise.alternatives || {},
+              customMeasureLabels: exercise.customMeasureLabels || {},
+              customObjectiveLabels: exercise.customObjectiveLabels || {}
             };
             
             logger.log('🔍 BUILD WORKOUT DEBUG: Resolved exercise:', {
@@ -1175,7 +1188,9 @@ class SessionService {
               measures: exercise.measures || [],
               order: exercise.order || 0,
               primary: exercise.primary,
-              alternatives: exercise.alternatives || {}
+              alternatives: exercise.alternatives || {},
+              customMeasureLabels: exercise.customMeasureLabels || {},
+              customObjectiveLabels: exercise.customObjectiveLabels || {}
             };
           }
         })

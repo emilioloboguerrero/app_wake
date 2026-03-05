@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   primaryButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
   },
   secondaryButton: {
     backgroundColor: '#007AFF',
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#333333',
   },
   activeButton: {
-    backgroundColor: 'rgba(191, 168, 77, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 0,
   },
   disabledButton: {
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   primaryText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: '#1a1a1a',
   },
   secondaryText: {
     color: '#ffffff',
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   activeText: {
-    color: 'rgba(191, 168, 77, 1)',
+    color: 'rgba(255, 255, 255, 1)',
     fontWeight: '700',
   },
   disabledText: {
