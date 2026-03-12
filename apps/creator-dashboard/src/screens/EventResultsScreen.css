@@ -1,0 +1,202 @@
+.event-results-screen {
+  padding: 24px;
+  position: relative;
+}
+
+/* ── Ambient orbs ── */
+.er-orbs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.er-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.09);
+}
+
+.er-orb-1 {
+  width: 400px;
+  height: 400px;
+  top: -120px;
+  right: -80px;
+  animation: erDrift1 15s ease-in-out infinite alternate;
+}
+
+.er-orb-2 {
+  width: 300px;
+  height: 300px;
+  bottom: 0;
+  left: -60px;
+  opacity: 0.7;
+  animation: erDrift2 19s ease-in-out infinite alternate;
+}
+
+@keyframes erDrift1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-30px, 40px) scale(1.06); }
+}
+
+@keyframes erDrift2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(30px, -30px) scale(0.94); }
+}
+
+.event-results-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1001;
+}
+
+.event-results-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #fff;
+}
+
+.event-results-count {
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.er-capacity-bar-outer {
+  width: 180px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.er-capacity-bar-fill {
+  height: 100%;
+  background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.7);
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.er-waitlist-section {
+  margin-top: 40px;
+  position: relative;
+  z-index: 1001;
+}
+
+.er-waitlist-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #888;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.er-waitlist-count {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.event-results-export-btn {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 7px;
+  color: #a0a0a0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  padding: 8px 14px;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.event-results-export-btn:hover {
+  border-color: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.8);
+  color: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 1);
+}
+
+.event-results-empty {
+  color: #666;
+  font-size: 0.95rem;
+  padding: 32px 0;
+  position: relative;
+  z-index: 1001;
+}
+
+.event-results-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1001;
+}
+
+.event-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  min-width: 640px;
+}
+
+.event-results-table th {
+  color: #666;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid #2a2a2a;
+  white-space: nowrap;
+}
+
+.event-results-table td {
+  color: #ccc;
+  padding: 12px 14px;
+  border-bottom: 1px solid #1e1e1e;
+  vertical-align: middle;
+}
+
+.event-results-table tbody tr:hover td {
+  background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.04);
+}
+
+.er-admit-btn {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #a0a0a0;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  padding: 5px 11px;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.er-admit-btn:hover {
+  border-color: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.8);
+  color: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 1);
+}
+
+.event-results-checkin {
+  color: #555;
+  font-size: 0.8rem;
+}
+
+.event-results-checkin-yes {
+  color: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.9);
+  font-weight: 600;
+}

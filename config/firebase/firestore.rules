@@ -298,6 +298,45 @@ service cloud.firestore {
     }
 
     // ============================================
+    // EVENTS
+    // ============================================
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isCreator() && request.resource.data.creator_id == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid || isAdmin()
+      );
+      // Allow public signup form to increment registration_count (no other fields may change)
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registration_count']);
+      allow delete: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /event_signups/{eventId}/registrations/{regId} {
+      allow create: if true;
+      allow read: if isSignedIn() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
+        || isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /event_signups/{eventId}/waitlist/{waitId} {
+      allow create: if true;
+      allow read: if isSignedIn() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
     // DEFAULT RULE (Fallback for any other collections)
     // ============================================
     // CREATOR FEEDBACK (suggestions / bug reports)

@@ -861,7 +861,18 @@ const LibrarySessionDetailScreen = () => {
       if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
         const newExercises = arrayMove(exercises, activeIndex, overIndex);
         setExercises(newExercises);
-        // TODO: Update order in Firestore
+        if (user && sessionId && contentApi?.updateLibrarySessionExerciseOrder) {
+          try {
+            const orders = newExercises.map((ex, index) => ({
+              exerciseId: ex.id,
+              order: index
+            }));
+            await contentApi.updateLibrarySessionExerciseOrder(user.uid, sessionId, orders);
+            setHasMadeChanges(true);
+          } catch (err) {
+            console.error('Error updating exercise order:', err);
+          }
+        }
       }
     }
   };
@@ -3729,6 +3740,16 @@ const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous
                       onClick={handleSaveCreatingExercise}
                       disabled={!canSaveCreatingExercise() || isSavingNewExercise}
                       loading={isSavingNewExercise}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+
+                {!isCreatingExercise && (
+                  <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <Button
+                      title="Guardar y cerrar"
+                      onClick={handleCloseExerciseModal}
                       style={{ width: '100%' }}
                     />
                   </div>

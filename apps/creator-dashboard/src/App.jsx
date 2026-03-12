@@ -28,6 +28,8 @@ import MealEditorScreen from './screens/MealEditorScreen';
 import PlanEditorScreen from './screens/PlanEditorScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
+import EventsScreen from './screens/EventsScreen';
+import EventResultsScreen from './screens/EventResultsScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -286,6 +288,22 @@ function AppContent() {
                   <LibraryContentScreen />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/events"
+              element={
+                <ProtectedRoute>
+                  <EventsScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/events/:eventId/results"
+              element={
+                <ProtectedRoute>
+                  <EventResultsScreen />
+                </ProtectedRoute>
+              }
             />
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>

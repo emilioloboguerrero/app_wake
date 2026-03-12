@@ -5,6 +5,7 @@ import Footer from './components/Footer';
 import SupportScreen from './screens/SupportScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreatorsPage from './screens/CreatorsPage';
+import EventSignupScreen from './screens/EventSignupScreen';
 import { getMainHeroLandingImages, getLandingCards, getDosFormasImage } from './services/heroImagesService';
 import heroLogo from './assets/hero-logo.svg';
 import heroFallback from './assets/hero-fallback.png';
@@ -395,6 +396,14 @@ function AppContent() {
       window.removeEventListener('scroll', check);
     };
   }, [location.pathname]);
+
+  if (location.pathname.startsWith('/e/')) {
+    return (
+      <Routes>
+        <Route path="/e/:eventId" element={<EventSignupScreen />} />
+      </Routes>
+    );
+  }
 
   return (
     <div className="app-layout">

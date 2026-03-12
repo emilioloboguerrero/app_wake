@@ -3342,6 +3342,16 @@ const LibraryContentScreen = () => {
                     />
                   </div>
                 )}
+
+                {!isCreatingExercise && (
+                  <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <Button
+                      title="Guardar y cerrar"
+                      onClick={handleCloseExerciseModal}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
