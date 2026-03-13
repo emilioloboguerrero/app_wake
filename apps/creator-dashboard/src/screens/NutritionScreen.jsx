@@ -1,7 +1,3 @@
-/**
- * Nutrition Screen — Creator recipes and plans.
- * Tabs: Recetas (meals), Planes.
- */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import * as nutritionDb from '../services/nutritionFirestoreService';
+import logger from '../utils/logger';
 import '../components/PropagateChangesModal.css';
 import './NutritionScreen.css';
 
@@ -19,7 +16,6 @@ export default function NutritionScreen() {
 
   const [activeTab, setActiveTab] = useState('recetas');
 
-  // Meals
   const [meals, setMeals] = useState([]);
   const [mealsLoading, setMealsLoading] = useState(false);
   const [mealSearchQuery, setMealSearchQuery] = useState('');
@@ -27,7 +23,6 @@ export default function NutritionScreen() {
   const [newMealName, setNewMealName] = useState('');
   const [newMealCreating, setNewMealCreating] = useState(false);
 
-  // Plans
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [planSearchQuery, setPlanSearchQuery] = useState('');
@@ -42,7 +37,7 @@ export default function NutritionScreen() {
       const list = await nutritionDb.getMealsByCreator(creatorId);
       setMeals(list);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setMealsLoading(false);
     }
@@ -58,7 +53,7 @@ export default function NutritionScreen() {
       setNewMealName('');
       navigate(`/nutrition/meals/${mealId}`);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       alert(e?.message || 'Error al crear la receta');
     } finally {
       setNewMealCreating(false);
@@ -72,7 +67,7 @@ export default function NutritionScreen() {
       const list = await nutritionDb.getPlansByCreator(creatorId);
       setPlans(list);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setPlansLoading(false);
     }
@@ -102,7 +97,7 @@ export default function NutritionScreen() {
       navigate(`/nutrition/plans/${planId}`);
       loadPlans();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       alert(e?.message || 'Error al crear el plan');
     } finally {
       setPlanFormCreating(false);

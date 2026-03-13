@@ -3,8 +3,7 @@ import { ASSET_BASE } from '../../config/assets';
 import './OnboardingQuestions.css';
 import SvgIcon from '../../components/SvgIcon';
 
-const OnboardingQuestion4 = ({ onAnswer, onNext, onBack, selectedAnswer: initialSelected = null }) => {
-  // Icon SVGs for each workout preference (matching mobile app)
+const OnboardingQuestion4 = ({ onAnswer, onNext, selectedAnswer: initialSelected = null }) => {
   const intenseIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
@@ -85,7 +84,7 @@ const OnboardingQuestion4 = ({ onAnswer, onNext, onBack, selectedAnswer: initial
                   svgString={option.icon} 
                   width={32} 
                   height={32} 
-                  color={selectedAnswer === option.id ? '#BFA84D' : '#ffffff'}
+                  color={selectedAnswer === option.id ? '#ffffff' : '#ffffff'}
                 />
               </div>
               <p className={`option-text ${selectedAnswer === option.id ? 'option-text-selected' : ''}`}>

@@ -108,7 +108,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
     const sets = exerciseData.sets || [];
     
     return (
-      <View key={exerciseKey} style={styles.exerciseCard}>
+      <View key={exerciseKey} className={Platform.OS === 'web' ? 'session-exercise-card' : undefined} style={styles.exerciseCard}>
         <TouchableOpacity 
           style={styles.exerciseHeader}
           onPress={() => handleExercisePress(exerciseKey, exerciseData)}
@@ -177,11 +177,11 @@ const SessionDetailScreen = ({ navigation, route }) => {
               
               {/* Session Stats */}
               <View style={styles.statsCard}>
-                <View style={styles.statItem}>
+                <View className={Platform.OS === 'web' ? 'session-detail-stat' : undefined} style={styles.statItem}>
                   <Text style={styles.statValue}>{exerciseKeys.length}</Text>
                   <Text style={styles.statLabel}>Ejercicios</Text>
                 </View>
-                <View style={styles.statItem}>
+                <View className={Platform.OS === 'web' ? 'session-detail-stat session-detail-stat--2' : undefined} style={styles.statItem}>
                   <Text style={styles.statValue}>
                     {Object.values(exercises).reduce((total, exercise) => 
                       total + (exercise.sets?.length || 0), 0
@@ -189,7 +189,7 @@ const SessionDetailScreen = ({ navigation, route }) => {
                   </Text>
                   <Text style={styles.statLabel}>Series</Text>
                 </View>
-                <View style={styles.statItem}>
+                <View className={Platform.OS === 'web' ? 'session-detail-stat session-detail-stat--3' : undefined} style={styles.statItem}>
                   <Text style={styles.statValue}>
                     {session.duration ? (
                       <>

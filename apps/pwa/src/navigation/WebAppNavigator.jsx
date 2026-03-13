@@ -42,6 +42,9 @@ import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
 import LabScreen from '../screens/LabScreen.web';
 import OnboardingFlow from '../screens/onboarding/OnboardingFlow.web';
+import EventsManagementScreen from '../screens/EventsManagementScreen.web';
+import EventCheckinScreen from '../screens/EventCheckinScreen.web';
+import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 
 import firestoreService from '../services/firestoreService';
 import webStorageService from '../services/webStorageService';
@@ -790,6 +793,33 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(UpcomingCallDetailScreen, 'UpcomingCallDetail'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/creator/events"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(EventsManagementScreen, 'EventsManagement'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/creator/events/:eventId/checkin"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(EventCheckinScreen, 'EventCheckin'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/creator/events/:eventId/registrations"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(EventRegistrationsScreen, 'EventRegistrations'))}
           </AuthenticatedLayout>
         }
       />

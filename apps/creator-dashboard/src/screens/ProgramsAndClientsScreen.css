@@ -43,7 +43,7 @@ body.header-scrolled .programs-clients-screen {
 .programs-clients-tab.active {
   color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
-  border-bottom-color: rgba(191, 168, 77, 1);
+  border-bottom-color: rgba(255, 255, 255, 1);
 }
 
 .programs-clients-content {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,6 +7,7 @@ import {
   Platform,
   Linking,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
@@ -51,6 +52,20 @@ const copyToClipboard = async (text) => {
 const UpcomingCallDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth } = useWindowDimensions();
   const { booking: paramBooking, creatorName: paramCreatorName, course: paramCourse, bookingId } = route.params || {};
+
+  const screenAnim = useRef(new Animated.Value(0)).current;
+  const card1Anim = useRef(new Animated.Value(0)).current;
+  const card2Anim = useRef(new Animated.Value(0)).current;
+  const card3Anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.stagger(80, [
+      Animated.timing(screenAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(card1Anim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.timing(card2Anim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.timing(card3Anim, { toValue: 1, duration: 380, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const [loading, setLoading] = useState(!paramBooking && !!bookingId);
   const [error, setError] = useState(null);
@@ -411,6 +426,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
   }
 
   return (
+    <Animated.View style={{ flex: 1, opacity: screenAnim }}>
     <SafeAreaView
       style={styles.container}
       edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -425,6 +441,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
 
           {/* Creator Card */}
+          <Animated.View style={{ opacity: card1Anim, transform: [{ translateY: card1Anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}>
           <View style={styles.card}>
             {courseImageUrl ? (
               <ExpoImage
@@ -461,8 +478,10 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
               </View>
             </View>
           </View>
+          </Animated.View>
 
           {/* Date & Time Card */}
+          <Animated.View style={{ opacity: card2Anim, transform: [{ translateY: card2Anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}>
           <View style={[styles.card, styles.dateTimeCard]}>
             <View style={styles.dateTimeLeft}>
               <Text style={styles.dateTimeLabel}>Fecha y hora</Text>
@@ -475,13 +494,20 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
               </View>
             ) : null}
           </View>
+          </Animated.View>
 
           {/* Meeting Link Card */}
+          <Animated.View style={{ opacity: card3Anim, transform: [{ translateY: card3Anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}>
           <View style={[styles.card, styles.linkCard]}>
             <Text style={styles.linkCardLabel}>Enlace de la reunión</Text>
             {callLink ? (
               <>
-                <TouchableOpacity style={styles.joinButton} onPress={handleOpenCallLink} activeOpacity={0.85}>
+                <TouchableOpacity
+                  className={Platform.OS === 'web' ? 'w-cta-pulse' : undefined}
+                  style={[styles.joinButton, Platform.OS === 'web' && { '--accent': 'rgb(74, 222, 128)', '--accent-text': '#111' }]}
+                  onPress={handleOpenCallLink}
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.joinButtonText}>Unirse a la llamada</Text>
                 </TouchableOpacity>
                 <View style={styles.linkRow}>
@@ -505,11 +531,13 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
               </View>
             )}
           </View>
+          </Animated.View>
 
           <BottomSpacer />
         </WakeHeaderContent>
       </ScrollView>
     </SafeAreaView>
+    </Animated.View>
   );
 };
 

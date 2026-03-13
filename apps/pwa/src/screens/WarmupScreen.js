@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   Platform,
+  Animated,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -245,6 +246,12 @@ const WarmupScreen = ({ navigation, route }) => {
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
   const [localVideoSource, setLocalVideoSource] = useState(null);
   
+  const screenAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(screenAnim, { toValue: 1, duration: 480, useNativeDriver: true }).start();
+  }, []);
+
   // Timer ref to avoid recreation
   const timerRef = useRef(null);
   
@@ -652,13 +659,22 @@ const WarmupScreen = ({ navigation, route }) => {
     buttonAction();
   }, [buttonAction]);
 
+  const totalExercises = warmupData.warmup.exercises.length;
+  const progressPct = totalExercises > 1 ? (currentExerciseIndex / (totalExercises - 1)) * 100 : 100;
+
   return (
+    <Animated.View style={{ flex: 1, opacity: screenAnim }}>
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {/* Fixed Header with Back Button */}
       <FixedWakeHeader 
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
       />
+      {isWeb && (
+        <div className="warmup-progress-track" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 101 }}>
+          <div className="warmup-progress-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+      )}
 
       <ScrollView
         style={styles.scrollView}
@@ -751,6 +767,7 @@ const WarmupScreen = ({ navigation, route }) => {
               
               <View style={styles.buttonContainer}>
                 <TouchableOpacity 
+                  className={isWeb && isLastExerciseFinished ? 'w-cta-pulse' : undefined}
                   style={styles.skipButton}
                   onPress={handleButtonPress}
                 >
@@ -781,6 +798,7 @@ const WarmupScreen = ({ navigation, route }) => {
         onComplete={handleTutorialComplete}
       />
     </SafeAreaView>
+    </Animated.View>
   );
 };
 

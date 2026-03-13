@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ScreenSkeleton from '../components/ScreenSkeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Input from '../components/Input';
@@ -10,6 +12,7 @@ import Button from '../components/Button';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
 import { getUser } from '../services/firestoreService';
+import logger from '../utils/logger';
 import './ContentHubScreen.css';
 import '../components/PropagateChangesModal.css';
 
@@ -33,7 +36,6 @@ const ContentHubScreen = () => {
     }
   }, [location.pathname, location.key, location.state]);
 
-  // Library management state
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [libraryName, setLibraryName] = useState('');
   const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
@@ -43,7 +45,6 @@ const ContentHubScreen = () => {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [creatorName, setCreatorName] = useState('');
 
-  // Sessions management state
   const [librarySessions, setLibrarySessions] = useState([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isSessionEditMode, setIsSessionEditMode] = useState(false);
@@ -61,11 +62,9 @@ const ContentHubScreen = () => {
   const [sessionDeleteConfirmation, setSessionDeleteConfirmation] = useState('');
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
-  // Plans (Contenido) state
   const [plans, setPlans] = useState([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
-  // Fetch libraries with React Query
   const { data: libraries = [], isLoading: librariesLoading } = useQuery({
     queryKey: ['libraries', user?.uid],
     queryFn: async () => {
@@ -75,7 +74,6 @@ const ContentHubScreen = () => {
     enabled: !!user,
   });
 
-  // Load creator name
   useEffect(() => {
     const loadCreatorName = async () => {
       if (!user) return;
@@ -85,7 +83,7 @@ const ContentHubScreen = () => {
           setCreatorName(userDoc.displayName || userDoc.name || user.email || '');
         }
       } catch (error) {
-        console.error('Error loading creator name:', error);
+        logger.error('Error loading creator name:', error);
       }
     };
     loadCreatorName();
@@ -138,7 +136,7 @@ const ContentHubScreen = () => {
         }
         setSessionIdToPlanNames(map);
       } catch (err) {
-        console.error('Error loading library sessions:', err);
+        logger.error('Error loading library sessions:', err);
       } finally {
         setIsLoadingSessions(false);
       }
@@ -166,7 +164,7 @@ const ContentHubScreen = () => {
         const plansData = await plansService.getPlansByCreator(user.uid);
         setPlans(plansData);
       } catch (err) {
-        console.error('Error loading plans:', err);
+        logger.error('Error loading plans:', err);
       } finally {
         setIsLoadingPlans(false);
       }
@@ -226,10 +224,9 @@ const ContentHubScreen = () => {
       const newLibrary = await libraryService.createLibrary(user.uid, creatorName, libraryName.trim());
       queryClient.invalidateQueries({ queryKey: ['libraries', user?.uid] });
       handleCloseLibraryModal();
-      // Navigate to the library exercises screen
       navigate(`/libraries/${newLibrary.id}`);
     } catch (err) {
-      console.error('Error creating library:', err);
+      logger.error('Error creating library:', err);
       alert('Error al crear la biblioteca. Por favor, intenta de nuevo.');
     } finally {
       setIsCreatingLibrary(false);
@@ -269,12 +266,11 @@ const ContentHubScreen = () => {
         setIsEditMode(false);
       }
     } catch (err) {
-      console.error('Error deleting library:', err);
+      logger.error('Error deleting library:', err);
       alert('Error al eliminar la biblioteca. Por favor, intenta de nuevo.');
     }
   };
 
-  // Session management handlers
   const handleOpenSessionModal = () => {
     setIsSessionModalOpen(true);
     setSessionName('');
@@ -348,7 +344,7 @@ const ContentHubScreen = () => {
             image_url: imageUrl
           });
         } catch (uploadErr) {
-          console.error('Error uploading session image:', uploadErr);
+          logger.error('Error uploading session image:', uploadErr);
           alert('La sesión se creó, pero hubo un error al subir la imagen.');
         } finally {
           setIsUploadingSessionImage(false);
@@ -364,7 +360,7 @@ const ContentHubScreen = () => {
       setLibrarySessions(sessions);
       handleCloseSessionModal();
     } catch (err) {
-      console.error('Error creating session:', err);
+      logger.error('Error creating session:', err);
       alert('Error al crear la sesión. Por favor, intenta de nuevo.');
     } finally {
       setIsCreatingSession(false);
@@ -410,7 +406,7 @@ const ContentHubScreen = () => {
         setIsSessionEditMode(false);
       }
     } catch (err) {
-      console.error('Error deleting session:', err);
+      logger.error('Error deleting session:', err);
       alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsDeletingSession(false);
@@ -459,7 +455,7 @@ const ContentHubScreen = () => {
             </div>
 
             {librariesLoading ? (
-              <div className="content-hub-loading">Cargando bibliotecas...</div>
+              <ScreenSkeleton />
             ) : libraries.length === 0 ? (
               <div className="content-hub-empty">
                 <svg className="content-hub-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -558,7 +554,7 @@ const ContentHubScreen = () => {
             </div>
 
             {isLoadingPlans ? (
-              <div className="content-hub-loading">Cargando planes...</div>
+              <ScreenSkeleton />
             ) : plans.length === 0 ? (
               <div className="content-hub-empty">
                 <svg className="content-hub-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
@@ -658,7 +654,7 @@ const ContentHubScreen = () => {
             </div>
 
             {isLoadingSessions ? (
-              <div className="content-hub-loading">Cargando sesiones...</div>
+              <ScreenSkeleton />
             ) : librarySessions.length === 0 ? (
               <div className="content-hub-empty">
                 <svg className="content-hub-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -759,6 +755,7 @@ const ContentHubScreen = () => {
   };
 
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName="Entrenamiento">
       <div className="content-hub-screen">
         <div className="content-hub-tabs">
@@ -1012,6 +1009,7 @@ const ContentHubScreen = () => {
         </div>
       </Modal>
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

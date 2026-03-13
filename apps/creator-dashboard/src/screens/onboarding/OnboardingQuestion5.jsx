@@ -3,8 +3,7 @@ import { ASSET_BASE } from '../../config/assets';
 import './OnboardingQuestions.css';
 import SvgIcon from '../../components/SvgIcon';
 
-const OnboardingQuestion5 = ({ onAnswer, onNext, onBack, selectedAnswer: initialSelected = null }) => {
-  // Icon SVGs for each obstacle (matching mobile app)
+const OnboardingQuestion5 = ({ onAnswer, onNext, selectedAnswer: initialSelected = null }) => {
   const timeIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
     <polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -91,7 +90,7 @@ const OnboardingQuestion5 = ({ onAnswer, onNext, onBack, selectedAnswer: initial
                   svgString={option.icon} 
                   width={32} 
                   height={32} 
-                  color={selectedAnswer === option.id ? '#BFA84D' : '#ffffff'}
+                  color={selectedAnswer === option.id ? '#ffffff' : '#ffffff'}
                 />
               </div>
               <p className={`option-text ${selectedAnswer === option.id ? 'option-text-selected' : ''}`}>

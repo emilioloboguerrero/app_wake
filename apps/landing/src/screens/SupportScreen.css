@@ -50,7 +50,7 @@
   background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
   border-radius: 24px;
   padding: 60px;
-  border: 1px solid rgba(191, 168, 77, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
@@ -78,8 +78,8 @@
 }
 
 .support-contact-box {
-  background: rgba(191, 168, 77, 0.08);
-  border: 2px solid rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   padding: 40px;
   text-align: center;
@@ -88,14 +88,14 @@
 }
 
 .support-contact-box:hover {
-  border-color: rgba(191, 168, 77, 0.4);
-  background: rgba(191, 168, 77, 0.12);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .support-contact-label {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 16px;
@@ -104,7 +104,7 @@
 .support-contact-email {
   font-size: 28px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   text-decoration: none;
   display: inline-block;
   margin: 8px 0;
@@ -113,7 +113,7 @@
 }
 
 .support-contact-email:hover {
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
   transform: translateY(-2px);
 }
 
@@ -191,7 +191,7 @@
 
 .support-topic-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -219,8 +219,8 @@
 .support-topic-tag {
   display: inline-block;
   padding: 6px 12px;
-  background: rgba(191, 168, 77, 0.15);
-  color: rgba(191, 168, 77, 0.9);
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -256,7 +256,7 @@
 }
 
 .support-faq-item:hover {
-  border-color: rgba(191, 168, 77, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .support-faq-question {
@@ -277,13 +277,13 @@
 }
 
 .support-faq-question:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 .support-faq-icon {
   font-size: 24px;
   font-weight: 300;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   flex-shrink: 0;
   width: 24px;
   text-align: center;
@@ -347,7 +347,7 @@
   padding: 24px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  border-left: 3px solid rgba(191, 168, 77, 0.5);
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
 }
 
 .support-help-number {
@@ -356,8 +356,8 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  background: rgba(191, 168, 77, 0.2);
-  color: rgba(191, 168, 77, 1);
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 1);
   border-radius: 50%;
   font-weight: 700;
   font-size: 18px;
@@ -407,7 +407,7 @@
 
 .support-resource-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -426,7 +426,7 @@
 }
 
 .support-resource-link {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 15px;
   font-weight: 600;
   text-decoration: none;
@@ -435,7 +435,7 @@
 }
 
 .support-resource-card:hover .support-resource-link {
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* Footer */
@@ -477,7 +477,7 @@
 }
 
 .support-footer-link {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   text-decoration: none;
   font-size: 15px;
   font-weight: 500;
@@ -485,7 +485,7 @@
 }
 
 .support-footer-link:hover {
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
   text-decoration: underline;
 }
 
@@ -496,7 +496,7 @@
 }
 
 .support-footer-email {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   text-decoration: none;
   font-size: 15px;
   font-weight: 500;
@@ -505,7 +505,7 @@
 }
 
 .support-footer-email:hover {
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
   text-decoration: underline;
 }
 
@@ -546,7 +546,7 @@
 }
 
 .support-footer-link-small:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 .support-footer-separator {

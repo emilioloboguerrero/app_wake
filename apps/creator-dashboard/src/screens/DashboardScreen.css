@@ -38,14 +38,14 @@
 }
 
 .stat-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
 }
 
 .stat-number {
   font-size: 2.5rem;
   font-weight: 700;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   margin: 0 0 8px 0;
 }
 

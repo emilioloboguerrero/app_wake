@@ -4,6 +4,7 @@ import React from 'react';
 
 const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
   <div
+    className="wake-empty-state"
     style={{
       display: 'flex',
       flexDirection: 'column',
@@ -16,13 +17,13 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
     }}
   >
     {icon && (
-      <div className="wake-empty-icon" style={{ fontSize: 40, lineHeight: 1 }}>
+      <div className="wake-empty-icon wake-empty-state__icon" style={{ fontSize: 40, lineHeight: 1 }}>
         {icon}
       </div>
     )}
     {title && (
       <p
-        className="wake-empty-title"
+        className="wake-empty-title wake-empty-state__title"
         style={{
           margin: 0,
           color: '#ffffff',
@@ -36,7 +37,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
     )}
     {subtitle && (
       <p
-        className="wake-empty-sub"
+        className="wake-empty-sub wake-empty-state__subtitle"
         style={{
           margin: 0,
           color: 'rgba(255,255,255,0.5)',
@@ -51,7 +52,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
     )}
     {ctaLabel && onCta && (
       <button
-        className="wake-empty-cta wake-btn-primary"
+        className="wake-empty-cta wake-empty-state__cta wake-btn-primary"
         onClick={onCta}
         style={{
           marginTop: 8,

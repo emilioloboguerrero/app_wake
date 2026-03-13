@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ScreenSkeleton from '../components/ScreenSkeleton';
 import Modal from '../components/Modal';
 import programService from '../services/programService';
 import programAnalyticsService from '../services/programAnalyticsService';
@@ -18,7 +20,6 @@ const LabScreen = () => {
   const [statExplanation, setStatExplanation] = useState(null);
   const [isStatExplanationModalOpen, setIsStatExplanationModalOpen] = useState(false);
 
-  // Fetch all programs for the creator
   const { data: programs, isLoading: isLoadingPrograms } = useQuery({
     queryKey: user ? queryKeys.programs.byCreator(user.uid) : ['programs', 'none'],
     queryFn: async () => {
@@ -29,7 +30,6 @@ const LabScreen = () => {
     ...cacheConfig.otherPrograms,
   });
 
-  // Fetch aggregated analytics for all programs
   const { data: analytics, isLoading: isLoadingAnalytics, error: analyticsQueryError } = useQuery({
     queryKey: ['aggregatedAnalytics', user?.uid],
     queryFn: async () => {
@@ -53,7 +53,6 @@ const LabScreen = () => {
     setIsStatExplanationModalOpen(true);
   };
 
-  // Helper component for metric card with info icon
   const MetricCard = ({ statKey, value, label, onClick, percentageChange }) => (
     <div className="lab-metric-card" onClick={() => handleShowStatExplanation(statKey)}>
       <button className="lab-metric-info-icon" onClick={(e) => { e.stopPropagation(); handleShowStatExplanation(statKey); }}>
@@ -74,13 +73,12 @@ const LabScreen = () => {
   );
 
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName="Lab">
       <div className="program-tab-content">
         <div className="lab-content">
           {isLoadingAnalytics || isLoadingPrograms ? (
-            <div className="lab-loading">
-              <p>Cargando estadísticas...</p>
-            </div>
+            <ScreenSkeleton />
           ) : analyticsError ? (
             <div className="lab-error">
               <p>{analyticsError}</p>
@@ -99,12 +97,12 @@ const LabScreen = () => {
                       <AreaChart data={analytics.enrollment.enrollmentsOverTime}>
                         <defs>
                           <linearGradient id="colorEnrollments" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
                           </linearGradient>
                           <linearGradient id="colorTrials" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(191, 168, 77, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(191, 168, 77, 1)" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -115,7 +113,7 @@ const LabScreen = () => {
                         <Area 
                           type="monotone" 
                           dataKey="enrollments" 
-                          stroke="rgba(150, 130, 60, 1)" 
+                          stroke="rgba(255, 255, 255, 1)" 
                           fillOpacity={1} 
                           fill="url(#colorEnrollments)" 
                           name="Inscripciones"
@@ -123,7 +121,7 @@ const LabScreen = () => {
                         <Area 
                           type="monotone" 
                           dataKey="trials" 
-                          stroke="rgba(191, 168, 77, 1)" 
+                          stroke="rgba(255, 255, 255, 1)" 
                           fillOpacity={1} 
                           fill="url(#colorTrials)" 
                           name="Pruebas Gratis"
@@ -233,7 +231,7 @@ const LabScreen = () => {
                                 <XAxis dataKey="age" />
                                 <YAxis />
                                 <Tooltip />
-                                <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
+                                <Bar dataKey="count" fill="rgba(255, 255, 255, 1)" />
                               </BarChart>
                             </ResponsiveContainer>
                             {analytics.enrollment.demographics.age.average && (
@@ -267,8 +265,8 @@ const LabScreen = () => {
                                 >
                                   {Object.entries(analytics.enrollment.demographics.gender).map((entry, index) => {
                                     const colors = [
-                                      'rgba(150, 130, 60, 1)',
-                                      'rgba(191, 168, 77, 1)',
+                                      'rgba(255, 255, 255, 1)',
+                                      'rgba(255, 255, 255, 1)',
                                       'rgba(100, 100, 100, 1)'
                                     ];
                                     const colorIndex = index < colors.length ? index : index % colors.length;
@@ -302,7 +300,7 @@ const LabScreen = () => {
                                 <XAxis type="number" />
                                 <YAxis dataKey="city" type="category" width={100} />
                                 <Tooltip />
-                                <Bar dataKey="count" fill="rgba(150, 130, 60, 1)" />
+                                <Bar dataKey="count" fill="rgba(255, 255, 255, 1)" />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
@@ -345,7 +343,7 @@ const LabScreen = () => {
                     <h4 className="lab-subsection-title">Tasa de Finalización</h4>
                     <div className="lab-gauge-container">
                       <div className="lab-gauge-circle" style={{
-                        background: `conic-gradient(rgba(150, 130, 60, 1) 0% ${analytics.engagement.completionRate}%, rgba(255, 255, 255, 0.1) ${analytics.engagement.completionRate}% 100%)`
+                        background: `conic-gradient(rgba(255, 255, 255, 1) 0% ${analytics.engagement.completionRate}%, rgba(255, 255, 255, 0.1) ${analytics.engagement.completionRate}% 100%)`
                       }}>
                         <div className="lab-gauge-inner">
                           <span className="lab-gauge-value">{analytics.engagement.completionRate}%</span>
@@ -364,15 +362,15 @@ const LabScreen = () => {
                       <AreaChart data={analytics.engagement.sessionsCompletedOverTime}>
                         <defs>
                           <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(150, 130, 60, 1)" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis />
                         <Tooltip />
-                        <Area type="monotone" dataKey="count" stroke="rgba(150, 130, 60, 1)" fillOpacity={1} fill="url(#colorSessions)" />
+                        <Area type="monotone" dataKey="count" stroke="rgba(255, 255, 255, 1)" fillOpacity={1} fill="url(#colorSessions)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -392,7 +390,7 @@ const LabScreen = () => {
                           <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                           <YAxis />
                           <Tooltip />
-                          <Bar dataKey="sessions" fill="rgba(150, 130, 60, 1)" />
+                          <Bar dataKey="sessions" fill="rgba(255, 255, 255, 1)" />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -430,7 +428,7 @@ const LabScreen = () => {
                           <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                           <YAxis />
                           <Tooltip />
-                          <Bar dataKey="users" fill="rgba(150, 130, 60, 1)" />
+                          <Bar dataKey="users" fill="rgba(255, 255, 255, 1)" />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -464,11 +462,11 @@ const LabScreen = () => {
                                 .map(([programId, data]) => {
                                   const program = programs.find(p => p.id === programId);
                                   const colors = [
-                                    'rgba(150, 130, 60, 1)',
-                                    'rgba(191, 168, 77, 1)',
+                                    'rgba(255, 255, 255, 1)',
+                                    'rgba(255, 255, 255, 1)',
                                     'rgba(100, 100, 100, 1)',
-                                    'rgba(191, 168, 77, 0.7)',
-                                    'rgba(150, 130, 60, 0.7)'
+                                    'rgba(255, 255, 255, 0.7)',
+                                    'rgba(255, 255, 255, 0.7)'
                                   ];
                                   const programIndex = Object.keys(analytics.programs).indexOf(programId);
                                   return {
@@ -541,9 +539,9 @@ const LabScreen = () => {
                       <PieChart>
                         <Pie
                           data={[
-                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
-                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
-                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
+                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(255, 255, 255, 1)' },
+                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(255, 255, 255, 1)' },
+                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(255, 255, 255, 0.7)' },
                             { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
                           ].filter(item => item.value > 0)}
                           cx="50%"
@@ -556,9 +554,9 @@ const LabScreen = () => {
                           dataKey="value"
                         >
                           {[
-                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(150, 130, 60, 1)' },
-                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(191, 168, 77, 1)' },
-                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(191, 168, 77, 0.7)' },
+                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(255, 255, 255, 1)' },
+                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(255, 255, 255, 1)' },
+                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(255, 255, 255, 0.7)' },
                             { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
                           ].filter(item => item.value > 0).map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
@@ -624,6 +622,7 @@ const LabScreen = () => {
         </Modal>
       )}
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

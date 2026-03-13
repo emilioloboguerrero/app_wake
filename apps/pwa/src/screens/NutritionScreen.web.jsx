@@ -774,6 +774,7 @@ const NutritionScreen = () => {
   const preferredAssignmentId = location.state?.preferredAssignmentId ?? null;
   const initialAssignment = location.state?.initialAssignment ?? null;
   const initialPlan = location.state?.initialPlan ?? null;
+  const openBarcode = location.state?.openBarcode ?? false;
 
   const [assignment, setAssignment] = useState(initialAssignment);
   const [plan, setPlan] = useState(initialPlan);
@@ -893,6 +894,15 @@ const NutritionScreen = () => {
   }, [buscarResults, buscarSortBy]);
 
   const buscarResultAnimRef = useRef({});
+
+  useEffect(() => {
+    if (!openBarcode) return;
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      setBarcodeCameraOpen(true);
+    } else {
+      setBarcodeModalOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (
@@ -2180,7 +2190,7 @@ const NutritionScreen = () => {
                         </Animated.View>
                       </View>
                     </View>
-                    <View style={styles.pieWrap}>
+                    <View className="nutrition-pie-wrap" style={styles.pieWrap}>
                       <ResponsiveContainer width="100%" height={140}>
                         <PieChart>
                           <Pie
@@ -2228,6 +2238,7 @@ const NutritionScreen = () => {
                       return (
                         <TouchableOpacity
                           key={key}
+                          className="macro-tile"
                           style={styles.macroCard}
                           onPress={toggleMacroMode}
                           activeOpacity={0.8}

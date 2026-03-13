@@ -5,19 +5,21 @@ const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRounded';
 import SvgChartLine from './icons/SvgChartLine';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 import { useUserRole } from '../contexts/UserRoleContext';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../config/firebase';
-import { isAdmin } from '../utils/roleHelper';
+import { firestore, auth } from '../config/firebase';
+import { isAdmin, isCreator } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
 import firestoreService from '../services/firestoreService';
 import sessionService from '../services/sessionService';
 import sessionManager from '../services/sessionManager';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
+import { setPendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
 import { NoPlanModal } from './NoPlanModal.web';
 import { TrainingActionModal } from './TrainingActionModal.web';
 import { ProgramPickerModal } from './ProgramPickerModal.web';
@@ -317,6 +319,47 @@ const BottomTabBar = () => {
     navigate('/library');
   };
 
+  const handleEventQrPress = async () => {
+    const userId = user?.uid ?? auth.currentUser?.uid;
+
+    if (!userId) {
+      closeMenu();
+      navigate('/creator/events');
+      return;
+    }
+
+    setMenuActionLoading(true);
+    try {
+      const snap = await getDocs(
+        query(
+          collection(firestore, 'events'),
+          where('creator_id', '==', userId),
+          orderBy('created_at', 'desc')
+        )
+      );
+
+      if (snap.empty) {
+        closeMenu();
+        navigate('/creator/events');
+        return;
+      }
+
+      const events = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const active = events.filter((ev) => ev.status === 'active');
+      const target = active[0] || events[0];
+
+      closeMenu();
+      navigate(`/creator/events/${target.id}/checkin`);
+    } catch (_err) {
+      closeMenu();
+      navigate('/creator/events');
+    } finally {
+      setMenuActionLoading(false);
+    }
+  };
+
+  const isCreatorUser = isCreator(role) || isAdmin(role);
+
   const iconSize = Math.min((screenWidth || 390) * 0.06, 28);
   const showLabTab = true;
 
@@ -458,6 +501,51 @@ const BottomTabBar = () => {
             </div>
           ) : (
             <>
+              {isCreatorUser && (
+                <div style={actionCardStyle} onClick={handleEventQrPress} role="button" tabIndex={0}>
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <rect x="3" y="3" width="6.5" height="6.5" rx="1" stroke="#ffffff" strokeWidth="1.6" />
+                    <rect x="14.5" y="3" width="6.5" height="6.5" rx="1" stroke="#ffffff" strokeWidth="1.6" />
+                    <rect x="3" y="14.5" width="6.5" height="6.5" rx="1" stroke="#ffffff" strokeWidth="1.6" />
+                    <rect x="14.5" y="14.5" width="2.6" height="2.6" rx="0.6" fill="#ffffff" />
+                    <rect x="18.1" y="14.5" width="2.6" height="2.6" rx="0.6" fill="#ffffff" />
+                    <rect x="14.5" y="18.1" width="2.6" height="2.6" rx="0.6" fill="#ffffff" />
+                    <rect x="18.1" y="18.1" width="2.6" height="2.6" rx="0.6" fill="#ffffff" />
+                  </svg>
+                  <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>
+                    Escanear QR evento
+                  </span>
+                </div>
+              )}
+              <div
+                style={actionCardStyle}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closeMenu();
+                  if (location.pathname === '/progress') {
+                    window.dispatchEvent(new CustomEvent('wakeOpenBodyEntry'));
+                  } else {
+                    setPendingOpenBodyEntry();
+                    navigate('/progress');
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="5" r="3" stroke="#fff" strokeWidth="1.5"/>
+                  <path d="M8 10c0-1 .5-2 4-2s4 1 4 2v9H8V10Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M10 19v-2M14 19v-2" stroke="rgba(255,255,255,0.6)" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+                <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Registrar progreso</span>
+              </div>
               <div style={actionCardStyle} onClick={handleEntrenarPress} role="button" tabIndex={0}>
                 <SvgBodyPartMuscleStrokeRounded width={28} height={28} stroke="#ffffff" strokeWidth={1.5} />
                 <span style={{ color: '#ffffff', fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Entrenar</span>
@@ -518,7 +606,7 @@ const BottomTabBar = () => {
         <div className="wake-tab-bar-add-button-wrap">
           <button
             type="button"
-            className="wake-tab-bar-add-button"
+            className={menuOpen ? 'wake-tab-bar-add-button' : 'wake-tab-bar-add-button w-cta-pulse'}
             style={{
               transform: menuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
             }}

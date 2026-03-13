@@ -77,6 +77,12 @@ export const cacheConfig = {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
+  events: {
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
 };
 
 // Query keys factory
@@ -107,6 +113,20 @@ export const queryKeys = {
   },
   user: {
     detail: (userId) => ['user', userId],
+  },
+  events: {
+    byCreator: (creatorId) => ['events', 'creator', creatorId],
+    detail: (eventId) => ['events', eventId],
+    registrations: (eventId) => ['events', eventId, 'registrations'],
+    waitlist: (eventId) => ['events', eventId, 'waitlist'],
+  },
+  clients: {
+    byCreator: (creatorId) => ['clients', 'creator', creatorId],
+  },
+  library: {
+    exercises: (creatorId) => ['library', 'exercises', creatorId],
+    sessions: (creatorId) => ['library', 'sessions', creatorId],
+    modules: (creatorId) => ['library', 'modules', creatorId],
   },
 };
 

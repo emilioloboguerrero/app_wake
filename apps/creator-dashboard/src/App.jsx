@@ -30,6 +30,8 @@ import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
+import EventEditorScreen from './screens/EventEditorScreen';
+import EventCheckinScreen from './screens/EventCheckinScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -298,10 +300,34 @@ function AppContent() {
               }
             />
             <Route
+              path="/events/new"
+              element={
+                <ProtectedRoute>
+                  <EventEditorScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/events/:eventId/edit"
+              element={
+                <ProtectedRoute>
+                  <EventResultsScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/events/:eventId/results"
               element={
                 <ProtectedRoute>
                   <EventResultsScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/events/:eventId/checkin"
+              element={
+                <ProtectedRoute>
+                  <EventCheckinScreen />
                 </ProtectedRoute>
               }
             />

@@ -20,9 +20,12 @@ import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
 import { getUser } from '../services/firestoreService';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ScreenSkeleton from '../components/ScreenSkeleton';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import logger from '../utils/logger';
 import './ClientProgramScreen.css';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -192,7 +195,7 @@ const ClientProgramScreen = () => {
 
         setClient(clientData);
       } catch (err) {
-        console.error('Error loading client:', err);
+        logger.error('Error loading client:', err);
         setError('Error al cargar el cliente');
       } finally {
         setLoading(false);
@@ -241,7 +244,7 @@ const ClientProgramScreen = () => {
           return assigned?.id ?? programsWithStatus[0]?.id ?? null;
         });
       } catch (error) {
-        console.error('Error loading assigned programs:', error);
+        logger.error('Error loading assigned programs:', error);
         setAssignedPrograms([]);
       }
     };
@@ -401,7 +404,7 @@ const ClientProgramScreen = () => {
       const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
       setClientNutritionAssignments(list);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       alert(e?.message || 'Error al asignar plan');
     } finally {
       setIsAssigningNutrition(false);
@@ -415,13 +418,13 @@ const ClientProgramScreen = () => {
       try {
         await clientNutritionPlanContentService.deleteByAssignmentId(assignmentId);
       } catch (e) {
-        console.warn('Could not delete client nutrition plan copy:', e?.message);
+        logger.warn('Could not delete client nutrition plan copy:', e?.message);
       }
       await nutritionDb.deleteAssignment(assignmentId);
       const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
       setClientNutritionAssignments(list);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       alert(e?.message || 'Error al quitar asignación');
     } finally {
       setIsEndingNutrition(false);
@@ -510,7 +513,7 @@ const ClientProgramScreen = () => {
         setPlannedSessions(enriched);
       } catch (err) {
         if (!cancelled) setPlannedSessions([]);
-        console.error('[ClientProgramScreen] loadPlannedSessions: error', err);
+        logger.error('[ClientProgramScreen] loadPlannedSessions: error', err);
       }
     })();
     return () => { cancelled = true; };
@@ -524,7 +527,7 @@ const ClientProgramScreen = () => {
         const allPlans = await plansService.getPlansByCreator(user.uid);
         setPlans(allPlans);
       } catch (error) {
-        console.error('Error loading plans:', error);
+        logger.error('Error loading plans:', error);
         setPlans([]);
       }
     };
@@ -544,7 +547,7 @@ const ClientProgramScreen = () => {
         setContentPlanId(cp?.content_plan_id ?? null);
         setPlanAssignments(cp?.planAssignments ?? {});
       } catch (error) {
-        console.error('Error loading content plan:', error);
+        logger.error('Error loading content plan:', error);
         setContentPlanId(null);
         setPlanAssignments({});
       } finally {
@@ -754,7 +757,7 @@ const ClientProgramScreen = () => {
         const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
         setWeekVolumeMuscleVolumes(volumes);
       } catch (err) {
-        console.warn('[ClientProgramScreen] Week volume load failed:', err);
+        logger.warn('[ClientProgramScreen] Week volume load failed:', err);
         if (!cancelled) setWeekVolumeMuscleVolumes({});
       } finally {
         if (!cancelled) setWeekVolumeLoading(false);
@@ -771,7 +774,7 @@ const ClientProgramScreen = () => {
   // Load completed session IDs for this client+program (from users.courseProgress) - for calendar completion indicator
   useEffect(() => {
     if (!client?.clientUserId || !selectedProgramId) {
-      console.log('[ClientProgramScreen] completedSessionIds: skip load (missing clientUserId or selectedProgramId)', {
+      logger.log('[ClientProgramScreen] completedSessionIds: skip load (missing clientUserId or selectedProgramId)', {
         clientUserId: client?.clientUserId ?? null,
         selectedProgramId: selectedProgramId ?? null
       });
@@ -779,18 +782,18 @@ const ClientProgramScreen = () => {
       return;
     }
     let cancelled = false;
-    console.log('[ClientProgramScreen] completedSessionIds: loading for', {
+    logger.log('[ClientProgramScreen] completedSessionIds: loading for', {
       clientUserId: client.clientUserId,
       selectedProgramId
     });
     clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId).then((ids) => {
       if (!cancelled) {
-        console.log('[ClientProgramScreen] completedSessionIds: loaded', { size: ids.size, sample: ids.size ? [...ids].slice(0, 10) : [] });
+        logger.log('[ClientProgramScreen] completedSessionIds: loaded', { size: ids.size, sample: ids.size ? [...ids].slice(0, 10) : [] });
         setCompletedSessionIds(ids);
       }
     }).catch((err) => {
       if (!cancelled) {
-        console.error('[ClientProgramScreen] completedSessionIds: load failed', err?.message || err);
+        logger.error('[ClientProgramScreen] completedSessionIds: load failed', err?.message || err);
         setCompletedSessionIds(new Set());
       }
     });
@@ -820,7 +823,7 @@ const ClientProgramScreen = () => {
       if (!cancelled) setSessionHistory(items);
     }).catch((err) => {
       if (!cancelled) {
-        console.error('[ClientProgramScreen] sessionHistory load failed', err?.message);
+        logger.error('[ClientProgramScreen] sessionHistory load failed', err?.message);
         setSessionHistory([]);
       }
     }).finally(() => {
@@ -851,7 +854,7 @@ const ClientProgramScreen = () => {
   const programColors = useMemo(() => {
     const colors = {};
     const colorPalette = [
-      'rgba(191, 168, 77, 0.6)',
+      'rgba(255, 255, 255, 0.6)',
       'rgba(107, 142, 35, 0.6)',
       'rgba(70, 130, 180, 0.6)',
       'rgba(186, 85, 211, 0.6)',
@@ -874,7 +877,7 @@ const ClientProgramScreen = () => {
     if (!client?.clientUserId) return;
     const programId = sessionData.programId ?? selectedProgramId;
     if (!programId) {
-      console.error('handleSessionAssigned: missing programId');
+      logger.error('handleSessionAssigned: missing programId');
       return;
     }
     try {
@@ -900,7 +903,7 @@ const ClientProgramScreen = () => {
       
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
-      console.error('Error assigning session:', error);
+      logger.error('Error assigning session:', error);
       alert('Error al asignar la sesión');
     }
   };
@@ -989,12 +992,12 @@ const ClientProgramScreen = () => {
         }
         setWeekContentByWeekKey((prev) => ({ ...prev, ...next }));
       } catch (err) {
-        console.warn('Could not preload week content for new assignment:', err);
+        logger.warn('Could not preload week content for new assignment:', err);
       }
 
-      console.log('✅ Plan assigned to consecutive weeks:', { programId: selectedProgramId, planId, weekKey, count: assignedWeekKeys.length });
+      logger.log('✅ Plan assigned to consecutive weeks:', { programId: selectedProgramId, planId, weekKey, count: assignedWeekKeys.length });
     } catch (error) {
-      console.error('Error assigning plan:', error);
+      logger.error('Error assigning plan:', error);
       alert(error?.message === 'Este plan no tiene semanas.' ? error.message : `Error al asignar el plan: ${error.message || 'Error desconocido'}`);
     } finally {
       setIsAssigningPlan(false);
@@ -1028,7 +1031,7 @@ const ClientProgramScreen = () => {
       const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
-      console.error('Error removing plan:', error);
+      logger.error('Error removing plan:', error);
       alert(`Error al quitar el plan: ${error.message || 'Error desconocido'}`);
     } finally {
       setIsRemovingPlanFromWeek(false);
@@ -1041,7 +1044,7 @@ const ClientProgramScreen = () => {
   };
 
   const handleSessionAssignment = async (sessionData) => {
-    console.log('[ClientProgramScreen] handleSessionAssignment', { clientUserId: client?.clientUserId, selectedProgramId, sessionData });
+    logger.log('[ClientProgramScreen] handleSessionAssignment', { clientUserId: client?.clientUserId, selectedProgramId, sessionData });
     if (!client?.clientUserId || !selectedProgramId) {
       alert('Por favor, selecciona un programa primero');
       return;
@@ -1057,7 +1060,7 @@ const ClientProgramScreen = () => {
         sessionData.moduleId ?? null,
         sessionData.library_session_ref ? { library_session_ref: true } : {}
       );
-      console.log('[ClientProgramScreen] handleSessionAssignment: wrote doc, reloading sessions for', client.clientUserId);
+      logger.log('[ClientProgramScreen] handleSessionAssignment: wrote doc, reloading sessions for', client.clientUserId);
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
       const [programs, sessions] = await Promise.all([
@@ -1069,7 +1072,7 @@ const ClientProgramScreen = () => {
       const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
-      console.error('[ClientProgramScreen] handleSessionAssignment error:', error);
+      logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
       alert('Error al asignar la sesión');
     } finally {
       setIsAssigningSession(false);
@@ -1096,7 +1099,7 @@ const ClientProgramScreen = () => {
           );
         }
       } catch (error) {
-        console.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
+        logger.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
         alert('Error al preparar la sesión para editar');
         return;
       }
@@ -1146,7 +1149,7 @@ const ClientProgramScreen = () => {
       const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
       setPlannedSessions(enriched);
     } catch (error) {
-      console.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
+      logger.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
       alert('Error al eliminar la sesión');
     } finally {
       setIsDeletingSessionAssignment(false);
@@ -1206,7 +1209,7 @@ const ClientProgramScreen = () => {
       );
       setHasClientPlanCopy(true);
     } catch (error) {
-      console.error('Error personalizando plan:', error);
+      logger.error('Error personalizando plan:', error);
       alert(error.message || 'Error al personalizar la semana');
     } finally {
       setIsPersonalizingPlanWeek(false);
@@ -1227,7 +1230,7 @@ const ClientProgramScreen = () => {
         setWeekContentByWeekKey((p) => ({ ...p, [weekKey]: { sessions: sessions || [], title: mod.title, fromClientCopy: false, planId: assignment.planId, moduleId: mod.id } }));
       }
     } catch (error) {
-      console.error('Error restableciendo plan:', error);
+      logger.error('Error restableciendo plan:', error);
       alert(error.message || 'Error al restablecer');
     } finally {
       setIsResettingPlanWeek(false);
@@ -1277,7 +1280,7 @@ const ClientProgramScreen = () => {
         }
       });
     } catch (error) {
-      console.error('Error opening plan session for edit:', error);
+      logger.error('Error opening plan session for edit:', error);
       alert(error.message || 'Error al abrir la sesión');
     }
   };
@@ -1312,7 +1315,7 @@ const ClientProgramScreen = () => {
         }));
       }
     } catch (error) {
-      console.error('Error deleting plan session:', error);
+      logger.error('Error deleting plan session:', error);
       alert(error.message || 'Error al quitar la sesión');
     } finally {
       setIsDeletingPlanSession(false);
@@ -1354,7 +1357,7 @@ const ClientProgramScreen = () => {
         { dayIndex: targetDayIndex }
       );
     } catch (error) {
-      console.error('Error moving plan session day:', error);
+      logger.error('Error moving plan session day:', error);
       setWeekContentByWeekKey((prev) => ({
         ...prev,
         ...(prevContent != null && { [weekKey]: prevContent })
@@ -1411,7 +1414,7 @@ const ClientProgramScreen = () => {
         ...(targetContent && { [targetWeekKey]: targetContent })
       }));
     } catch (error) {
-      console.error('Error moving plan session to week:', error);
+      logger.error('Error moving plan session to week:', error);
       alert(error.message || 'Error al mover la sesión');
     } finally {
       setIsMovingPlanSession(false);
@@ -1479,7 +1482,7 @@ const ClientProgramScreen = () => {
     try {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
-      console.error('Error adding library session to plan day:', error);
+      logger.error('Error adding library session to plan day:', error);
       alert(error.message || 'Error al añadir la sesión');
     } finally {
       setIsAddingSessionToPlanDay(false);
@@ -1507,7 +1510,7 @@ const ClientProgramScreen = () => {
       await addLibrarySessionToPlanWeek(addPlanSessionTarget.weekKey, addPlanSessionTarget.dayIndex, librarySessionId);
       setAddPlanSessionTarget(null);
     } catch (error) {
-      console.error('Error adding session:', error);
+      logger.error('Error adding session:', error);
       alert(error.message || 'Error al añadir');
     } finally {
       setIsAddingSessionToPlanDay(false);
@@ -1524,7 +1527,7 @@ const ClientProgramScreen = () => {
       await clientProgramService.setClientContentPlan(selectedProgramId, client.clientUserId, planId || null);
       setContentPlanId(planId || null);
     } catch (error) {
-      console.error('Error setting content plan:', error);
+      logger.error('Error setting content plan:', error);
       alert('Error al guardar el contenido del programa');
     } finally {
       setIsSavingContentPlan(false);
@@ -2341,11 +2344,11 @@ const ClientProgramScreen = () => {
 
   if (loading) {
     return (
-      <DashboardLayout screenName="Cliente">
-        <div className="client-program-loading">
-          <p>Cargando...</p>
-        </div>
-      </DashboardLayout>
+      <ErrorBoundary>
+        <DashboardLayout screenName="Cliente">
+          <ScreenSkeleton />
+        </DashboardLayout>
+      </ErrorBoundary>
     );
   }
 
@@ -2370,7 +2373,8 @@ const ClientProgramScreen = () => {
   const clientName = client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`;
 
   return (
-    <DashboardLayout 
+    <ErrorBoundary>
+    <DashboardLayout
       screenName={clientName}
       showBackButton={true}
       backPath={location.state?.returnTo || '/products?tab=clientes'}
@@ -2422,6 +2426,7 @@ const ClientProgramScreen = () => {
         />
       </div>
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

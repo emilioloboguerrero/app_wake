@@ -1,0 +1,58 @@
+.skeleton-block {
+  background: linear-gradient(90deg, #2a2a2a 25%, #333 50%, #2a2a2a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  display: block;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem 1.5rem 0;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.5rem;
+}
+
+.skeleton-list-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--card-bg, #1e1e1e);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.skeleton-list-item-lines {
+  flex: 1;
+}
+
+.skeleton-card-row {
+  display: flex;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  flex-wrap: wrap;
+}
+
+.skeleton-card {
+  flex: 1;
+  min-width: 200px;
+  background: var(--card-bg, #1e1e1e);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.screen-skeleton {
+  padding-bottom: 2rem;
+}

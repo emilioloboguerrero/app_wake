@@ -35,6 +35,8 @@ import WakeLoader from '../components/WakeLoader';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // Only on native — react-native-linear-gradient can break on web
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
@@ -96,7 +98,17 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   }, [contextUser]);
 
   const user = contextUser || fallbackUser;
+  const queryClientHook = useQueryClient();
   const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
+
+  // React Query: default session load (no specific date, no pre-selected session)
+  const defaultSessionQueryKey = queryKeys.programs.dailySession(user?.uid, course?.courseId, 'default');
+  const { data: defaultSessionData } = useQuery({
+    queryKey: defaultSessionQueryKey,
+    queryFn: () => sessionService.getCurrentSession(user.uid, course.courseId, {}),
+    enabled: !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId,
+    ...cacheConfig.activeSession,
+  });
 
   // Unified session state - single source of truth
   const [sessionState, setSessionState] = useState({
@@ -110,7 +122,14 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     error: null,
     emptyReason: null // 'no_session_today' | 'no_planning_this_week' for one-on-one placeholders
   });
-  
+
+  // Sync React Query default session result into sessionState (initial load only)
+  useEffect(() => {
+    if (defaultSessionData && !route.params?.selectedSessionId) {
+      setSessionState(defaultSessionData);
+    }
+  }, [defaultSessionData]);
+
   // UI state
   const [courseMetadata, setCourseMetadata] = useState(null);
   const [previewSessionId, setPreviewSessionId] = useState(null);
@@ -211,7 +230,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (sessionState.isLoading || !sessionState.allSessions.length) return;
     sessionListAnimsRef.current = sessionState.allSessions.map(() => new Animated.Value(0));
     Animated.stagger(60, sessionListAnimsRef.current.map(anim =>
-      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+      Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true })
     )).start();
   }, [sessionState.isLoading, sessionState.allSessions.length]);
 
@@ -678,12 +697,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     const anim = sessionListAnimsRef.current[index];
     const animStyle = anim ? {
       opacity: anim,
-      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
     } : {};
 
     return (
       <Animated.View style={animStyle}>
       <TouchableOpacity
+        className="session-card"
         style={[
           styles.sessionListCard,
           isPreviewSession && styles.selectedSessionCard,

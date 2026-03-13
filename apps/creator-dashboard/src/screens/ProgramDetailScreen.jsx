@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import logger from '../utils/logger';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import debounce from 'lodash/debounce';
 import DashboardLayout from '../components/DashboardLayout';
+import ScreenSkeleton from '../components/ScreenSkeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
@@ -37,8 +40,7 @@ import {
 } from '../hooks/useProgramRealtime';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, LabelList, ComposedChart
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { getAccessDurationLabel, getAccessTypeLabel, getStatusLabel, getDurationLabel } from '../utils/durationHelper';
 import {
@@ -697,11 +699,9 @@ const ProgramDetailScreen = () => {
   const [isModuleEditMode, setIsModuleEditMode] = useState(false);
   const [selectedModule, setSelectedModule] = useState(null);
   const [sessions, setSessions] = useState([]);
-  // isLoadingSessions now comes from useSessions hook
   const [isSessionEditMode, setIsSessionEditMode] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
   const [exercises, setExercises] = useState([]);
-  // isLoadingExercises now comes from useExercises hook
   const [exerciseSetsMap, setExerciseSetsMap] = useState({}); // Map: exerciseId -> sets array
   const [sessionIncompleteMap, setSessionIncompleteMap] = useState({}); // Map: sessionId -> boolean
   const [moduleIncompleteMap, setModuleIncompleteMap] = useState({}); // Map: moduleId -> boolean
@@ -728,14 +728,12 @@ const ProgramDetailScreen = () => {
   const [selectedWeekModuleIdForVolume, setSelectedWeekModuleIdForVolume] = useState('');
   const [weekVolumeLoading, setWeekVolumeLoading] = useState(false);
   const [weekVolumeMuscleVolumes, setWeekVolumeMuscleVolumes] = useState({});
-  // ✅ NEW: Library session states
   const [librarySessions, setLibrarySessions] = useState([]);
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
   const [isEditingLibrarySession, setIsEditingLibrarySession] = useState(false);
   const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
   const [isCopyModuleModalOpen, setIsCopyModuleModalOpen] = useState(false);
   const [copyModuleModalPage, setCopyModuleModalPage] = useState('biblioteca'); // 'crear' | 'biblioteca'
-  // ✅ NEW: Library module states
   const [libraryModules, setLibraryModules] = useState([]);
   const [isLoadingLibraryModules, setIsLoadingLibraryModules] = useState(false);
   const [moduleName, setModuleName] = useState('');
@@ -774,7 +772,6 @@ const ProgramDetailScreen = () => {
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
   const libraryDataCacheRef = useRef(libraryDataCache);
   const libraryExerciseCompletenessRef = useRef(libraryExerciseCompleteness);
-  // Library/Exercise selection modal state
   const [isLibraryExerciseModalOpen, setIsLibraryExerciseModalOpen] = useState(false);
   const [libraryExerciseModalMode, setLibraryExerciseModalMode] = useState(null); // 'primary', 'add-alternative', 'edit-alternative'
   const [availableLibrariesForSelection, setAvailableLibrariesForSelection] = useState([]);
@@ -795,7 +792,6 @@ const ProgramDetailScreen = () => {
   const [appliedPresetId, setAppliedPresetId] = useState(null);
   const [dataEditMenuOpen, setDataEditMenuOpen] = useState(false);
   const dataEditMenuRef = useRef(null);
-  // Series/Sets state
   const [expandedSeries, setExpandedSeries] = useState({}); // Map: setId -> boolean
   const [showPerSetCards, setShowPerSetCards] = useState(false);
   const [exerciseSets, setExerciseSets] = useState([]); // Array of sets for the selected exercise
@@ -849,13 +845,13 @@ const ProgramDetailScreen = () => {
   // Load libraries list when on Ajustes tab (for inline libraries section)
   useEffect(() => {
     if (!isConfigTabActive || !program || !user) return;
-    libraryService.getLibrariesByCreator(user.uid).then((libs) => setAvailableLibraries(libs || [])).catch((err) => console.error(err));
+    libraryService.getLibrariesByCreator(user.uid).then((libs) => setAvailableLibraries(libs || [])).catch((err) => logger.error(err));
   }, [isConfigTabActive, program?.id, user?.uid]);
 
   useEffect(() => {
     if (isPresetSelectorOpen && user?.uid) {
       measureObjectivePresetsService.list(user.uid).then(setPresetsList).catch((err) => {
-        console.error('Error loading presets:', err);
+        logger.error('Error loading presets:', err);
         setPresetsList([]);
       });
     }
@@ -926,7 +922,7 @@ const ProgramDetailScreen = () => {
   };
 
   const navigateToSessionEdit = useCallback(async (session, module) => {
-    console.log('[ProgramDetailScreen] navigateToSessionEdit called', {
+    logger.log('[ProgramDetailScreen] navigateToSessionEdit called', {
       programId,
       hasUser: !!user,
       userId: user?.uid,
@@ -940,7 +936,7 @@ const ProgramDetailScreen = () => {
       hasProgramService: !!programService,
     });
     if (!programId || !user || !module) {
-      console.warn('[ProgramDetailScreen] navigateToSessionEdit early return: missing programId, user, or module', {
+      logger.warn('[ProgramDetailScreen] navigateToSessionEdit early return: missing programId, user, or module', {
         programId: !!programId,
         user: !!user,
         module: !!module,
@@ -949,26 +945,26 @@ const ProgramDetailScreen = () => {
     }
     const targetLibraryId = session.librarySessionRef;
     if (targetLibraryId) {
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: session has librarySessionRef, navigating', { targetLibraryId });
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: session has librarySessionRef, navigating', { targetLibraryId });
       navigate(`/content/sessions/${targetLibraryId}`, { state: { returnTo: location.pathname } });
       return;
     }
-    console.log('[ProgramDetailScreen] navigateToSessionEdit: inline session, migrating to library');
+    logger.log('[ProgramDetailScreen] navigateToSessionEdit: inline session, migrating to library');
     setIsMigratingSessionToLibrary(true);
     try {
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: creating library session');
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: creating library session');
       const librarySession = await libraryService.createLibrarySession(user.uid, {
         title: session.title || session.name || 'Sesión',
         image_url: session.image_url || null,
       });
       const librarySessionId = librarySession.id;
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: library session created', { librarySessionId });
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: library session created', { librarySessionId });
       const programExercises = await programService.getExercisesBySession(programId, module.id, session.id);
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: loaded program exercises', { count: programExercises?.length ?? 0, exerciseIds: programExercises?.map((e) => e.id) });
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: loaded program exercises', { count: programExercises?.length ?? 0, exerciseIds: programExercises?.map((e) => e.id) });
       for (let i = 0; i < programExercises.length; i++) {
         const ex = programExercises[i];
         const exerciseName = ex.title || ex.name || (ex.primary && typeof ex.primary === 'object' && Object.values(ex.primary)[0]) || 'Ejercicio';
-        console.log('[ProgramDetailScreen] navigateToSessionEdit: creating library exercise', { index: i, exerciseId: ex.id, exerciseName });
+        logger.log('[ProgramDetailScreen] navigateToSessionEdit: creating library exercise', { index: i, exerciseId: ex.id, exerciseName });
         const created = await libraryService.createExerciseInLibrarySession(
           user.uid,
           librarySessionId,
@@ -986,7 +982,7 @@ const ProgramDetailScreen = () => {
           await libraryService.updateExerciseInLibrarySession(user.uid, librarySessionId, created.id, exerciseUpdateData);
         }
         const programSets = await programService.getSetsByExercise(programId, module.id, session.id, ex.id);
-        console.log('[ProgramDetailScreen] navigateToSessionEdit: loaded sets for exercise', { exerciseId: ex.id, setCount: programSets?.length ?? 0 });
+        logger.log('[ProgramDetailScreen] navigateToSessionEdit: loaded sets for exercise', { exerciseId: ex.id, setCount: programSets?.length ?? 0 });
         for (let j = 0; j < programSets.length; j++) {
           const setData = programSets[j];
           const newSet = await libraryService.createSetInLibraryExercise(user.uid, librarySessionId, created.id, j);
@@ -1007,15 +1003,15 @@ const ProgramDetailScreen = () => {
           }
         }
       }
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: linking program session to library', { programId, moduleId: module.id, sessionId: session.id, librarySessionId });
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: linking program session to library', { programId, moduleId: module.id, sessionId: session.id, librarySessionId });
       await programService.updateSession(programId, module.id, session.id, {
         librarySessionRef: librarySessionId,
       });
-      console.log('[ProgramDetailScreen] navigateToSessionEdit: navigating to session edit screen', { librarySessionId, returnTo: location.pathname });
+      logger.log('[ProgramDetailScreen] navigateToSessionEdit: navigating to session edit screen', { librarySessionId, returnTo: location.pathname });
       navigate(`/content/sessions/${librarySessionId}`, { state: { returnTo: location.pathname } });
     } catch (err) {
-      console.error('[ProgramDetailScreen] navigateToSessionEdit: error migrating session to library', err);
-      console.error('[ProgramDetailScreen] navigateToSessionEdit: error stack', err?.stack);
+      logger.error('[ProgramDetailScreen] navigateToSessionEdit: error migrating session to library', err);
+      logger.error('[ProgramDetailScreen] navigateToSessionEdit: error stack', err?.stack);
       alert(err?.message || 'Error al abrir la sesión para editar.');
     } finally {
       setIsMigratingSessionToLibrary(false);
@@ -1024,7 +1020,7 @@ const ProgramDetailScreen = () => {
 
   const handleSessionClickFromGrid = (mod, sess) => {
     const tabKey = effectiveTabConfig[currentTabIndex]?.key;
-    console.log('[ProgramDetailScreen] handleSessionClickFromGrid called', {
+    logger.log('[ProgramDetailScreen] handleSessionClickFromGrid called', {
       tabKey,
       currentTabIndex,
       isContenido: tabKey === 'contenido',
@@ -1034,11 +1030,11 @@ const ProgramDetailScreen = () => {
       sessionLibraryRef: sess?.librarySessionRef,
     });
     if (tabKey === 'contenido') {
-      console.log('[ProgramDetailScreen] handleSessionClickFromGrid: Contenido tab, calling navigateToSessionEdit');
+      logger.log('[ProgramDetailScreen] handleSessionClickFromGrid: Contenido tab, calling navigateToSessionEdit');
       navigateToSessionEdit(sess, mod);
       return;
     }
-    console.log('[ProgramDetailScreen] handleSessionClickFromGrid: not Contenido, setting selected module/session');
+    logger.log('[ProgramDetailScreen] handleSessionClickFromGrid: not Contenido, setting selected module/session');
     setSelectedModule(mod);
     setSelectedSession(sess);
     setSessions(mod?.sessions ?? []);
@@ -1120,7 +1116,7 @@ const ProgramDetailScreen = () => {
         const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
         setWeekVolumeMuscleVolumes(volumes);
       } catch (err) {
-        console.warn('[ProgramDetail] Week volume load failed:', err);
+        logger.warn('[ProgramDetail] Week volume load failed:', err);
         if (!cancelled) setWeekVolumeMuscleVolumes({});
       } finally {
         if (!cancelled) setWeekVolumeLoading(false);
@@ -1297,7 +1293,7 @@ const ProgramDetailScreen = () => {
               
               moduleStatusesToCheck[module.id] = moduleIncomplete;
             } catch (err) {
-              console.error(`Error checking module ${module.id} completeness:`, err);
+              logger.error(`Error checking module ${module.id} completeness:`, err);
               moduleStatusesToCheck[module.id] = false; // Default to complete on error
             }
           }
@@ -1422,7 +1418,7 @@ const ProgramDetailScreen = () => {
               const library = await libraryService.getLibraryById(libraryId);
               return { libraryId, data: library || null };
             } catch (error) {
-              console.error('Error fetching library data:', error);
+              logger.error('Error fetching library data:', error);
               return { libraryId, data: null };
             }
         })
@@ -1480,7 +1476,7 @@ const ProgramDetailScreen = () => {
   // Verify program ownership
   useEffect(() => {
     if (program && user && program.creator_id !== user.uid) {
-      setError('No tienes permiso para ver este programa');
+      logger.warn('User does not own this program:', programId);
     }
   }, [program, user]);
 
@@ -1503,23 +1499,6 @@ const ProgramDetailScreen = () => {
 
     fetchLibraryExerciseCompleteness(references);
   }, [exercises, fetchLibraryExerciseCompleteness]);
-
-  // Analytics are now loaded via React Query hook above
-  // They're automatically cached for 15 minutes and only refetch when stale
-
-  // Handlers for Lab page
-  const handleShowStatExplanation = (statKey) => {
-    const explanation = STAT_EXPLANATIONS[statKey];
-    if (explanation) {
-      setStatExplanation(explanation);
-      setIsStatExplanationModalOpen(true);
-    }
-  };
-
-  const handleShowUserInfo = (user) => {
-    setSelectedUserInfo(user);
-    setIsUserInfoModalOpen(true);
-  };
 
   // Improved metric card with description
   const MetricCard = ({ statKey, value, label, percentageChange, description }) => (
@@ -1613,7 +1592,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseStatusModal();
     } catch (err) {
-      console.error('Error updating status:', err);
+      logger.error('Error updating status:', err);
       alert('Error al actualizar el estado del programa');
     } finally {
       setIsUpdatingStatus(false);
@@ -1664,7 +1643,7 @@ const ProgramDetailScreen = () => {
       
       handleClosePriceModal();
     } catch (err) {
-      console.error('Error updating price:', err);
+      logger.error('Error updating price:', err);
       alert('Error al actualizar el precio del programa');
     } finally {
       setIsUpdatingPrice(false);
@@ -1751,7 +1730,7 @@ const ProgramDetailScreen = () => {
 
       setImageUploadProgress(100);
     } catch (err) {
-      console.error('Error uploading image:', err);
+      logger.error('Error uploading image:', err);
       alert('Error al subir la imagen. Por favor, intenta de nuevo.');
     } finally {
       setIsUploadingImage(false);
@@ -1782,7 +1761,7 @@ const ProgramDetailScreen = () => {
         })
       );
     } catch (err) {
-      console.error('Error deleting image:', err);
+      logger.error('Error deleting image:', err);
       alert('Error al eliminar la imagen. Por favor, intenta de nuevo.');
     }
   };
@@ -1815,7 +1794,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseEditProgramModal();
     } catch (err) {
-      console.error('Error updating program:', err);
+      logger.error('Error updating program:', err);
       alert('Error al actualizar el programa');
     } finally {
       setIsUpdatingProgram(false);
@@ -1864,7 +1843,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseDurationModal();
     } catch (err) {
-      console.error('Error updating duration:', err);
+      logger.error('Error updating duration:', err);
       alert('Error al actualizar la duración del programa');
     } finally {
       setIsUpdatingDuration(false);
@@ -1900,7 +1879,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseWeightSuggestionsModal();
     } catch (err) {
-      console.error('Error updating weight suggestions settings:', err);
+      logger.error('Error updating weight suggestions settings:', err);
       alert('Error al actualizar la configuración de sugerencias de peso');
     } finally {
       setIsUpdatingWeightSuggestions(false);
@@ -1971,7 +1950,7 @@ const ProgramDetailScreen = () => {
 
       setIsFreeTrialModalOpen(false);
     } catch (err) {
-      console.error('Error updating free trial settings:', err);
+      logger.error('Error updating free trial settings:', err);
       alert('Error al actualizar la prueba gratis');
     } finally {
       setIsUpdatingFreeTrial(false);
@@ -1993,7 +1972,7 @@ const ProgramDetailScreen = () => {
       const currentSelected = program.availableLibraries || [];
       setSelectedLibraryIds(new Set(currentSelected));
     } catch (err) {
-      console.error('Error loading libraries:', err);
+      logger.error('Error loading libraries:', err);
       alert('Error al cargar las bibliotecas');
       setIsAuxiliaryLibrariesModalOpen(false);
     } finally {
@@ -2021,7 +2000,7 @@ const ProgramDetailScreen = () => {
 
   const handleUpdateAuxiliaryLibraries = async () => {
     if (!program || !program.id) {
-      console.error('Cannot update auxiliary libraries: program or program.id is missing');
+      logger.error('Cannot update auxiliary libraries: program or program.id is missing');
       alert('Error: No se pudo identificar el programa');
       return;
     }
@@ -2030,7 +2009,7 @@ const ProgramDetailScreen = () => {
       setIsUpdatingAuxiliaryLibraries(true);
       // Ensure we have a valid array (even if empty)
       const libraryIdsArray = Array.from(selectedLibraryIds).filter(id => id && (typeof id === 'string' || typeof id === 'number'));
-      console.log('[handleUpdateAuxiliaryLibraries] Starting update:', { 
+      logger.log('[handleUpdateAuxiliaryLibraries] Starting update:', { 
         programId: program.id, 
         libraryIdsArray,
         libraryIdsArrayLength: libraryIdsArray.length,
@@ -2054,11 +2033,11 @@ const ProgramDetailScreen = () => {
         })
       );
       
-      console.log('[handleUpdateAuxiliaryLibraries] Update successful');
+      logger.log('[handleUpdateAuxiliaryLibraries] Update successful');
       handleCloseAuxiliaryLibrariesModal();
     } catch (err) {
-      console.error('[handleUpdateAuxiliaryLibraries] Error updating auxiliary libraries:', err);
-      console.error('[handleUpdateAuxiliaryLibraries] Error details:', {
+      logger.error('[handleUpdateAuxiliaryLibraries] Error updating auxiliary libraries:', err);
+      logger.error('[handleUpdateAuxiliaryLibraries] Error details:', {
         message: err.message,
         code: err.code,
         name: err.name,
@@ -2089,7 +2068,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { status });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, status }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar el estado');
     } finally {
       setIsUpdatingStatus(false);
@@ -2104,7 +2083,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { title: t });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, title: t }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar el nombre');
     } finally {
       setIsUpdatingProgram(false);
@@ -2121,7 +2100,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { price: numericPrice });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, price: numericPrice }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar el precio');
     } finally {
       setIsUpdatingPrice(false);
@@ -2138,7 +2117,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { duration: durationString });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, duration: durationString }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar la duración');
     } finally {
       setIsUpdatingDuration(false);
@@ -2154,7 +2133,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { free_trial });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, free_trial }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar la prueba gratis');
     } finally {
       setIsUpdatingFreeTrial(false);
@@ -2168,7 +2147,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { weight_suggestions: !!enabled });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, weight_suggestions: !!enabled }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar sugerencias de peso');
     } finally {
       setIsUpdatingWeightSuggestions(false);
@@ -2183,7 +2162,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { availableLibraries: ids });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, availableLibraries: ids }));
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Error al actualizar bibliotecas');
     } finally {
       setIsUpdatingAuxiliaryLibraries(false);
@@ -2254,7 +2233,7 @@ const ProgramDetailScreen = () => {
         try {
           await programService.deleteTutorialVideo(program.id, selectedScreen, oldVideoURL);
         } catch (deleteErr) {
-          console.warn('Error deleting old video:', deleteErr);
+          logger.warn('Error deleting old video:', deleteErr);
         }
         // Replace video at current index
         tutorials[selectedScreen][selectedVideoIndex] = videoURL;
@@ -2279,8 +2258,8 @@ const ProgramDetailScreen = () => {
       setAnuncioVideoUploadProgress(100);
       setIsAnuncioVideoEditMode(false);
     } catch (err) {
-      console.error('Error uploading video:', err);
-      console.error('Error details:', {
+      logger.error('Error uploading video:', err);
+      logger.error('Error details:', {
         message: err.message,
         code: err.code,
         name: err.name,
@@ -2337,7 +2316,7 @@ const ProgramDetailScreen = () => {
         setSelectedVideoIndex(newLength - 1);
       }
     } catch (err) {
-      console.error('Error deleting video:', err);
+      logger.error('Error deleting video:', err);
       alert('Error al eliminar el video. Por favor, intenta de nuevo.');
     }
   };
@@ -2367,7 +2346,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
       setAnuncioVideoUploadProgress(100);
     } catch (err) {
-      console.error('Error uploading video:', err);
+      logger.error('Error uploading video:', err);
       alert(err?.message || 'Error al subir el video');
     } finally {
       setIsUploadingAnuncioVideo(false);
@@ -2389,7 +2368,7 @@ const ProgramDetailScreen = () => {
       await programService.updateProgram(program.id, { tutorials });
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
     } catch (err) {
-      console.error('Error deleting video:', err);
+      logger.error('Error deleting video:', err);
       alert('Error al eliminar el video');
     }
   };
@@ -2448,8 +2427,8 @@ const ProgramDetailScreen = () => {
       setIntroVideoUploadProgress(100);
       setIsIntroVideoEditMode(false);
     } catch (err) {
-      console.error('Error uploading intro video:', err);
-      console.error('Error details:', {
+      logger.error('Error uploading intro video:', err);
+      logger.error('Error details:', {
         message: err.message,
         code: err.code,
         name: err.name,
@@ -2486,7 +2465,7 @@ const ProgramDetailScreen = () => {
         })
       );
     } catch (err) {
-      console.error('Error deleting intro video:', err);
+      logger.error('Error deleting intro video:', err);
       alert('Error al eliminar el video. Por favor, intenta de nuevo.');
     }
   };
@@ -2533,7 +2512,7 @@ const ProgramDetailScreen = () => {
           moduleOrders,
         });
       } catch (error) {
-        console.error('Error saving module order:', error);
+        logger.error('Error saving module order:', error);
         // Revert UI on error
         if (originalModulesOrder.length > 0) {
           setModules([...originalModulesOrder]);
@@ -2555,7 +2534,7 @@ const ProgramDetailScreen = () => {
           sessionOrders,
         });
       } catch (error) {
-        console.error('Error saving session order:', error);
+        logger.error('Error saving session order:', error);
         if (originalSessionsOrder.length > 0) {
           setSessions([...originalSessionsOrder]);
         }
@@ -2625,7 +2604,7 @@ const ProgramDetailScreen = () => {
         [moduleId]: !moduleComplete,
       }));
     } catch (error) {
-      console.error('Error updating completeness flags:', error);
+      logger.error('Error updating completeness flags:', error);
       // Don't throw - this is a background update
     }
   }, [programId, exercises, exerciseSetsMap, sessions, sessionIncompleteMap]);
@@ -2649,12 +2628,11 @@ const ProgramDetailScreen = () => {
       handleCloseModuleModal();
       }
     } catch (err) {
-      console.error('Error creating module:', err);
+      logger.error('Error creating module:', err);
       alert('Error al crear el módulo. Por favor, intenta de nuevo.');
     }
   };
 
-  // ✅ NEW: Load library modules
   const loadLibraryModules = async () => {
     if (!user) return;
     
@@ -2663,14 +2641,13 @@ const ProgramDetailScreen = () => {
       const modules = await libraryService.getModuleLibrary(user.uid);
       setLibraryModules(modules);
     } catch (error) {
-      console.error('Error loading library modules:', error);
+      logger.error('Error loading library modules:', error);
       alert('Error al cargar los módulos de la biblioteca');
     } finally {
       setIsLoadingLibraryModules(false);
     }
   };
 
-  // ✅ NEW: Handle library module selection
   const handleSelectLibraryModule = async (libraryModuleId) => {
     if (!programId || !libraryModuleId) return;
     
@@ -2689,7 +2666,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseCopyModuleModal();
     } catch (err) {
-      console.error('Error creating module from library:', err);
+      logger.error('Error creating module from library:', err);
       alert(`Error al agregar el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsCreatingModule(false);
@@ -2726,7 +2703,7 @@ const ProgramDetailScreen = () => {
       setIsModuleEditMode(false);
       setOriginalModulesOrder([]);
     } catch (err) {
-      console.error('Error updating module order:', err);
+      logger.error('Error updating module order:', err);
       if (originalModulesOrder.length > 0) {
         setModules([...originalModulesOrder]);
       }
@@ -2785,7 +2762,7 @@ const ProgramDetailScreen = () => {
       setIsSessionEditMode(false);
       setOriginalSessionsOrder([]);
     } catch (err) {
-      console.error('Error updating session order:', err);
+      logger.error('Error updating session order:', err);
       if (originalSessionsOrder.length > 0) {
         setSessions([...originalSessionsOrder]);
       }
@@ -2815,7 +2792,6 @@ const ProgramDetailScreen = () => {
   };
 
   const handleDeleteModule = async (module) => {
-    // ✅ NEW: Check if library module - check usage
     if (module.libraryModuleRef && user) {
       try {
         const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, module.libraryModuleRef);
@@ -2829,7 +2805,7 @@ const ProgramDetailScreen = () => {
           return;
         }
       } catch (error) {
-        console.error('Error checking library module usage:', error);
+        logger.error('Error checking library module usage:', error);
         // Continue with delete attempt anyway
       }
     }
@@ -2858,7 +2834,7 @@ const ProgramDetailScreen = () => {
 
     try {
       setIsDeletingModule(true);
-      console.log('[handleConfirmDeleteModule] Starting deletion:', {
+      logger.log('[handleConfirmDeleteModule] Starting deletion:', {
         programId,
         moduleId: moduleToDelete.id,
         moduleTitle: moduleTitle
@@ -2892,8 +2868,8 @@ const ProgramDetailScreen = () => {
         setIsModuleEditMode(false);
       }
     } catch (err) {
-      console.error('[handleConfirmDeleteModule] Error deleting module:', err);
-      console.error('[handleConfirmDeleteModule] Error details:', {
+      logger.error('[handleConfirmDeleteModule] Error deleting module:', err);
+      logger.error('[handleConfirmDeleteModule] Error details:', {
         message: err.message,
         code: err.code,
         stack: err.stack
@@ -2978,7 +2954,7 @@ const ProgramDetailScreen = () => {
                       );
                       setsMap[exercise.id] = setsData;
                     } catch (err) {
-                      console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+                      logger.error(`Error loading sets for exercise ${exercise.id}:`, err);
                       setsMap[exercise.id] = [];
                     }
                   })
@@ -2992,7 +2968,7 @@ const ProgramDetailScreen = () => {
                 
                 sessionStatusesToCheck[session.id] = hasIncomplete;
               } catch (err) {
-                console.error(`Error checking session ${session.id} completeness:`, err);
+                logger.error(`Error checking session ${session.id} completeness:`, err);
                 sessionStatusesToCheck[session.id] = false; // Default to complete on error
               }
             })
@@ -3067,8 +3043,6 @@ const ProgramDetailScreen = () => {
     }
   }, [sortedExercises]);
 
-  // checkExerciseCompletenessInline is now defined earlier (moved to avoid initialization errors)
-
   // Load sets for all exercises when session is selected (needed for completeness checking)
   useEffect(() => {
     const loadSetsForAllExercises = async () => {
@@ -3090,7 +3064,7 @@ const ProgramDetailScreen = () => {
               );
               setsMap[exercise.id] = setsData;
             } catch (err) {
-              console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+              logger.error(`Error loading sets for exercise ${exercise.id}:`, err);
               setsMap[exercise.id] = [];
             }
           })
@@ -3122,7 +3096,7 @@ const ProgramDetailScreen = () => {
           }));
         }
       } catch (error) {
-        console.error('Error loading sets for exercises:', error);
+        logger.error('Error loading sets for exercises:', error);
       }
     };
 
@@ -3131,7 +3105,7 @@ const ProgramDetailScreen = () => {
 
   const handleSessionClick = useCallback((session) => {
     const tabKey = effectiveTabConfig[currentTabIndex]?.key;
-    console.log('[ProgramDetailScreen] handleSessionClick called', {
+    logger.log('[ProgramDetailScreen] handleSessionClick called', {
       isSessionEditMode,
       tabKey,
       currentTabIndex,
@@ -3142,15 +3116,15 @@ const ProgramDetailScreen = () => {
       sessionLibraryRef: session?.librarySessionRef,
     });
     if (isSessionEditMode) {
-      console.log('[ProgramDetailScreen] handleSessionClick: in session edit mode, ignoring');
+      logger.log('[ProgramDetailScreen] handleSessionClick: in session edit mode, ignoring');
       return;
     }
     if (tabKey === 'contenido' && selectedModule) {
-      console.log('[ProgramDetailScreen] handleSessionClick: Contenido tab with selectedModule, calling navigateToSessionEdit');
+      logger.log('[ProgramDetailScreen] handleSessionClick: Contenido tab with selectedModule, calling navigateToSessionEdit');
       navigateToSessionEdit(session, selectedModule);
       return;
     }
-    console.log('[ProgramDetailScreen] handleSessionClick: setting selectedSession (Lab or no selectedModule)');
+    logger.log('[ProgramDetailScreen] handleSessionClick: setting selectedSession (Lab or no selectedModule)');
     setSelectedSession(session);
   }, [isSessionEditMode, effectiveTabConfig, currentTabIndex, selectedModule, navigateToSessionEdit]);
 
@@ -3262,7 +3236,7 @@ const ProgramDetailScreen = () => {
                 }
               });
             } catch (error) {
-              console.error(`Error fetching library ${libraryId}:`, error);
+              logger.error(`Error fetching library ${libraryId}:`, error);
               titlesMap[libraryId] = libraryId;
               referenceLibrariesMap[libraryId].forEach((exerciseName) => {
                 if (!exerciseName) return;
@@ -3310,7 +3284,7 @@ const ProgramDetailScreen = () => {
       }
       setExpandedSeries({}); // Reset expanded state
     } catch (error) {
-      console.error('Error opening exercise modal:', error);
+      logger.error('Error opening exercise modal:', error);
       alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
     }
   };
@@ -3339,7 +3313,7 @@ const ProgramDetailScreen = () => {
       setAvailableLibrariesForSelection(libraries);
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
-      console.error('Error loading libraries:', err);
+      logger.error('Error loading libraries:', err);
       alert('Error al cargar las bibliotecas');
     } finally {
       setIsLoadingLibrariesForSelection(false);
@@ -3377,7 +3351,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseLibraryExerciseModal();
     } catch (err) {
-      console.error('Error updating exercise:', err);
+      logger.error('Error updating exercise:', err);
       alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
     }
   };
@@ -3512,7 +3486,7 @@ const ProgramDetailScreen = () => {
       let newExercise;
       if (sessionIsLibraryRef && user) {
         // If session is a library reference, create exercise in library session
-        console.log('handleCreateNewExercise: Session is library reference, creating in library session');
+        logger.log('handleCreateNewExercise: Session is library reference, creating in library session');
         newExercise = await libraryService.createExerciseInLibrarySession(
           user.uid,
           selectedSession.librarySessionRef,
@@ -3634,7 +3608,7 @@ const ProgramDetailScreen = () => {
       // Close modal
       handleCloseCreateExerciseModal();
     } catch (err) {
-      console.error('Error creating exercise:', err);
+      logger.error('Error creating exercise:', err);
       alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
     } finally {
       setIsCreatingNewExercise(false);
@@ -3695,7 +3669,7 @@ const ProgramDetailScreen = () => {
       let newExercise;
       if (sessionIsLibraryRef && user) {
         // If session is a library reference, create exercise in library session
-        console.log('Session is library reference, creating exercise in library session:', {
+        logger.log('Session is library reference, creating exercise in library session:', {
           librarySessionRef: selectedSession.librarySessionRef,
           primaryExerciseName
         });
@@ -3850,7 +3824,7 @@ const ProgramDetailScreen = () => {
       setIsMeasuresObjectivesEditorOpen(false);
       setUnsavedSetChanges({});
     } catch (err) {
-      console.error('Error creating exercise:', err);
+      logger.error('Error creating exercise:', err);
       alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
     } finally {
       setIsCreatingNewExercise(false);
@@ -3990,7 +3964,7 @@ const ProgramDetailScreen = () => {
 
     const set = exerciseSets[setIndex];
     if (!set || !set.id) {
-      console.error('Set not found or missing ID');
+      logger.error('Set not found or missing ID');
       return;
     }
 
@@ -4187,7 +4161,7 @@ const ProgramDetailScreen = () => {
       // Refresh incomplete status after set update
       await refreshIncompleteStatus();
     } catch (err) {
-      console.error('Error saving set changes:', err);
+      logger.error('Error saving set changes:', err);
       alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
     } finally {
       setIsSavingSetChanges(false);
@@ -4255,7 +4229,7 @@ const ProgramDetailScreen = () => {
       setIsSeriesEditMode(false);
       setOriginalSeriesOrder([]);
     } catch (err) {
-      console.error('Error updating series order:', err);
+      logger.error('Error updating series order:', err);
       // Revert to original order on error
       if (originalSeriesOrder.length > 0) {
         setExerciseSets([...originalSeriesOrder]);
@@ -4343,7 +4317,7 @@ const ProgramDetailScreen = () => {
       
       return newSet;
     } catch (err) {
-      console.error('Error creating set:', err);
+      logger.error('Error creating set:', err);
       alert('Error al crear la serie. Por favor, intenta de nuevo.');
       throw err;
     } finally {
@@ -4401,7 +4375,7 @@ const ProgramDetailScreen = () => {
       // Refresh incomplete status after set duplication
       await refreshIncompleteStatus();
     } catch (err) {
-      console.error('Error duplicando serie:', err);
+      logger.error('Error duplicando serie:', err);
       alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
     }
   };
@@ -4463,7 +4437,7 @@ const ProgramDetailScreen = () => {
       // Refresh incomplete status after set deletion
       await refreshIncompleteStatus();
     } catch (err) {
-      console.error('Error deleting set:', err);
+      logger.error('Error deleting set:', err);
       alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
     }
   };
@@ -4606,7 +4580,7 @@ const ProgramDetailScreen = () => {
             );
             setsMap[exercise.id] = setsData;
           } catch (err) {
-            console.error(`Error loading sets for exercise ${exercise.id}:`, err);
+            logger.error(`Error loading sets for exercise ${exercise.id}:`, err);
             setsMap[exercise.id] = [];
           }
         })
@@ -4618,7 +4592,7 @@ const ProgramDetailScreen = () => {
         return checkExerciseIncomplete(exercise, sets);
       });
     } catch (err) {
-      console.error(`Error checking session ${sessionId} completeness:`, err);
+      logger.error(`Error checking session ${sessionId} completeness:`, err);
       return false;
     }
   };
@@ -4643,7 +4617,7 @@ const ProgramDetailScreen = () => {
       
       return false;
     } catch (err) {
-      console.error(`Error checking module ${moduleId} completeness:`, err);
+      logger.error(`Error checking module ${moduleId} completeness:`, err);
       return false;
     }
   };
@@ -4707,7 +4681,7 @@ const ProgramDetailScreen = () => {
         [selectedModule.id]: hasIncompleteSession
       }));
     } catch (err) {
-      console.error('Error refreshing incomplete status:', err);
+      logger.error('Error refreshing incomplete status:', err);
     }
   };
 
@@ -4722,7 +4696,7 @@ const ProgramDetailScreen = () => {
           return primaryValues[0];
         }
       } catch (error) {
-        console.error('Error extracting primary exercise name:', error);
+        logger.error('Error extracting primary exercise name:', error);
       }
     }
     return source.name || source.title || `Ejercicio ${source.id?.slice(0, 8) || ''}`;
@@ -4746,7 +4720,7 @@ const ProgramDetailScreen = () => {
       setAvailableLibrariesForSelection(libraries);
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
-      console.error('Error loading libraries:', err);
+      logger.error('Error loading libraries:', err);
       alert('Error al cargar las bibliotecas');
     } finally {
       setIsLoadingLibrariesForSelection(false);
@@ -4784,7 +4758,7 @@ const ProgramDetailScreen = () => {
       setAppliedPresetId(preset.id);
       setIsPresetSelectorOpen(false);
     } catch (err) {
-      console.error('Error applying preset:', err);
+      logger.error('Error applying preset:', err);
       alert('Error al aplicar la plantilla. Por favor, intenta de nuevo.');
     }
   };
@@ -4803,7 +4777,7 @@ const ProgramDetailScreen = () => {
         setAppliedPresetId(null);
         await applyPresetToExercise({ id, name: data.name, ...updates });
       } catch (err) {
-        console.error('Error creating preset:', err);
+        logger.error('Error creating preset:', err);
         alert('Error al crear la plantilla. Por favor, intenta de nuevo.');
         return;
       }
@@ -4822,7 +4796,7 @@ const ProgramDetailScreen = () => {
           await refreshIncompleteStatus();
         }
       } catch (err) {
-        console.error('Error updating preset:', err);
+        logger.error('Error updating preset:', err);
         alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
         return;
       }
@@ -4841,7 +4815,7 @@ const ProgramDetailScreen = () => {
           applyExercisePatch(currentExerciseId, payload);
           await refreshIncompleteStatus();
         } catch (err) {
-          console.error('Error updating exercise:', err);
+          logger.error('Error updating exercise:', err);
           alert('Error al guardar. Por favor, intenta de nuevo.');
           return;
         }
@@ -4875,7 +4849,7 @@ const ProgramDetailScreen = () => {
           applyExercisePatch(currentExerciseId, payload);
           await refreshIncompleteStatus();
         } catch (err) {
-          console.error('Error updating exercise:', err);
+          logger.error('Error updating exercise:', err);
         }
       };
       persist();
@@ -4935,7 +4909,7 @@ const ProgramDetailScreen = () => {
         await refreshIncompleteStatus();
       }
     } catch (err) {
-      console.error('Error deleting alternative:', err);
+      logger.error('Error deleting alternative:', err);
       alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
     }
   };
@@ -4966,7 +4940,7 @@ const ProgramDetailScreen = () => {
       setAvailableLibrariesForSelection(libraries);
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
-      console.error('Error loading libraries:', err);
+      logger.error('Error loading libraries:', err);
       alert('Error al cargar las bibliotecas');
     } finally {
       setIsLoadingLibrariesForSelection(false);
@@ -4991,7 +4965,7 @@ const ProgramDetailScreen = () => {
       setAvailableLibrariesForSelection(libraries);
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
-      console.error('Error loading libraries:', err);
+      logger.error('Error loading libraries:', err);
       alert('Error al cargar las bibliotecas');
     } finally {
       setIsLoadingLibrariesForSelection(false);
@@ -5023,7 +4997,7 @@ const ProgramDetailScreen = () => {
         setExercisesFromSelectedLibrary(exercises);
       }
     } catch (err) {
-      console.error('Error loading exercises from library:', err);
+      logger.error('Error loading exercises from library:', err);
       alert('Error al cargar los ejercicios de la biblioteca');
     } finally {
       setIsLoadingExercisesFromLibrary(false);
@@ -5213,7 +5187,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseLibraryExerciseModal();
     } catch (err) {
-      console.error('Error updating exercise:', err);
+      logger.error('Error updating exercise:', err);
       alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
     }
   };
@@ -5242,7 +5216,7 @@ const ProgramDetailScreen = () => {
       setIsExerciseEditMode(false);
       setOriginalExercisesOrder([]);
     } catch (err) {
-      console.error('Error updating exercise order:', err);
+      logger.error('Error updating exercise order:', err);
       // Revert to original order on error
       if (originalExercisesOrder.length > 0) {
         setExercises([...originalExercisesOrder]);
@@ -5307,7 +5281,7 @@ const ProgramDetailScreen = () => {
 
     try {
       setIsDeletingExercise(true);
-      console.log('[handleConfirmDeleteExercise] Starting deletion:', {
+      logger.log('[handleConfirmDeleteExercise] Starting deletion:', {
         programId,
         moduleId: selectedModule?.id,
         sessionId: selectedSession?.id,
@@ -5337,8 +5311,8 @@ const ProgramDetailScreen = () => {
         setIsExerciseEditMode(false);
       }
     } catch (err) {
-      console.error('[handleConfirmDeleteExercise] Error deleting exercise:', err);
-      console.error('[handleConfirmDeleteExercise] Error details:', {
+      logger.error('[handleConfirmDeleteExercise] Error deleting exercise:', err);
+      logger.error('[handleConfirmDeleteExercise] Error details:', {
         message: err.message,
         code: err.code,
         stack: err.stack
@@ -5362,7 +5336,6 @@ const ProgramDetailScreen = () => {
     }
   };
 
-  // ✅ NEW: Load library sessions
   const loadLibrarySessions = async () => {
     if (!user) return;
     
@@ -5371,21 +5344,20 @@ const ProgramDetailScreen = () => {
       const sessions = await libraryService.getSessionLibrary(user.uid);
       setLibrarySessions(sessions);
     } catch (error) {
-      console.error('Error loading library sessions:', error);
+      logger.error('Error loading library sessions:', error);
       alert('Error al cargar las sesiones de la biblioteca');
     } finally {
       setIsLoadingLibrarySessions(false);
     }
   };
 
-  // ✅ NEW: Handle library session selection
   const handleSelectLibrarySession = async (librarySessionId) => {
     if (!programId || !selectedModule || !librarySessionId || !user) return;
     
     try {
       setIsCreatingSession(true);
       
-      console.log('Adding session to module:', {
+      logger.log('Adding session to module:', {
         programId,
         moduleId: selectedModule.id,
         librarySessionId,
@@ -5395,7 +5367,7 @@ const ProgramDetailScreen = () => {
       // Check if the module is a library reference
       if (selectedModule.libraryModuleRef) {
         // If module is a library reference, add session to library module's sessionRefs
-        console.log('Module is library reference, adding to library module sessionRefs');
+        logger.log('Module is library reference, adding to library module sessionRefs');
         await libraryService.addSessionToLibraryModule(
           user.uid,
           selectedModule.libraryModuleRef,
@@ -5421,7 +5393,7 @@ const ProgramDetailScreen = () => {
       
       handleCloseCopySessionModal();
     } catch (err) {
-      console.error('Error creating session from library:', err);
+      logger.error('Error creating session from library:', err);
       alert(`Error al agregar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsCreatingSession(false);
@@ -5514,7 +5486,7 @@ const ProgramDetailScreen = () => {
         await programService.updateProgram(program.id, { image_url: item.url, image_path: null });
         queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, image_url: item.url, image_path: null }));
       } catch (err) {
-        console.error('Error updating program image:', err);
+        logger.error('Error updating program image:', err);
         alert('Error al asignar la imagen.');
       }
       setIsMediaPickerOpen(false);
@@ -5534,7 +5506,7 @@ const ProgramDetailScreen = () => {
           }
           setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
         } catch (err) {
-          console.error('Error updating session image:', err);
+          logger.error('Error updating session image:', err);
           alert('Error al asignar la imagen.');
         }
       }
@@ -5550,7 +5522,7 @@ const ProgramDetailScreen = () => {
     try {
       setIsCreatingSession(true);
       
-      console.log('Creating session with:', {
+      logger.log('Creating session with:', {
         programId,
         moduleId: selectedModule.id,
         sessionName: sessionName.trim(),
@@ -5570,7 +5542,7 @@ const ProgramDetailScreen = () => {
           );
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
-          console.error('Error uploading session image - Full error:', uploadErr);
+          logger.error('Error uploading session image - Full error:', uploadErr);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
           return;
         } finally {
@@ -5579,8 +5551,6 @@ const ProgramDetailScreen = () => {
       }
       
       const newSession = await programService.createSession(programId, selectedModule.id, sessionName.trim(), null, imageUrl);
-      
-      // ✅ NEW: Save to library if requested
       
       // Reload sessions
       const sessionsData = await programService.getSessionsByModule(programId, selectedModule.id);
@@ -5599,10 +5569,10 @@ const ProgramDetailScreen = () => {
       handleCloseSessionModal();
       }
     } catch (err) {
-      console.error('Error creating session - Full error:', err);
-      console.error('Error code:', err.code);
-      console.error('Error message:', err.message);
-      console.error('Error stack:', err.stack);
+      logger.error('Error creating session - Full error:', err);
+      logger.error('Error code:', err.code);
+      logger.error('Error message:', err.message);
+      logger.error('Error stack:', err.stack);
       alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsCreatingSession(false);
@@ -5617,7 +5587,7 @@ const ProgramDetailScreen = () => {
     try {
       setIsUpdatingSession(true);
       
-      console.log('Updating session with:', {
+      logger.log('Updating session with:', {
         programId,
         moduleId: selectedModule.id,
         sessionId: sessionToEdit.id,
@@ -5629,7 +5599,6 @@ const ProgramDetailScreen = () => {
         isEditingLibrary: isEditingLibrarySession
       });
       
-      // ✅ NEW: Check if library session - show edit options
       if (sessionToEdit.librarySessionRef && !isEditingLibrarySession) {
         // Show modal to choose: edit library or customize for program
         const editChoice = window.confirm(
@@ -5706,7 +5675,7 @@ const ProgramDetailScreen = () => {
           );
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
-          console.error('Error uploading session image - Full error:', uploadErr);
+          logger.error('Error uploading session image - Full error:', uploadErr);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
           return;
         } finally {
@@ -5717,7 +5686,6 @@ const ProgramDetailScreen = () => {
         imageUrl = null;
       }
       
-          // ✅ NEW: If editing library session, update library
           if (sessionToEdit.librarySessionRef && isEditingLibrarySession && user) {
             // Update library session (this will propagate to all programs)
             await libraryService.updateLibrarySession(user.uid, sessionToEdit.librarySessionRef, {
@@ -5762,10 +5730,10 @@ const ProgramDetailScreen = () => {
       
       handleCloseSessionModal();
     } catch (err) {
-      console.error('Error updating session - Full error:', err);
-      console.error('Error code:', err.code);
-      console.error('Error message:', err.message);
-      console.error('Error stack:', err.stack);
+      logger.error('Error updating session - Full error:', err);
+      logger.error('Error code:', err.code);
+      logger.error('Error message:', err.message);
+      logger.error('Error stack:', err.stack);
       alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsUpdatingSession(false);
@@ -5786,7 +5754,7 @@ const ProgramDetailScreen = () => {
 
   const handleConfirmDeleteSession = async () => {
     if (!sessionToDelete || !deleteSessionConfirmation.trim() || !programId || !selectedModule) {
-      console.error('Missing required data for deletion:', {
+      logger.error('Missing required data for deletion:', {
         hasSessionToDelete: !!sessionToDelete,
         hasConfirmation: !!deleteSessionConfirmation.trim(),
         hasProgramId: !!programId,
@@ -5801,7 +5769,7 @@ const ProgramDetailScreen = () => {
     // Verify the confirmation matches the session title
     const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
     if (deleteSessionConfirmation.trim() !== sessionTitle) {
-      console.error('Confirmation mismatch:', {
+      logger.error('Confirmation mismatch:', {
         entered: deleteSessionConfirmation.trim(),
         expected: sessionTitle
       });
@@ -5811,14 +5779,13 @@ const ProgramDetailScreen = () => {
     try {
       setIsDeletingSession(true);
       
-      console.log('Attempting to delete session with:', {
+      logger.log('Attempting to delete session with:', {
         programId,
         moduleId: selectedModule.id,
         sessionId: sessionToDelete.id,
         session: sessionToDelete
       });
       
-      // ✅ NEW: If library session reference, just remove the reference (don't delete library)
       if (sessionToDelete.librarySessionRef) {
         // Delete program session document (which is just a reference)
         await programService.deleteSession(programId, selectedModule.id, sessionToDelete.id);
@@ -5849,10 +5816,10 @@ const ProgramDetailScreen = () => {
         setIsSessionEditMode(false);
       }
     } catch (err) {
-      console.error('Error deleting session - Full error:', err);
-      console.error('Error code:', err.code);
-      console.error('Error message:', err.message);
-      console.error('Error stack:', err.stack);
+      logger.error('Error deleting session - Full error:', err);
+      logger.error('Error code:', err.code);
+      logger.error('Error message:', err.message);
+      logger.error('Error stack:', err.stack);
       alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsDeletingSession(false);
@@ -5862,11 +5829,7 @@ const ProgramDetailScreen = () => {
   // Memoize tab content rendering to prevent unnecessary re-renders
   const renderTabContent = useCallback(() => {
     if (loading) {
-      return (
-        <div className="program-detail-loading">
-          <p>Cargando programa...</p>
-        </div>
-      );
+      return <ScreenSkeleton />;
     }
 
     if (error) {
@@ -6195,7 +6158,7 @@ const ProgramDetailScreen = () => {
                     <div className="program-config-description-edit">
                       <textarea className="program-config-description-textarea" value={descriptionValue} onChange={(e) => setDescriptionValue(e.target.value)} placeholder="Escribe la descripción del programa..." rows={5} />
                       <div className="program-config-description-actions">
-                        <Button title={isUpdatingDescription ? 'Guardando...' : 'Guardar'} onClick={async () => { if (!program) return; try { setIsUpdatingDescription(true); await programService.updateProgram(program.id, { description: descriptionValue }); queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, description: descriptionValue })); setIsEditingDescription(false); } catch (err) { console.error(err); alert('Error al actualizar la descripción'); } finally { setIsUpdatingDescription(false); } }} disabled={isUpdatingDescription} loading={isUpdatingDescription} />
+                        <Button title={isUpdatingDescription ? 'Guardando...' : 'Guardar'} onClick={async () => { if (!program) return; try { setIsUpdatingDescription(true); await programService.updateProgram(program.id, { description: descriptionValue }); queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, description: descriptionValue })); setIsEditingDescription(false); } catch (err) { logger.error(err); alert('Error al actualizar la descripción'); } finally { setIsUpdatingDescription(false); } }} disabled={isUpdatingDescription} loading={isUpdatingDescription} />
                       </div>
                     </div>
                   ) : (
@@ -6609,7 +6572,8 @@ const ProgramDetailScreen = () => {
   const showBreadcrumb = isContenidoTab && (selectedModule || selectedSession);
 
   return (
-    <DashboardLayout 
+    <ErrorBoundary>
+    <DashboardLayout
       screenName={getScreenName()}
       headerBackgroundImage={isLowTicket ? null : (selectedSession?.image_url || program?.image_url || null)}
       onHeaderEditClick={selectedSession ? handleEditSessionClick : handleEditProgramClick}
@@ -7475,7 +7439,7 @@ const ProgramDetailScreen = () => {
                       className="copy-session-item-button"
                       onClick={() => {
                         // TODO: Navigate to library module creation page
-                        console.log('Navigate to library module creation page');
+                        logger.log('Navigate to library module creation page');
                         navigate('/library/modules/new'); // Placeholder route
                       }}
                       style={{ minWidth: 'auto', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -7783,7 +7747,7 @@ const ProgramDetailScreen = () => {
                       className="copy-session-item-button"
                       onClick={() => {
                         // TODO: Navigate to library session creation page
-                        console.log('Navigate to library session creation page');
+                        logger.log('Navigate to library session creation page');
                         navigate('/library/sessions/new'); // Placeholder route
                       }}
                       style={{ minWidth: 'auto', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -7973,7 +7937,7 @@ const ProgramDetailScreen = () => {
                 return primaryValues[0];
               }
             } catch (error) {
-              console.error('Error extracting exercise title:', error);
+              logger.error('Error extracting exercise title:', error);
             }
           }
           return source.name || source.title || `Ejercicio ${source.id?.slice(0, 8) || ''}`;
@@ -7983,7 +7947,7 @@ const ProgramDetailScreen = () => {
         <div className="exercise-modal-layout">
           {/* Requirements Announcement - Always at top when creating */}
           {isCreatingExercise && !canSaveCreatingExercise() && (
-            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)', borderRadius: '8px' }}>
+            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '8px' }}>
               <p className="create-exercise-requirements-text">
                 Para crear el ejercicio, necesitas:
                 {(!exerciseDraft?.primary || Object.values(exerciseDraft.primary || {}).length === 0) && (
@@ -8661,7 +8625,7 @@ const ProgramDetailScreen = () => {
       >
         <div className="exercise-modal-layout">
           {!canSaveNewExercise() && (
-            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)', borderRadius: '8px' }}>
+            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '8px' }}>
               <p className="create-exercise-requirements-text">
                 Para crear el ejercicio, necesitas:
                 {(!newExerciseDraft?.primary || Object.values(newExerciseDraft.primary || {}).length === 0) && (
@@ -8932,6 +8896,7 @@ const ProgramDetailScreen = () => {
         </div>
       </Modal>
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

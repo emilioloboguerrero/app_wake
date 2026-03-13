@@ -63,7 +63,7 @@
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #BFA84D 0%, rgba(191, 168, 77, 0.8) 100%);
+  background: linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
   transition: width 0.3s ease;
   border-radius: 3px;
 }
@@ -180,12 +180,12 @@
 }
 
 .profile-picture-upload:hover {
-  border-color: rgba(191, 168, 77, 0.7);
+  border-color: rgba(255, 255, 255, 0.7);
   transform: scale(1.02);
 }
 
 .profile-picture-upload.has-image {
-  border-color: rgba(191, 168, 77, 0.7);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .profile-picture-upload img {
@@ -231,7 +231,7 @@
 
 .progress-fill {
   height: 100%;
-  background-color: #BFA84D;
+  background-color: #ffffff;
   transition: width 0.3s;
 }
 
@@ -359,7 +359,7 @@
 }
 
 .dropdown-item:hover {
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .dropdown-item:first-child {

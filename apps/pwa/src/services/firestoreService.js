@@ -1,20 +1,21 @@
 // Firestore service for Wake
 import { firestore } from '../config/firebase';
-import { 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
   deleteDoc,
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  getDocs, 
-  addDoc, 
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  addDoc,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  onSnapshot
 } from 'firebase/firestore';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import logger from '../utils/logger';
@@ -43,17 +44,14 @@ function removeUndefinedValues(obj) {
 }
 
 class FirestoreService {
-  // Users collection operations
+  // ============ USER PROFILE ============
+
   async createUser(userId, userData) {
-    try {
-      await setDoc(doc(firestore, 'users', userId), {
-        ...userData,
-        role: userData.role || 'user',        // Default to 'user' if not specified
-        created_at: serverTimestamp()
-      });
-    } catch (error) {
-      throw error;
-    }
+    await setDoc(doc(firestore, 'users', userId), {
+      ...userData,
+      role: userData.role || 'user',
+      created_at: serverTimestamp()
+    });
   }
 
   async getUser(userId) {
@@ -112,32 +110,23 @@ class FirestoreService {
     await this.updateUser(userId, { pinnedNutritionAssignmentId: assignmentId || null });
   }
 
-  // Progress tracking methods
+  // ============ PROGRESS TRACKING ============
+
   async createProgressEntry(userId, progressData) {
-    try {
-      const progressRef = collection(firestore, 'users', userId, 'progress');
-      const docRef = await addDoc(progressRef, {
-        ...progressData,
-        updated_at: serverTimestamp()
-      });
-      return docRef.id;
-    } catch (error) {
-      logger.error('Error creating progress entry:', error);
-      throw error;
-    }
+    const progressRef = collection(firestore, 'users', userId, 'progress');
+    const docRef = await addDoc(progressRef, {
+      ...progressData,
+      updated_at: serverTimestamp()
+    });
+    return docRef.id;
   }
 
   async updateProgressEntry(userId, progressId, progressData) {
-    try {
-      const progressRef = doc(firestore, 'users', userId, 'progress', progressId);
-      await updateDoc(progressRef, {
-        ...progressData,
-        updated_at: serverTimestamp()
-      });
-    } catch (error) {
-      logger.error('Error updating progress entry:', error);
-      throw error;
-    }
+    const progressRef = doc(firestore, 'users', userId, 'progress', progressId);
+    await updateDoc(progressRef, {
+      ...progressData,
+      updated_at: serverTimestamp()
+    });
   }
 
   async getUserProgress(userId, courseId = null) {
@@ -2439,6 +2428,42 @@ class FirestoreService {
       logger.error('❌ Error deleting completed_sessions documents:', error);
       throw error;
     }
+  }
+
+  // ============ USERNAME / LOOKUP ============
+
+  async isUsernameTaken(username, excludeUid = null) {
+    const q = query(collection(firestore, 'users'), where('username', '==', username.toLowerCase()));
+    const snap = await getDocs(q);
+    return snap.docs.some(d => d.id !== excludeUid);
+  }
+
+  // ============ REAL-TIME LISTENERS ============
+
+  subscribeToUserDoc(userId, callback, errorCallback) {
+    const userRef = doc(firestore, 'users', userId);
+    return onSnapshot(userRef, callback, errorCallback);
+  }
+
+  subscribeToUserSubscriptions(userId, callback, errorCallback) {
+    const subsRef = collection(firestore, 'users', userId, 'subscriptions');
+    return onSnapshot(subsRef, callback, errorCallback);
+  }
+
+  // ============ COURSES ============
+
+  async getCoursesByCreatorId(creatorId) {
+    const q = query(collection(firestore, 'courses'), where('creator_id', '==', creatorId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  // ============ EXERCISE LIBRARY ============
+
+  async getExerciseLibraryItem(exerciseId) {
+    const snap = await getDoc(doc(firestore, 'exercises_library', exerciseId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
   }
 
   /**

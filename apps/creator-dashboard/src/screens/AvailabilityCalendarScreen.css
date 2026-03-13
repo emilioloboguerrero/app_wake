@@ -61,7 +61,7 @@
 .availability-selected-day-label {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   margin: 0 0 8px 0;
 }
 
@@ -245,7 +245,7 @@
 .availability-input:focus,
 .availability-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.45);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 /* Hora de inicio: custom time input wrapper */
@@ -394,7 +394,7 @@
 
 .availability-draggable-slot-input:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.45);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .availability-draggable-slot-unit {
@@ -423,8 +423,8 @@
 }
 
 .availability-draggable-slot:hover {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .availability-draggable-slot-label {
@@ -434,9 +434,9 @@
 }
 
 .availability-timeline-drag-over {
-  outline: 2px dashed rgba(191, 168, 77, 0.6);
+  outline: 2px dashed rgba(255, 255, 255, 0.6);
   outline-offset: 2px;
-  background: rgba(191, 168, 77, 0.06);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .availability-slots-list-section {
@@ -601,12 +601,12 @@
 
 /* Reserved by users: gold background and border */
 .availability-timeline-slot-block.availability-timeline-slot-reserved {
-  background: rgba(191, 168, 77, 0.4);
-  border: 1px solid rgba(191, 168, 77, 0.8);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 .availability-timeline-slot-block.availability-timeline-slot-reserved:hover {
-  background: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Reserved but no call link: red - needs attention */
@@ -713,13 +713,13 @@
 
 .availability-day-dots {
   font-size: 8px;
-  color: rgba(191, 168, 77, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.5px;
 }
 
 .availability-day-selected {
-  border-color: rgba(191, 168, 77, 0.7) !important;
-  background: rgba(191, 168, 77, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
 }
 
 .availability-calendar-day.calendar-day-today {
@@ -728,8 +728,8 @@
 }
 
 .availability-calendar-day.availability-day-selected.calendar-day-today {
-  border-color: rgba(191, 168, 77, 0.7);
-  background: rgba(191, 168, 77, 0.15);
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* Slot detail modal – two-column layout */
@@ -796,8 +796,8 @@
 }
 
 .slot-detail-hero--ready {
-  background: linear-gradient(135deg, rgba(191, 168, 77, 0.2) 0%, rgba(191, 168, 77, 0.08) 100%);
-  border: 1px solid rgba(191, 168, 77, 0.3);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .slot-detail-hero--pending {
@@ -833,7 +833,7 @@
   font-weight: 600;
 }
 
-.slot-detail-hero--ready .slot-detail-hero-status { color: rgba(191, 168, 77, 0.95); }
+.slot-detail-hero--ready .slot-detail-hero-status { color: rgba(255, 255, 255, 0.95); }
 .slot-detail-hero--pending .slot-detail-hero-status { color: rgba(220, 53, 69, 0.95); }
 .slot-detail-hero--available .slot-detail-hero-status { color: rgba(255, 255, 255, 0.6); }
 
@@ -891,8 +891,8 @@
 }
 
 .slot-detail-badge--program {
-  color: rgba(191, 168, 77, 0.9);
-  background: rgba(191, 168, 77, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* Contact card */
@@ -915,7 +915,7 @@
 
 .slot-detail-contact-value {
   font-size: 14px;
-  color: rgba(191, 168, 77, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   text-decoration: none;
 }
 
@@ -1025,7 +1025,7 @@
 
 .slot-detail-call-input:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .slot-detail-call-input::placeholder {
@@ -1048,14 +1048,14 @@
 }
 
 .slot-detail-call-btn--changed {
-  background: rgba(191, 168, 77, 0.25);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
 }
 
 .slot-detail-call-btn--changed:hover:not(:disabled) {
-  background: rgba(191, 168, 77, 0.35);
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .slot-detail-call-btn:disabled {

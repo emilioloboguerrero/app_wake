@@ -1,8 +1,3 @@
-/**
- * PlanSessionDetailScreen - Entry for editing a plan session.
- * For sessions with librarySessionRef: shows scope modal (apply everywhere vs only this week).
- * For legacy sessions (no librarySessionRef): migrate to library, then redirect to library edit.
- */
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import '../components/PropagateChangesModal.css';
 import './LibrarySessionDetailScreen.css';
 
@@ -102,7 +98,7 @@ const PlanSessionDetailScreen = () => {
         setScopeModalLibraryId(librarySessionId);
         setShowScopeModal(true);
       } catch (err) {
-        console.error('Error loading plan session:', err);
+        logger.error('Error loading plan session:', err);
         setError(err.message || 'Error al cargar la sesión');
       } finally {
         setLoading(false);
@@ -134,7 +130,7 @@ const PlanSessionDetailScreen = () => {
       setScopeModalLibraryId(null);
       navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`, { replace: true });
     } catch (err) {
-      console.error('Error detaching session for this week:', err);
+      logger.error('Error detaching session for this week:', err);
       alert(err?.message || 'Error al aplicar solo a esta semana');
     } finally {
       setApplyingScope(false);

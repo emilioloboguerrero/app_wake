@@ -67,7 +67,7 @@ export async function getClientNutritionPlanContent(assignmentId) {
     const snap = await getDoc(ref);
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   } catch (err) {
-    console.warn('[nutritionFirestoreService] getClientNutritionPlanContent:', err?.message);
+    logger.warn('[nutritionFirestoreService] getClientNutritionPlanContent:', err?.message);
     return null;
   }
 }

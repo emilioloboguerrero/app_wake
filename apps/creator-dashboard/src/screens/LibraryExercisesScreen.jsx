@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ScreenSkeleton from '../components/ScreenSkeleton';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -9,7 +11,7 @@ import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import libraryService from '../services/libraryService';
 import { firestore } from '../config/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { LIBRARY_ICONS, getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
+import logger from '../utils/logger';
 import './LibraryExercisesScreen.css';
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
@@ -250,14 +252,12 @@ const LibraryExercisesScreen = () => {
 
         setLibrary(libraryData);
         
-        // Extract exercises from library data
         const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-        // Sort exercises by name
         exerciseList.sort((a, b) => a.name.localeCompare(b.name));
         setAllExercises(exerciseList);
         setExercises(exerciseList);
       } catch (err) {
-        console.error('Error loading library:', err);
+        logger.error('Error loading library:', err);
         setError('Error al cargar la biblioteca');
       } finally {
         setLoading(false);
@@ -300,7 +300,6 @@ const LibraryExercisesScreen = () => {
       setIsCreatingExercise(true);
       setError(null);
 
-      // Create new exercise with empty data structure
       const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
       await updateDoc(libraryDocRef, {
         [newExerciseName.trim()]: {
@@ -312,17 +311,14 @@ const LibraryExercisesScreen = () => {
         updated_at: serverTimestamp()
       });
 
-      // Reload library data
       const updatedLibrary = await libraryService.getLibraryById(libraryId);
       if (updatedLibrary) {
         setLibrary(updatedLibrary);
         const exercisesList = libraryService.getExercisesFromLibrary(updatedLibrary);
-        // Sort exercises by name
         exercisesList.sort((a, b) => a.name.localeCompare(b.name));
         setAllExercises(exercisesList);
         setExercises(exercisesList);
 
-        // Find the newly created exercise and select it (detail shows in right panel)
         const newExercise = exercisesList.find(ex => ex.name === newExerciseName.trim());
         if (newExercise) {
           setSelectedExercise(newExercise);
@@ -338,7 +334,7 @@ const LibraryExercisesScreen = () => {
       // Close add exercise modal
       handleCloseAddExerciseModal();
     } catch (err) {
-      console.error('Error creating exercise:', err);
+      logger.error('Error creating exercise:', err);
       setError('Error al crear el ejercicio');
       alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
     } finally {
@@ -407,7 +403,6 @@ const LibraryExercisesScreen = () => {
       return;
     }
 
-    // Verify the confirmation matches the exercise name
     if (deleteConfirmation.trim() !== exerciseToDelete.name) {
       return;
     }
@@ -418,7 +413,6 @@ const LibraryExercisesScreen = () => {
       
       await libraryService.deleteExercise(libraryId, exerciseToDelete.name);
       
-      // Reload library data
       const libraryData = await libraryService.getLibraryById(libraryId);
       if (!libraryData) {
         setError('Biblioteca no encontrada');
@@ -426,10 +420,7 @@ const LibraryExercisesScreen = () => {
       }
 
       setLibrary(libraryData);
-      
-      // Extract exercises from library data
       const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-      // Sort exercises by name
       exerciseList.sort((a, b) => a.name.localeCompare(b.name));
       setAllExercises(exerciseList);
       setExercises(exerciseList);
@@ -441,7 +432,7 @@ const LibraryExercisesScreen = () => {
         setIsEditMode(false);
       }
     } catch (err) {
-      console.error('Error deleting exercise:', err);
+      logger.error('Error deleting exercise:', err);
       setError('Error al eliminar el ejercicio');
       alert('Error al eliminar el ejercicio. Por favor, intenta de nuevo.');
     } finally {
@@ -515,24 +506,19 @@ const LibraryExercisesScreen = () => {
       setIsUploadingVideo(true);
       setVideoUploadProgress(0);
 
-      // Upload video to Firebase Storage and update Firestore
-      // Pass a progress callback to update the progress state
       const videoURL = await libraryService.uploadExerciseVideo(
         libraryId,
         selectedExercise.name,
         file,
         (progress) => {
-          // Update progress as upload progresses
           setVideoUploadProgress(Math.round(progress));
         }
       );
 
-      // Construct video path (same as in uploadExerciseVideo)
       const sanitizedExerciseName = selectedExercise.name.replace(/[^a-zA-Z0-9_-]/g, '_');
       const fileExtension = file.name.split('.').pop() || 'mp4';
       const videoPath = `exercises_library/${libraryId}/${sanitizedExerciseName}/video.${fileExtension}`;
 
-      // Update selected exercise immediately with new video URL (optimistic update)
       setSelectedExercise(prev => {
         if (!prev) return prev;
         return {
@@ -545,31 +531,25 @@ const LibraryExercisesScreen = () => {
         };
       });
 
-      // Also update the exercises list
-      setAllExercises(prev => prev.map(ex => 
-        ex.name === selectedExercise.name 
+      setAllExercises(prev => prev.map(ex =>
+        ex.name === selectedExercise.name
           ? { ...ex, data: { ...ex.data, video_url: videoURL } }
           : ex
       ));
-      setExercises(prev => prev.map(ex => 
-        ex.name === selectedExercise.name 
+      setExercises(prev => prev.map(ex =>
+        ex.name === selectedExercise.name
           ? { ...ex, data: { ...ex.data, video_url: videoURL } }
           : ex
       ));
 
-      // Reload library data in the background to ensure consistency
       const libraryData = await libraryService.getLibraryById(libraryId);
       if (libraryData) {
-      setLibrary(libraryData);
-      
-        // Update selected exercise with fresh data from server
-      const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-      const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-      if (updatedExercise) {
-        setSelectedExercise(updatedExercise);
+        setLibrary(libraryData);
+        const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
+        const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
+        if (updatedExercise) {
+          setSelectedExercise(updatedExercise);
         }
-
-        // Update exercises list with fresh data
         exerciseList.sort((a, b) => a.name.localeCompare(b.name));
         setAllExercises(exerciseList);
         setExercises(exerciseList);
@@ -577,7 +557,7 @@ const LibraryExercisesScreen = () => {
 
       setVideoUploadProgress(100);
     } catch (err) {
-      console.error('Error uploading video:', err);
+      logger.error('Error uploading video:', err);
       
       // Show more specific error message
       let errorMessage = 'Error al subir el video. Por favor, intenta de nuevo.';
@@ -624,7 +604,6 @@ const LibraryExercisesScreen = () => {
     }
 
     try {
-      // Update selected exercise immediately (optimistic update)
       setSelectedExercise(prev => {
         if (!prev) return prev;
         const { video_url, video_path, ...restData } = prev.data;
@@ -634,17 +613,16 @@ const LibraryExercisesScreen = () => {
         };
       });
 
-      // Also update the exercises list immediately
-      setAllExercises(prev => prev.map(ex => 
-        ex.name === selectedExercise.name 
+      setAllExercises(prev => prev.map(ex =>
+        ex.name === selectedExercise.name
           ? { ...ex, data: (() => {
               const { video_url, video_path, ...restData } = ex.data;
               return restData;
             })() }
           : ex
       ));
-      setExercises(prev => prev.map(ex => 
-        ex.name === selectedExercise.name 
+      setExercises(prev => prev.map(ex =>
+        ex.name === selectedExercise.name
           ? { ...ex, data: (() => {
               const { video_url, video_path, ...restData } = ex.data;
               return restData;
@@ -652,31 +630,23 @@ const LibraryExercisesScreen = () => {
           : ex
       ));
 
-      // Delete video from Storage and Firestore
       await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
 
-      // Reload library data in the background to ensure consistency
       const libraryData = await libraryService.getLibraryById(libraryId);
       if (libraryData) {
         setLibrary(libraryData);
-        
-        // Update selected exercise with fresh data from server
         const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
         const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
         if (updatedExercise) {
           setSelectedExercise(updatedExercise);
         }
-
-        // Update exercises list with fresh data
         exerciseList.sort((a, b) => a.name.localeCompare(b.name));
         setAllExercises(exerciseList);
         setExercises(exerciseList);
       }
     } catch (err) {
-      console.error('Error deleting video:', err);
+      logger.error('Error deleting video:', err);
       alert('Error al eliminar el video. Por favor, intenta de nuevo.');
-      
-      // On error, refetch to restore correct state
       try {
         const libraryData = await libraryService.getLibraryById(libraryId);
         if (libraryData) {
@@ -691,7 +661,7 @@ const LibraryExercisesScreen = () => {
           setExercises(exerciseList);
         }
       } catch (refetchError) {
-        console.error('Error refetching after delete failure:', refetchError);
+        logger.error('Error refetching after delete failure:', refetchError);
       }
     }
   };
@@ -701,7 +671,6 @@ const LibraryExercisesScreen = () => {
       const newSet = new Set(prev);
       if (newSet.has(muscle)) {
         newSet.delete(muscle);
-        // Remove from effective sets when removing muscle
         setMuscleEffectiveSets(prevSets => {
           const newSets = { ...prevSets };
           delete newSets[muscle];
@@ -709,7 +678,6 @@ const LibraryExercisesScreen = () => {
         });
       } else {
         newSet.add(muscle);
-        // Add to effective sets - get from muscle_activation (0-100) and divide by 100
         setMuscleEffectiveSets(prevSets => ({
           ...prevSets,
           [muscle]: prevSets[muscle] !== undefined 
@@ -724,11 +692,9 @@ const LibraryExercisesScreen = () => {
   };
 
   const handleEffectiveSetsChange = (muscle, value) => {
-    // Validate value is between 0 and 1
     const numValue = parseFloat(value);
-    
+
     if (value === '' || value === null || value === undefined) {
-      // Allow empty values (treated as 0)
       setMuscleEffectiveSets(prev => {
         const newSets = { ...prev };
         newSets[muscle] = '';
@@ -759,12 +725,9 @@ const LibraryExercisesScreen = () => {
         });
         
         if (hasOtherOne) {
-          // Can't set to 1.0 if another muscle is already 1.0
           return prev;
         }
       }
-      
-      // Valid update (value is between 0 and 1)
       newSets[muscle] = value;
       return newSets;
     });
@@ -775,13 +738,10 @@ const LibraryExercisesScreen = () => {
       const muscles = new Set(Object.keys(selectedExercise.data.muscle_activation));
       setEditingMuscles(muscles);
       
-      // Initialize effective sets from muscle_activation values (0-100) divided by 100
       const effectiveSets = {};
       muscles.forEach(muscle => {
-        // Get from muscle_activation in database (0-100), divide by 100 to get effective sets (0.0-1.0)
         const dbValue = selectedExercise.data?.muscle_activation?.[muscle];
         if (dbValue !== undefined && dbValue !== null) {
-          // Convert from 0-100 range to 0.0-1.0 range for display
           const effectiveSetsValue = (dbValue / 100).toFixed(1);
           effectiveSets[muscle] = effectiveSetsValue;
         } else {
@@ -794,7 +754,6 @@ const LibraryExercisesScreen = () => {
       setMuscleEffectiveSets({});
     }
     setIsMuscleEditMode(true);
-    // Reset scroll progress when entering edit mode
     setTimeout(() => {
       if (muscleLabelsContainerRef.current) {
         const el = muscleLabelsContainerRef.current;
@@ -811,16 +770,12 @@ const LibraryExercisesScreen = () => {
     const preset = EXERCISE_PRESETS[presetKey];
     if (!preset) return;
 
-    // Set the muscles from the preset
     const presetMuscles = new Set(Object.keys(preset.muscles));
     setEditingMuscles(presetMuscles);
 
-    // Convert preset values (0-100) to effective sets (0.0-1.0) for UI
     const effectiveSets = {};
     Object.keys(preset.muscles).forEach(muscle => {
-      const dbValue = preset.muscles[muscle]; // Value in 0-100 range
-      const uiValue = (dbValue / 100).toFixed(1); // Convert to 0.0-1.0 range
-      effectiveSets[muscle] = uiValue;
+      effectiveSets[muscle] = (preset.muscles[muscle] / 100).toFixed(1);
     });
     setMuscleEffectiveSets(effectiveSets);
   };
@@ -859,22 +814,17 @@ const LibraryExercisesScreen = () => {
 
     setIsSavingMuscles(true);
     try {
-      // Convert Set to object with activation values
-      // Store effective sets (0.0-1.0) as muscle_activation values (0-100)
       const muscleActivation = {};
       editingMuscles.forEach(muscle => {
         const value = muscleEffectiveSets[muscle];
         if (value !== undefined && value !== '' && value !== null) {
           const numValue = parseFloat(value);
           if (!isNaN(numValue) && numValue >= 0 && numValue <= 1) {
-            // Convert from 0.0-1.0 range to 0-100 range for storage
             muscleActivation[muscle] = Math.round(numValue * 100);
           } else {
-            // If invalid, keep existing value or default to 0
             muscleActivation[muscle] = selectedExercise.data?.muscle_activation?.[muscle] || 0;
           }
         } else {
-          // If no value provided, keep existing value or default to 0
           muscleActivation[muscle] = selectedExercise.data?.muscle_activation?.[muscle] || 0;
         }
       });
@@ -883,7 +833,6 @@ const LibraryExercisesScreen = () => {
         muscle_activation: muscleActivation
       });
 
-      // Reload library data
       const libraryData = await libraryService.getLibraryById(libraryId);
       if (!libraryData) {
         setError('Biblioteca no encontrada');
@@ -891,13 +840,10 @@ const LibraryExercisesScreen = () => {
       }
 
       setLibrary(libraryData);
-      
-      // Update selected exercise
       const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
       const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
       if (updatedExercise) {
         setSelectedExercise(updatedExercise);
-        // Update effective sets display to reflect saved values (convert from 0-100 to 0.0-1.0)
         if (updatedExercise.data?.muscle_activation) {
           const updatedEffectiveSets = {};
           Object.keys(updatedExercise.data.muscle_activation).forEach(muscle => {
@@ -912,7 +858,7 @@ const LibraryExercisesScreen = () => {
 
       setIsMuscleEditMode(false);
     } catch (err) {
-      console.error('Error saving muscles:', err);
+      logger.error('Error saving muscles:', err);
       alert('Error al guardar los músculos. Por favor, intenta de nuevo.');
     } finally {
       setIsSavingMuscles(false);
@@ -926,14 +872,12 @@ const LibraryExercisesScreen = () => {
 
     setIsSavingImplements(true);
     try {
-      // Convert Set to array
       const implementsArray = Array.from(selectedImplements);
 
       await libraryService.updateExercise(libraryId, selectedExercise.name, {
         implements: implementsArray
       });
 
-      // Reload library data
       const libraryData = await libraryService.getLibraryById(libraryId);
       if (!libraryData) {
         setError('Biblioteca no encontrada');
@@ -941,13 +885,9 @@ const LibraryExercisesScreen = () => {
       }
 
       setLibrary(libraryData);
-      
-      // Update exercises list
       const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
       exerciseList.sort((a, b) => a.name.localeCompare(b.name));
       setAllExercises(exerciseList);
-      
-      // Apply current filter to exercises list
       if (selectedMuscles.size === 0) {
         setExercises(exerciseList);
       } else {
@@ -959,18 +899,16 @@ const LibraryExercisesScreen = () => {
         setExercises(filtered);
       }
       
-      // Update selected exercise
       const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
       if (updatedExercise) {
         setSelectedExercise(updatedExercise);
-        // Update selected implements display
         const existingImplements = updatedExercise.data?.implements || [];
         setSelectedImplements(new Set(existingImplements));
       }
 
       setIsImplementsEditMode(false);
     } catch (err) {
-      console.error('Error saving implements:', err);
+      logger.error('Error saving implements:', err);
       alert('Error al guardar los implementos. Por favor, intenta de nuevo.');
     } finally {
       setIsSavingImplements(false);
@@ -1057,8 +995,6 @@ const LibraryExercisesScreen = () => {
 
     try {
       await libraryService.updateLibrary(libraryId, { icon: iconId });
-      
-      // Update library state immediately
       setLibrary(prev => ({
         ...prev,
         icon: iconId
@@ -1066,7 +1002,7 @@ const LibraryExercisesScreen = () => {
       
       setIsIconSelectorModalOpen(false);
     } catch (err) {
-      console.error('Error updating icon:', err);
+      logger.error('Error updating icon:', err);
       alert('Error al actualizar el ícono. Por favor, intenta de nuevo.');
     }
   };
@@ -1145,18 +1081,16 @@ const LibraryExercisesScreen = () => {
 
   if (loading) {
     return (
-      <DashboardLayout 
-        screenName={library?.title || 'Entrenamiento'}
-        showBackButton={true}
-        backPath={backPath}
-        backState={backState}
-      >
-        <div className="library-exercises-content">
-          <div className="library-exercises-loading">
-            <p>Cargando...</p>
-          </div>
-        </div>
-      </DashboardLayout>
+      <ErrorBoundary>
+        <DashboardLayout
+          screenName={library?.title || 'Entrenamiento'}
+          showBackButton={true}
+          backPath={backPath}
+          backState={backState}
+        >
+          <ScreenSkeleton />
+        </DashboardLayout>
+      </ErrorBoundary>
     );
   }
 
@@ -1183,12 +1117,13 @@ const LibraryExercisesScreen = () => {
   const currentIcon = library?.icon ? getIconById(library.icon) : null;
 
   return (
-    <DashboardLayout 
-      screenName={library.title}
-      showBackButton={true}
-      backPath={backPath}
-      backState={backState}
-      headerIcon={currentIcon ? (
+    <ErrorBoundary>
+      <DashboardLayout
+        screenName={library.title}
+        showBackButton={true}
+        backPath={backPath}
+        backState={backState}
+        headerIcon={currentIcon ? (
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d={currentIcon.path} fill="currentColor"/>
         </svg>
@@ -2016,7 +1951,8 @@ const LibraryExercisesScreen = () => {
           </div>
         </div>
       </Modal>
-    </DashboardLayout>
+      </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

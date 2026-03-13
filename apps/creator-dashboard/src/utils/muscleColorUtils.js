@@ -11,7 +11,7 @@ export const getMuscleColor = (setCount) => {
     return { color: '#FFFFFF', opacity: 0.3 + ((setCount / 6) * 0.4) }; // 0.3 to 0.7 opacity
   } else if (setCount <= 18) {
     // 6-18 sets: Golden color (app color)
-    return { color: '#BFA84D', opacity: 0.6 };
+    return { color: '#ffffff', opacity: 0.6 };
   } else {
     // 18+ sets: Dark red
     return { color: '#8B0000', opacity: 0.8 };
@@ -25,7 +25,7 @@ export const getMuscleColor = (setCount) => {
  */
 export const getMuscleSelectionColor = (isSelected) => {
   if (isSelected) {
-    return { color: '#BFA84D', opacity: 0.2 }; // Match "Aplicar" button background: rgba(191, 168, 77, 0.2)
+    return { color: '#ffffff', opacity: 0.2 }; // Match "Aplicar" button background: rgba(255, 255, 255, 0.2)
   } else {
     return { color: '#FFFFFF', opacity: 0.1 }; // Barely visible when not selected
   }

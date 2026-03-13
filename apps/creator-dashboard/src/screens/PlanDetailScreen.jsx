@@ -14,6 +14,7 @@ import propagationService from '../services/propagationService';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import logger from '../utils/logger';
 import './PlanDetailScreen.css';
 
 const PlanDetailScreen = () => {
@@ -204,7 +205,7 @@ const PlanDetailScreen = () => {
         const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
         setWeekVolumeMuscleVolumes(volumes);
       } catch (err) {
-        console.warn('[PlanDetail] Week volume load failed:', err);
+        logger.warn('[PlanDetail] Week volume load failed:', err);
         if (!cancelled) setWeekVolumeMuscleVolumes({});
       } finally {
         if (!cancelled) setWeekVolumeLoading(false);
@@ -249,7 +250,7 @@ const PlanDetailScreen = () => {
       setPropagateAffectedUsers(users);
       setIsPropagateModalOpen(true);
     } catch (err) {
-      console.error('Error finding affected users:', err);
+      logger.error('Error finding affected users:', err);
       alert('Error al comprobar usuarios afectados.');
     }
   };
@@ -260,38 +261,35 @@ const PlanDetailScreen = () => {
     try {
       const { propagated, errors } = await propagationService.propagatePlan(planId);
       if (errors.length > 0) {
-        console.warn('Propagation had some errors:', errors);
+        logger.warn('Propagation had some errors:', errors);
         alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
       } else if (propagated > 0) {
         alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
       }
       setHasMadeChanges(false);
     } catch (err) {
-      console.error('Error propagating:', err);
+      logger.error('Error propagating:', err);
       alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
     } finally {
       setIsPropagating(false);
     }
   };
 
-  // Fetch affected count when hasMadeChanges becomes true
   useEffect(() => {
     if (!planId || !hasMadeChanges) return;
     propagationService.findAffectedByPlan(planId)
       .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
-      .catch((err) => console.warn('Error fetching affected count:', err));
+      .catch((err) => logger.warn('Error fetching affected count:', err));
   }, [planId, hasMadeChanges]);
 
-  // Fetch affected users when navigate modal opens (for display in modal)
   useEffect(() => {
     if (!isNavigateModalOpen || !planId || propagateAffectedCount === 0) return;
-    if (propagateAffectedUsers.length > 0) return; // Already have them
+    if (propagateAffectedUsers.length > 0) return;
     propagationService.getAffectedUsersWithDetailsByPlan(planId)
       .then(setPropagateAffectedUsers)
-      .catch((err) => console.warn('Error fetching affected users:', err));
+      .catch((err) => logger.warn('Error fetching affected users:', err));
   }, [isNavigateModalOpen, planId, propagateAffectedCount, propagateAffectedUsers.length]);
 
-  // Block browser close/refresh when unpropagated changes
   useEffect(() => {
     const shouldBlock = hasMadeChanges && propagateAffectedCount > 0;
     const handler = (e) => {

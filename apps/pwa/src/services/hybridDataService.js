@@ -107,6 +107,7 @@ class HybridDataService {
         gender: userData?.gender || '',
         interests: userData?.interests || [],
         profilePictureUrl: userData?.profilePictureUrl || null,
+        role: userData?.role || 'user',
         lastSync: Date.now()
       };
       

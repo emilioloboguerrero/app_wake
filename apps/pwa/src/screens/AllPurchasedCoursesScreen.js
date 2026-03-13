@@ -171,6 +171,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
       <View key={purchaseData.id || index} style={styles.courseCardWrapper}>
         <View style={styles.courseCardContainer}>
           <TouchableOpacity
+            className="profile-menu-row"
             style={styles.courseCard}
             onPress={() => handleCoursePress(purchaseData)}
           >

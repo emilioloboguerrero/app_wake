@@ -1,12 +1,14 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
 import './DashboardScreen.css';
 
 const DashboardScreen = () => {
   const { user } = useAuth();
 
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName="Dashboard">
       <div className="dashboard-content">
         <div className="dashboard-welcome">
@@ -14,7 +16,6 @@ const DashboardScreen = () => {
           <p className="welcome-subtext">Gestiona tus programas y contenido desde aquí</p>
         </div>
         
-        {/* Dashboard content will go here */}
         <div className="dashboard-stats">
           <div className="stat-card">
             <h3 className="stat-number">0</h3>
@@ -31,6 +32,7 @@ const DashboardScreen = () => {
         </div>
       </div>
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

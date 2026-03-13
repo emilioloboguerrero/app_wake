@@ -149,8 +149,8 @@
 .profile-picture-inline-placeholder {
   width: 100%;
   height: 100%;
-  background-color: rgba(191, 168, 77, 0.2);
-  color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,7 +242,7 @@
 
 .input-container input.input:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -273,7 +273,7 @@
 
 .profile-date-input:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -322,7 +322,7 @@
 
 .profile-form-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -367,7 +367,7 @@
 
 .profile-dropdown-button.profile-dropdown-active {
   background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .profile-dropdown-disabled {
@@ -466,8 +466,8 @@
 }
 
 .profile-dropdown-option-selected {
-  background-color: rgba(191, 168, 77, 0.2);
-  color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 1);
 }
 
 /* Number input with spinner */
@@ -734,7 +734,7 @@
 }
 
 .profile-story-card-link {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
@@ -782,7 +782,7 @@
 }
 
 .add-card-media-preview:hover {
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -834,7 +834,7 @@
 
 .add-card-progress-fill {
   height: 100%;
-  background-color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 1);
   transition: width 0.3s ease;
 }
 
@@ -870,9 +870,9 @@
 
 .profile-logout-button {
   padding: 12px 24px;
-  background-color: rgba(191, 168, 77, 0.2);
-  color: rgba(191, 168, 77, 1);
-  border: 1px solid rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
@@ -882,8 +882,8 @@
 }
 
 .profile-logout-button:hover {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* Scroll indicator */

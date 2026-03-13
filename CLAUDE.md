@@ -94,6 +94,7 @@ All in `functions/src/index.ts`. Do not create separate function files — keep 
 | `nutritionFoodSearch` | HTTPS onRequest | FatSecret proxy — food search |
 | `nutritionFoodGet` | HTTPS onRequest | FatSecret proxy — food detail by ID |
 | `nutritionBarcodeLookup` | HTTPS onRequest | FatSecret proxy — barcode lookup |
+| `sendEventConfirmationEmail` | Firestore onCreate | Sends HTML confirmation email with QR code on new `event_signups/{eventId}/registrations/{regId}`; requires `RESEND_API_KEY` secret |
 
 **Secrets (Firebase Secret Manager):** `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_ACCESS_TOKEN`, `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`
 
@@ -119,6 +120,9 @@ All in `functions/src/index.ts`. Do not create separate function files — keep 
 | `one_on_one_clients/{id}` | Creator→client relationships |
 | `call_bookings/{id}` | Booking slots |
 | `app_resources/{id}` | Public landing/hero assets |
+| `events/{eventId}` | Event metadata: `title`, `status` (draft/active/closed), `fields[]` (V2 dynamic form), `max_registrations`, `registration_count`, `wake_users_only`, `settings.confirmation_message`, `image_url`, `creator_id` |
+| `event_signups/{eventId}/registrations/{regId}` | Registration: V1 flat fields or V2 `responses: { [fieldId]: value }`, `check_in_token`, `checked_in`, `checked_in_at`, `created_at` |
+| `event_signups/{eventId}/waitlist/{waitId}` | Waitlist entries: `contact`, `created_at` |
 
 **`users/{userId}.courses` map structure (inline on user doc):**
 ```json

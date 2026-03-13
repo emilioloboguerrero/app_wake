@@ -469,7 +469,7 @@
   background: linear-gradient(
     135deg,
     rgba(225, 210, 150, 0.4) 0%,
-    rgba(191, 168, 77, 0.28) 50%,
+    rgba(255, 255, 255, 0.28) 50%,
     rgba(170, 150, 65, 0.25) 100%
   );
   backdrop-filter: blur(10px);
@@ -488,7 +488,7 @@
   background: linear-gradient(
     135deg,
     rgba(230, 215, 155, 0.48) 0%,
-    rgba(191, 168, 77, 0.35) 50%,
+    rgba(255, 255, 255, 0.35) 50%,
     rgba(170, 150, 65, 0.32) 100%
   );
   box-shadow:
@@ -497,7 +497,7 @@
 }
 
 .section-card-back-cta:focus-visible {
-  outline: 2px solid rgba(191, 168, 77, 0.6);
+  outline: 2px solid rgba(255, 255, 255, 0.6);
   outline-offset: 2px;
 }
 

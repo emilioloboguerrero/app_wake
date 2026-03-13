@@ -108,8 +108,8 @@
 }
 
 .library-exercises-search-input-container:focus-within {
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .library-exercises-search-icon {
@@ -148,10 +148,10 @@
 .library-exercises-filter-chip {
   display: inline-flex;
   align-items: center;
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: all 0.2s ease;
   color: rgba(255, 255, 255, 0.9);
@@ -160,8 +160,8 @@
 }
 
 .library-exercises-filter-chip:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .library-exercises-clear-filters {
@@ -247,14 +247,14 @@
 }
 
 .library-exercises-sidebar-item-selected {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
   color: rgba(255, 255, 255, 1);
 }
 
 .library-exercises-sidebar-item-selected:hover {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .library-exercises-sidebar-item-edit {
@@ -296,7 +296,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 152, 0, 0.8);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .library-exercises-sidebar-item-incomplete svg {
@@ -343,8 +343,8 @@
 
 .library-exercises-main-empty-button {
   padding: 12px 24px;
-  background: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.95);
   font-size: 14px;
@@ -355,8 +355,8 @@
 }
 
 .library-exercises-main-empty-button:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .library-exercises-main-header {
@@ -392,10 +392,10 @@
 .library-exercises-main-incomplete-tag {
   flex-shrink: 0;
   padding: 4px 10px;
-  background: rgba(255, 152, 0, 0.15);
-  border: 1px solid rgba(255, 152, 0, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  color: rgba(255, 152, 0, 0.95);
+  color: rgba(255, 255, 255, 0.75);
   font-size: 12px;
   font-weight: 600;
 }
@@ -500,15 +500,15 @@
 }
 
 .icon-selector-item-selected {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
-  color: rgba(191, 168, 77, 1);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 1);
 }
 
 .icon-selector-item-selected:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
-  color: rgba(191, 168, 77, 1);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 1);
 }
 
 .icon-selector-actions {
@@ -540,7 +540,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 152, 0, 0.5);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .exercise-incomplete-icon-small svg {
@@ -549,8 +549,8 @@
 }
 
 .exercise-incomplete-icon-small svg path {
-  fill: rgba(255, 152, 0, 0.4);
-  stroke: rgba(255, 152, 0, 0.6);
+  fill: rgba(255, 255, 255, 0.2);
+  stroke: rgba(255, 255, 255, 0.35);
 }
 
 .library-exercises-legend-text {
@@ -672,9 +672,9 @@
 }
 
 .exercise-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .library-exercises-list .exercise-card .exercise-card-header {
@@ -766,7 +766,7 @@
   justify-content: center;
   z-index: 5;
   pointer-events: none;
-  color: rgba(255, 152, 0, 0.5); /* Yellow-orange with low opacity */
+  color: rgba(255, 255, 255, 0.3); /* Yellow-orange with low opacity */
 }
 
 .exercise-incomplete-icon svg {
@@ -775,8 +775,8 @@
 }
 
 .exercise-incomplete-icon svg path {
-  fill: rgba(255, 152, 0, 0.4); /* Filled with yellow-orange, low opacity */
-  stroke: rgba(255, 152, 0, 0.6); /* Yellow-orange stroke with slightly higher opacity */
+  fill: rgba(255, 255, 255, 0.2); /* Filled with yellow-orange, low opacity */
+  stroke: rgba(255, 255, 255, 0.35); /* Yellow-orange stroke with slightly higher opacity */
 }
 
 .exercise-delete-button {
@@ -975,11 +975,11 @@
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #BFA84D;
-  color: #BFA84D;
+  border: 1px solid #ffffff;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -991,16 +991,16 @@
 }
 
 .filter-chip:hover {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.8);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
 }
 
 .filter-chip-text {
-  color: #BFA84D;
+  color: #ffffff;
 }
 
 .filter-chip-remove {
-  color: #BFA84D;
+  color: #ffffff;
   font-size: 18px;
   font-weight: bold;
   line-height: 1;
@@ -1027,13 +1027,13 @@
 }
 
 .filter-implement-chip-selected {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: #BFA84D;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: #ffffff;
 }
 
 .filter-implement-chip-selected:hover {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.8);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
 }
 
 .filter-implement-chip-text {
@@ -1041,7 +1041,7 @@
 }
 
 .filter-implement-chip-text-selected {
-  color: #BFA84D;
+  color: #ffffff;
 }
 
 .muscle-filter-button {
@@ -1066,14 +1066,14 @@
 }
 
 .muscle-filter-button-selected {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.3);
-  color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 1);
 }
 
 .muscle-filter-button-selected:hover {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .filter-no-muscles {
@@ -1122,9 +1122,9 @@
   flex: 1;
   padding: 14px 20px;
   border-radius: 12px;
-  background-color: rgba(191, 168, 77, 0.2);
-  border: 1px solid #BFA84D;
-  color: #BFA84D;
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid #ffffff;
+  color: #ffffff;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -1134,8 +1134,8 @@
 }
 
 .filter-apply-button:hover {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.8);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
 }
 
 /* Delete Modal Styles */
@@ -1166,15 +1166,15 @@
 }
 
 .exercise-name-warning-text {
-  color: rgba(255, 193, 7, 0.9);
+  color: rgba(255, 255, 255, 0.75);
   font-size: 13px;
   line-height: 1.5;
   margin-top: 12px;
   margin-bottom: 0;
   padding: 8px 12px;
-  background-color: rgba(255, 193, 7, 0.1);
+  background-color: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
-  border-left: 3px solid rgba(255, 193, 7, 0.5);
+  border-left: 3px solid rgba(255, 255, 255, 0.25);
 }
 
 .delete-warning-text {
@@ -1368,14 +1368,14 @@
 }
 
 .exercise-implement-chip-selected {
-  background-color: rgba(150, 130, 60, 0.3);
-  border-color: rgba(150, 130, 60, 0.8);
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.45);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .exercise-implement-chip-selected:hover {
-  background-color: rgba(150, 130, 60, 0.4);
-  border-color: rgba(150, 130, 60, 1);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .exercise-implements-add-custom {
@@ -1411,8 +1411,8 @@
 .exercise-implements-add-custom-btn {
   padding: 8px 16px;
   border-radius: 20px;
-  border: 1px solid rgba(150, 130, 60, 0.6);
-  background-color: rgba(150, 130, 60, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.07);
   color: rgba(255, 255, 255, 0.95);
   font-size: 13px;
   font-weight: 500;
@@ -1422,8 +1422,8 @@
 }
 
 .exercise-implements-add-custom-btn:hover:not(:disabled) {
-  background-color: rgba(150, 130, 60, 0.4);
-  border-color: rgba(150, 130, 60, 0.9);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .exercise-implements-add-custom-btn:disabled {
@@ -1976,7 +1976,7 @@
 }
 
 /* Make selected muscles less transparent in exercise detail modal */
-.exercise-muscle-silhouette-wrapper svg path[stroke="#BFA84D"] {
+.exercise-muscle-silhouette-wrapper svg path[stroke="#ffffff"] {
   fill-opacity: 0.4 !important;
   stroke-opacity: 0.5 !important;
 }

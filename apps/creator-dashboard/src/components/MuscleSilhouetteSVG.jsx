@@ -39,7 +39,7 @@ const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscl
             d={pathData}
             fill={color}
             fillOpacity={opacity}
-            stroke={isSelected ? '#BFA84D' : 'none'}
+            stroke={isSelected ? '#ffffff' : 'none'}
             strokeWidth={isSelected ? '2' : '0'}
             strokeOpacity={isSelected ? '0.3' : '0'}
           />

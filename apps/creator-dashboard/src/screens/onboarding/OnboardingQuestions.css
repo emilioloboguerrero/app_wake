@@ -72,13 +72,13 @@
 }
 
 .option-cube:hover {
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .option-cube-selected {
-  border-color: rgba(191, 168, 77, 0.7);
+  border-color: rgba(255, 255, 255, 0.7);
   border-width: 1px;
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.8);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
 }
 
 .option-cube-full {
@@ -105,7 +105,7 @@
 }
 
 .option-text-selected {
-  color: #BFA84D;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -124,7 +124,7 @@
 }
 
 .question-button {
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   min-height: 50px;
   padding: 6px 24px;
   width: 100%;
@@ -140,7 +140,7 @@
 }
 
 .question-button:hover:not(:disabled) {
-  background-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .question-button-disabled {
@@ -150,7 +150,7 @@
 }
 
 .question-button-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 18px;
   font-weight: 600;
 }
@@ -162,7 +162,7 @@
 .question-progress {
   margin-top: 6px;
   font-size: 14px;
-  color: #BFA84D;
+  color: #ffffff;
   text-align: center;
   font-weight: 500;
 }
@@ -218,7 +218,7 @@
 }
 
 .complete-button {
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   height: 50px;
   width: 100%;
   max-width: 300px;
@@ -232,11 +232,11 @@
 }
 
 .complete-button:hover {
-  background-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .complete-button-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 18px;
   font-weight: 600;
 }

@@ -1,30 +1,40 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ScreenSkeleton from '../components/ScreenSkeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
-import { getUser, updateUser } from '../services/firestoreService';
+import { getUser, updateUser, isUsernameTaken } from '../services/firestoreService';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import profilePictureService from '../services/profilePictureService';
 import cardService from '../services/cardService';
 import authService from '../services/authService';
 import { updateProfile } from 'firebase/auth';
-import { auth, firestore } from '../config/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth } from '../config/firebase';
 import { GetCountries, GetState, GetCity } from 'react-country-state-city';
+import logger from '../utils/logger';
 import './ProfileScreen.css';
 
 const ProfileScreen = () => {
   const { user, refreshUserData, isCreator } = useAuth();
   const navigate = useNavigate();
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const queryClientHook = useQueryClient();
+
+  const { data: userData, isLoading: loading } = useQuery({
+    queryKey: queryKeys.user.detail(user?.uid),
+    queryFn: () => getUser(user.uid),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
+
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   
-  // Form fields
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -38,28 +48,22 @@ const ProfileScreen = () => {
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
   
-  // Original values for change detection
   const [originalValues, setOriginalValues] = useState(null);
   
-  // Creator cards
   const [creatorCards, setCreatorCards] = useState([]);
   
-  // Dropdown states
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [countrySearchQuery, setCountrySearchQuery] = useState('');
   const [citySearchQuery, setCitySearchQuery] = useState('');
   
-  // Username validation
   const [usernameValidating, setUsernameValidating] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(null);
   const usernameCheckTimeout = useRef(null);
   
   const fileInputRef = useRef(null);
   const storyListRef = useRef(null);
-  const [storyActiveIndex, setStoryActiveIndex] = useState(0);
   
-  // Add card modal state
   const [isAddCardModalOpen, setIsAddCardModalOpen] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardMedia, setNewCardMedia] = useState(null);
@@ -91,12 +95,10 @@ const ProfileScreen = () => {
     return 'text';
   };
 
-  // Countries and cities state with caching
   const [countries, setCountries] = useState([]);
   const [citiesCache, setCitiesCache] = useState({}); // Cache cities by country code
   const [loadingCities, setLoadingCities] = useState(false);
 
-  // Load countries on mount
   useEffect(() => {
     const loadCountries = async () => {
       try {
@@ -108,13 +110,12 @@ const ProfileScreen = () => {
         })).sort((a, b) => a.label.localeCompare(b.label));
         setCountries(formatted);
       } catch (error) {
-        console.error('Error loading countries:', error);
+        logger.error('Error loading countries:', error);
       }
     };
     loadCountries();
   }, []);
 
-  // Load cities for selected country (with caching)
   useEffect(() => {
     const loadCities = async () => {
       if (!country) {
@@ -128,7 +129,6 @@ const ProfileScreen = () => {
 
       setLoadingCities(true);
       try {
-        // Get country ID from countries list
         const allCountries = await GetCountries() || [];
         const countryObj = allCountries.find(c => c.iso2 === country);
         
@@ -137,29 +137,25 @@ const ProfileScreen = () => {
           return;
         }
         
-        // Get all states for this country
         const states = await GetState(countryObj.id) || [];
         
-        // Get cities for each state
         const allCountryCities = [];
         
         if (states.length > 0) {
-          // If country has states, get cities from each state
           for (const state of states) {
             try {
               const stateCities = await GetCity(countryObj.id, state.id) || [];
               allCountryCities.push(...stateCities);
             } catch (error) {
-              console.warn(`Error loading cities for state ${state.name}:`, error);
+              logger.warn(`Error loading cities for state ${state.name}:`, error);
             }
           }
         } else {
-          // If country has no states, try to get cities directly
           try {
             const directCities = await GetCity(countryObj.id, 0) || [];
             allCountryCities.push(...directCities);
           } catch (error) {
-            console.warn('Could not get cities directly:', error);
+            logger.warn('Could not get cities directly:', error);
           }
         }
         
@@ -169,7 +165,7 @@ const ProfileScreen = () => {
           [country]: allCountryCities
         }));
       } catch (error) {
-        console.error('Error loading cities:', error);
+        logger.error('Error loading cities:', error);
         // Cache empty array to prevent re-fetching on error
         setCitiesCache(prev => ({
           ...prev,
@@ -182,7 +178,6 @@ const ProfileScreen = () => {
     loadCities();
   }, [country, citiesCache]);
 
-  // Get filtered countries
   const getFilteredCountries = () => {
     if (!countrySearchQuery.trim()) return countries;
     const searchLower = countrySearchQuery.toLowerCase();
@@ -192,11 +187,9 @@ const ProfileScreen = () => {
     );
   };
 
-  // Get filtered cities - memoized (uses cache)
   const filteredCities = useMemo(() => {
     if (!country) return [];
     
-    // Get cities from cache
     const countryCities = citiesCache[country] || [];
     
     if (countryCities.length === 0) return [];
@@ -208,49 +201,36 @@ const ProfileScreen = () => {
       return countryCities.slice(0, 100).map(city => city.name);
     }
     
-    // Filter by search query
     return countryCities
       .filter(city => city.name.toLowerCase().includes(searchLower))
       .map(city => city.name)
       .slice(0, 50); // Limit results for performance
   }, [citiesCache, country, citySearchQuery]);
 
-  // Get country label
   const getCountryLabel = (value) => {
     if (!value) return '';
     const countryObj = countries.find(c => c.value === value);
     return countryObj ? countryObj.label : value;
   };
 
-  // Validate username uniqueness
   const validateUsername = async (username) => {
     if (!username || username.length < 3) {
       setUsernameAvailable(null);
       return;
     }
     
-    // Clear existing timeout
     if (usernameCheckTimeout.current) {
       clearTimeout(usernameCheckTimeout.current);
     }
     
-    // Debounce the check
     usernameCheckTimeout.current = setTimeout(async () => {
       setUsernameValidating(true);
       try {
-        const usersQuery = query(
-          collection(firestore, 'users'),
-          where('username', '==', username.toLowerCase())
-        );
-        const querySnapshot = await getDocs(usersQuery);
-        
-        // Check if username is taken by another user
-        const isTaken = !querySnapshot.empty && 
-          querySnapshot.docs.some(doc => doc.id !== user.uid);
+        const isTaken = await isUsernameTaken(username, user.uid);
         
         setUsernameAvailable(!isTaken);
       } catch (error) {
-        console.error('Error validating username:', error);
+        logger.error('Error validating username:', error);
         setUsernameAvailable(null);
       } finally {
         setUsernameValidating(false);
@@ -258,37 +238,32 @@ const ProfileScreen = () => {
     }, 500);
   };
 
+  // Sync form fields when userData from React Query changes
   useEffect(() => {
-    const loadUserData = async () => {
-      if (!user) return;
-      
-      try {
-        setLoading(true);
-        const data = await getUser(user.uid);
-        setUserData(data);
-        
-        // Set form fields
-        const initialDisplayName = user.displayName || data?.name || '';
-        const initialName = data?.name || user.displayName || '';
-        const initialUsername = data?.username || '';
-        const initialEmail = user.email || '';
-        const initialGender = data?.gender || '';
-        const initialCity = data?.city || data?.location || '';
-        const initialCountry = data?.country || '';
-        const initialHeight = data?.height || '';
-        const initialWeight = data?.weight || '';
-        let initialBirthDate = '';
-        
-        // Handle birthDate
-        if (data?.birthDate) {
-          const date = data.birthDate.toDate ? data.birthDate.toDate() : new Date(data.birthDate);
-          initialBirthDate = date.toISOString().split('T')[0];
-        }
-        
-        setDisplayName(initialDisplayName);
-        setName(initialName);
-        setUsername(initialUsername);
-        setEmail(initialEmail);
+    const data = userData;
+    if (!user || !data) return;
+    {
+      // Set form fields
+      const initialDisplayName = user.displayName || data?.name || '';
+      const initialName = data?.name || user.displayName || '';
+      const initialUsername = data?.username || '';
+      const initialEmail = user.email || '';
+      const initialGender = data?.gender || '';
+      const initialCity = data?.city || data?.location || '';
+      const initialCountry = data?.country || '';
+      const initialHeight = data?.height || '';
+      const initialWeight = data?.weight || '';
+      let initialBirthDate = '';
+
+      if (data?.birthDate) {
+        const date = data.birthDate.toDate ? data.birthDate.toDate() : new Date(data.birthDate);
+        initialBirthDate = date.toISOString().split('T')[0];
+      }
+
+      setDisplayName(initialDisplayName);
+      setName(initialName);
+      setUsername(initialUsername);
+      setEmail(initialEmail);
         setGender(initialGender);
         setCity(initialCity);
         setCountry(initialCountry);
@@ -296,7 +271,6 @@ const ProfileScreen = () => {
         setWeight(initialWeight);
         setBirthDate(initialBirthDate);
         
-        // Store original values for change detection
         setOriginalValues({
           displayName: initialDisplayName,
           name: initialName,
@@ -310,34 +284,23 @@ const ProfileScreen = () => {
           profilePictureUrl: user.photoURL || data?.profilePictureUrl || null
         });
         
-        // Set profile picture preview
         if (user.photoURL || data?.profilePictureUrl) {
           setProfilePicturePreview(user.photoURL || data.profilePictureUrl);
         }
         
-        // Parse and set creator cards (only for creators)
-        if (isCreator) {
-          const cardsMap = data?.cards || {};
-          const parsedCards = Object.entries(cardsMap).map(([title, value]) => ({
-            id: title,
-            title,
-            value,
-            type: detectCardType(value),
-          }));
-          setCreatorCards(parsedCards);
-        }
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        alert('Error al cargar los datos del perfil');
-      } finally {
-        setLoading(false);
+      if (isCreator) {
+        const cardsMap = data?.cards || {};
+        const parsedCards = Object.entries(cardsMap).map(([title, value]) => ({
+          id: title,
+          title,
+          value,
+          type: detectCardType(value),
+        }));
+        setCreatorCards(parsedCards);
       }
-    };
+    }
+  }, [userData, user, isCreator]);
 
-    loadUserData();
-  }, [user, isCreator]);
-
-  // Validate username when it changes
   useEffect(() => {
     if (username && username !== userData?.username) {
       validateUsername(username);
@@ -360,7 +323,6 @@ const ProfileScreen = () => {
 
     setProfilePicture(file);
     
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setProfilePicturePreview(e.target.result);
@@ -383,20 +345,14 @@ const ProfileScreen = () => {
         }
       );
 
-      // Refresh user data to get updated photoURL
       await refreshUserData();
-      
-      // Get updated user data
-      await refreshUserData();
-      const updatedData = await getUser(user.uid);
-      const updatedPhotoURL = auth.currentUser?.photoURL || updatedData?.profilePictureUrl;
-      
-      // Update profile picture preview
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+      const updatedPhotoURL = auth.currentUser?.photoURL || userData?.profilePictureUrl;
+
       if (updatedPhotoURL) {
         setProfilePicturePreview(updatedPhotoURL);
       }
-      
-      // Update original values to reflect the uploaded picture
+
       if (originalValues) {
         setOriginalValues({
           ...originalValues,
@@ -404,7 +360,6 @@ const ProfileScreen = () => {
         });
       }
       
-      // Clear the file input
       setProfilePicture(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -412,7 +367,7 @@ const ProfileScreen = () => {
 
       alert('Foto de perfil actualizada correctamente');
     } catch (error) {
-      console.error('Error uploading profile picture:', error);
+      logger.error('Error uploading profile picture:', error);
       let errorMessage = 'Error al subir la foto de perfil. Por favor intenta de nuevo.';
       
       if (error.code === 'storage/unauthorized') {
@@ -436,7 +391,6 @@ const ProfileScreen = () => {
     setCountry(countryValue);
     setShowCountryDropdown(false);
     setCountrySearchQuery('');
-    // Reset city when country changes
     setCity('');
     setCitySearchQuery('');
   };
@@ -447,7 +401,6 @@ const ProfileScreen = () => {
     setCitySearchQuery('');
   };
 
-  // Check if there are changes
   const hasChanges = () => {
     if (!originalValues) return false;
     
@@ -468,7 +421,6 @@ const ProfileScreen = () => {
   const handleCancel = () => {
     if (!originalValues) return;
     
-    // Reset all fields to original values
     setDisplayName(originalValues.displayName);
     setName(originalValues.name);
     setUsername(originalValues.username);
@@ -481,16 +433,13 @@ const ProfileScreen = () => {
     setProfilePicture(null);
     setProfilePicturePreview(originalValues.profilePictureUrl);
     
-    // Clear file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
     
-    // Reset username validation
     setUsernameAvailable(null);
   };
 
-  // Handle card media file select
   const handleCardMediaSelect = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -503,7 +452,6 @@ const ProfileScreen = () => {
     setNewCardMedia(file);
     setNewCardMediaType(file.type.startsWith('image/') ? 'image' : 'video');
     
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setNewCardMediaPreview(e.target.result);
@@ -511,7 +459,6 @@ const ProfileScreen = () => {
     reader.readAsDataURL(file);
   };
 
-  // Handle add card
   const handleAddCard = async () => {
     if (!user || !newCardTitle.trim()) {
       alert('Por favor ingresa un título para la tarjeta');
@@ -558,12 +505,9 @@ const ProfileScreen = () => {
 
       await updateUser(user.uid, { cards: updatedCards });
 
-      // Refresh user data
       await refreshUserData();
-      const updatedData = await getUser(user.uid);
-      setUserData(updatedData);
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
 
-      // Parse and update cards
       const parsedCards = Object.entries(updatedCards).map(([title, value]) => ({
         id: title,
         title,
@@ -572,7 +516,6 @@ const ProfileScreen = () => {
       }));
       setCreatorCards(parsedCards);
 
-      // Reset form
       setNewCardTitle('');
       setNewCardMedia(null);
       setNewCardMediaPreview(null);
@@ -584,7 +527,7 @@ const ProfileScreen = () => {
 
       alert('Tarjeta agregada correctamente');
     } catch (error) {
-      console.error('Error adding card:', error);
+      logger.error('Error adding card:', error);
       alert(error.message || 'Error al agregar la tarjeta. Por favor intenta de nuevo.');
     } finally {
       setIsCardUploading(false);
@@ -592,7 +535,6 @@ const ProfileScreen = () => {
     }
   };
 
-  // Handle close add card modal
   const handleCloseAddCardModal = () => {
     setIsAddCardModalOpen(false);
     setNewCardTitle('');
@@ -604,13 +546,12 @@ const ProfileScreen = () => {
     }
   };
 
-  // Handle sign out
   const handleSignOut = async () => {
     try {
       await authService.signOutUser();
       navigate('/login');
     } catch (error) {
-      console.error('Error signing out:', error);
+      logger.error('Error signing out:', error);
       alert('Error al cerrar sesión. Por favor intenta de nuevo.');
     }
   };
@@ -627,14 +568,12 @@ const ProfileScreen = () => {
     try {
       setSaving(true);
 
-      // Update Firebase Auth displayName if changed
       if (displayName !== user.displayName) {
         await updateProfile(auth.currentUser, {
           displayName: displayName
         });
       }
 
-      // Prepare Firestore update data
       const updateData = {};
       
       if (name !== (userData?.name || '')) {
@@ -672,56 +611,13 @@ const ProfileScreen = () => {
         }
       }
 
-      // Update Firestore if there are changes
       if (Object.keys(updateData).length > 0) {
         await updateUser(user.uid, updateData);
       }
 
-      // Refresh user data
       await refreshUserData();
-      
-      // Refresh user data
-      await refreshUserData();
-      
-      // Reload user data to get updated values
-      const updatedData = await getUser(user.uid);
-      setUserData(updatedData);
-      
-      // Update original values after save
-      const newDisplayName = auth.currentUser?.displayName || updatedData?.name || '';
-      const newName = updatedData?.name || auth.currentUser?.displayName || '';
-      const newUsername = updatedData?.username || '';
-      const newGender = updatedData?.gender || '';
-      const newCity = updatedData?.city || updatedData?.location || '';
-      const newCountry = updatedData?.country || '';
-      const newHeight = updatedData?.height || '';
-      const newWeight = updatedData?.weight || '';
-      let newBirthDate = '';
-      if (updatedData?.birthDate) {
-        const date = updatedData.birthDate.toDate ? updatedData.birthDate.toDate() : new Date(updatedData.birthDate);
-        newBirthDate = date.toISOString().split('T')[0];
-      }
-      const newProfilePictureUrl = auth.currentUser?.photoURL || updatedData?.profilePictureUrl || null;
-      
-      setOriginalValues({
-        displayName: newDisplayName,
-        name: newName,
-        username: newUsername,
-        gender: newGender,
-        city: newCity,
-        country: newCountry,
-        height: newHeight,
-        weight: newWeight,
-        birthDate: newBirthDate,
-        profilePictureUrl: newProfilePictureUrl
-      });
-      
-      // Update profile picture preview
-      if (newProfilePictureUrl) {
-        setProfilePicturePreview(newProfilePictureUrl);
-      }
-      
-      // Clear profile picture state
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+
       setProfilePicture(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -729,7 +625,7 @@ const ProfileScreen = () => {
 
       alert('Perfil actualizado correctamente');
     } catch (error) {
-      console.error('Error saving profile:', error);
+      logger.error('Error saving profile:', error);
       alert('Error al guardar el perfil. Por favor intenta de nuevo.');
     } finally {
       setSaving(false);
@@ -741,14 +637,13 @@ const ProfileScreen = () => {
   if (loading) {
     return (
       <Layout screenName="Perfil">
-        <div className="profile-screen-loading">
-          <p>Cargando perfil...</p>
-        </div>
+        <ScreenSkeleton />
       </Layout>
     );
   }
 
   return (
+    <ErrorBoundary>
     <Layout screenName="Perfil">
       <div className="profile-screen">
         <div className="profile-content">
@@ -1218,6 +1113,7 @@ const ProfileScreen = () => {
         </button>
       </div>
     </Layout>
+    </ErrorBoundary>
   );
 };
 

@@ -18,6 +18,7 @@ import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
 import activityStreakService from '../services/activityStreakService';
 import WakeLoader from '../components/WakeLoader';
+import logger from '../utils/logger';
 
 const MEAL_OPTIONS = [
   { id: 'breakfast', label: 'Desayuno' },
@@ -141,7 +142,7 @@ export function NutritionScreenBase({ navigation }) {
       setAssignment(a);
       setPlan(effectivePlan);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       setAssignment(null);
       setPlan(null);
     } finally {
@@ -160,7 +161,7 @@ export function NutritionScreenBase({ navigation }) {
       const list = await nutritionDb.getDiaryEntries(userId, diaryDate);
       setDiaryEntries(list);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       setDiaryEntries([]);
     } finally {
       setLoadingDiary(false);
@@ -217,7 +218,7 @@ export function NutritionScreenBase({ navigation }) {
       closeLogModal();
       loadDiary();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setSubmittingLog(false);
     }
@@ -244,7 +245,7 @@ export function NutritionScreenBase({ navigation }) {
       closeLogModal();
       loadDiary();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setSubmittingLog(false);
     }
@@ -271,7 +272,7 @@ export function NutritionScreenBase({ navigation }) {
       await nutritionDb.deleteDiaryEntry(userId, entryId);
       loadDiary();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }
 

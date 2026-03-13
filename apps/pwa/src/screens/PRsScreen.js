@@ -289,6 +289,7 @@ const PRsScreen = ({ navigation, route }) => {
               return (
                 <TouchableOpacity
                   key={exerciseKey}
+                  className="profile-menu-row"
                   style={styles.exerciseCard}
                   onPress={() => handleExercisePress(exerciseKey)}
                 >

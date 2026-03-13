@@ -4,7 +4,6 @@ import SvgIcon from '../../components/SvgIcon';
 import { ASSET_BASE } from '../../config/assets';
 
 const OnboardingQuestion1 = ({ onAnswer, onNext, selectedAnswers: initialSelected = [] }) => {
-  // Icon SVGs (matching mobile app)
   const heartIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M19.2373 6.23731C20.7839 7.78395 20.8432 10.2727 19.3718 11.8911L11.9995 20.0001L4.62812 11.8911C3.15679 10.2727 3.21605 7.7839 4.76269 6.23726C6.48961 4.51034 9.33372 4.66814 10.8594 6.5752L12 8.00045L13.1396 6.57504C14.6653 4.66798 17.5104 4.51039 19.2373 6.23731Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
@@ -59,7 +58,6 @@ const OnboardingQuestion1 = ({ onAnswer, onNext, selectedAnswers: initialSelecte
     },
   ];
   
-  // Convert text array to ID array
   const initialIds = (initialSelected || []).map(text => {
     const option = options.find(opt => opt.text === text);
     return option ? option.id : null;
@@ -118,7 +116,7 @@ const OnboardingQuestion1 = ({ onAnswer, onNext, selectedAnswers: initialSelecte
                   svgString={option.icon} 
                   width={32} 
                   height={32} 
-                  color={selectedAnswers.includes(option.id) ? '#BFA84D' : '#ffffff'}
+                  color={selectedAnswers.includes(option.id) ? '#ffffff' : '#ffffff'}
                 />
               </div>
               <p className={`option-text ${selectedAnswers.includes(option.id) ? 'option-text-selected' : ''}`}>

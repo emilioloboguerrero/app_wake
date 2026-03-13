@@ -27,8 +27,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 16px;
-  background: rgba(191, 168, 77, 0.15);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 8px;
   flex-shrink: 0;
 }
@@ -102,8 +102,8 @@
 
 .library-session-library-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 /* Search Container */
@@ -124,8 +124,8 @@
 }
 
 .library-session-search-input-container:focus-within {
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .library-session-search-icon {
@@ -173,9 +173,9 @@
 }
 
 .library-session-filter-button.active {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.4);
-  color: rgba(191, 168, 77, 1);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 1);
 }
 
 .library-session-filter-button-text {
@@ -185,7 +185,7 @@
 }
 
 .library-session-filter-badge {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-weight: 600;
 }
 
@@ -206,21 +206,21 @@
 .library-session-active-filter-chip {
   display: inline-flex;
   align-items: center;
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .library-session-active-filter-chip:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .library-session-active-filter-chip-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 12px;
   font-weight: 500;
 }
@@ -349,9 +349,9 @@
 }
 
 .library-session-edit-button.active {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.4);
-  color: rgba(191, 168, 77, 1);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 1);
 }
 
 .library-session-exercises-container {
@@ -384,12 +384,12 @@
 
 .library-session-dropzone:hover,
 .library-session-exercises-container.dropzone-active .library-session-dropzone {
-  border-color: rgba(191, 168, 77, 0.5);
-  background: rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .library-session-exercises-container.dropzone-active:not(.empty) {
-  border: 2px dashed rgba(191, 168, 77, 0.5);
+  border: 2px dashed rgba(255, 255, 255, 0.5);
   border-radius: 16px;
 }
 
@@ -526,9 +526,9 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(255, 152, 0, 0.95);
-  background: rgba(255, 152, 0, 0.12);
-  border: 1px solid rgba(255, 152, 0, 0.3);
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   padding: 2px 8px;
   margin-top: 4px;
@@ -977,27 +977,27 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .filter-chip:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .filter-chip-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 14px;
   font-weight: 500;
 }
 
 .filter-chip-remove {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 18px;
   font-weight: bold;
   line-height: 1;
@@ -1024,8 +1024,8 @@
 }
 
 .implement-chip-selected {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .implement-chip-text {
@@ -1035,7 +1035,7 @@
 }
 
 .implement-chip-text-selected {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 .filter-modal-actions {
@@ -1079,21 +1079,21 @@
 
 .filter-apply-button {
   flex: 1;
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .filter-apply-button:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .filter-apply-button-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 16px;
   font-weight: 600;
 }
@@ -1733,8 +1733,8 @@
 }
 
 .library-picker-search-wrap:focus-within {
-  border-color: rgba(191, 168, 77, 0.45);
-  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 .library-picker-search-icon {
@@ -1787,8 +1787,8 @@
 }
 
 .library-picker-library-item.library-picker-library-item-selected {
-  background: rgba(191, 168, 77, 0.12);
-  border-color: rgba(191, 168, 77, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.98);
 }
 

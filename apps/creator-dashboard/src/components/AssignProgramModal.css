@@ -132,13 +132,13 @@
 }
 
 .assign-program-item-btn-selected {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .assign-program-item-btn-selected:hover {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .assign-program-item-thumb {
@@ -164,10 +164,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
   font-size: 18px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .assign-program-item-info {
@@ -197,7 +197,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(191, 168, 77, 0.9);
+  background: rgba(255, 255, 255, 0.9);
   color: #1a1a1a;
   display: flex;
   align-items: center;
@@ -224,15 +224,15 @@
 }
 
 .assign-program-item-new-btn:hover {
-  border-color: rgba(191, 168, 77, 0.5);
-  background: rgba(191, 168, 77, 0.08);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .assign-program-item-new-icon {
   font-size: 20px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 0.9);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .assign-program-item-new-label {

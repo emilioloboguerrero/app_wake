@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ScreenSkeleton from '../components/ScreenSkeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import FindUserModal from '../components/FindUserModal';
@@ -9,13 +12,21 @@ import AssignProgramModal from '../components/AssignProgramModal';
 import oneOnOneService from '../services/oneOnOneService';
 import clientProgramService from '../services/clientProgramService';
 import programService from '../services/programService';
+import { queryKeys } from '../config/queryClient';
+import logger from '../utils/logger';
 import './OneOnOneScreen.css';
 
 const OneOnOneScreen = ({ noLayout = false }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClientHook = useQueryClient();
+
+  const { data: clients = [], isLoading: loading, error: clientsError } = useQuery({
+    queryKey: queryKeys.clients.byCreator(user?.uid),
+    queryFn: () => oneOnOneService.getClientsByCreator(user.uid),
+    enabled: !!user?.uid,
+  });
+
   const [error, setError] = useState(null);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState(null);
@@ -37,27 +48,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const [isLoadingClientPrograms, setIsLoadingClientPrograms] = useState({});
 
   useEffect(() => {
-    const loadClients = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        setError(null);
-        const creatorClients = await oneOnOneService.getClientsByCreator(user.uid);
-        setClients(creatorClients);
-      } catch (err) {
-        console.error('Error loading clients:', err);
-        setError('Error al cargar los clientes');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadClients();
-  }, [user]);
-
-  useEffect(() => {
     if (!isAssignProgramModalOpen || !user) return;
     const loadPrograms = async () => {
       try {
@@ -68,7 +58,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
         );
         setOneOnOnePrograms(oneOnOne);
       } catch (err) {
-        console.error('Error loading programs:', err);
+        logger.error('Error loading programs:', err);
         setOneOnOnePrograms([]);
       } finally {
         setIsLoadingPrograms(false);
@@ -98,7 +88,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       );
       setClientPrograms((prev) => ({ ...prev, [clientUserId]: programsWithClientStatus }));
     } catch (err) {
-      console.error('Error loading client programs:', err);
+      logger.error('Error loading client programs:', err);
     } finally {
       setIsLoadingClientPrograms((prev) => ({ ...prev, [clientUserId]: false }));
     }
@@ -146,7 +136,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       const found = await oneOnOneService.lookupUserByEmailOrUsername(emailOrUsername.trim());
       return found;
     } catch (err) {
-      console.error('Error looking up user:', err);
+      logger.error('Error looking up user:', err);
       setFindUserError(err.message || 'No se encontró ningún usuario');
       return null;
     } finally {
@@ -173,13 +163,12 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       setIsAssigning(true);
       setAssignError(null);
       await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
-      const creatorClients = await oneOnOneService.getClientsByCreator(user.uid);
-      setClients(creatorClients);
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.clients.byCreator(user.uid) });
       setSelectedClientId(clientUserId);
       handleCloseAssignProgramModal();
       await loadClientPrograms(clientUserId);
     } catch (err) {
-      console.error('Error adding client:', err);
+      logger.error('Error adding client:', err);
       setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
       setIsAssigning(false);
@@ -209,7 +198,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       const userData = await oneOnOneService.getClientUserData(client.clientUserId);
       setClientUserData(userData);
     } catch (err) {
-      console.error('Error fetching client data:', err);
+      logger.error('Error fetching client data:', err);
       setError('Error al cargar los datos del cliente');
     } finally {
       setLoadingClientData(false);
@@ -226,7 +215,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const content = (
     <>
       <div className="one-on-one-layout">
-        {/* Left panel: client list (same structure as session-edit left sidebar) */}
         <aside className="one-on-one-sidebar">
           <div className="one-on-one-sidebar-header">
             <h2 className="one-on-one-sidebar-title">Clientes</h2>
@@ -251,9 +239,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           </div>
           <div className="one-on-one-sidebar-content">
             {loading ? (
-              <div className="one-on-one-sidebar-loading">
-                <p>Cargando clientes…</p>
-              </div>
+              <ScreenSkeleton />
             ) : error ? (
               <div className="one-on-one-sidebar-error">
                 <p>{error}</p>
@@ -306,7 +292,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           </div>
         </aside>
 
-        {/* Middle panel: client detail or empty state */}
         <main className="one-on-one-main">
           {!selectedClientData ? (
             <div className="one-on-one-main-empty">
@@ -359,9 +344,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
               <section className="one-on-one-main-programs">
                 <h4 className="one-on-one-main-programs-title">Programas asignados</h4>
                 {clientPrograms[selectedClientData.clientUserId] === undefined ? (
-                  <div className="one-on-one-main-programs-loading">
-                    <p>Cargando programas…</p>
-                  </div>
+                  <ScreenSkeleton />
                 ) : selectedClientPrograms.length === 0 ? (
                   <div className="one-on-one-main-programs-empty">
                     <p>Este cliente no tiene programas asignados. Asigna uno desde la planificación del cliente.</p>
@@ -429,9 +412,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       >
         <div className="modal-client-detail-content">
           {loadingClientData ? (
-            <div className="client-detail-loading">
-              <p>Cargando datos…</p>
-            </div>
+            <ScreenSkeleton />
           ) : error ? (
             <div className="modal-error-message">
               <p>{error}</p>
@@ -487,9 +468,11 @@ const OneOnOneScreen = ({ noLayout = false }) => {
 
   if (noLayout) return content;
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName="Clientes">
       {content}
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

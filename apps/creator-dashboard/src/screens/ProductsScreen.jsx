@@ -23,7 +23,6 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
     }
   }, [location.pathname, location.key, location.state]);
 
-  // Fetch all programs
   const { data: allPrograms = [], isLoading } = useQuery({
     queryKey: ['programs', user?.uid],
     queryFn: async () => {
@@ -33,7 +32,6 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
     enabled: !!user,
   });
 
-  // Filter programs by type
   const lowTicketPrograms = allPrograms.filter(p => (p.deliveryType || 'low_ticket') === 'low_ticket');
   const oneOnOnePrograms = allPrograms.filter(p => p.deliveryType === 'one_on_one');
 

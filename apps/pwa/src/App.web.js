@@ -3,6 +3,8 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import './styles/global.css'; // Load Montserrat + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './config/queryClient';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
@@ -839,18 +841,20 @@ export default function App() {
         v7_relativeSplatPath: true,
       }}
     >
-      <SafeAreaProvider initialMetrics={initialMetrics}>
-        <AuthProvider>
-          <ActivityStreakProvider>
-            <FrozenBottomWrapper>
-              <View style={contentWrapperStyle}>
-                {content}
-              </View>
-            </FrozenBottomWrapper>
-            <WakeDebugPanel />
-          </ActivityStreakProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider initialMetrics={initialMetrics}>
+          <AuthProvider>
+            <ActivityStreakProvider>
+              <FrozenBottomWrapper>
+                <View style={contentWrapperStyle}>
+                  {content}
+                </View>
+              </FrozenBottomWrapper>
+              <WakeDebugPanel />
+            </ActivityStreakProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
     </BrowserRouter>
   );
 }

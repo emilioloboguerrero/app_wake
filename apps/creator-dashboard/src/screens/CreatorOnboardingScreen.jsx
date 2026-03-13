@@ -7,6 +7,7 @@ import cardService from '../services/cardService';
 import { ASSET_BASE } from '../config/assets';
 import Input from '../components/Input';
 import Button from '../components/Button';
+import logger from '../utils/logger';
 import './CreatorOnboardingScreen.css';
 
 const CreatorOnboardingScreen = () => {
@@ -17,12 +18,10 @@ const CreatorOnboardingScreen = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
-  // Profile picture state
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
   const fileInputRef = useRef(null);
   
-  // Card state
   const [cardTitle, setCardTitle] = useState('');
   const [cardMedia, setCardMedia] = useState(null);
   const [cardMediaPreview, setCardMediaPreview] = useState(null);
@@ -31,10 +30,8 @@ const CreatorOnboardingScreen = () => {
   const [isCardUploading, setIsCardUploading] = useState(false);
   const cardMediaInputRef = useRef(null);
   
-  // User gender for welcome message
   const [userGender, setUserGender] = useState(null);
 
-  // Fetch user gender when component mounts
   useEffect(() => {
     const fetchUserGender = async () => {
       if (user) {
@@ -42,14 +39,13 @@ const CreatorOnboardingScreen = () => {
           const userData = await getUser(user.uid);
           setUserGender(userData?.gender || null);
         } catch (error) {
-          console.error('Error fetching user gender:', error);
+          logger.error('Error fetching user gender:', error);
         }
       }
     };
     fetchUserGender();
   }, [user]);
 
-  // Get welcome message based on gender
   const getWelcomeMessage = () => {
     if (!userGender) return '¡Bienvenid@!';
     const gender = userGender.toLowerCase();
@@ -62,20 +58,18 @@ const CreatorOnboardingScreen = () => {
     }
   };
 
-  // Step 0: Welcome
   const welcomeStep = {
     type: 'welcome',
     title: '¡Bienvenido a Wake Creadores!'
   };
 
-  // Step 1: Profile Picture
   const profilePictureStep = {
     type: 'profilePicture',
     title: 'Sube tu foto de perfil',
     description: 'Esta foto aparecerá en tu perfil de creador'
   };
 
-  const totalSteps = 4; // Welcome + Profile Picture + Card Creation + Completion
+  const totalSteps = 4;
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -103,7 +97,7 @@ const CreatorOnboardingScreen = () => {
       );
       setCurrentStep(currentStep + 1);
     } catch (error) {
-      console.error('Error uploading profile picture:', error);
+      logger.error('Error uploading profile picture:', error);
       alert(error.message || 'Error al subir la foto de perfil. Por favor intenta de nuevo.');
     } finally {
       setIsUploading(false);
@@ -114,17 +108,14 @@ const CreatorOnboardingScreen = () => {
 
   const handleNext = async () => {
     if (currentStep === 0) {
-      // Welcome step
       setCurrentStep(1);
     } else if (currentStep === 1) {
-      // Profile picture step - handled separately
       if (profilePicture) {
         handleProfilePictureUpload();
       } else {
         alert('Por favor sube una foto de perfil para continuar');
       }
     } else if (currentStep === 2) {
-      // Card creation step - validate, upload card, then proceed to completion
       if (cardTitle.trim().length === 0) {
         alert('Por favor ingresa un título para tu historia');
         return;
@@ -134,7 +125,6 @@ const CreatorOnboardingScreen = () => {
         return;
       }
       
-      // Upload card if media is provided
       if (cardMedia && user) {
         setIsCardUploading(true);
         setCardUploadProgress(0);
@@ -144,14 +134,12 @@ const CreatorOnboardingScreen = () => {
             ? await cardService.uploadCardVideo(user.uid, cardMedia, (progress) => setCardUploadProgress(progress))
             : await cardService.uploadCardImage(user.uid, cardMedia, (progress) => setCardUploadProgress(progress));
           
-          // Save card with media URL
           const cards = {
             [cardTitle.trim()]: mediaURL
           };
           await updateUser(user.uid, { cards });
         } catch (error) {
-          console.error('Error uploading card media:', error);
-          // Show the actual error message from the service
+          logger.error('Error uploading card media:', error);
           const errorMessage = error.message || 'Error al subir la imagen/video. Por favor intenta de nuevo.';
           alert(errorMessage);
           setIsCardUploading(false);
@@ -165,7 +153,6 @@ const CreatorOnboardingScreen = () => {
       
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      // Completion step - complete onboarding
       handleComplete();
     }
   };
@@ -185,17 +172,16 @@ const CreatorOnboardingScreen = () => {
 
   const handleComplete = async () => {
     if (!user) return;
-    
+
     setIsCompleting(true);
     try {
-      // Complete onboarding (card is already saved in previous step)
       await completeWebOnboarding(user.uid, {
         completedAt: new Date().toISOString(),
       });
       await refreshUserData();
       navigate('/lab', { replace: true });
     } catch (error) {
-      console.error('Error completing onboarding:', error);
+      logger.error('Error completing onboarding:', error);
       alert('Error al completar el onboarding. Por favor intenta de nuevo.');
       setIsCompleting(false);
     }
@@ -203,7 +189,6 @@ const CreatorOnboardingScreen = () => {
 
   const renderStep = () => {
     if (currentStep === 0) {
-      // Welcome step
       return (
         <div className="onboarding-step-content">
           <div className="step-logo">
@@ -212,7 +197,6 @@ const CreatorOnboardingScreen = () => {
               alt="Wake Logo" 
               className="wake-logo-image"
               onError={(e) => {
-                // Fallback to other logo if this one doesn't exist
                 e.target.src = '/wake-isotipo.png';
               }}
             />
@@ -221,7 +205,6 @@ const CreatorOnboardingScreen = () => {
         </div>
       );
     } else if (currentStep === 1) {
-      // Profile picture step
       return (
         <div className="onboarding-step-content">
           <h1 className="step-title">{profilePictureStep.title}</h1>
@@ -267,7 +250,6 @@ const CreatorOnboardingScreen = () => {
         </div>
       );
     } else if (currentStep === 2) {
-      // Card creation step
       return (
         <div className="onboarding-step-content">
           <h1 className="step-title">Cuenta tu primera historia</h1>
@@ -328,7 +310,6 @@ const CreatorOnboardingScreen = () => {
         </div>
       );
     } else if (currentStep === 3) {
-      // Completion step
       return (
         <div className="onboarding-step-content">
           <div className="step-logo">
@@ -337,7 +318,6 @@ const CreatorOnboardingScreen = () => {
               alt="Wake Logo" 
               className="wake-logo-image"
               onError={(e) => {
-                // Fallback to other logo if this one doesn't exist
                 e.target.src = '/wake-isotipo.png';
               }}
             />
@@ -352,10 +332,9 @@ const CreatorOnboardingScreen = () => {
     if (currentStep === 0) return true;
     if (currentStep === 1) return profilePicture !== null && !isUploading;
     if (currentStep === 2) {
-      // Card creation step - need title and media
       return cardTitle.trim().length > 0 && cardMedia !== null;
     }
-    if (currentStep === 3) return true; // Completion step - always can proceed
+    if (currentStep === 3) return true;
     return true;
   };
 
@@ -363,7 +342,6 @@ const CreatorOnboardingScreen = () => {
   return (
     <div className="creator-onboarding-container">
       <div className="creator-onboarding-content">
-        {/* Progress Indicator */}
         <div className="onboarding-progress">
           {Array.from({ length: totalSteps }).map((_, index) => (
             <div
@@ -373,10 +351,8 @@ const CreatorOnboardingScreen = () => {
           ))}
         </div>
 
-        {/* Step Content */}
         {renderStep()}
 
-        {/* Navigation Buttons */}
         <div className="onboarding-actions">
           <Button
             title={

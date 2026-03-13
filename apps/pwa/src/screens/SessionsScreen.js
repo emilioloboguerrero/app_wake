@@ -376,6 +376,7 @@ const SessionsScreen = ({ navigation }) => {
     
     return (
       <TouchableOpacity
+        className={Platform.OS === 'web' ? 'session-row' : undefined}
         style={styles.sessionCard}
         onPress={() => handleSessionPress(session)}
         activeOpacity={0.7}

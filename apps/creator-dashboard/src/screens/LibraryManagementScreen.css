@@ -174,7 +174,7 @@ body.header-scrolled .library-tab-navigation {
 }
 
 .library-action-button:hover {
-  background: rgba(191, 168, 77, 0.3) !important;
-  border-color: rgba(191, 168, 77, 0.7) !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
 }
 

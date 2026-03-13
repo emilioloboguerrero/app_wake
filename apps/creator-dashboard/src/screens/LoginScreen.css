@@ -56,7 +56,7 @@
 .forgot-password-text {
   font-size: 14px;
   font-weight: 400;
-  color: rgba(191, 168, 77, 0.72);
+  color: rgba(255, 255, 255, 0.72);
   text-decoration: underline;
 }
 
@@ -84,7 +84,7 @@
 }
 
 .toggle-link {
-  color: rgba(191, 168, 77, 0.72);
+  color: rgba(255, 255, 255, 0.72);
   font-weight: 500;
 }
 
@@ -142,12 +142,12 @@
 }
 
 .terms-switch input:checked + .terms-slider {
-  background-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .terms-switch input:checked + .terms-slider:before {
   transform: translateX(20px);
-  background-color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 1);
 }
 
 .terms-text-container {
@@ -163,14 +163,14 @@
 }
 
 .terms-link {
-  color: rgba(191, 168, 77, 0.72);
+  color: rgba(255, 255, 255, 0.72);
   font-weight: 500;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .terms-link:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 /* Legal Documents Modal */
@@ -261,7 +261,7 @@
 }
 
 .legal-modal-link {
-  color: rgba(191, 168, 77, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
   text-decoration: underline;
   cursor: pointer;
@@ -270,6 +270,6 @@
 }
 
 .legal-modal-link:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 

@@ -14,8 +14,8 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -115,15 +115,8 @@ const SubscriptionsScreen = ({ navigation }) => {
     logger.log('✅ SubscriptionsScreen: User.uid found:', user.uid);
     logger.log('✅ SubscriptionsScreen: Setting up Firestore listener for user:', user.uid);
     
-    const subscriptionsRef = collection(
-      firestore,
-      'users',
+    const unsubscribe = firestoreService.subscribeToUserSubscriptions(
       user.uid,
-      'subscriptions',
-    );
-
-    const unsubscribe = onSnapshot(
-      subscriptionsRef,
       async (snapshot) => {
         logger.log('📥 SubscriptionsScreen: Firestore snapshot received');
         logger.log('📥 SubscriptionsScreen: Snapshot size:', snapshot.size, 'docs');
@@ -686,7 +679,7 @@ const SubscriptionsScreen = ({ navigation }) => {
             const statusColor = statusColors[statusKey] || '#ffffff';
 
             return (
-              <View key={subscription.id} style={styles.card}>
+              <View key={subscription.id} className={Platform.OS === 'web' ? 'subscription-card' : undefined} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={styles.cardHeaderLeft}>
                   <Text style={styles.courseTitle}>

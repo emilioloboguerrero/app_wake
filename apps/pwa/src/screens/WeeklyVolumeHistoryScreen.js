@@ -12,8 +12,8 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { doc, getDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -91,13 +91,10 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
     }
     try {
       setLoading(true);
-      const userDocRef = doc(firestore, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
       const currentWeekKey = getMondayWeek();
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
+      const data = await firestoreService.getUser(user.uid);
+
+      if (data) {
         const weeklyMuscleVolumeData = data.weeklyMuscleVolume || {};
         setWeeklyMuscleVolume(weeklyMuscleVolumeData);
         
@@ -171,11 +168,9 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const loadWeeklyData = async (week) => {
     try {
       setLoadingWeek(true);
-      const userDocRef = doc(firestore, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
+      const data = await firestoreService.getUser(user.uid);
+
+      if (data) {
         const weekData = data.weeklyMuscleVolume?.[week] || {};
         setWeeklyVolumes(weekData);
         logger.log('✅ Weekly data loaded for week:', week, weekData);

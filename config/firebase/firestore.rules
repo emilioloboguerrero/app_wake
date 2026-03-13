@@ -64,6 +64,11 @@ service cloud.firestore {
       match /readiness/{date} {
         allow read, write: if isOwner(userId);
       }
+
+      // Body progress log (one doc per day: weight + photos)
+      match /bodyLog/{dateStr} {
+        allow read, write: if isOwner(userId);
+      }
     }
     
     // Creator-client access: doc id = creatorId_userId; allows creator to read/update that user's document (e.g. set access end date)
@@ -102,16 +107,23 @@ service cloud.firestore {
     // COURSE CONTENT
     // ============================================
     
-    // Courses - All authenticated users can read
+    // Courses
+    // - Published courses (status 'publicado' or 'published') are readable by all authenticated users
+    // - Draft/unpublished courses are only readable by their creator or admins
+    // - Courses with no status field are treated as published for backward compatibility
     match /courses/{courseId} {
-      allow read: if isSignedIn();
-      
-      // Only creators can create courses
+      allow read: if isSignedIn() && (
+        resource.data.get('status', '') == 'publicado' ||
+        resource.data.get('status', '') == 'published' ||
+        resource.data.get('status', '') == '' ||
+        isAdmin() ||
+        (isCreator() && resource.data.get('creator_id', '') == request.auth.uid)
+      );
+
       allow create: if isCreator();
-      
-      // Only course creator or admin can update/delete
+
       allow update: if isSignedIn() && (
-        isAdmin() || 
+        isAdmin() ||
         (isCreator() && resource.data.get('creator_id', '') == request.auth.uid)
       );
       allow delete: if isAdmin();
@@ -315,7 +327,11 @@ service cloud.firestore {
     }
 
     match /event_signups/{eventId}/registrations/{regId} {
-      allow create: if true;
+      // wake_users_only events require auth; open events allow anyone
+      allow create: if (
+        get(/databases/$(database)/documents/events/$(eventId)).data.get('wake_users_only', false) == false
+        || isSignedIn()
+      );
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
         || isAdmin()
@@ -337,8 +353,6 @@ service cloud.firestore {
     }
 
     // ============================================
-    // DEFAULT RULE (Fallback for any other collections)
-    // ============================================
     // CREATOR FEEDBACK (suggestions / bug reports)
     // ============================================
     match /creator_feedback/{feedbackId} {
@@ -347,9 +361,15 @@ service cloud.firestore {
     }
 
     // ============================================
-    
-    // Allow authenticated users to access other collections
-    // This provides flexibility for development while still requiring authentication
+    // DEFAULT RULE
+    // ============================================
+    // WARNING: The following collections are used in the codebase but have no
+    // explicit rules yet — they fall through to this catch-all:
+    //   plans, client_programs, client_sessions, client_session_content,
+    //   client_plan_content, creator_libraries, exercises_library,
+    //   progress (top-level), community
+    // TODO: Add explicit rules for each collection above, then change this to
+    //   allow read, write: if false;
     match /{document=**} {
       allow read, write: if isSignedIn();
     }

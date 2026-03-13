@@ -16,6 +16,7 @@ import clientNutritionPlanContentService from '../services/clientNutritionPlanCo
 import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import logger from '../utils/logger';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -201,7 +202,6 @@ export default function PlanEditorScreen() {
     name: '', food_id: '', serving_id: '0', units: 1, calories: '', protein: '', carbs: '', fat: '',
   });
 
-  // Propagation (library mode only)
   const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
   const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
   const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
@@ -268,7 +268,7 @@ export default function PlanEditorScreen() {
           };
         }
       } catch (e) {
-        console.error(e);
+        logger.error(e);
       } finally {
         if (!cancelled) setPlanLoading(false);
       }
@@ -354,18 +354,17 @@ export default function PlanEditorScreen() {
         }
         lastSavedRef.current = { name, macros, categoriesJson };
       } catch (e) {
-        console.error(e);
+        logger.error(e);
       }
     }, 700);
     return () => clearTimeout(t);
   }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId, meals]);
 
-  // Propagation: fetch affected count when in library mode and has changes
   useEffect(() => {
     if (!planId || isAssignmentScope || !hasMadeChanges) return;
     propagationService.findAffectedByNutritionPlan(planId)
       .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
-      .catch((err) => console.warn('Error fetching nutrition propagation count:', err));
+      .catch((err) => logger.warn('Error fetching nutrition propagation count:', err));
   }, [planId, isAssignmentScope, hasMadeChanges]);
 
   useEffect(() => {
@@ -373,7 +372,7 @@ export default function PlanEditorScreen() {
     if (propagateAffectedUsers.length > 0) return;
     propagationService.getAffectedUsersWithDetailsByNutritionPlan(planId)
       .then(setPropagateAffectedUsers)
-      .catch((err) => console.warn('Error fetching affected users:', err));
+      .catch((err) => logger.warn('Error fetching affected users:', err));
   }, [isNavigateModalOpen, planId, propagateAffectedCount, propagateAffectedUsers.length]);
 
   useEffect(() => {
@@ -404,7 +403,7 @@ export default function PlanEditorScreen() {
       setPropagateAffectedUsers(users);
       setIsPropagateModalOpen(true);
     } catch (err) {
-      console.warn(err);
+      logger.warn(err);
     }
   };
 
@@ -420,7 +419,7 @@ export default function PlanEditorScreen() {
       }
       setHasMadeChanges(false);
     } catch (err) {
-      console.error('Error propagating:', err);
+      logger.error('Error propagating:', err);
       alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
     } finally {
       setIsPropagating(false);
@@ -448,11 +447,6 @@ export default function PlanEditorScreen() {
       const data = await nutritionApi.nutritionFoodSearch(foodSearchQuery.trim(), 0, 20);
       const raw = data?.foods_search?.results?.food ?? [];
       const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[FatSecret search] response:', JSON.stringify(data, null, 2));
-        const first = foods[0];
-        if (first) console.log('[FatSecret search] first food keys:', Object.keys(first));
-      }
       setFoodSearchResults(foods);
     } catch (e) {
       setFoodSearchResults([]);
@@ -675,9 +669,6 @@ export default function PlanEditorScreen() {
         } else {
           try {
             const getRes = await nutritionApi.nutritionFoodGet(food.food_id, { include_sub_categories: true });
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[FatSecret food.get] response:', JSON.stringify(getRes, null, 2));
-            }
             const getSub = getRes?.food?.food_sub_categories?.food_sub_category;
             foodCategory = Array.isArray(getSub) ? getSub[0] : (getSub ?? food.food_name ?? null);
           } catch (_) {
@@ -796,7 +787,6 @@ export default function PlanEditorScreen() {
       )}
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
-          {/* Left — Tabs: Alimentos | Recetas, then section content */}
           <div className="library-session-sidebar plan-editor-sidebar">
             <div className="plan-editor-sidebar-tabs">
               <button
@@ -989,7 +979,6 @@ export default function PlanEditorScreen() {
             )}
           </div>
 
-          {/* Center — Macro objectives + Categories */}
           <div className="library-session-main plan-editor-main">
             <div className="plan-editor-macros-objectives">
               <h3 className="plan-editor-macros-objectives-title">Objetivos diarios</h3>
@@ -1249,7 +1238,6 @@ export default function PlanEditorScreen() {
             </div>
           </div>
 
-          {/* Right — Planned (selected options) + pie + planned/objective */}
           <div className="library-session-sidebar-right">
             <div className="meal-editor-calories-hero">
               <div className="meal-editor-calories-value">

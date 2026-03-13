@@ -92,12 +92,12 @@
 .find-user-modal-already-exists-message {
   font-size: 14px;
   line-height: 1.5;
-  color: rgba(255, 193, 7, 0.95);
+  color: rgba(255, 255, 255, 0.75);
   margin: 0;
   padding: 10px 12px;
-  background: rgba(255, 193, 7, 0.12);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  border-left: 3px solid rgba(255, 193, 7, 0.5);
+  border-left: 3px solid rgba(255, 255, 255, 0.25);
 }
 
 .find-user-modal-error {

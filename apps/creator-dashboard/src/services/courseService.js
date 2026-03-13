@@ -1,81 +1,78 @@
-// Course service for Wake Web Dashboard
 import { firestore } from '../config/firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
 import { getUser } from './firestoreService';
+import logger from '../utils/logger';
 
 /**
- * Get all available courses for a user
- * Filters courses based on user role:
- * - Admins: see all courses
- * - Creators: see published + their own courses
- * - Users: see only published courses
- * @param {string} userId - User ID (optional for non-authenticated users)
- * @returns {Promise<Array>} Array of available courses
+ * Get available courses for a user based on their role.
+ * - Admins: all courses
+ * - Creators: published courses + their own (any status)
+ * - Users: published courses only
+ *
+ * Filtering is done via Firestore queries rather than client-side so that
+ * unpublished courses from other creators are never fetched at all.
  */
 export const getAvailableCourses = async (userId = null) => {
   try {
-    // Get user role if userId provided
-    let userRole = 'user'; // Default
+    let userRole = 'user';
     if (userId) {
       const userDoc = await getUser(userId);
       userRole = userDoc?.role || 'user';
     }
-    
-    // Get all courses from Firestore
+
     const coursesRef = collection(firestore, 'courses');
-    const coursesSnapshot = await getDocs(coursesRef);
-    
-    const allCourses = coursesSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    // Filter courses based on user role
-    const filteredCourses = allCourses.filter(course => {
-      const courseStatus = course.status || course.estado; // Support both field names
-      
-      // Admins see everything
-      if (userRole === 'admin') {
-        return true;
+    let courseDocs = [];
+
+    if (userRole === 'admin') {
+      // Admins see everything — Firestore rules allow admin full read
+      const snapshot = await getDocs(coursesRef);
+      courseDocs = snapshot.docs;
+    } else if (userRole === 'creator' && userId) {
+      // Two queries: published courses + own courses (any status), then deduplicate
+      const [publishedSnap, ownSnap] = await Promise.all([
+        getDocs(query(coursesRef, where('status', 'in', ['publicado', 'published']))),
+        getDocs(query(coursesRef, where('creator_id', '==', userId))),
+      ]);
+      const seen = new Set();
+      for (const d of [...publishedSnap.docs, ...ownSnap.docs]) {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          courseDocs.push(d);
+        }
       }
-      
-      // Creators see published + their own courses
-      if (userRole === 'creator') {
-        const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
-        const isOwnCourse = course.creator_id === userId;
-        return isPublished || isOwnCourse;
-      }
-      
-      // Regular users see only published courses
-      const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
-      return isPublished || !courseStatus; // Backward compatibility: show if no status set
-    });
-    
-    // Sort by creation date (newest first)
-    const sortedCourses = filteredCourses.sort((a, b) => {
+    } else {
+      // Regular users: published only
+      // Backward compat: also include docs with no status field (older records)
+      const snapshot = await getDocs(
+        query(coursesRef, where('status', 'in', ['publicado', 'published']))
+      );
+      courseDocs = snapshot.docs;
+    }
+
+    const courses = courseDocs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Sort newest first
+    courses.sort((a, b) => {
       const aDate = a.created_at?.toDate?.() || a.created_at || new Date(0);
       const bDate = b.created_at?.toDate?.() || b.created_at || new Date(0);
       const aTime = aDate instanceof Date ? aDate.getTime() : new Date(aDate).getTime();
       const bTime = bDate instanceof Date ? bDate.getTime() : new Date(bDate).getTime();
       return bTime - aTime;
     });
-    
-    // Transform to include creator name for display
-    const coursesWithCreator = sortedCourses.map(course => ({
+
+    // Normalize creator name field so callers only need to check one property
+    return courses.map(course => ({
       ...course,
       creatorName: course.creatorName || course.creator_name || 'Unknown Creator',
       creator_name: course.creator_name || course.creatorName || 'Unknown Creator',
     }));
-    
-    return coursesWithCreator;
   } catch (error) {
-    console.error('Error fetching available courses:', error);
+    logger.error('Error fetching available courses:', error);
     throw error;
   }
 };

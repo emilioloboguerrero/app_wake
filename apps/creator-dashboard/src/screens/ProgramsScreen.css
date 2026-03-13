@@ -96,9 +96,9 @@
 }
 
 .program-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .program-card:has(.program-card-image-wrapper):hover {
@@ -408,18 +408,18 @@
 }
 
 .elegant-toggle input:checked + .elegant-toggle-slider {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .elegant-toggle input:checked + .elegant-toggle-slider:before {
   transform: translateX(20px);
-  background-color: rgba(191, 168, 77, 1);
-  box-shadow: 0 0 4px rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 1);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
 .elegant-toggle input:focus + .elegant-toggle-slider {
-  box-shadow: 0 0 4px rgba(191, 168, 77, 0.4);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.4);
 }
 
 /* Program Config Card Image/Video Styles */
@@ -546,7 +546,7 @@
 
 .program-type-selection-option:hover {
   background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -557,9 +557,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(191, 168, 77, 0.15);
+  background-color: rgba(255, 255, 255, 0.15);
   border-radius: 12px;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   flex-shrink: 0;
 }
 
@@ -741,14 +741,14 @@
 }
 
 .one-on-one-library-item-selected {
-  background-color: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .one-on-one-library-item-selected:hover {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .one-on-one-library-check {
@@ -757,9 +757,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   flex-shrink: 0;
 }
 

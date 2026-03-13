@@ -35,7 +35,7 @@
 }
 
 .nutrition-tab.active {
-  border-bottom-color: rgba(191, 168, 77, 1);
+  border-bottom-color: rgba(255, 255, 255, 1);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
 }
@@ -67,8 +67,8 @@
 }
 
 .nutrition-sub-tabs button.active {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
   color: #fff;
 }
 
@@ -164,8 +164,8 @@
 }
 
 .nutrition-search-input-container:focus-within {
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 3px rgba(191, 168, 77, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .nutrition-search-icon {
@@ -209,9 +209,9 @@
 }
 
 .nutrition-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .nutrition-card-clickable {
@@ -470,7 +470,7 @@
 .nutrition-manual-toggle {
   background: none;
   border: none;
-  color: rgba(191, 168, 77, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
   cursor: pointer;
   padding: 4px 0;

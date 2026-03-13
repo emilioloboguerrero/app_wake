@@ -15,7 +15,7 @@ const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 // Color palette for programs (cycle through these)
 const PROGRAM_COLORS = [
-  'rgba(191, 168, 77, 0.6)',   // Gold
+  'rgba(255, 255, 255, 0.6)',   // Gold
   'rgba(107, 142, 35, 0.6)',   // Olive
   'rgba(70, 130, 180, 0.6)',   // Steel blue
   'rgba(186, 85, 211, 0.6)',   // Medium orchid
@@ -71,8 +71,8 @@ const CalendarView = ({
   onVolumeClick,
   onWeekClick
 }) => {
-  const PLAN_BAR_COLOR = 'rgba(78, 64, 44, 0.96)'; // rich bronze/amber (más llamativo)
-  const PLAN_BAR_ACCENT = 'rgba(191, 168, 77, 0.65)'; // visible gold accent
+  const PLAN_BAR_COLOR = 'rgba(50, 50, 55, 0.96)';
+  const PLAN_BAR_ACCENT = 'rgba(255, 255, 255, 0.65)'; // visible gold accent
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);

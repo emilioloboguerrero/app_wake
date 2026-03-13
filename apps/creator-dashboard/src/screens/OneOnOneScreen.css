@@ -49,8 +49,8 @@
   padding: 8px 14px;
   height: 36px;
   border-radius: 8px;
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.95);
   font-size: 14px;
   font-weight: 500;
@@ -59,8 +59,8 @@
 }
 
 .one-on-one-sidebar-add-btn:hover {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .one-on-one-sidebar-add-icon {
@@ -133,21 +133,21 @@
 }
 
 .one-on-one-client-item-selected {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.45);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .one-on-one-client-item-selected:hover {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.55);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .one-on-one-client-item-avatar {
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -158,8 +158,8 @@
 }
 
 .one-on-one-client-item-selected .one-on-one-client-item-avatar {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .one-on-one-client-item-body {
@@ -229,8 +229,8 @@
   gap: 8px;
   padding: 12px 24px;
   border-radius: 8px;
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.95);
   font-size: 15px;
   font-weight: 500;
@@ -240,8 +240,8 @@
 }
 
 .one-on-one-main-empty-btn:hover {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .one-on-one-main-empty-btn-icon {
@@ -306,14 +306,14 @@
 }
 
 .one-on-one-main-btn-primary {
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .one-on-one-main-btn-primary:hover {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .one-on-one-main-btn-secondary {
@@ -395,8 +395,8 @@
 .one-on-one-main-program-open {
   padding: 8px 16px;
   border-radius: 6px;
-  background: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.45);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   color: rgba(255, 255, 255, 0.95);
   font-size: 13px;
   font-weight: 500;
@@ -407,8 +407,8 @@
 }
 
 .one-on-one-main-program-open:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 /* Sidebar scrollbar */

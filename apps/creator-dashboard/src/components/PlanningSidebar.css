@@ -88,13 +88,13 @@
 }
 
 .planning-sidebar-program-item-selected {
-  background-color: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .planning-sidebar-program-item-selected:hover {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.5);
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .planning-sidebar-program-item-unassigned {
@@ -130,7 +130,7 @@
 }
 
 .planning-sidebar-program-item-draggable:hover .planning-sidebar-program-drag-hint {
-  color: rgba(191, 168, 77, 0.6);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .planning-sidebar-program-content {
@@ -153,12 +153,12 @@
   width: 40px;
   height: 40px;
   border-radius: 6px;
-  background-color: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 18px;
   font-weight: 600;
   flex-shrink: 0;
@@ -184,7 +184,7 @@
 
 .planning-sidebar-program-selected-indicator {
   font-size: 11px;
-  color: rgba(191, 168, 77, 0.8);
+  color: rgba(255, 255, 255, 0.8);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -208,9 +208,9 @@
 }
 
 .planning-sidebar-program-assign-button:hover {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.4);
-  color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 1);
 }
 
 .planning-sidebar-program-unassign-button:hover {
@@ -282,11 +282,11 @@
 @keyframes planning-library-sessions-pulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(191, 168, 77, 0);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
   }
   50% {
     transform: scale(1.03);
-    box-shadow: 0 0 16px 4px rgba(191, 168, 77, 0.35);
+    box-shadow: 0 0 16px 4px rgba(255, 255, 255, 0.35);
   }
 }
 
@@ -329,13 +329,13 @@
 }
 
 .planning-library-tab.active {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.5);
-  color: rgba(191, 168, 77, 0.95);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .planning-library-tab.active:hover {
-  background: rgba(191, 168, 77, 0.2);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Plan structure sidebar (plan detail screen) */

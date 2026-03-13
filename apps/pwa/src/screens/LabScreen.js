@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
-import { collection, doc, getDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, updateDoc } from 'firebase/firestore';
 import { firestore, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -26,6 +26,11 @@ import LabConsistencyGrid from '../components/LabConsistencyGrid';
 import LabReadinessChart from '../components/LabReadinessChart';
 import LabMuscleHeatmap from '../components/LabMuscleHeatmap.web.jsx';
 import LabReadinessRpeScatter from '../components/LabReadinessRpeScatter.web.jsx';
+import LabWeightChart from '../components/LabWeightChart.web.jsx';
+import { WakeModalOverlay } from '../components/WakeModalOverlay.web';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { consumePendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
+import bodyProgressService from '../services/bodyProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { getReadinessInRange } from '../services/readinessService';
 import { getDiaryEntriesInRange, getEffectivePlanForUser } from '../services/nutritionFirestoreService';
@@ -121,6 +126,667 @@ function formatSetsNumber(value) {
   return parseFloat(rounded.toFixed(2)).toString();
 }
 
+// ─── WeightDrumPicker ──────────────────────────────────────────────────────────
+
+const DRUM_ITEM_H = 65;
+
+const KG_STEP = 0.1;
+const LBS_STEP = 0.2; // ~0.1 kg equivalent
+
+function WeightDrumPicker({ value, unit, onChange }) {
+  const values = useMemo(() => {
+    const arr = [];
+    const step = unit === 'lbs' ? LBS_STEP : KG_STEP;
+    const [lo, hi] = unit === 'lbs' ? [66, 660] : [30, 300];
+    for (let v = lo; v <= hi + 0.001; v = Math.round((v + step) * 100) / 100) {
+      arr.push(Math.round(v * 10) / 10);
+    }
+    return arr;
+  }, [unit]);
+
+  const containerRef = useRef(null);
+  const debounceRef = useRef(null);
+  const suppressRef = useRef(false);
+  const prevUnitRef = useRef(unit);
+
+  const getIdx = useCallback(
+    (val) => {
+      if (val == null) return Math.floor(values.length / 2);
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < values.length; i++) {
+        const d = Math.abs(values[i] - val);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      return bestIdx;
+    },
+    [values],
+  );
+
+  // Scroll to initial position on mount
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    suppressRef.current = true;
+    containerRef.current.scrollTop = getIdx(value) * DRUM_ITEM_H;
+    const t = setTimeout(() => { suppressRef.current = false; }, 300);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-scroll when unit changes — value is already in current unit from parent
+  useLayoutEffect(() => {
+    if (prevUnitRef.current === unit) return;
+    prevUnitRef.current = unit;
+    if (!containerRef.current) return;
+    suppressRef.current = true;
+    containerRef.current.scrollTop = getIdx(value) * DRUM_ITEM_H;
+    const t = setTimeout(() => { suppressRef.current = false; }, 300);
+    return () => clearTimeout(t);
+  }, [unit, value, getIdx]);
+
+  const handleScroll = () => {
+    if (suppressRef.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      if (!containerRef.current) return;
+      const idx = Math.max(0, Math.min(
+        Math.round(containerRef.current.scrollTop / DRUM_ITEM_H),
+        values.length - 1,
+      ));
+      containerRef.current.scrollTop = idx * DRUM_ITEM_H;
+      onChange(values[idx]);
+    }, 80);
+  };
+
+  return (
+    <div style={{ position: 'relative', height: DRUM_ITEM_H * 3, overflow: 'hidden', userSelect: 'none' }}>
+      {/* Highlight band */}
+      <div style={{
+        position: 'absolute', top: DRUM_ITEM_H, left: 16, right: 16, height: DRUM_ITEM_H,
+        backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 10,
+        borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)',
+        pointerEvents: 'none', zIndex: 1,
+      }} />
+      {/* Top fade */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: DRUM_ITEM_H,
+        background: 'linear-gradient(to bottom, rgba(26,26,26,1) 0%, rgba(26,26,26,0) 100%)',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
+      {/* Bottom fade */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: DRUM_ITEM_H,
+        background: 'linear-gradient(to top, rgba(26,26,26,1) 0%, rgba(26,26,26,0) 100%)',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="drum-picker-scroll"
+        style={{
+          height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory',
+          paddingTop: DRUM_ITEM_H, paddingBottom: DRUM_ITEM_H, scrollbarWidth: 'none',
+        }}
+      >
+        {values.map((v) => (
+          <div
+            key={v}
+            style={{
+              height: DRUM_ITEM_H, scrollSnapAlign: 'center',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18, fontWeight: '500', color: 'rgba(255,255,255,0.85)',
+            }}
+          >
+            {Number.isInteger(v) ? v : v.toFixed(1)} {unit}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── PhotoLightbox ─────────────────────────────────────────────────────────────
+
+function PhotoLightbox({ photo, onClose, onDelete }) {
+  const ANGLE_LABELS = { front: 'Frente', back: 'Espalda', side: 'Lateral' };
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)',
+        zIndex: 2147483647, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        animation: 'wFadeIn 0.2s ease both',
+      }}
+    >
+      {/* Header */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '20px 20px 12px',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
+        }}
+      >
+        <button
+          onClick={onClose}
+          style={{
+            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 20,
+            color: '#fff', fontSize: 14, fontWeight: '600', padding: '8px 16px', cursor: 'pointer',
+          }}
+        >
+          Cerrar
+        </button>
+        <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '500' }}>
+          {photo.angle ? ANGLE_LABELS[photo.angle] || photo.angle : ''}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{
+            background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)',
+            borderRadius: 20, color: 'rgba(255,100,100,0.9)', fontSize: 14, fontWeight: '600',
+            padding: '8px 16px', cursor: 'pointer',
+          }}
+        >
+          Eliminar
+        </button>
+      </div>
+      {/* Image */}
+      <img
+        src={photo.storageUrl}
+        alt=""
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain',
+          borderRadius: 12,
+          animation: 'wScaleIn 0.3s var(--ease-spring) both',
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── BodyEntryModal ────────────────────────────────────────────────────────────
+
+const ANGLE_LABELS = { front: 'Frente', back: 'Espalda', side: 'Lateral' };
+const ANGLES = ['front', 'back', 'side'];
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatEntryDate(dateStr) {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-');
+  const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  return `${parseInt(day, 10)} de ${months[parseInt(month, 10) - 1]}, ${year}`;
+}
+
+function BodyEntryModal({ visible, onClose, entry, userId, unit, onUnitChange, onSaved, defaultWeightKg = 70 }) {
+  const isEditing = entry != null;
+
+  const [dateStr, setDateStr] = useState(todayStr);
+  const [weightKg, setWeightKg] = useState(null);
+  const [note, setNote] = useState('');
+  const [photos, setPhotos] = useState([]);
+  const [originalPhotos, setOriginalPhotos] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [uploadingAngle, setUploadingAngle] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [lightboxPhoto, setLightboxPhoto] = useState(null);
+  // 'idle' | 'picking' — whether the angle picker is showing
+  const [photoPicking, setPhotoPicking] = useState('idle');
+
+  const fileInputRefs = useRef({});
+  const confirmDeleteTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (isEditing && entry) {
+      setDateStr(entry.date || todayStr());
+      setWeightKg(entry.weight ?? null);
+      setNote(entry.note || '');
+      setPhotos(entry.photos || []);
+      setOriginalPhotos(entry.photos || []);
+    } else {
+      setDateStr(todayStr());
+      setWeightKg(defaultWeightKg ?? 70);
+      setNote('');
+      setPhotos([]);
+      setOriginalPhotos([]);
+    }
+    setSaving(false);
+    setDeleting(false);
+    setConfirmDelete(false);
+    setUploadingAngle(null);
+    setPhotoPicking('idle');
+  }, [visible, isEditing, entry, defaultWeightKg]);
+
+  const displayWeight = unit === 'lbs' && weightKg != null
+    ? Math.round(weightKg * 2.20462 * 10) / 10
+    : weightKg;
+
+  const handleWeightChange = (val) => {
+    const kg = unit === 'lbs' ? Math.round((val / 2.20462) * 100) / 100 : val;
+    setWeightKg(kg);
+  };
+
+  const pickAngle = (angle) => {
+    setPhotoPicking('idle');
+    if (!fileInputRefs.current[angle]) return;
+    fileInputRefs.current[angle].click();
+  };
+
+  const handleFileChange = async (angle, e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !userId) return;
+    setUploadingAngle(angle);
+    setUploadProgress(0);
+    try {
+      const photo = await bodyProgressService.uploadPhoto(
+        userId, dateStr, file, angle,
+        (pct) => setUploadProgress(pct),
+      );
+      setPhotos((prev) => [...prev, photo]);
+    } catch (err) {
+      logger.error('[BodyEntryModal] photo upload error', err?.message);
+    } finally {
+      setUploadingAngle(null);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleDeletePhoto = async (photo) => {
+    setLightboxPhoto(null);
+    setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+    if (originalPhotos.find((p) => p.id === photo.id)) {
+      await bodyProgressService.cleanupPhoto(photo.storagePath);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!userId || saving) return;
+    setSaving(true);
+    try {
+      await bodyProgressService.saveEntry(userId, dateStr, {
+        weight: weightKg !== null ? weightKg : undefined,
+        note: note.trim() || undefined,
+        photos: photos.length > 0 ? photos : undefined,
+      });
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      logger.error('[BodyEntryModal] save error', err?.message);
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    const newPhotos = photos.filter((p) => !originalPhotos.find((o) => o.id === p.id));
+    await Promise.all(newPhotos.map((p) => bodyProgressService.cleanupPhoto(p.storagePath)));
+    onClose();
+  };
+
+  const handleDeleteEntry = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      confirmDeleteTimerRef.current = setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    if (!userId || deleting) return;
+    clearTimeout(confirmDeleteTimerRef.current);
+    setDeleting(true);
+    try {
+      await bodyProgressService.deleteEntry(userId, dateStr);
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      logger.error('[BodyEntryModal] delete error', err?.message);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <>
+      <WakeModalOverlay
+        visible={visible}
+        onClose={handleCancel}
+        contentAnimation="slideUp"
+        contentPlacement="full"
+      >
+        <div
+          className="wake-modal-panel"
+          style={{
+            width: '100%', maxHeight: '95vh', overflowY: 'auto',
+            display: 'flex', flexDirection: 'column',
+            backgroundColor: '#1a1a1a',
+            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          }}
+        >
+          {/* Drag handle */}
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10, paddingBottom: 2, flexShrink: 0 }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+          </div>
+
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '6px 20px 12px', flexShrink: 0,
+          }}>
+            <button
+              onClick={handleCancel}
+              style={{
+                background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)',
+                fontSize: 16, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit',
+              }}
+            >
+              Cancelar
+            </button>
+            <span style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>
+              {isEditing ? 'Editar registro' : 'Nuevo registro'}
+            </span>
+            <div style={{ width: 70 }} />
+          </div>
+
+          {/* Form */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 28px' }}>
+
+            {/* Date */}
+            <div style={{ marginBottom: 18 }}>
+              <p style={{ fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 }}>
+                Fecha
+              </p>
+              <div style={{ position: 'relative' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12,
+                  border: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px',
+                }}>
+                  <span style={{ color: '#fff', fontSize: 15, fontWeight: '500' }}>
+                    {formatEntryDate(dateStr)}
+                  </span>
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 16 }}>›</span>
+                </div>
+                <input
+                  type="date"
+                  value={dateStr}
+                  onChange={(e) => e.target.value && setDateStr(e.target.value)}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', fontSize: 16, width: '100%' }}
+                />
+              </div>
+            </div>
+
+            {/* Weight + unit pills */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <p style={{ fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                  Peso
+                </p>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['kg', 'lbs'].map((u) => (
+                    <button
+                      key={u}
+                      className="unit-pill"
+                      onClick={() => onUnitChange(u)}
+                      style={{
+                        padding: '7px 20px', borderRadius: 999,
+                        border: '1px solid',
+                        borderColor: unit === u ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.12)',
+                        backgroundColor: unit === u ? 'rgba(255,255,255,0.12)' : 'transparent',
+                        color: unit === u ? '#fff' : 'rgba(255,255,255,0.35)',
+                        fontSize: 12, fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                      }}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <WeightDrumPicker value={displayWeight} unit={unit} onChange={handleWeightChange} />
+            </div>
+
+            {/* Photos */}
+            <div style={{ marginBottom: 18 }}>
+              <p style={{ fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>
+                Fotos
+              </p>
+
+              {/* Horizontal strip: thumbnails + add button */}
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                {photos.map((photo) => (
+                  <div key={photo.id} style={{ position: 'relative', flexShrink: 0 }}>
+                    <button
+                      onClick={() => setLightboxPhoto(photo)}
+                      style={{
+                        width: 68, height: 68, borderRadius: 10, overflow: 'hidden',
+                        border: '1px solid rgba(255,255,255,0.12)', background: 'none',
+                        cursor: 'pointer', padding: 0, display: 'block',
+                      }}
+                    >
+                      <img src={photo.storageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </button>
+                    <span style={{
+                      position: 'absolute', bottom: 4, left: 0, right: 0,
+                      textAlign: 'center', fontSize: 9, fontWeight: '600',
+                      color: 'rgba(255,255,255,0.8)', textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                      textTransform: 'uppercase', letterSpacing: 0.4,
+                    }}>
+                      {ANGLE_LABELS[photo.angle]}
+                    </span>
+                  </div>
+                ))}
+
+                {/* Add photo button */}
+                {uploadingAngle != null ? (
+                  <div style={{
+                    width: 68, height: 68, borderRadius: 10, flexShrink: 0,
+                    border: '1.5px solid rgba(255,255,255,0.15)',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '600' }}>
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPhotoPicking(photoPicking === 'picking' ? 'idle' : 'picking')}
+                    style={{
+                      width: 68, height: 68, borderRadius: 10, flexShrink: 0,
+                      border: '1.5px dashed rgba(255,255,255,0.25)',
+                      backgroundColor: photoPicking === 'picking' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', transition: 'background 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: 24, color: 'rgba(255,255,255,0.45)', lineHeight: 1 }}>+</span>
+                  </button>
+                )}
+
+                {/* Hidden file inputs */}
+                {ANGLES.map((angle) => (
+                  <input
+                    key={angle}
+                    type="file"
+                    accept="image/*"
+                    ref={(el) => { fileInputRefs.current[angle] = el; }}
+                    onChange={(e) => handleFileChange(angle, e)}
+                    style={{ display: 'none' }}
+                  />
+                ))}
+              </div>
+
+              {/* Inline angle picker — slides in below the strip */}
+              {photoPicking === 'picking' && (
+                <div style={{
+                  marginTop: 10, padding: '12px 14px',
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
+                  animation: 'wFadeIn 0.15s ease both',
+                }}>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 10 }}>
+                    Seleccionar ángulo
+                  </p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {ANGLES.map((angle) => (
+                      <button
+                        key={angle}
+                        onClick={() => pickAngle(angle)}
+                        style={{
+                          flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)',
+                          backgroundColor: 'rgba(255,255,255,0.07)', color: '#fff',
+                          fontSize: 13, fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        {ANGLE_LABELS[angle]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: 24 }}>
+              <p style={{ fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 }}>
+                Notas
+              </p>
+              <textarea
+                className="body-entry-notes"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Agregar una nota..."
+                rows={2}
+                style={{
+                  width: '100%', backgroundColor: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+                  padding: '10px 14px', color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                  resize: 'none', outline: 'none', boxSizing: 'border-box',
+                  caretColor: '#fff',
+                }}
+              />
+            </div>
+
+            {/* Save */}
+            <button
+              onClick={handleSave}
+              disabled={saving || weightKg === null}
+              style={{
+                width: '100%', paddingTop: 14, paddingBottom: 14, borderRadius: 14,
+                backgroundColor: (saving || weightKg === null) ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.95)',
+                border: 'none', color: '#1a1a1a', fontSize: 15, fontWeight: '700',
+                cursor: (saving || weightKg === null) ? 'default' : 'pointer',
+                fontFamily: 'inherit', transition: 'background 0.2s',
+              }}
+            >
+              {saving ? 'Guardando…' : (isEditing ? 'Guardar cambios' : 'Guardar')}
+            </button>
+
+            {/* Delete entry */}
+            {isEditing && (
+              <button
+                onClick={handleDeleteEntry}
+                disabled={deleting}
+                style={{
+                  width: '100%', marginTop: 10, padding: '9px 0',
+                  background: 'none', border: 'none',
+                  color: confirmDelete ? '#ff6b6b' : 'rgba(255,100,100,0.7)',
+                  fontSize: 14, fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {deleting ? 'Eliminando…' : (confirmDelete ? '¿Confirmar?' : 'Eliminar registro')}
+              </button>
+            )}
+
+          </div>
+        </div>
+      </WakeModalOverlay>
+
+      {lightboxPhoto && (
+        <PhotoLightbox
+          photo={lightboxPhoto}
+          onClose={() => setLightboxPhoto(null)}
+          onDelete={() => handleDeletePhoto(lightboxPhoto)}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── GoalWeightModal ───────────────────────────────────────────────────────────
+
+function GoalWeightModal({ visible, onClose, currentGoal, unit, userId, onSaved }) {
+  const defaultDisplay = unit === 'lbs' ? 154 : 70;
+  const [goalDisplay, setGoalDisplay] = useState(defaultDisplay);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      const display = currentGoal != null
+        ? (unit === 'lbs' ? Math.round(currentGoal * 2.20462 * 10) / 10 : currentGoal)
+        : (unit === 'lbs' ? 154 : 70);
+      setGoalDisplay(display);
+      setSaving(false);
+    }
+  }, [visible, currentGoal, unit]);
+
+  const handleSave = async () => {
+    if (!goalDisplay || !userId || saving) return;
+    setSaving(true);
+    const kg = unit === 'lbs' ? Math.round((goalDisplay / 2.20462) * 100) / 100 : goalDisplay;
+    try {
+      await bodyProgressService.setGoalWeight(userId, kg);
+      onSaved(kg);
+      onClose();
+    } catch (err) {
+      logger.error('[GoalWeightModal] save error', err?.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <WakeModalOverlay visible={visible} onClose={onClose} contentAnimation="slideUp" contentPlacement="full">
+      <div
+        className="wake-modal-panel"
+        style={{
+          width: '100%', backgroundColor: '#1a1a1a',
+          borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '12px 20px 36px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+        </div>
+        <p style={{ color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center', marginBottom: 16 }}>
+          Objetivo de peso
+        </p>
+        <WeightDrumPicker value={goalDisplay} unit={unit} onChange={setGoalDisplay} />
+        <div style={{ height: 20 }} />
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%', padding: '15px 0', borderRadius: 14, border: 'none',
+            backgroundColor: saving ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.95)',
+            color: '#1a1a1a', fontSize: 15, fontWeight: '700',
+            cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {saving ? 'Guardando…' : 'Guardar objetivo'}
+        </button>
+      </div>
+    </WakeModalOverlay>
+  );
+}
+
 // ─── LabScreen ─────────────────────────────────────────────────────────────────
 
 const LabScreen = ({ navigation }) => {
@@ -139,6 +805,19 @@ const LabScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('fuerza');
   const [selectedExerciseKey, setSelectedExerciseKey] = useState(null);
   const [rangeWeeks, setRangeWeeks] = useState(8);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // ─── Cuerpo tab state ──────────────────────────────────────────────────────
+  const [bodyLogEntries, setBodyLogEntries] = useState([]);
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [goalWeight, setGoalWeight] = useState(null);
+  const [weightRange, setWeightRange] = useState(30);
+  const [cuerpoLoaded, setCuerpoLoaded] = useState(false);
+  const [entryModalVisible, setEntryModalVisible] = useState(false);
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [goalModalVisible, setGoalModalVisible] = useState(false);
   const currentWeek = useMemo(() => getMondayWeek(), []);
   const previousWeek = useMemo(() => getPreviousWeekKey(currentWeek), [currentWeek]);
 
@@ -206,11 +885,77 @@ const LabScreen = ({ navigation }) => {
     }
   }, [user?.uid]);
 
+  const loadCuerpoData = useCallback(async () => {
+    const uid = user?.uid || auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      const entries = await bodyProgressService.getEntries(uid);
+      setBodyLogEntries(entries);
+      setCuerpoLoaded(true);
+    } catch (err) {
+      logger.error('[Lab] loadCuerpoData error', err?.message);
+    }
+  }, [user?.uid]);
+
   useEffect(() => {
     if (!contextUser && Platform.OS === 'web' && auth.currentUser) setFallbackUser(auth.currentUser);
   }, [contextUser]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === 'cuerpo' && !cuerpoLoaded) {
+      loadCuerpoData();
+    }
+  }, [activeTab, cuerpoLoaded, loadCuerpoData]);
+
+  const openBodyEntryModal = useCallback(() => {
+    setActiveTab('cuerpo');
+    setEditingEntry(null);
+    setEntryModalVisible(true);
+  }, []);
+
+  // Open entry modal when navigated here via "Registrar progreso"
+  useEffect(() => {
+    if (consumePendingOpenBodyEntry()) {
+      openBodyEntryModal();
+    }
+  }, [openBodyEntryModal]);
+
+  // When already on Lab, listen for custom event from bottom menu
+  useEffect(() => {
+    const handler = () => openBodyEntryModal();
+    window.addEventListener('wakeOpenBodyEntry', handler);
+    return () => window.removeEventListener('wakeOpenBodyEntry', handler);
+  }, [openBodyEntryModal]);
+
+  // Sync goalWeight and weightUnit from user profile doc
+  useEffect(() => {
+    if (userData?.goalWeight != null) setGoalWeight(userData.goalWeight);
+    if (userData?.weightUnit) setWeightUnit(userData.weightUnit);
+  }, [userData]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('lab-card--visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08 }
+    );
+    const timer = setTimeout(() => {
+      document.querySelectorAll('.lab-card').forEach((el) => observer.observe(el));
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [loading]);
 
   // ─── computations ──────────────────────────────────────────────────────────
 
@@ -784,6 +1529,65 @@ const LabScreen = ({ navigation }) => {
     return `Tu energía ha bajado progresivamente (${avgE(prior).toFixed(1)} → ${avgE(recent).toFixed(1)}/10). Revisa tu descanso y nutrición.`;
   }, [readinessByDay, volumeByWeekGrouped]);
 
+  // ─── Cuerpo computations ───────────────────────────────────────────────────
+
+  const latestBodyEntry = useMemo(() => {
+    const withWeight = bodyLogEntries.filter((e) => e.weight != null);
+    return withWeight.length > 0 ? withWeight[withWeight.length - 1] : null;
+  }, [bodyLogEntries]);
+
+  const weightChartData = useMemo(() => {
+    const cutoffStr = weightRange === 0 ? null : (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - weightRange);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    return bodyLogEntries
+      .filter((e) => e.weight != null && (!cutoffStr || e.date >= cutoffStr))
+      .map((e) => ({
+        date: e.date,
+        value: weightUnit === 'lbs'
+          ? Math.round(e.weight * 2.20462 * 10) / 10
+          : e.weight,
+      }));
+  }, [bodyLogEntries, weightRange, weightUnit]);
+
+  const weightStats = useMemo(() => {
+    const withWeight = bodyLogEntries.filter((e) => e.weight != null);
+    if (!withWeight.length) return null;
+    const weights = withWeight.map((e) => e.weight);
+    const latest = withWeight[withWeight.length - 1].weight;
+
+    const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+    const d30str = `${d30.getFullYear()}-${String(d30.getMonth() + 1).padStart(2, '0')}-${String(d30.getDate()).padStart(2, '0')}`;
+    const d90 = new Date(); d90.setDate(d90.getDate() - 90);
+    const d90str = `${d90.getFullYear()}-${String(d90.getMonth() + 1).padStart(2, '0')}-${String(d90.getDate()).padStart(2, '0')}`;
+
+    const entry30 = withWeight.filter((e) => e.date <= d30str).pop();
+    const entry90 = withWeight.filter((e) => e.date <= d90str).pop();
+    const minKg = Math.min(...weights);
+    const maxKg = Math.max(...weights);
+
+    const toDisplay = (kg) => weightUnit === 'lbs'
+      ? Math.round(kg * 2.20462 * 10) / 10
+      : kg;
+
+    return {
+      latest: toDisplay(latest),
+      delta30: entry30 != null ? Math.round((latest - entry30.weight) * 10) / 10 * (weightUnit === 'lbs' ? 2.20462 : 1) : null,
+      delta90: entry90 != null ? Math.round((latest - entry90.weight) * 10) / 10 * (weightUnit === 'lbs' ? 2.20462 : 1) : null,
+      min: toDisplay(minKg),
+      max: toDisplay(maxKg),
+    };
+  }, [bodyLogEntries, weightUnit]);
+
+  const goalWeightDisplay = useMemo(() => {
+    if (goalWeight == null) return null;
+    return weightUnit === 'lbs'
+      ? Math.round(goalWeight * 2.20462 * 10) / 10
+      : goalWeight;
+  }, [goalWeight, weightUnit]);
+
   // ─── styles ────────────────────────────────────────────────────────────────
 
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
@@ -808,7 +1612,7 @@ const LabScreen = ({ navigation }) => {
   const renderInsight = (text) => text ? <Text style={styles.insightCaption}>{text}</Text> : null;
 
   const renderCard = (title, content, extra = null) => (
-    <View style={styles.card}>
+    <View className="lab-card" style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{title}</Text>
         {extra}
@@ -1423,6 +2227,7 @@ const LabScreen = ({ navigation }) => {
                 return (
                   <TouchableOpacity
                     key={id}
+                    className="session-row"
                     style={styles.sessionHistoryCard}
                     onPress={() => handleSessionPress(s, completedAtIso)}
                     activeOpacity={0.7}
@@ -1457,6 +2262,303 @@ const LabScreen = ({ navigation }) => {
     </>
   );
 
+  // ─── Cuerpo Tab ────────────────────────────────────────────────────────────
+
+  const openNewEntry = () => {
+    setEditingEntry(null);
+    setEntryModalVisible(true);
+  };
+
+  const openEditEntry = (entry) => {
+    setEditingEntry(entry);
+    setEntryModalVisible(true);
+  };
+
+  const handleEntrySaved = () => {
+    setCuerpoLoaded(false);
+    loadCuerpoData();
+  };
+
+  const handleWeightUnitChange = (u) => {
+    setWeightUnit(u);
+    const uid = user?.uid || auth.currentUser?.uid;
+    if (uid) {
+      updateDoc(doc(firestore, 'users', uid), { weightUnit: u }).catch(() => {});
+    }
+  };
+
+  const formatBodyDate = (dateStr) => {
+    if (!dateStr) return '';
+    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const [, m, d] = dateStr.split('-');
+    return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]}`;
+  };
+
+  const renderCuerpoTab = () => {
+    const uid = user?.uid || auth.currentUser?.uid;
+    const allDates = [...bodyLogEntries].reverse();
+    const cardPad = Math.max(16, screenWidth * 0.04);
+    const cardMx = CARD_MARGIN;
+
+    // Shared section card style
+    const sectionCard = {
+      marginHorizontal: cardMx,
+      marginBottom: 14,
+      backgroundColor: '#2a2a2a',
+      borderRadius: Math.max(12, screenWidth * 0.04),
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      overflow: 'hidden',
+    };
+
+    // Section header label (above a card) — optional action on the right
+    const SectionLabel = ({ children, action }) => (
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        marginHorizontal: cardMx, marginBottom: 8, marginTop: 4,
+      }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.45)' }}>
+          {children}
+        </Text>
+        {action}
+      </View>
+    );
+
+    // Row inside a card
+    const StatRow = ({ label, value, valueColor, isLast }) => (
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: cardPad, paddingVertical: 13,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: 'rgba(255,255,255,0.07)',
+      }}>
+        <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.85)', fontWeight: '400' }}>{label}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: valueColor || 'rgba(255,255,255,0.85)' }}>{value}</Text>
+      </View>
+    );
+
+    const latestW = latestBodyEntry?.weight != null
+      ? (weightUnit === 'lbs'
+          ? Math.round(latestBodyEntry.weight * 2.20462 * 10) / 10
+          : latestBodyEntry.weight)
+      : null;
+
+    return (
+      <>
+        {/* ── Hero: icon + weight + subtitle ── */}
+        <View style={{ alignItems: 'center', paddingVertical: 20, marginBottom: 8 }}>
+          <View style={{ marginBottom: 10 }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="5" r="3" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+              <path d="M8 10c0-1 .5-2 4-2s4 1 4 2v9H8V10Z" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 19v-2M14 19v-2" stroke="rgba(255,255,255,0.5)" strokeWidth="1" strokeLinecap="round"/>
+            </svg>
+          </View>
+          {latestW != null ? (
+            <>
+              <Text style={{ fontSize: Math.min(screenWidth * 0.13, 52), fontWeight: '700', color: '#fff', letterSpacing: -1 }}>
+                {latestW} <Text style={{ fontSize: Math.min(screenWidth * 0.06, 24), fontWeight: '500', color: 'rgba(255,255,255,0.6)' }}>{weightUnit}</Text>
+              </Text>
+              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                Actualizado {formatBodyDate(latestBodyEntry.date)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+              Registra tu primer peso para comenzar
+            </Text>
+          )}
+          {/* Unit toggle */}
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
+            {['kg', 'lbs'].map((u) => (
+              <TouchableOpacity
+                key={u}
+                onPress={() => handleWeightUnitChange(u)}
+                style={[styles.rangeBtn, weightUnit === u && styles.rangeBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.rangeBtnLabel, weightUnit === u && styles.rangeBtnLabelActive]}>{u}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* ── History ── */}
+        <SectionLabel>Historial</SectionLabel>
+        <View style={sectionCard}>
+          {/* Range toggle */}
+          <View style={{ flexDirection: 'row', gap: 6, padding: cardPad, paddingBottom: 12 }}>
+            {[{ label: '30d', val: 30 }, { label: '90d', val: 90 }, { label: '1a', val: 365 }, { label: 'Todo', val: 0 }].map(({ label, val }) => (
+              <TouchableOpacity
+                key={val}
+                style={[styles.rangeBtn, weightRange === val && styles.rangeBtnActive]}
+                onPress={() => setWeightRange(val)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.rangeBtnLabel, weightRange === val && styles.rangeBtnLabelActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ paddingHorizontal: 8, paddingBottom: cardPad }}>
+            {weightChartData.length >= 2 ? (
+              <LabWeightChart data={weightChartData} goalValue={goalWeightDisplay} unit={weightUnit} />
+            ) : (
+              <Text style={[styles.emptyText, { padding: cardPad }]}>Registra al menos dos pesos para ver la gráfica.</Text>
+            )}
+          </View>
+        </View>
+
+        {/* ── Statistics ── */}
+        {weightStats && (
+          <>
+            <SectionLabel>Estadísticas</SectionLabel>
+            <View style={sectionCard}>
+              {[
+                { label: 'Cambio en 30 días', val: weightStats.delta30, isDelta: true },
+                { label: 'Cambio en 90 días', val: weightStats.delta90, isDelta: true },
+                { label: 'Mínimo', val: weightStats.min, isDelta: false },
+                { label: 'Máximo', val: weightStats.max, isDelta: false },
+              ].map(({ label, val, isDelta }, idx, arr) => val != null && (
+                <StatRow
+                  key={label}
+                  label={label}
+                  value={isDelta
+                    ? `${val > 0 ? '+' : ''}${Math.round(val * 10) / 10} ${weightUnit}`
+                    : `${val} ${weightUnit}`}
+                  valueColor={isDelta
+                    ? (val < 0 ? '#4ade80' : val > 0 ? '#fb923c' : 'rgba(255,255,255,0.6)')
+                    : (label === 'Mínimo' ? '#4ade80' : '#fb923c')}
+                  isLast={idx === arr.length - 1}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* ── Goal ── */}
+        <SectionLabel>Objetivo</SectionLabel>
+        <View style={sectionCard}>
+          <TouchableOpacity
+            onPress={() => setGoalModalVisible(true)}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: cardPad, paddingVertical: 14, gap: 12,
+            }}
+          >
+            <View style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="5.5" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="2" fill="rgba(255,255,255,0.8)"/>
+              </svg>
+            </View>
+            <View style={{ flex: 1 }}>
+              {goalWeightDisplay != null ? (
+                <>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#fff' }}>
+                    Objetivo: {goalWeightDisplay} {weightUnit}
+                  </Text>
+                  {weightStats?.latest != null && (
+                    <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+                      {Math.round((goalWeightDisplay - weightStats.latest) * 10) / 10 > 0
+                        ? `+${Math.round((goalWeightDisplay - weightStats.latest) * 10) / 10} ${weightUnit} para llegar`
+                        : `${Math.round((goalWeightDisplay - weightStats.latest) * 10) / 10} ${weightUnit} para llegar`}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)' }}>Establecer objetivo</Text>
+              )}
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 18 }}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── All Entries ── */}
+        <SectionLabel action={
+          <TouchableOpacity
+            onPress={openNewEntry}
+            activeOpacity={0.7}
+            style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 18, lineHeight: 20, fontWeight: '300', marginTop: -1 }}>+</Text>
+          </TouchableOpacity>
+        }>Todos los registros</SectionLabel>
+        <View style={[sectionCard, { marginBottom: 32 }]}>
+          {allDates.length === 0 ? (
+            <Text style={[styles.emptyText, { padding: cardPad }]}>Toca "+" para registrar tu primer peso.</Text>
+          ) : (
+            allDates.map((entry, idx) => {
+              const displayW = entry.weight != null
+                ? (weightUnit === 'lbs'
+                    ? `${Math.round(entry.weight * 2.20462 * 10) / 10} lbs`
+                    : `${entry.weight} kg`)
+                : null;
+              const hasPhotos = entry.photos?.length > 0;
+              const thumbPhoto = hasPhotos ? entry.photos[0] : null;
+              return (
+                <TouchableOpacity
+                  key={entry.id}
+                  onPress={() => openEditEntry(entry)}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: cardPad, paddingVertical: 12,
+                    borderBottomWidth: idx === allDates.length - 1 ? 0 : 1,
+                    borderBottomColor: 'rgba(255,255,255,0.07)', gap: 10,
+                  }}
+                >
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 2 }}>
+                        {formatBodyDate(entry.date)}
+                      </Text>
+                      {displayW && (
+                        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{displayW}</Text>
+                      )}
+                    </View>
+                    {thumbPhoto && (
+                      <View style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                        <img src={thumbPhoto.storageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 17 }}>›</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Modals */}
+        <BodyEntryModal
+          visible={entryModalVisible}
+          onClose={() => setEntryModalVisible(false)}
+          entry={editingEntry}
+          userId={uid}
+          unit={weightUnit}
+          onUnitChange={handleWeightUnitChange}
+          onSaved={handleEntrySaved}
+          defaultWeightKg={latestBodyEntry?.weight ?? (weightUnit === 'lbs' ? 180 / 2.20462 : 70)}
+        />
+        <GoalWeightModal
+          visible={goalModalVisible}
+          onClose={() => setGoalModalVisible(false)}
+          currentGoal={goalWeight}
+          unit={weightUnit}
+          userId={uid}
+          onSaved={(kg) => setGoalWeight(kg)}
+        />
+      </>
+    );
+  };
+
   // ─── main render ───────────────────────────────────────────────────────────
 
   if (loading) {
@@ -1487,12 +2589,14 @@ const LabScreen = ({ navigation }) => {
           >
             {[
               { key: 'fuerza', label: 'Fuerza' },
+              { key: 'cuerpo', label: 'Cuerpo' },
               { key: 'nutricion', label: 'Nutrición' },
               { key: 'habitos', label: 'Hábitos' },
               { key: 'historial', label: 'Historial' },
             ].map(({ key, label }) => (
               <TouchableOpacity
                 key={key}
+                className={activeTab === key ? 'lab-tab-pill lab-tab-pill--active' : 'lab-tab-pill'}
                 style={[styles.tabPill, activeTab === key && styles.tabPillActive]}
                 onPress={() => setActiveTab(key)}
                 activeOpacity={0.7}
@@ -1503,6 +2607,7 @@ const LabScreen = ({ navigation }) => {
           </ScrollView>
 
           {activeTab === 'fuerza' && renderFuerzaTab()}
+          {activeTab === 'cuerpo' && renderCuerpoTab()}
           {activeTab === 'nutricion' && renderNutricionTab()}
           {activeTab === 'habitos' && renderHabitosTab()}
           {activeTab === 'historial' && renderHistorialTab()}

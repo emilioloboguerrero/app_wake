@@ -32,8 +32,8 @@ import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek } from '../utils/weekCalculation';
-import { doc, getDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/ShareIOsExport';
 import ViewShot from 'react-native-view-shot';
@@ -289,10 +289,8 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     try {
       const currentUser = user || auth.currentUser;
       if (!currentUser?.uid) return;
-      const userDocRef = doc(firestore, 'users', currentUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const data = userDoc.data();
+      const data = await firestoreService.getUser(currentUser.uid);
+      if (data) {
         setUserDisplayName(data.displayName || '');
         setUsername(data.username || data.displayName || '');
       }
@@ -314,15 +312,13 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       
       const currentWeek = getMondayWeek();
       logger.log('📊 Fetching weekly muscle volumes for user:', currentUser.uid, 'week:', currentWeek);
-      const userDocRef = doc(firestore, 'users', currentUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
+      const data = await firestoreService.getUser(currentUser.uid);
+
+      if (data) {
         const weekData = data.weeklyMuscleVolume?.[currentWeek] || {};
         setWeeklyMuscleVolumes(weekData);
         logger.log('✅ Weekly muscle volumes fetched for completion screen:', weekData);
-        
+
         // Derive last week volumes by inspecting all weeks and picking the entry prior to current
         const allWeeks = data.weeklyMuscleVolume ? Object.keys(data.weeklyMuscleVolume) : [];
         if (allWeeks.length > 0) {
@@ -1445,6 +1441,17 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           
           {/* Header */}
           <View style={styles.header}>
+            {Platform.OS === 'web' && (
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <div className="completion-ring" />
+                <div className="completion-ring completion-ring-2" />
+                <div className="completion-ring completion-ring-3" />
+                <svg width="76" height="76" viewBox="0 0 76 76" style={{ position: 'relative', zIndex: 2 }}>
+                  <circle cx="38" cy="38" r="23" stroke="rgba(255,255,255,0.9)" strokeWidth="2" fill="none" className="completion-check-circle" />
+                  <polyline points="26,38 34,46 50,30" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="completion-check-tick" />
+                </svg>
+              </div>
+            )}
             <Text style={styles.randomPhrase}>{randomPhrase}</Text>
           </View>
 
@@ -1619,7 +1626,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               }
               
               return metrics.map((metric, index) => (
-                <View key={index} style={styles.disciplineMetric}>
+                <View
+                  key={index}
+                  style={styles.disciplineMetric}
+                  {...(Platform.OS === 'web' ? { className: 'stat-card' } : {})}
+                >
                   <Text style={styles.metricValue}>{animatedMetricValues[index] ?? metric.value} {metric.unit}</Text>
                   <Text style={styles.metricLabel}>{metric.label}</Text>
                 </View>

@@ -407,6 +407,8 @@ export function useActivityStreak(userId) {
   return out;
 }
 
+export { computeStreakStateFromDates, calendarDaysBetween, toYYYYMMDD, getLocalDateString };
+
 export default {
   getTodayLocal,
   getLocalDateString,

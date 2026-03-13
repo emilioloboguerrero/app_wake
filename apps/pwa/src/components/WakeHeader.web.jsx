@@ -125,7 +125,7 @@ export const FixedWakeHeader = ({
   };
 
   const headerEl = (
-    <div style={{
+    <div className="wake-header-glass" style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -258,6 +258,7 @@ export const FixedWakeHeader = ({
       {/* Back Button - aligned with logo center */}
       {showBackButton && (onBackPress || navigate) && (
         <button
+          className="header-back-btn"
           onClick={handleBackPress}
           style={{
             position: 'absolute',

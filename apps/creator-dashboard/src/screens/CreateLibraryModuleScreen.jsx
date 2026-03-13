@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import './ProgramDetailScreen.css';
 
 const CreateLibraryModuleScreen = () => {
@@ -24,7 +25,6 @@ const CreateLibraryModuleScreen = () => {
     try {
       setIsCreatingModule(true);
       
-      // Create library module
       await libraryService.createLibraryModule(user.uid, {
         title: moduleName.trim(),
         sessionRefs: []
@@ -32,7 +32,7 @@ const CreateLibraryModuleScreen = () => {
       
       navigate(backPath, { state: backState });
     } catch (err) {
-      console.error('Error creating library module:', err);
+      logger.error('Error creating library module:', err);
       alert(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsCreatingModule(false);

@@ -37,6 +37,8 @@ import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
 import { trackScreenView } from '../services/monitoringService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // Cards share no spacing — they overlap for the 3D carousel effect
 const CARD_SPACING = 0;
@@ -404,6 +406,15 @@ const MainScreen = ({ navigation, route }) => {
   // Auth — prefer context; fall back to Firebase singleton for cases where context lags
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
+  const queryClientHook = useQueryClient();
+
+  // React Query: primary course data load
+  const { data: coursesQueryData, isLoading: coursesQueryLoading, isError: coursesQueryError } = useQuery({
+    queryKey: queryKeys.user.courses(user?.uid),
+    queryFn: () => consolidatedDataService.getUserCoursesWithDetails(user.uid),
+    enabled: !!user?.uid,
+    ...cacheConfig.programStructure,
+  });
 
   // Log auth state on mount for diagnostics
   useEffect(() => {
@@ -413,6 +424,11 @@ const MainScreen = ({ navigation, route }) => {
       logger.warn('[MAIN_SCREEN] No uid available on MainScreen mount');
     }
   }, [user?.uid, contextUser]);
+
+  useEffect(() => {
+    Animated.timing(screenAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(greetAnim, { toValue: 1, duration: 420, delay: 100, useNativeDriver: true }).start();
+  }, []);
 
   // Screen state
   const [userProfile, setUserProfile] = useState({
@@ -489,6 +505,8 @@ const MainScreen = ({ navigation, route }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
   const cardEntranceAnim = useRef(new Animated.Value(0)).current;
+  const screenAnim = useRef(new Animated.Value(0)).current;
+  const greetAnim = useRef(new Animated.Value(0)).current;
 
   // Load library card image from local bundle (preferred) or Firestore URL (fallback)
   useEffect(() => {
@@ -579,17 +597,25 @@ const MainScreen = ({ navigation, route }) => {
     return () => { cancelled = true; };
   }, [user?.uid]);
 
-  // Guard to prevent double-loading when both auth sources resolve quickly
-  const coursesLoadAttemptedRef = useRef(false);
+  // Sync React Query result into local state
+  useEffect(() => {
+    if (coursesQueryData) {
+      setPurchasedCourses(coursesQueryData.courses || []);
+      setDownloadedCourses(prev => ({ ...prev, ...(coursesQueryData.downloadedData || {}) }));
+      setLoading(false);
+      setError(null);
+    } else if (coursesQueryError) {
+      setError('Error al cargar tus cursos. Inténtalo de nuevo.');
+      setLoading(false);
+    } else if (coursesQueryLoading) {
+      setLoading(true);
+    }
+  }, [coursesQueryData, coursesQueryLoading, coursesQueryError]);
 
-  // Initial course load — runs once when user becomes available
+  // Track screen view on mount
   useEffect(() => {
     trackScreenView('MainScreen');
-    if (user?.uid && !coursesLoadAttemptedRef.current) {
-      coursesLoadAttemptedRef.current = true;
-      loadCoursesFromCache();
-    }
-  }, [user?.uid]);
+  }, []);
 
   // Handle refresh parameter from navigation (e.g., after purchase)
   useEffect(() => {
@@ -1057,22 +1083,9 @@ const MainScreen = ({ navigation, route }) => {
     try {
       // Clear in-memory cache so pull-to-refresh always fetches fresh data
       consolidatedDataService.clearUserCache(user.uid);
-      // Run sync and fetch in parallel — callbacks already registered on mount
-      const [_, coursesResult] = await Promise.all([
-        hybridDataService.syncCourses(user.uid),
-        consolidatedDataService.getUserCoursesWithDetails(user.uid)
-      ]);
-      const { courses, downloadedData } = coursesResult;
-      if (courses.length > 0) {
-        setPurchasedCourses(courses);
-        setDownloadedCourses(downloadedData);
-        setError(null);
-      } else {
-        setPurchasedCourses([]);
-        setDownloadedCourses({});
-        setError(null);
-      }
-      
+      await hybridDataService.syncCourses(user.uid);
+      // Invalidate React Query cache — the useQuery will re-fetch and sync to state
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
     } catch (error) {
       logger.error('❌ Error refreshing courses (pull-to-refresh):', error);
       if (error.message.includes('offline') || error.message.includes('unavailable')) {
@@ -1090,26 +1103,13 @@ const MainScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
       setError(null);
-      // Callbacks already registered on mount — no need to re-register here
-      const [_, coursesResult] = await Promise.all([
-        hybridDataService.syncCourses(user.uid),
-        consolidatedDataService.getUserCoursesWithDetails(user.uid)
-      ]);
-      const { courses, downloadedData } = coursesResult;
-      if (courses.length > 0) {
-        setPurchasedCourses(courses);
-        setDownloadedCourses(downloadedData);
-        setError(null);
-      } else {
-        setPurchasedCourses([]);
-        setDownloadedCourses({});
-        setError(null);
-      }
+      await hybridDataService.syncCourses(user.uid);
+      // Invalidate React Query cache so next render re-fetches fresh data
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
     } catch (error) {
       logger.error('❌ Error refreshing courses:', error);
       if (error.message.includes('offline') || error.message.includes('unavailable')) {
         setError('Sin conexión. Mostrando cursos guardados...');
-        await loadCoursesFromCache();
       } else {
         setError('Error de conexión. Verifica tu internet e inténtalo de nuevo.');
       }
@@ -1751,6 +1751,7 @@ const MainScreen = ({ navigation, route }) => {
 
 
   return (
+    <Animated.View style={{ flex: 1, opacity: screenAnim }}>
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       <FixedWakeHeader />
 
@@ -1776,11 +1777,11 @@ const MainScreen = ({ navigation, route }) => {
       >
         <WakeHeaderContent style={styles.contentWrapper}>
           <WakeHeaderSpacer />
-          <View style={styles.userSection}>
+          <Animated.View style={[styles.userSection, { opacity: greetAnim, transform: [{ translateY: greetAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }]}>
             <Text style={styles.greeting}>
               Hola, <Text style={styles.username}>{firstName}</Text>
             </Text>
-          </View>
+          </Animated.View>
 
           {/* Swipeable Cards Section */}
           <View style={styles.cardsSection}>
@@ -1875,6 +1876,7 @@ const MainScreen = ({ navigation, route }) => {
         onComplete={handleTutorialComplete}
       />
     </SafeAreaView>
+    </Animated.View>
   );
 };
 

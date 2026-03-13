@@ -1,7 +1,3 @@
-/**
- * Meal Editor Screen — Add or edit a meal. Same layout as session edit: left panel (food search + create own),
- * center (meal name + foods list), right panel (calories hero + macro pie chart + grams).
- */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,17 +8,12 @@ import MediaPickerModal from '../components/MediaPickerModal';
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import logger from '../utils/logger';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
 import './ProgramDetailScreen.css';
 import '../components/PropagateChangesModal.css';
-
-const MACRO_COLORS = [
-  { name: 'Proteína', fill: 'rgba(255, 255, 255, 0.35)' },
-  { name: 'Carbohidratos', fill: 'rgba(255, 255, 255, 0.22)' },
-  { name: 'Grasa', fill: 'rgba(255, 255, 255, 0.12)' },
-];
 
 /** Get per-100g values from food servings (FatSecret: find 100g serving or normalize by metric_serving_amount). */
 function getPer100g(food) {
@@ -147,7 +138,7 @@ export default function MealEditorScreen() {
         await nutritionDb.updateMeal(creatorId, mealId, { name, items: mealFormItems, video_url: video_url || null });
         lastSavedRef.current = { name, itemsJson, video_url };
       } catch (e) {
-        console.error(e);
+        logger.error(e);
       }
     }, 700);
     return () => clearTimeout(t);
@@ -308,7 +299,6 @@ export default function MealEditorScreen() {
     >
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
-          {/* Left — Food search + add own */}
           <div className="library-session-sidebar">
             <div className="library-session-sidebar-header">
               <h3 className="library-session-sidebar-title">Alimentos disponibles</h3>
@@ -422,7 +412,6 @@ export default function MealEditorScreen() {
             </div>
           </div>
 
-          {/* Center — Video card + Items list */}
           <div className="library-session-main">
             <div className="meal-editor-video-card">
               <h3 className="meal-editor-video-card-title">Vídeo de la receta</h3>
@@ -577,7 +566,6 @@ export default function MealEditorScreen() {
             </div>
           </div>
 
-          {/* Right — Calories + pie + grams */}
           <div className="library-session-sidebar-right">
             <div className="meal-editor-calories-hero">
               <div className="meal-editor-calories-value">{totals.calories}</div>
@@ -663,7 +651,6 @@ export default function MealEditorScreen() {
         </div>
       </div>
 
-      {/* Manual food (add your own) modal */}
       <Modal
         isOpen={manualFoodModalOpen}
         onClose={() => setManualFoodModalOpen(false)}
@@ -730,7 +717,6 @@ export default function MealEditorScreen() {
         </div>
       </Modal>
 
-      {/* Edit meal name modal */}
       <Modal
         isOpen={isEditingMealName}
         onClose={() => setIsEditingMealName(false)}

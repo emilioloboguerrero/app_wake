@@ -34,7 +34,7 @@
 }
 
 .content-manager-back:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 .content-manager-title {
@@ -111,15 +111,15 @@
 }
 
 .content-manager-back-inline:hover {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
 }
 
 /* ========== Add Button ========== */
 .content-manager-add-btn {
   padding: 8px 16px;
   border-radius: 8px;
-  background: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.45);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   color: rgba(255, 255, 255, 0.95);
   font-size: 13px;
   font-weight: 500;
@@ -129,8 +129,8 @@
 }
 
 .content-manager-add-btn:hover:not(:disabled) {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .content-manager-add-btn:disabled {
@@ -173,7 +173,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(191, 168, 77, 0.18);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -243,7 +243,7 @@
   margin-left: 8px;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(191, 168, 77, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -305,8 +305,8 @@
 }
 
 .content-manager-image-upload-area:hover {
-  border-color: rgba(191, 168, 77, 0.4);
-  background: rgba(191, 168, 77, 0.06);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.85);
 }
 

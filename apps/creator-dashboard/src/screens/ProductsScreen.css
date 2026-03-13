@@ -37,7 +37,7 @@
 }
 
 .products-type-tab.active {
-  border-bottom-color: rgba(191, 168, 77, 1);
+  border-bottom-color: rgba(255, 255, 255, 1);
 }
 
 .products-type-tab-content {
@@ -159,9 +159,9 @@
 }
 
 .products-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .products-card-image-wrapper {

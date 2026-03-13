@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ScreenSkeleton from '../components/ScreenSkeleton';
 import libraryService from '../services/libraryService';
+import { queryKeys } from '../config/queryClient';
 import './LibraryManagementScreen.css';
 
 const TAB_CONFIG = [
@@ -15,75 +19,24 @@ const LibraryManagementScreen = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  
-  // Exercises tab data
-  const [exerciseLibraries, setExerciseLibraries] = useState([]);
-  const [isLoadingExercises, setIsLoadingExercises] = useState(false);
-  
-  // Sessions tab data
-  const [librarySessions, setLibrarySessions] = useState([]);
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
-  
-  // Modules tab data
-  const [libraryModules, setLibraryModules] = useState([]);
-  const [isLoadingModules, setIsLoadingModules] = useState(false);
 
-  // Load exercise libraries
-  useEffect(() => {
-    const loadExerciseLibraries = async () => {
-      if (!user || currentTabIndex !== 0) return;
-      
-      try {
-        setIsLoadingExercises(true);
-        const libraries = await libraryService.getLibrariesByCreator(user.uid);
-        setExerciseLibraries(libraries);
-      } catch (error) {
-        console.error('Error loading exercise libraries:', error);
-      } finally {
-        setIsLoadingExercises(false);
-      }
-    };
-    
-    loadExerciseLibraries();
-  }, [user, currentTabIndex]);
+  const { data: exerciseLibraries = [], isLoading: isLoadingExercises } = useQuery({
+    queryKey: queryKeys.library.exercises(user?.uid),
+    queryFn: () => libraryService.getLibrariesByCreator(user.uid),
+    enabled: !!user?.uid && currentTabIndex === 0,
+  });
 
-  // Load library sessions
-  useEffect(() => {
-    const loadSessions = async () => {
-      if (!user || currentTabIndex !== 1) return;
-      
-      try {
-        setIsLoadingSessions(true);
-        const sessions = await libraryService.getSessionLibrary(user.uid);
-        setLibrarySessions(sessions);
-      } catch (error) {
-        console.error('Error loading library sessions:', error);
-      } finally {
-        setIsLoadingSessions(false);
-      }
-    };
-    
-    loadSessions();
-  }, [user, currentTabIndex]);
+  const { data: librarySessions = [], isLoading: isLoadingSessions } = useQuery({
+    queryKey: queryKeys.library.sessions(user?.uid),
+    queryFn: () => libraryService.getSessionLibrary(user.uid),
+    enabled: !!user?.uid && currentTabIndex === 1,
+  });
 
-  // Load library modules
-  useEffect(() => {
-    const loadModules = async () => {
-      if (!user || currentTabIndex !== 2) return;
-      
-      try {
-        setIsLoadingModules(true);
-        const modules = await libraryService.getModuleLibrary(user.uid);
-        setLibraryModules(modules);
-      } catch (error) {
-        console.error('Error loading library modules:', error);
-      } finally {
-        setIsLoadingModules(false);
-      }
-    };
-    
-    loadModules();
-  }, [user, currentTabIndex]);
+  const { data: libraryModules = [], isLoading: isLoadingModules } = useQuery({
+    queryKey: queryKeys.library.modules(user?.uid),
+    queryFn: () => libraryService.getModuleLibrary(user.uid),
+    enabled: !!user?.uid && currentTabIndex === 2,
+  });
 
   const handleTabClick = (index) => {
     setCurrentTabIndex(index);
@@ -105,8 +58,8 @@ const LibraryManagementScreen = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '8px',
-                  background: 'rgba(191, 168, 77, 0.2)',
-                  border: '1px solid rgba(191, 168, 77, 0.5)',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.5)',
                   borderRadius: '8px',
                   color: '#ffffff',
                   cursor: 'pointer',
@@ -118,9 +71,7 @@ const LibraryManagementScreen = () => {
               </button>
             </div>
             {isLoadingExercises ? (
-              <div className="library-loading">
-                <p>Cargando bibliotecas de ejercicios...</p>
-              </div>
+              <ScreenSkeleton />
             ) : exerciseLibraries.length === 0 ? (
               <div className="library-empty">
                 <p>No tienes bibliotecas de ejercicios. Crea una nueva para comenzar.</p>
@@ -166,8 +117,8 @@ const LibraryManagementScreen = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '8px',
-                  background: 'rgba(191, 168, 77, 0.2)',
-                  border: '1px solid rgba(191, 168, 77, 0.5)',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.5)',
                   borderRadius: '8px',
                   color: '#ffffff',
                   cursor: 'pointer',
@@ -179,10 +130,8 @@ const LibraryManagementScreen = () => {
               </button>
             </div>
             {isLoadingSessions ? (
-              <div className="library-loading">
-                <p>Cargando sesiones de biblioteca...</p>
-              </div>
-            ) : librarySessions.length === 0 ? (
+              <ScreenSkeleton />
+            ) :librarySessions.length === 0 ? (
               <div className="library-empty">
                 <p>No tienes sesiones guardadas en tu biblioteca.</p>
               </div>
@@ -238,8 +187,8 @@ const LibraryManagementScreen = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '8px',
-                  background: 'rgba(191, 168, 77, 0.2)',
-                  border: '1px solid rgba(191, 168, 77, 0.5)',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.5)',
                   borderRadius: '8px',
                   color: '#ffffff',
                   cursor: 'pointer',
@@ -251,10 +200,8 @@ const LibraryManagementScreen = () => {
               </button>
             </div>
             {isLoadingModules ? (
-              <div className="library-loading">
-                <p>Cargando módulos de biblioteca...</p>
-              </div>
-            ) : libraryModules.length === 0 ? (
+              <ScreenSkeleton />
+            ) :libraryModules.length === 0 ? (
               <div className="library-empty">
                 <p>No tienes módulos guardados en tu biblioteca.</p>
               </div>
@@ -290,9 +237,9 @@ const LibraryManagementScreen = () => {
   };
 
   return (
-    <DashboardLayout screenName="Entrenamiento">
-      <div className="library-management-container">
-        {/* Tab Navigation */}
+    <ErrorBoundary>
+      <DashboardLayout screenName="Entrenamiento">
+        <div className="library-management-container">
         <div className="library-tab-navigation">
           <div className="library-tab-header-container">
             <div className="library-tab-indicator-wrapper">
@@ -315,12 +262,12 @@ const LibraryManagementScreen = () => {
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="library-tab-content-wrapper">
           {renderTabContent()}
         </div>
-      </div>
-    </DashboardLayout>
+        </div>
+      </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

@@ -38,8 +38,7 @@ import EpaycoWebView from '../components/EpaycoWebView';
 import BookCallSlotModal from '../components/BookCallSlotModal';
 import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
-import { firestore, auth } from '../config/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { auth } from '../config/firebase';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
@@ -675,12 +674,9 @@ useEffect(() => {
 
     logger.log(`🔍 [Firestore Listener Setup] Setting up listener for course: ${course.id}, user: ${effectiveUser.uid} (fromContext=${!!user}, fromFirebase=${!!auth.currentUser && !user})`);
     
-    // Set up real-time listener on user document
-    const userDocRef = doc(firestore, 'users', effectiveUser.uid);
-    
     logger.log(`🔍 [Firestore Listener Setup] Creating onSnapshot listener...`);
-    firestoreListenerRef.current = onSnapshot(
-      userDocRef,
+    firestoreListenerRef.current = firestoreService.subscribeToUserDoc(
+      effectiveUser.uid,
       (snapshot) => {
         logger.log(`🔔 [Firestore Listener] Snapshot received for user: ${effectiveUser.uid}`);
         if (snapshot.exists()) {
@@ -1316,6 +1312,7 @@ useEffect(() => {
       : 'Comprar';
     return (
       <TouchableOpacity 
+        className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
         style={[styles.primaryButton, purchasing && styles.disabledButton]} 
         onPress={handlePurchaseCourse}
         disabled={purchasing}
@@ -1818,26 +1815,26 @@ useEffect(() => {
       />
 
       {Platform.OS === 'web' && showPurchaseSuccess && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-          onClick={() => { setShowPurchaseSuccess(false); navigation.navigate('MainScreen'); }}
-        >
-          <div
-            className="wake-purchase-card"
-            style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 16, padding: '24px 28px', width: '85%', maxWidth: 340, position: 'relative', overflow: 'hidden' }}
-          >
-            <div className="wake-purchase-icon" style={{ textAlign: 'center', marginBottom: 12 }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 2h12v7a6 6 0 0 1-12 0V2z" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M6 5H3a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M18 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 15v4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
-                <path d="M8 21h8" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <p className="wake-purchase-title" style={{ color: '#fff', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 22, letterSpacing: 2, textAlign: 'center', margin: 0 }}>¡BIENVENIDO!</p>
-            <p className="wake-purchase-sub" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '8px 0 0' }}>{course?.title}</p>
+        <div className="purchase-success-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, flexDirection: 'column', gap: 0 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <div className="completion-ring" />
+            <div className="completion-ring completion-ring-2" />
+            <div className="completion-ring completion-ring-3" />
+            <svg width="84" height="84" viewBox="0 0 84 84" style={{ position: 'relative', zIndex: 2 }}>
+              <circle cx="42" cy="42" r="26" stroke="rgba(255,255,255,0.85)" strokeWidth="2" fill="none" className="completion-check-circle" />
+              <polyline points="30,42 39,52 56,32" stroke="rgba(255,255,255,0.95)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="completion-check-tick" />
+            </svg>
           </div>
+          <p className="purchase-success-title" style={{ color: '#fff', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 24, letterSpacing: 2, textAlign: 'center', margin: '16px 0 4px' }}>¡ACCESO ACTIVADO!</p>
+          <p className="purchase-success-program" style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '0 0 8px', padding: '0 32px' }}>{course?.title}</p>
+          <p className="purchase-success-hint" style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '0 0 28px' }}>Ya puedes empezar tu programa</p>
+          <button
+            className="purchase-success-cta"
+            onClick={() => { setShowPurchaseSuccess(false); navigation.navigate('MainScreen'); }}
+            style={{ background: 'var(--accent,rgba(255,255,255,0.92))', color: 'var(--accent-text,#111)', border: 'none', borderRadius: 100, padding: '14px 36px', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: 1, cursor: 'pointer' }}
+          >
+            Ir al programa
+          </button>
         </div>
       )}
     </SafeAreaView>

@@ -7,6 +7,7 @@ import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
 import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
+import {Resend} from "resend";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -28,6 +29,7 @@ const fatSecretClientId = functions.params.defineSecret(
 const fatSecretClientSecret = functions.params.defineSecret(
   "FATSECRET_CLIENT_SECRET"
 );
+const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
 // Simple Mercado Pago client
 const getClient = () => {
@@ -2485,4 +2487,144 @@ export const nutritionBarcodeLookup = functions
         error: message || "Barcode lookup failed",
       });
     }
+  });
+
+// ─── sendEventConfirmationEmail ────────────────────────────────────────────
+// Fires on every new registration and sends an HTML email with the event
+// title, a personalised greeting, and a QR code the attendee can use for
+// check-in. Requires RESEND_API_KEY secret and the event to have
+// settings.confirmation_email set to a "from" address (e.g. "Wake Events
+// <events@wakelab.co>").
+export const sendEventConfirmationEmail = functions
+  .runWith({secrets: ["RESEND_API_KEY"]})
+  .firestore.document("event_signups/{eventId}/registrations/{regId}")
+  .onCreate(async (snap, context) => {
+    const {eventId, regId} = context.params;
+    const reg = snap.data() as Record<string, unknown>;
+
+    // Resolve recipient email: V2 stores responses map, V1 has flat email field
+    let toEmail: string | null = null;
+    if (typeof reg.email === "string" && reg.email) {
+      toEmail = reg.email;
+    } else if (reg.responses && typeof reg.responses === "object") {
+      const responses = reg.responses as Record<string, unknown>;
+      const emailVal = Object.entries(responses).find(
+        ([k, v]) => k.toLowerCase().includes("email") && typeof v === "string" && (v as string).includes("@")
+      );
+      if (emailVal) toEmail = emailVal[1] as string;
+    }
+
+    if (!toEmail) {
+      functions.logger.info("sendEventConfirmationEmail: no email found, skipping", {eventId, regId});
+      return null;
+    }
+
+    // Load event doc
+    const eventSnap = await db.doc(`events/${eventId}`).get();
+    if (!eventSnap.exists) {
+      functions.logger.warn("sendEventConfirmationEmail: event not found", {eventId});
+      return null;
+    }
+    const event = eventSnap.data() as Record<string, unknown>;
+
+    const eventSettings = event.settings as Record<string, unknown> | undefined;
+    if (eventSettings?.send_confirmation_email !== true) {
+      functions.logger.info("sendEventConfirmationEmail: email not enabled for this event, skipping", {eventId});
+      return null;
+    }
+
+    const fromAddress = "Wake Eventos <eventos@wakelab.co>";
+    const eventTitle = (event.title as string) ?? "Evento Wake";
+    const confirmationMsg = ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
+      ?? "¡Tu lugar está confirmado! Nos vemos en el evento.";
+    const checkInToken = reg.check_in_token as string | undefined;
+    const eventImageUrl = (event.image_url as string | undefined) ?? "";
+
+    // Resolve first name
+    let firstName = "";
+    if (typeof reg.nombre === "string" && reg.nombre) {
+      firstName = reg.nombre.split(" ")[0];
+    } else if (reg.responses && typeof reg.responses === "object") {
+      const responses = reg.responses as Record<string, unknown>;
+      const nameEntry = Object.entries(responses).find(
+        ([k]) => k.toLowerCase().includes("nombre") || k.toLowerCase().includes("name")
+      );
+      if (nameEntry && typeof nameEntry[1] === "string") firstName = (nameEntry[1] as string).split(" ")[0];
+    }
+
+    const greeting = firstName ? `¡Hola, ${firstName}!` : "¡Hola!";
+
+    // QR code image URL (api.qrserver.com, no server-side dependency)
+    const qrData = checkInToken
+      ? encodeURIComponent(JSON.stringify({eventId, token: checkInToken}))
+      : encodeURIComponent(regId);
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${qrData}&bgcolor=1a1a1a&color=ffffff&qzone=1`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
+
+        <!-- Hero: background image with dark gradient overlay -->
+        <tr>
+          <td align="center" background="${eventImageUrl}" style="background-color:#1a1a1a;${eventImageUrl ? `background-image:url('${eventImageUrl}');background-size:cover;background-position:center top;` : ""}padding:0;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="background:linear-gradient(to bottom,rgba(10,10,10,0.55) 0%,rgba(10,10,10,0.80) 100%);padding:52px 36px 44px;text-align:center;">
+                <p style="margin:0 0 18px;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Wake Eventos</p>
+                <h1 style="margin:0 0 10px;font-size:1.75rem;font-weight:800;color:#fff;line-height:1.2;">${greeting}</h1>
+                <p style="margin:0;font-size:1rem;color:rgba(255,255,255,0.78);line-height:1.55;">${confirmationMsg}</p>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr><td style="background:#1e1e1e;padding:32px 36px 28px;text-align:center;">
+          <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:18px 24px;margin-bottom:${checkInToken ? "28px" : "0"};">
+            <p style="margin:0 0 4px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);">Evento</p>
+            <p style="margin:0;font-size:1.1rem;font-weight:700;color:#fff;">${eventTitle}</p>
+          </div>
+          ${checkInToken ? `
+          <p style="margin:0 0 14px;font-size:0.85rem;color:rgba(255,255,255,0.45);">Muestra este código QR en la entrada</p>
+          <img src="${qrUrl}" alt="QR Check-in" width="180" height="180" style="border-radius:12px;display:block;margin:0 auto;" />
+          ` : ""}
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background:#1e1e1e;padding:16px 36px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
+          <p style="margin:0;font-size:0.75rem;color:rgba(255,255,255,0.22);">Enviado automáticamente por Wake · <a href="https://wakelab.co" style="color:rgba(255,255,255,0.22);text-decoration:none;">wakelab.co</a></p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    try {
+      const resend = new Resend(resendApiKey.value());
+      const {error: resendError} = await resend.emails.send({
+        from: fromAddress,
+        to: toEmail,
+        subject: `Confirmación: ${eventTitle}`,
+        html,
+        headers: {
+          "List-Unsubscribe": "<mailto:eventos@wakelab.co?subject=unsubscribe>",
+          "X-Entity-Ref-ID": `${eventId}-${regId}`,
+        },
+      });
+      if (resendError) {
+        functions.logger.error("sendEventConfirmationEmail: resend error", {eventId, regId, error: resendError});
+      } else {
+        functions.logger.info("sendEventConfirmationEmail: sent", {eventId, regId, toEmail});
+      }
+    } catch (err: unknown) {
+      functions.logger.error("sendEventConfirmationEmail: failed", {eventId, regId, error: toErrorMessage(err)});
+    }
+
+    return null;
   });

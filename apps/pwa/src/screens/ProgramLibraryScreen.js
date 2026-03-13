@@ -240,16 +240,16 @@ const ProgramLibraryScreen = ({ navigation }) => {
   useEffect(() => {
     if (!creatorsList.length) return;
     creatorAnimsRef.current = creatorsList.map(() => new Animated.Value(0));
-    Animated.stagger(75, creatorAnimsRef.current.map(anim =>
-      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+    Animated.stagger(80, creatorAnimsRef.current.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 420, useNativeDriver: true })
     )).start();
   }, [creatorsList.length]);
 
   useEffect(() => {
     if (!state.filteredCourses.length) return;
     courseAnimsRef.current = state.filteredCourses.map(() => new Animated.Value(0));
-    Animated.stagger(75, courseAnimsRef.current.map(anim =>
-      Animated.timing(anim, { toValue: 1, duration: 180, useNativeDriver: true })
+    Animated.stagger(80, courseAnimsRef.current.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 420, useNativeDriver: true })
     )).start();
   }, [state.filteredCourses.length]);
 
@@ -772,6 +772,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
                   return (
                     <TouchableOpacity
                       key={tab.key}
+                      className={Platform.OS === 'web' ? `library-filter-pill${libraryTabIndex === index ? ' active' : ''}` : undefined}
                       style={styles.libraryTabButton}
                       activeOpacity={0.7}
                       onPress={() => {

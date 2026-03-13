@@ -24,6 +24,7 @@ const ProfileScreen = () => {
         'Sessions': () => navigate('/sessions'),
         'CourseDetail': () => navigate(`/course/${params?.course?.courseId || params?.course?.id}`),
         'Main': () => navigate('/'),
+        'CreatorEvents': () => navigate('/creator/events'),
       };
 
       if (routeMap[routeName]) {

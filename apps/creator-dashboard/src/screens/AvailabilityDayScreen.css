@@ -136,5 +136,5 @@
 .availability-day-input:focus,
 .availability-day-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }

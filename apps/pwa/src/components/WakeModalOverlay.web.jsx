@@ -123,7 +123,7 @@ export function WakeModalOverlay({
   const overlay = (
     <div style={{ position: 'fixed', inset: 0 }}>
       <div
-        className={backdropClass}
+        className={`wake-modal-backdrop ${backdropClass}`}
         style={backdropStyle}
         onClick={onClose}
         role="button"

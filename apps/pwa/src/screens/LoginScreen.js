@@ -12,6 +12,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +36,20 @@ const LoginScreen = ({ navigation }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Entrance animations
+  const mountAnim = useRef(new Animated.Value(0)).current;
+  const logoAnim  = useRef(new Animated.Value(0)).current;
+  const fieldAnims = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    Animated.timing(mountAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(logoAnim,  { toValue: 1, duration: 900, useNativeDriver: true }).start();
+    const staggered = fieldAnims.map((anim, i) =>
+      Animated.timing(anim, { toValue: 1, duration: 420, delay: 200 + i * 100, useNativeDriver: true })
+    );
+    Animated.parallel(staggered).start();
+  }, []);
 
   // When in sign-up mode, show password min-length error if field has 1–5 chars
   useEffect(() => {
@@ -342,7 +357,17 @@ const LoginScreen = ({ navigation }) => {
     return null;
   }
 
+  const logoStyle = {
+    opacity: logoAnim,
+    transform: [{ scale: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) }],
+  };
+  const makeFieldStyle = (anim) => ({
+    opacity: anim,
+    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+  });
+
   return (
+    <Animated.View style={[{ flex: 1 }, { opacity: mountAnim }]}>
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -354,11 +379,13 @@ const LoginScreen = ({ navigation }) => {
         >
           <View style={styles.content}>
             {/* WAKE Logo */}
+            <Animated.View style={logoStyle}>
             <Image
               source={require('../../assets/wake-logo-new.png')}
               style={styles.logo}
               resizeMode="contain"
             />
+            </Animated.View>
 
             {/* Welcome Text */}
             <Text style={styles.welcomeText}>
@@ -366,6 +393,7 @@ const LoginScreen = ({ navigation }) => {
             </Text>
 
             {/* Email Input */}
+            <Animated.View style={makeFieldStyle(fieldAnims[0])}>
             <View style={styles.inputContainer}>
               <TextInput
                 style={[styles.input, emailError && styles.inputError]}
@@ -381,8 +409,10 @@ const LoginScreen = ({ navigation }) => {
                 <Text style={styles.errorText}>{emailError}</Text>
               )}
             </View>
+            </Animated.View>
 
             {/* Password Input */}
+            <Animated.View style={makeFieldStyle(fieldAnims[1])}>
             <View style={styles.inputContainer}>
               <View style={styles.passwordInputRow}>
                 <TextInput
@@ -412,6 +442,7 @@ const LoginScreen = ({ navigation }) => {
                 <Text style={styles.errorText}>{passwordError}</Text>
               )}
             </View>
+            </Animated.View>
 
             {/* Terms and Conditions - Only show during signup */}
             {isSignUp && (
@@ -438,6 +469,7 @@ const LoginScreen = ({ navigation }) => {
             )}
 
             {/* Main Action Button */}
+            <Animated.View style={makeFieldStyle(fieldAnims[2])}>
             <TouchableOpacity
               testID="login-primary-button"
               aria-disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
@@ -459,6 +491,7 @@ const LoginScreen = ({ navigation }) => {
                 </Text>
               )}
             </TouchableOpacity>
+            </Animated.View>
 
             {/* Toggle between Sign In and Sign Up */}
             <TouchableOpacity
@@ -516,6 +549,7 @@ const LoginScreen = ({ navigation }) => {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </Animated.View>
   );
 };
 
@@ -699,11 +733,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 50,
     borderRadius: 12,
-    backgroundColor: '#333333',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
   },
   googleIcon: {
     width: 20,

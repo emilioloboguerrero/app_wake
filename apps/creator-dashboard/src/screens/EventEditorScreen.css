@@ -1,0 +1,907 @@
+/* ─── EventEditorScreen ─────────────────────────────────────────── */
+
+.ee-screen {
+  padding: 0 24px 48px;
+  position: relative;
+  min-height: calc(100vh - 64px);
+}
+
+/* ── Ambient orbs ── */
+.ee-orbs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.ee-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.08);
+}
+
+.ee-orb-1 {
+  width: 380px;
+  height: 380px;
+  top: -100px;
+  right: -80px;
+  animation: eeDrift1 15s ease-in-out infinite alternate;
+}
+
+.ee-orb-2 {
+  width: 280px;
+  height: 280px;
+  bottom: 10%;
+  left: -60px;
+  opacity: 0.7;
+  animation: eeDrift2 21s ease-in-out infinite alternate;
+}
+
+@keyframes eeDrift1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-24px, 36px) scale(1.06); }
+}
+
+@keyframes eeDrift2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(30px, -28px) scale(0.94); }
+}
+
+/* ── Loading ── */
+.ee-loading {
+  padding: 48px 24px;
+  color: rgba(255,255,255,0.4);
+  font-size: 0.9rem;
+}
+
+/* ── Top action bar ── */
+.ee-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 0 24px;
+  position: relative;
+  z-index: 2;
+}
+
+.ee-status-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.ee-status-pill {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 20px;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 6px 14px;
+  transition: all 0.18s;
+}
+
+.ee-status-pill--on {
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.18);
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.5);
+  color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 1);
+}
+
+.ee-top-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ee-btn {
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  transition: all 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ee-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ee-btn--ghost {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6);
+}
+
+.ee-btn--ghost:hover:not(:disabled) {
+  background: rgba(255,255,255,0.09);
+  color: #fff;
+  border-color: rgba(255,255,255,0.22);
+}
+
+.ee-btn--primary {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+.ee-btn--primary:hover:not(:disabled) {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.28);
+}
+
+.ee-btn--publish {
+  background: var(--ee-accent);
+  border: none;
+  color: var(--ee-accent-text, #111);
+}
+
+.ee-btn--publish:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.ee-save-error {
+  color: rgba(224,84,84,0.9);
+  font-size: 0.83rem;
+  margin: 0 0 16px;
+  position: relative;
+  z-index: 2;
+}
+
+/* ── Two-panel layout ── */
+.ee-panels {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 900px) {
+  .ee-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ee-panel {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.ee-panel-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+  margin: 0 0 24px;
+}
+
+.ee-panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.ee-field-count {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.25);
+  font-weight: 500;
+}
+
+/* ── Form fields ── */
+.ee-field-group {
+  margin-bottom: 20px;
+}
+
+.ee-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.38);
+  margin-bottom: 8px;
+}
+
+.ee-required {
+  color: rgba(224,84,84,0.7);
+}
+
+.ee-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 9px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  padding: 11px 14px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.ee-input:focus {
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.5);
+}
+
+.ee-input::placeholder {
+  color: rgba(255,255,255,0.18);
+}
+
+.ee-input--textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+/* ── Image upload ── */
+.ee-image-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 160px;
+  background: rgba(255,255,255,0.03);
+  border: 1.5px dashed rgba(255,255,255,0.12);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.ee-image-upload-area:hover {
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.4);
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.05);
+  color: rgba(255,255,255,0.5);
+}
+
+.ee-image-preview-wrap {
+  position: relative;
+  width: 100%;
+  height: 160px;
+}
+
+.ee-image-preview {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+}
+
+.ee-image-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.ee-image-remove:hover {
+  background: rgba(0,0,0,0.9);
+}
+
+.ee-image-preview--clickable {
+  cursor: zoom-in;
+}
+
+.ee-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0,0,0,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: eeLightboxIn 0.18s ease;
+}
+
+@keyframes eeLightboxIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.ee-lightbox-img {
+  max-width: min(92vw, 960px);
+  max-height: 88vh;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.7);
+  animation: eeLightboxImgIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes eeLightboxImgIn {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.ee-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.ee-lightbox-close:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.ee-input-hidden {
+  display: none;
+}
+
+/* ── Feature toggles ── */
+.ee-feature-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ee-feature-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.ee-feature-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ee-feature-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.8);
+}
+
+.ee-feature-desc {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.35);
+}
+
+/* ── Access toggle ── */
+.ee-access-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.ee-access-opt {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 10px;
+  transition: all 0.18s;
+}
+
+.ee-access-opt--on {
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.14);
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.45);
+  color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 1);
+}
+
+.ee-access-note {
+  color: rgba(255,255,255,0.3);
+  font-size: 0.77rem;
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+/* ── Field builder ── */
+.ee-fields-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 0;
+  color: rgba(255,255,255,0.18);
+  text-align: center;
+}
+
+.ee-fields-empty p {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-width: 220px;
+}
+
+.ee-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* ── Field card ── */
+.ee-field-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ee-field-card:hover {
+  border-color: rgba(255,255,255,0.14);
+}
+
+.ee-field-card--dragging {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08);
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.35);
+}
+
+.ee-field-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+}
+
+.ee-field-drag {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.22);
+  cursor: grab;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.ee-field-drag:active {
+  cursor: grabbing;
+}
+
+.ee-field-type-badge {
+  background: rgba(255,255,255,0.07);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.4);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ee-field-label-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-width: 0;
+  outline: none;
+  padding: 0;
+}
+
+.ee-field-label-input::placeholder {
+  color: rgba(255,255,255,0.18);
+}
+
+.ee-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ee-field-expand-btn,
+.ee-field-remove-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ee-field-expand-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
+.ee-field-remove-btn:hover { color: rgba(224,84,84,0.8); background: rgba(224,84,84,0.08); }
+
+.ee-field-card-body {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 14px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ee-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ee-field-row--toggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ee-field-sub-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ee-field-input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 7px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.84rem;
+  outline: none;
+  padding: 8px 11px;
+  transition: border-color 0.18s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ee-field-input:focus {
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.45);
+}
+
+.ee-field-input::placeholder {
+  color: rgba(255,255,255,0.15);
+}
+
+/* ── Toggle ── */
+.ee-toggle {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  cursor: pointer;
+  height: 22px;
+  padding: 0;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.ee-toggle--on {
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.85);
+  border-color: transparent;
+}
+
+.ee-toggle-thumb {
+  background: #fff;
+  border-radius: 50%;
+  display: block;
+  height: 16px;
+  left: 3px;
+  position: absolute;
+  top: 2px;
+  transition: transform 0.2s cubic-bezier(0.22,1,0.36,1);
+  width: 16px;
+}
+
+.ee-toggle--on .ee-toggle-thumb {
+  transform: translateX(18px);
+}
+
+/* ── Options list ── */
+.ee-field-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ee-option-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ee-option-row .ee-field-input {
+  flex: 1;
+}
+
+.ee-option-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  padding: 4px;
+  transition: color 0.15s;
+}
+
+.ee-option-remove:hover {
+  color: rgba(224,84,84,0.8);
+}
+
+.ee-add-option-btn {
+  background: none;
+  border: none;
+  color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.7);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.ee-add-option-btn:hover {
+  color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 1);
+}
+
+/* ── Add field button ── */
+.ee-add-field-btn {
+  align-items: center;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px dashed rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 8px;
+  justify-content: center;
+  padding: 14px;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.ee-add-field-btn:hover {
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.07);
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.35);
+  color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.9);
+}
+
+/* Shimmer on add field button */
+.ee-add-field-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: eeShimmer 2.5s ease-in-out 1s infinite;
+}
+
+@keyframes eeShimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* ── Field type picker ── */
+.ee-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.ee-picker-panel {
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  max-width: 360px;
+  padding: 24px;
+  width: 90%;
+}
+
+.ee-picker-title {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0 0 16px;
+  text-transform: uppercase;
+}
+
+.ee-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.ee-picker-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 12px 10px;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.ee-picker-btn:hover {
+  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.14);
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.4);
+  color: #fff;
+}
+
+/* ── Fade-in ── */
+@keyframes eeFadeIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ee-fade-in {
+  animation: eeFadeIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Number stepper ── */
+.ee-number-stepper {
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 9px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.ee-number-stepper:focus-within {
+  border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.5);
+}
+
+.ee-number-stepper-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 42px;
+  padding: 0 13px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ee-number-stepper-btn:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255,255,255,0.07);
+}
+
+.ee-number-stepper-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.ee-number-stepper-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.08);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  padding: 0 12px;
+  text-align: center;
+  height: 42px;
+  min-width: 0;
+}
+
+.ee-number-stepper-input::placeholder {
+  color: rgba(255,255,255,0.18);
+}
+
+/* ── Section labels ── */
+.ee-fields-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.25);
+  margin: 16px 0 8px;
+}
+
+.ee-fields-section-label--custom {
+  margin-top: 20px;
+}
+
+/* ── Locked (base) field card ── */
+.ee-field-card--locked {
+  border-color: rgba(255,255,255,0.06) !important;
+  background: rgba(255,255,255,0.02) !important;
+}
+
+.ee-field-card--locked:hover {
+  border-color: rgba(255,255,255,0.09) !important;
+}
+
+.ee-field-lock-icon {
+  color: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 4px 6px 4px 2px;
+}
+
+.ee-field-label-locked {
+  flex: 1;
+  color: rgba(255,255,255,0.5);
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ee-fields-list--locked {
+  margin-bottom: 0;
+}

@@ -64,8 +64,8 @@
 }
 
 .library-action-pill-active {
-  background-color: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* Libraries List */
@@ -104,9 +104,9 @@
 }
 
 .library-card:hover {
-  border-color: rgba(191, 168, 77, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(191, 168, 77, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .library-card-header {

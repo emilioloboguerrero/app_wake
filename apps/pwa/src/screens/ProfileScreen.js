@@ -27,10 +27,9 @@ import authService from '../services/authService';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
-import { auth, firestore } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import googleAuthService from '../services/googleAuthService';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import hybridDataService from '../services/hybridDataService';
 import tutorialManager from '../services/tutorialManager';
 import profilePictureService from '../services/profilePictureService';
@@ -101,6 +100,8 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
+
+  const [userRole, setUserRole] = useState(null);
   
   // Subscriptions info modal state
   const [isSubscriptionsInfoModalVisible, setIsSubscriptionsInfoModalVisible] = useState(false);
@@ -216,6 +217,20 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         
         if (userData) {
           logger.log('✅ Profile loaded successfully');
+          logger.log('[ProfileScreen] userData.role from hybridDataService:', userData?.role);
+          if (userData?.role) {
+            logger.log('[ProfileScreen] Setting userRole from cache:', userData.role);
+            setUserRole(userData.role);
+          } else {
+            logger.log('[ProfileScreen] role missing from cache, fetching directly from Firestore');
+            firestoreService.getUser(currentUserId).then(doc => {
+              logger.log('[ProfileScreen] Firestore getUser role result:', doc?.role);
+              setUserRole(doc?.role || 'user');
+            }).catch(err => {
+              logger.error('[ProfileScreen] Firestore role fetch failed:', err);
+              setUserRole('user');
+            });
+          }
           setUserProfile({
             displayName: userData?.displayName || '',
             username: userData?.username || '',
@@ -408,14 +423,9 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     setUsernameError('');
     
     try {
-      // Query Firestore to check if username exists
-      const usersQuery = query(
-        collection(firestore, 'users'),
-        where('username', '==', username)
-      );
-      const querySnapshot = await getDocs(usersQuery);
-      
-      if (querySnapshot.empty) {
+      const currentUserId = auth.currentUser?.uid || user?.uid;
+      const taken = await firestoreService.isUsernameTaken(username, currentUserId);
+      if (!taken) {
         setUsernameError(''); // Username is available
       } else {
         setUsernameError('Este usuario ya está en uso');
@@ -1182,7 +1192,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
               </View>
               
                   {/* Sign Out Button */}
-                  <TouchableOpacity style={styles.signOutButtonInModal} onPress={handleSignOut}>
+                  <TouchableOpacity
+                    className={Platform.OS === 'web' ? 'sign-out-btn' : undefined}
+                    style={styles.signOutButtonInModal}
+                    onPress={handleSignOut}
+                  >
                     <Text style={styles.signOutTextInModal}>Cerrar Sesión</Text>
                   </TouchableOpacity>
 
@@ -1624,6 +1638,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         {/* Programs and Subscriptions Section */}
         <View style={styles.programsSubscriptionsContainer}>
           <TouchableOpacity 
+            className="profile-menu-row"
             style={styles.programCard} 
             onPress={() => navigation.navigate('AllPurchasedCourses')}
             activeOpacity={0.7}
@@ -1632,6 +1647,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             <Text style={styles.programCardTitle}>Programas</Text>
           </TouchableOpacity>
           <TouchableOpacity 
+            className="profile-menu-row"
             style={styles.subscriptionCard} 
             onPress={() => navigation.navigate('Subscriptions')}
             activeOpacity={0.7}
@@ -1643,15 +1659,38 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
         {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
-          <TouchableOpacity style={styles.smallCard} onPress={showSettingsModal}>
+          <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={showSettingsModal}>
             <Settings width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
             <Text style={styles.smallCardTitle}>Configuración</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
+          <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
             <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
             <Text style={styles.smallCardTitle}>Legal</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Creator section */}
+        {logger.log('[ProfileScreen] render: userRole =', userRole) || null}
+        {(userRole === 'creator' || userRole === 'admin') && (
+          <View style={styles.creatorSectionContainer}>
+            <TouchableOpacity
+              className="profile-menu-row"
+              style={styles.creatorEventsCard}
+              onPress={() => navigation.navigate('CreatorEvents')}
+              activeOpacity={0.7}
+            >
+              <View style={styles.creatorEventsIconWrap}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </View>
+              <Text style={styles.creatorEventsTitle}>Mis Eventos</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
 
         <BottomSpacer />
@@ -2602,6 +2641,38 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   bodyweightHeightField: {
     flex: 1,
+  },
+  creatorSectionContainer: {
+    marginBottom: Math.max(15, screenHeight * 0.02),
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  creatorEventsCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(12, screenWidth * 0.04),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    padding: Math.max(12, screenWidth * 0.03),
+    minHeight: Math.max(55, screenHeight * 0.07),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  creatorEventsIconWrap: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorEventsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   // Subscriptions Info Modal Styles
   subscriptionsInfoModalOverlay: {

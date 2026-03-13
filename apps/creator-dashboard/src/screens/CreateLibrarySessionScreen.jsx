@@ -6,6 +6,7 @@ import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import './ProgramDetailScreen.css';
 
 const CreateLibrarySessionScreen = () => {
@@ -29,22 +30,18 @@ const CreateLibrarySessionScreen = () => {
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Por favor, selecciona un archivo de imagen válido');
       return;
     }
 
-    // Validate file size (e.g., max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
       return;
     }
 
     setSessionImageFile(file);
-    
-    // Create preview URL
     const reader = new FileReader();
     reader.onloadend = () => {
       setSessionImagePreview(reader.result);
@@ -95,7 +92,7 @@ const CreateLibrarySessionScreen = () => {
             image_url: imageUrl
           });
         } catch (uploadErr) {
-          console.error('Error uploading session image:', uploadErr);
+          logger.error('Error uploading session image:', uploadErr);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
         } finally {
           setIsUploadingSessionImage(false);
@@ -104,7 +101,7 @@ const CreateLibrarySessionScreen = () => {
       
       navigate(backPath, { state: backState });
     } catch (err) {
-      console.error('Error creating library session:', err);
+      logger.error('Error creating library session:', err);
       alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
     } finally {
       setIsCreatingSession(false);

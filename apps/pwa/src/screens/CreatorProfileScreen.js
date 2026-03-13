@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { View, StyleSheet, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
 import { ImageBackground, Image as ExpoImage } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
@@ -401,20 +399,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         // OPTIMIZATION: Load creator data and programs in parallel (independent queries)
         const [creatorDocResult, programsResult] = await Promise.all([
           firestoreService.getUser(creatorId),
-          (async () => {
-            try {
-              const coursesRef = collection(firestore, 'courses');
-              const q = query(coursesRef, where('creator_id', '==', creatorId));
-              const snapshot = await getDocs(q);
-              return snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              }));
-            } catch (error) {
-              logger.error('Error loading creator programs:', error);
-              throw error;
-            }
-          })()
+          firestoreService.getCoursesByCreatorId(creatorId)
         ]);
 
         if (!isMounted) {
@@ -1231,6 +1216,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         <View style={styles.heroImage}>
           <ExpoImage
             source={{ uri: imageUrl }}
+            className={Platform.OS === 'web' ? 'course-detail-hero-bg' : undefined}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
           />

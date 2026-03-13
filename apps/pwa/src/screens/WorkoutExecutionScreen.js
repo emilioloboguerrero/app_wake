@@ -46,8 +46,8 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import WakeLoader from '../components/WakeLoader';
 
 // Firebase - keep as direct imports (lightweight)
-import { firestore, auth } from '../config/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
 
 // ============================================================================
 // LAZY LOADERS - Services (loaded only when needed)
@@ -460,7 +460,7 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
       >
         <Text style={styles.exerciseNumber}>{exerciseIndex + 1}</Text>
         <View style={styles.exerciseContent}>
-          <Text style={styles.exerciseItemTitle}>
+          <Text className="exercise-title" style={styles.exerciseItemTitle}>
             {exercise.name}
           </Text>
         </View>
@@ -523,8 +523,8 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             return (
               <View
                 key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`}
+                className={justSaved ? 'set-row wake-set-saved' : 'set-row'}
                 style={styles.setTrackingRow}
-                {...(justSaved ? { className: 'wake-set-saved' } : {})}
               >
                 {isCurrentSet && <View style={styles.currentSetOverlay} />}
                 {isCurrentSet && (
@@ -2712,11 +2712,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (firstLibraryId) {
         try {
           // Get the library document to extract creator_name
-          const libraryDocRef = doc(firestore, 'exercises_library', firstLibraryId);
-          const libraryDoc = await getDoc(libraryDocRef);
-          
-          if (libraryDoc.exists()) {
-            const libraryData = libraryDoc.data();
+          const libraryData = await firestoreService.getExerciseLibraryItem(firstLibraryId);
+          if (libraryData) {
             creatorName = libraryData.creator_name || firstLibraryId;
           } else {
             creatorName = firstLibraryId;
@@ -3666,14 +3663,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       for (const libraryId of availableLibraries) {
         try {
-          const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
-          const libraryDoc = await getDoc(libraryDocRef);
-          
-          if (libraryDoc.exists()) {
-            const libraryData = libraryDoc.data();
-            
+          const libraryData = await firestoreService.getExerciseLibraryItem(libraryId);
+
+          if (libraryData) {
             Object.entries(libraryData).forEach(([exerciseName, exerciseData]) => {
-              if (exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at') {
+              if (exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id') {
                 exercisePromises.push({
                   name: exerciseName,
                   description: exerciseData.description || '',
@@ -5327,6 +5321,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.debug(`[JSX] [CHECKPOINT] Rendering FixedWakeHeader - ${headerStartTime.toFixed(2)}ms`);
         return null;
       })()}
+      {/* Progress bar — exercise position in session */}
+      {isWeb && workout?.exercises?.length > 0 && (
+        <div className="workout-progress-track">
+          <div
+            className="workout-progress-fill"
+            style={{ width: `${((currentExerciseIndex + 1) / workout.exercises.length) * 100}%` }}
+          />
+        </div>
+      )}
+
       {/* Fixed Header without Back Button */}
       <FixedWakeHeader
         showMenuButton={true}

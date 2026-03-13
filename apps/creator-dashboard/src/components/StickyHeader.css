@@ -262,7 +262,7 @@
 }
 
 .sticky-header-purchase-button-container .course-detail-purchase-button {
-  background-color: rgba(191, 168, 77, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   border: none;
   border-radius: 12px;
   padding: 0;
@@ -277,7 +277,7 @@
 }
 
 .sticky-header-purchase-button-container .course-detail-purchase-button:hover {
-  background-color: rgba(191, 168, 77, 0.3);
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .sticky-header-purchase-button-container .course-detail-purchase-button:disabled {
@@ -305,7 +305,7 @@
 }
 
 .sticky-header-purchase-button-container .course-detail-purchase-button-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 16px;
   font-weight: 700;
   text-align: center;
@@ -314,7 +314,7 @@
 
 .sticky-header-purchase-button-container .course-detail-button-price-text,
 .sticky-header-purchase-button-container .course-detail-trial-price-text {
-  color: rgba(191, 168, 77, 1);
+  color: rgba(255, 255, 255, 1);
   font-size: 12px;
   font-weight: 500;
   text-align: center;

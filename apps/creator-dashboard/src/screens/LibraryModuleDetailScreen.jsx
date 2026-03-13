@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../config/firebase';
 import {
@@ -159,7 +160,6 @@ const LibraryModuleDetailScreen = () => {
 
       setModule(moduleData);
       
-      // Load sessions from sessionRefs
       const sessionRefs = moduleData.sessionRefs || [];
       const loadedSessions = await Promise.all(
         sessionRefs.map(async (sessionRef) => {
@@ -175,7 +175,7 @@ const LibraryModuleDetailScreen = () => {
               isInModule: true
             };
           } catch (err) {
-            console.error('Error loading session:', err);
+            logger.error('Error loading session:', err);
             return null;
           }
         })
@@ -187,7 +187,7 @@ const LibraryModuleDetailScreen = () => {
       
       setSessions(validSessions);
     } catch (err) {
-      console.error('Error loading module:', err);
+      logger.error('Error loading module:', err);
       setError('Error al cargar el módulo');
     }
   }, [user, moduleId]);
@@ -212,7 +212,7 @@ const LibraryModuleDetailScreen = () => {
 
       setAvailableSessions(available);
     } catch (err) {
-      console.error('Error loading available sessions:', err);
+      logger.error('Error loading available sessions:', err);
     }
   }, [user, module]);
 
@@ -244,13 +244,11 @@ const LibraryModuleDetailScreen = () => {
     const activeId = active.id.toString();
     const overId = over.id.toString();
 
-    // Check if dragging from available to module
     if (activeId.startsWith('available-') && overId === 'module-list') {
       await addSessionToModule(active.data.current.session);
       return;
     }
 
-    // Check if reordering within module
     if (activeId.startsWith('module-') && overId.startsWith('module-')) {
       const activeIndex = sessions.findIndex(s => s.dragId === activeId);
       const overIndex = sessions.findIndex(s => s.dragId === overId);
@@ -286,7 +284,7 @@ const LibraryModuleDetailScreen = () => {
       await loadModule();
       await loadAvailableSessions();
     } catch (err) {
-      console.error('Error adding session:', err);
+      logger.error('Error adding session:', err);
       alert('Error al agregar la sesión');
     }
   };
@@ -304,7 +302,7 @@ const LibraryModuleDetailScreen = () => {
         sessionRefs: sessionRefs
       });
     } catch (err) {
-      console.error('Error updating session order:', err);
+      logger.error('Error updating session order:', err);
       alert('Error al actualizar el orden');
     }
   };
@@ -343,7 +341,7 @@ const LibraryModuleDetailScreen = () => {
       setSessionToDelete(null);
       setDeleteConfirmation('');
     } catch (err) {
-      console.error('Error removing session:', err);
+      logger.error('Error removing session:', err);
       alert('Error al remover la sesión');
     } finally {
       setIsDeleting(false);

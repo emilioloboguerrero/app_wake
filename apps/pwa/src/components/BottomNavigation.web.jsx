@@ -50,7 +50,7 @@ const BottomNavigation = () => {
   }
 
   return (
-    <div style={{
+    <div className="bottom-tab-bar" style={{
       position: 'fixed',
       bottom: 0,
       left: 0,
@@ -66,6 +66,7 @@ const BottomNavigation = () => {
     }}>
       {/* Main Tab */}
       <button
+        className="tab-btn"
         onClick={() => navigate('/')}
         style={{
           flex: 1,
@@ -80,17 +81,21 @@ const BottomNavigation = () => {
           height: '100%',
         }}
       >
-        <HouseIcon
-          size={iconSize}
-          stroke="#ffffff"
-          fill={isMainActive ? '#ffffff' : 'none'}
-          strokeWidth={isMainActive ? 2.8 : 2.5}
-          opacity={isMainActive ? 1 : 0.6}
-        />
+        <div className={`tab-icon${isMainActive ? ' tab-icon--active' : ''}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+          <HouseIcon
+            size={iconSize}
+            stroke="#ffffff"
+            fill={isMainActive ? '#ffffff' : 'none'}
+            strokeWidth={isMainActive ? 2.8 : 2.5}
+            opacity={isMainActive ? 1 : 0.6}
+          />
+          {isMainActive && <div className="tab-active-dot" />}
+        </div>
       </button>
 
       {/* Profile Tab */}
       <button
+        className="tab-btn"
         onClick={() => navigate('/profile')}
         style={{
           flex: 1,
@@ -105,13 +110,16 @@ const BottomNavigation = () => {
           height: '100%',
         }}
       >
-        <UserIcon
-          size={iconSize}
-          stroke="#ffffff"
-          fill={isProfileActive ? '#ffffff' : 'none'}
-          strokeWidth={isProfileActive ? 2.8 : 2.5}
-          opacity={isProfileActive ? 1 : 0.6}
-        />
+        <div className={`tab-icon${isProfileActive ? ' tab-icon--active' : ''}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+          <UserIcon
+            size={iconSize}
+            stroke="#ffffff"
+            fill={isProfileActive ? '#ffffff' : 'none'}
+            strokeWidth={isProfileActive ? 2.8 : 2.5}
+            opacity={isProfileActive ? 1 : 0.6}
+          />
+          {isProfileActive && <div className="tab-active-dot" />}
+        </div>
       </button>
     </div>
   );

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
+import firestoreService from '../../services/firestoreService';
 import { auth } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import hybridDataService from '../../services/hybridDataService';
@@ -52,7 +52,6 @@ const CompletionLogo = ({ width = 480, height = 312 }) => (
 
 const countriesList = (_countriesRaw || []).map(c => ({ label: c.name, value: c.iso2 }));
 
-const firestore = getFirestore();
 const TOTAL_STEPS = 12;
 
 // SVG winding path — coordinate space 390×900
@@ -333,9 +332,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
     usernameTimerRef.current = setTimeout(async () => {
       try {
         const uid = getEffectiveUid();
-        const q = query(collection(firestore, 'users'), where('username', '==', username.toLowerCase()));
-        const snap = await getDocs(q);
-        const taken = snap.docs.some(d => d.id !== uid);
+        const taken = await firestoreService.isUsernameTaken(username, uid);
         setField('usernameStatus', taken ? 'taken' : 'available');
       } catch {
         setField('usernameStatus', 'error');
@@ -1072,13 +1069,16 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
                 <CompletionLogo width={200} height={130} />
               </div>
             </View>
-            <View style={s.completionBadgeWrap}>
-              <Svg width={56} height={56} viewBox="0 0 56 56">
-                <Path d="M28 4C14.7 4 4 14.7 4 28s10.7 24 24 24 24-10.7 24-24S41.3 4 28 4z" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
-                <Path d="M18 28l7 8 14-16" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </Svg>
+            <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+              <div className="onboarding-ring" />
+              <div className="onboarding-ring onboarding-ring-2" />
+              <div className="onboarding-ring onboarding-ring-3" />
+              <svg width="76" height="76" viewBox="0 0 76 76" style={{ position: 'relative', zIndex: 2 }}>
+                <circle cx="38" cy="38" r="23" stroke="rgba(255,255,255,0.8)" strokeWidth="2" fill="none" className="onboarding-check-circle" />
+                <polyline points="26,38 34,46 50,30" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="onboarding-check-tick" />
+              </svg>
             </View>
-            <Text style={s.completionName}>
+            <Text className="onboarding-success-title" style={s.completionName}>
               ¡Bienvenido{formData.displayName ? `, ${formData.displayName.split(' ')[0]}` : ''}!
             </Text>
             {!!primaryGoalLabel && (
@@ -1086,10 +1086,10 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
                 <Text style={s.goalChipText}>Tu objetivo · {primaryGoalLabel}</Text>
               </View>
             )}
-            <Text style={s.completionTagline}>
+            <Text className="onboarding-success-subtitle" style={s.completionTagline}>
               Ahora mides lo que antes solo sentías.
             </Text>
-            <TouchableOpacity style={s.completionCta} onPress={() => onComplete && onComplete()}>
+            <TouchableOpacity className="onboarding-enter-btn" style={s.completionCta} onPress={() => onComplete && onComplete()}>
               <Text style={s.completionCtaText}>Vamos al Lab</Text>
               <Image
                 source={require('../../../assets/Isotipo WAKE (negativo).png')}
@@ -1221,6 +1221,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
         {showContinue && (
           <View style={s.bottomBar}>
             <TouchableOpacity
+              className={enabled && !savingProfile ? 'onboarding-next-btn' : undefined}
               style={[s.primaryBtn, !enabled && s.primaryBtnDisabled, savingProfile && s.primaryBtnDisabled]}
               onPress={handleContinue}
               disabled={!enabled || savingProfile}

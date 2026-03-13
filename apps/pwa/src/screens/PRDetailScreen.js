@@ -98,6 +98,7 @@ const PRDetailScreen = ({ navigation, route }) => {
       />
       
       {/* Shared Content Component */}
+      <View className={Platform.OS === 'web' ? 'pr-detail-chart' : undefined} style={{ flex: 1 }}>
       <ExerciseDetailContent
         headerSpacerHeight={headerTotalHeight}
         exerciseKey={exerciseKey}
@@ -111,6 +112,7 @@ const PRDetailScreen = ({ navigation, route }) => {
         showInfoModal={true}
         showTitle={true}
       />
+      </View>
     </SafeAreaView>
   );
 };

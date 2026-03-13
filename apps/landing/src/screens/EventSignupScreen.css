@@ -878,6 +878,56 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.es-success-event-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 2px;
+  animation: textSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.85s both;
+}
+
+.es-success-event-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.es-success-event-detail svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  opacity: 0.7;
+}
+
+.es-success-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  animation: textSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.9s both;
+}
+
+.es-success-qr-img {
+  border-radius: 12px;
+  display: block;
+}
+
+.es-success-qr-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.es-success-qr-hint span {
+  color: rgba(255, 255, 255, 0.28);
+  font-size: 0.74rem;
+}
+
 /* ══════════════════════════════════════════
    FADE-IN (phase transitions)
 ══════════════════════════════════════════ */
@@ -888,4 +938,268 @@
 
 .es-fade-in {
   animation: fadeIn 0.5s ease forwards;
+}
+
+/* ── Textarea field ── */
+.es-input--textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════
+   FLIER CARD
+══════════════════════════════════════════ */
+
+/* Wrapper that centers the card in the hero body */
+.es-flier-card-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Perspective container */
+.es-flier-card {
+  perspective: 1400px;
+  width: min(300px, 90vw);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.es-flier-card--no-flip {
+  cursor: default;
+}
+
+/* The rotating box */
+.es-flier-card-inner {
+  position: relative;
+  width: 100%;
+  height: min(calc(100dvh - 200px), 520px);
+  transform-style: preserve-3d;
+  transition: transform 0.72s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 20px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.es-flier-card--flipped .es-flier-card-inner {
+  transform: rotateY(180deg);
+}
+
+/* Shared face styles */
+.es-flier-card-front,
+.es-flier-card-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* ── Pulsing glow on front when not yet flipped ── */
+@keyframes esCardGlow {
+  0%   { box-shadow: 0 0 0 0   rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5),
+                     0 24px 64px rgba(0,0,0,0.6); }
+  60%  { box-shadow: 0 0 0 18px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0),
+                     0 24px 64px rgba(0,0,0,0.6); }
+  100% { box-shadow: 0 0 0 0   rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0),
+                     0 24px 64px rgba(0,0,0,0.6); }
+}
+
+.es-flier-card:not(.es-flier-card--no-flip):not(.es-flier-card--flipped) .es-flier-card-inner {
+  animation: esCardGlow 2.4s ease-out infinite;
+}
+
+/* ── Front face ── */
+.es-flier-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Subtle bottom gradient so the tap hint is legible */
+.es-flier-card-front-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  pointer-events: none;
+}
+
+/* Flip icon button — same on both front and back, top-right corner */
+.es-flier-card-flip-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  animation: esHintFadeIn 0.4s ease 0.6s both;
+}
+
+.es-flier-card-flip-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+}
+
+@keyframes esHintFadeIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── No-image card (static) ── */
+.es-flier-card-no-img {
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 24px;
+  gap: 20px;
+}
+
+/* Decorative lines above title */
+.es-flier-card-no-img-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 48px;
+  align-items: center;
+}
+
+.es-flier-card-no-img-lines div {
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.es-flier-card-no-img-lines div:nth-child(1) { width: 100%; }
+.es-flier-card-no-img-lines div:nth-child(2) { width: 66%; }
+.es-flier-card-no-img-lines div:nth-child(3) { width: 40%; }
+
+.es-flier-card-no-img-title {
+  font-size: clamp(1.2rem, 5vw, 1.6rem);
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  line-height: 1.25;
+  margin: 0;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Back face ── */
+.es-flier-card-back {
+  transform: rotateY(180deg);
+  background: #161616;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 18px 20px;
+  overflow-y: auto;
+}
+
+
+.es-flier-card-back-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+  padding-right: 28px;
+}
+
+.es-flier-card-back-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.es-flier-card-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.es-flier-card-detail svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 1);
+  opacity: 0.9;
+}
+
+.es-flier-card-desc {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+}
+
+
+/* ── Gate phase (wake_users_only) ── */
+.es-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px 24px;
+  text-align: center;
+  max-width: 340px;
+  margin: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.es-gate-poster {
+  width: 120px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  margin-bottom: 8px;
+}
+
+.es-gate-title {
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.es-gate-sub {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.9rem;
+  margin: 0;
 }

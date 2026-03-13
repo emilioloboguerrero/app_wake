@@ -88,7 +88,7 @@ const PRDetailScreen = () => {
 
   // Ensure PRDetailScreenBase exists
   if (!PRDetailScreenBase) {
-    console.error('[PRDetailScreen.web] PRDetailScreenBase is undefined!');
+    logger.error('[PRDetailScreen.web] PRDetailScreenBase is undefined!');
     return <div style={{ padding: 20, color: 'white' }}>Error: PRDetailScreenBase not loaded</div>;
   }
 

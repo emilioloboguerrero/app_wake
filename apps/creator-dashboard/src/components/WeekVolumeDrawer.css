@@ -136,8 +136,8 @@
 
 .week-volume-drawer-week-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
 }
 
 .week-volume-drawer-subtitle {
@@ -547,18 +547,18 @@
 
 .week-volume-drawer-mini-calendar-day--hovered-week {
   background: rgba(255, 255, 255, 0.08);
-  border-top: 1px solid rgba(191, 168, 77, 0.55);
-  border-bottom: 1px solid rgba(191, 168, 77, 0.55);
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.55);
   border-left: 1px solid transparent;
   border-right: 1px solid transparent;
 }
 
 .week-volume-drawer-mini-calendar-day--hovered-week.week-volume-drawer-mini-calendar-day--week-start {
-  border-left: 1px solid rgba(191, 168, 77, 0.6);
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .week-volume-drawer-mini-calendar-day--hovered-week.week-volume-drawer-mini-calendar-day--week-end {
-  border-right: 1px solid rgba(191, 168, 77, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .week-volume-drawer-mini-calendar-day--selectable:disabled {

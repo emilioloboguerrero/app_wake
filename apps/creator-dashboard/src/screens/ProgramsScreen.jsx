@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import ScreenSkeleton from '../components/ScreenSkeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Input from '../components/Input';
@@ -11,6 +13,7 @@ import programService from '../services/programService';
 import libraryService from '../services/libraryService';
 import { getUser } from '../services/firestoreService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
+import logger from '../utils/logger';
 import './ProgramsScreen.css';
 
 const TUTORIAL_SCREENS = [
@@ -28,7 +31,7 @@ const ProgramsScreen = () => {
   const queryClient = useQueryClient();
   const [isProgramTypeSelectionModalOpen, setIsProgramTypeSelectionModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalPage, setModalPage] = useState('general'); // 'general' | 'configuracion'
+  const [modalPage, setModalPage] = useState('general');
   const [programName, setProgramName] = useState('');
   const [programDescription, setProgramDescription] = useState('');
   const [creatorName, setCreatorName] = useState('');
@@ -37,13 +40,9 @@ const ProgramsScreen = () => {
   const [programToDelete, setProgramToDelete] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   
-  // General page fields
   const [discipline, setDiscipline] = useState('Fuerza - hipertrofia');
-  const [programType, setProgramType] = useState('subscription'); // 'subscription' | 'one-time'
-                  // NEW: delivery type – how the program is sold/used
-                  // 'low_ticket' → general scalable programs (contains modules/sessions/exercises)
-                  // 'one_on_one' → programs are containers/bins for organizing clients (content is in Plans, not here)
-                  const [deliveryType, setDeliveryType] = useState('low_ticket');
+  const [programType, setProgramType] = useState('subscription');
+  const [deliveryType, setDeliveryType] = useState('low_ticket');
   const [duration, setDuration] = useState(1); // Duration in weeks
   const [price, setPrice] = useState('');
   const [programImageFile, setProgramImageFile] = useState(null);
@@ -57,14 +56,12 @@ const ProgramsScreen = () => {
   const [isUploadingIntroVideo, setIsUploadingIntroVideo] = useState(false);
   const [introVideoUploadProgress, setIntroVideoUploadProgress] = useState(0);
   
-  // Configuración page fields
   const [freeTrialActive, setFreeTrialActive] = useState(false);
   const [freeTrialDurationDays, setFreeTrialDurationDays] = useState('0');
   const [weightSuggestions, setWeightSuggestions] = useState(false);
   const [availableLibraries, setAvailableLibraries] = useState([]);
   const [selectedLibraryIds, setSelectedLibraryIds] = useState(new Set());
   const [tutorials, setTutorials] = useState({});
-  // Optional tutorial video per screen (File or null)
   const [tutorialFiles, setTutorialFiles] = useState({
     dailyWorkout: null,
     workoutExecution: null,
@@ -73,7 +70,8 @@ const ProgramsScreen = () => {
   });
   const [isUploadingTutorials, setIsUploadingTutorials] = useState(false);
 
-  // Load programs with React Query (cached)
+  // ─── Data fetching ───
+
   const { data: programs = [], isLoading: loading, error: queryError } = useQuery({
     queryKey: user ? queryKeys.programs.byCreator(user.uid) : ['programs', 'none'],
     queryFn: async () => {
@@ -84,7 +82,6 @@ const ProgramsScreen = () => {
     ...cacheConfig.otherPrograms,
   });
 
-  // Load creator name
   const { data: userDoc } = useQuery({
     queryKey: user ? queryKeys.user.detail(user.uid) : ['user', 'none'],
     queryFn: async () => {
@@ -92,7 +89,7 @@ const ProgramsScreen = () => {
       return await getUser(user.uid);
     },
     enabled: !!user,
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    staleTime: 10 * 60 * 1000,
     select: (data) => {
       if (!data) return '';
       return data.displayName || data.name || user?.email || '';
@@ -112,7 +109,6 @@ const ProgramsScreen = () => {
     setIsMediaPickerOpen(false);
   };
 
-  // Check for autoCreate parameter (from Contenido) and open modal if present
   useEffect(() => {
     const autoCreate = searchParams.get('autoCreate');
     if (autoCreate === 'true' && user) {
@@ -122,7 +118,6 @@ const ProgramsScreen = () => {
     }
   }, [searchParams, user, setSearchParams]);
 
-  // When arriving at /products/new?type=low_ticket (from Programas y clientes), open create modal
   useEffect(() => {
     if (location.pathname === '/products/new' && searchParams.get('type') === 'low_ticket' && user) {
       setDeliveryType('low_ticket');
@@ -131,7 +126,6 @@ const ProgramsScreen = () => {
     }
   }, [location.pathname, searchParams, user, setSearchParams]);
 
-  // When arriving at /products/new?type=one_on_one, open create modal for general program (bucket)
   useEffect(() => {
     if (location.pathname === '/products/new' && searchParams.get('type') === 'one_on_one' && user) {
       setDeliveryType('one_on_one');
@@ -140,7 +134,6 @@ const ProgramsScreen = () => {
     }
   }, [location.pathname, searchParams, user, setSearchParams]);
 
-  // Load libraries when modal opens
   useEffect(() => {
     const loadLibraries = async () => {
       if (isModalOpen && user) {
@@ -148,26 +141,24 @@ const ProgramsScreen = () => {
           const libraries = await libraryService.getLibrariesByCreator(user.uid);
           setAvailableLibraries(libraries);
         } catch (error) {
-          console.error('Error loading libraries:', error);
+          logger.error('Error loading libraries:', error);
         }
       }
     };
     loadLibraries();
   }, [isModalOpen, user]);
 
-  // Create program mutation with optimistic update
+  // ─── Mutations ───
+
   const createProgramMutation = useMutation({
     mutationFn: async ({ creatorId, creatorName, programData }) => {
       return await programService.createProgram(creatorId, creatorName, programData);
     },
     onMutate: async (variables) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.programs.byCreator(variables.creatorId) });
 
-      // Snapshot previous value
       const previousPrograms = queryClient.getQueryData(queryKeys.programs.byCreator(variables.creatorId)) || [];
 
-      // Optimistically update
       const tempId = `temp-${Date.now()}`;
       const access_duration = variables.programData.programType === 'subscription' ? 'monthly' : 'yearly';
       const currentYear = new Date().getFullYear();
@@ -196,7 +187,6 @@ const ProgramsScreen = () => {
       return { previousPrograms, tempId };
     },
     onError: (err, variables, context) => {
-      // Rollback on error
       if (context?.previousPrograms) {
         queryClient.setQueryData(
           queryKeys.programs.byCreator(variables.creatorId),
@@ -205,12 +195,11 @@ const ProgramsScreen = () => {
       }
     },
     onSuccess: (data, variables) => {
-      // Invalidate to refetch with real data
       queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(variables.creatorId) });
     },
   });
 
-  // Delete program mutation with optimistic update
+  // ─── Delete program mutation ───
   const deleteProgramMutation = useMutation({
     mutationFn: async ({ programId }) => {
       return await programService.deleteProgram(programId);
@@ -246,6 +235,8 @@ const ProgramsScreen = () => {
 
   const error = queryError ? 'Error al cargar los programas' : null;
 
+  // ─── Event handlers ───
+
   const handleAddProgram = () => {
     setIsProgramTypeSelectionModalOpen(true);
   };
@@ -277,8 +268,6 @@ const ProgramsScreen = () => {
     setIntroVideoPreview(null);
     setFreeTrialActive(false);
     setFreeTrialDurationDays('0');
-    setStreakEnabled(false);
-    setMinimumSessionsPerWeek(0);
     setWeightSuggestions(false);
     setAvailableLibraries([]);
     if (location.pathname === '/products/new') {
@@ -321,8 +310,6 @@ const ProgramsScreen = () => {
     }
 
     try {
-      // Prepare program data (status always draft)
-      // Initialize tutorials with default screens
       const defaultTutorials = {
         dailyWorkout: [],
         workoutCompletion: [],
@@ -345,7 +332,6 @@ const ProgramsScreen = () => {
         tutorials: defaultTutorials,
       };
       
-      // Create program first
       const newProgram = await createProgramMutation.mutateAsync({
         creatorId: user.uid,
         creatorName: creatorName,
@@ -368,14 +354,13 @@ const ProgramsScreen = () => {
           );
           setImageUploadProgress(100);
         } catch (uploadErr) {
-          console.error('Error uploading image:', uploadErr);
+          logger.error('Error uploading image:', uploadErr);
           alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
         } finally {
           setIsUploadingImage(false);
         }
       }
       
-      // Upload intro video if provided
       if (introVideoFile && newProgram?.id) {
         try {
           setIsUploadingIntroVideo(true);
@@ -389,21 +374,19 @@ const ProgramsScreen = () => {
             }
           );
           
-          // Update program with intro video URL
           await programService.updateProgram(newProgram.id, {
             video_intro_url: introVideoUrl
           });
           
           setIntroVideoUploadProgress(100);
         } catch (uploadErr) {
-          console.error('Error uploading intro video:', uploadErr);
+          logger.error('Error uploading intro video:', uploadErr);
           alert(`Error al subir el video intro: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
         } finally {
           setIsUploadingIntroVideo(false);
         }
       }
 
-      // Upload optional tutorial videos per screen
       const hasTutorialFiles = Object.values(tutorialFiles).some(Boolean);
       if (hasTutorialFiles && newProgram?.id) {
         setIsUploadingTutorials(true);
@@ -428,7 +411,7 @@ const ProgramsScreen = () => {
           }
           await programService.updateProgram(newProgram.id, { tutorials: tutorialsPayload });
         } catch (uploadErr) {
-          console.error('Error uploading tutorial videos:', uploadErr);
+          logger.error('Error uploading tutorial videos:', uploadErr);
           alert(`Error al subir los tutoriales: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
         } finally {
           setIsUploadingTutorials(false);
@@ -437,11 +420,9 @@ const ProgramsScreen = () => {
       
       handleCloseModal();
       const productTypeState = { productType: searchParams.get('type') || deliveryType || 'low_ticket' };
-      // Navigate to the new program page
       if (newProgram?.id && !newProgram.id.startsWith('temp-')) {
         navigate(`/programs/${newProgram.id}`, { state: { returnTo: '/products', returnState: productTypeState } });
       } else {
-        // Wait a bit for cache to update
       setTimeout(() => {
         const programs = queryClient.getQueryData(queryKeys.programs.byCreator(user.uid)) || [];
           const foundProgram = programs.find(p => p.title === programName.trim());
@@ -451,7 +432,7 @@ const ProgramsScreen = () => {
       }, 500);
       }
     } catch (err) {
-      console.error('Error creating program:', err);
+      logger.error('Error creating program:', err);
       alert(`Error al crear el programa: ${err.message || 'Por favor, intenta de nuevo.'}`);
     }
   };
@@ -477,7 +458,6 @@ const ProgramsScreen = () => {
       return;
     }
 
-    // Verify the confirmation matches the program title
     if (deleteConfirmation.trim() !== programToDelete.title) {
       return;
     }
@@ -487,21 +467,23 @@ const ProgramsScreen = () => {
         programId: programToDelete.id,
       });
       
-      // Close modal and exit edit mode if no programs left
       handleCloseDeleteModal();
       const programs = queryClient.getQueryData(queryKeys.programs.byCreator(user.uid)) || [];
       if (programs.length === 0) {
         setIsEditMode(false);
       }
     } catch (err) {
-      console.error('Error deleting program:', err);
+      logger.error('Error deleting program:', err);
       alert('Error al eliminar el programa. Por favor, intenta de nuevo.');
     }
   };
 
   const isOneOnOneCreate = location.pathname === '/products/new' && deliveryType === 'one_on_one';
 
+  // ─── Render ───
+
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName={isOneOnOneCreate ? 'Nuevo programa general (1-on-1)' : 'Programas Low-ticket'}>
       <div className="programs-content">
         <div className="programs-actions">
@@ -522,9 +504,7 @@ const ProgramsScreen = () => {
         
         {/* Programs List */}
         {loading ? (
-          <div className="programs-loading">
-            <p>Cargando programas...</p>
-          </div>
+          <ScreenSkeleton />
         ) : error ? (
           <div className="programs-error">
             <p>{error}</p>
@@ -1217,6 +1197,7 @@ const ProgramsScreen = () => {
         accept="image/*"
       />
     </DashboardLayout>
+    </ErrorBoundary>
   );
 };
 

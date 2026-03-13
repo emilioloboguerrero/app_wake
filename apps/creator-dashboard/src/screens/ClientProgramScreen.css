@@ -335,8 +335,8 @@ body.header-scrolled .client-program-tab-bar {
 .client-program-nutricion-sidebar-current {
   padding: 12px 14px;
   margin-bottom: 12px;
-  background: rgba(191, 168, 77, 0.12);
-  border: 1px solid rgba(191, 168, 77, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -396,21 +396,21 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-plan-item-selected {
-  background: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.45);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .client-program-nutricion-plan-item-selected:hover {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.55);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .client-program-nutricion-plan-item-avatar {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -421,8 +421,8 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-plan-item-selected .client-program-nutricion-plan-item-avatar {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.6);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .client-program-nutricion-plan-item-name {
@@ -473,8 +473,8 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-empty-drag-over {
-  background: rgba(191, 168, 77, 0.08);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .client-program-nutricion-empty-icon {
@@ -682,7 +682,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: rgba(191, 168, 77, 0.8);
+  accent-color: rgba(255, 255, 255, 0.8);
 }
 
 .client-program-nutricion-modal-dates-row {
@@ -719,8 +719,8 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-modal-date-chip--active {
-  background: rgba(191, 168, 77, 0.12);
-  border-color: rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .client-program-nutricion-modal-date-chip--no-end .client-program-nutricion-modal-date-value {
@@ -875,34 +875,34 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .nutrition-modal-calendar-day--in-range {
-  background: rgba(191, 168, 77, 0.2);
-  border-color: rgba(191, 168, 77, 0.35);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .nutrition-modal-calendar-day--in-range:hover {
-  background: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .nutrition-modal-calendar-day--in-range.nutrition-modal-calendar-day--other {
-  background: rgba(191, 168, 77, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.75);
 }
 
 .nutrition-modal-calendar-day--selected {
-  background: rgba(191, 168, 77, 0.4);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.65);
   color: rgba(255, 255, 255, 0.98);
 }
 
 .nutrition-modal-calendar-day--selected:hover {
-  background: rgba(191, 168, 77, 0.5);
-  border-color: rgba(191, 168, 77, 0.75);
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.75);
 }
 
 .nutrition-modal-calendar-day--selected.nutrition-modal-calendar-day--other {
-  background: rgba(191, 168, 77, 0.25);
+  background: rgba(255, 255, 255, 0.25);
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -1031,8 +1031,8 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-nutricion-current-edit-btn:hover {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(191, 168, 77, 0.4);
-  color: rgba(191, 168, 77, 0.95);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .client-program-nutricion-current-pills {
@@ -1198,14 +1198,14 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-btn-primary {
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .client-program-nutricion-btn-primary:hover:not(:disabled) {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .client-program-nutricion-btn-secondary {
@@ -1261,8 +1261,8 @@ body.header-scrolled .client-program-tab-bar {
 .client-program-nutricion-select:focus,
 .client-program-nutricion-input:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
-  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
 }
 
 .client-program-nutricion-dates-row {
@@ -1290,7 +1290,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: rgba(191, 168, 77, 0.8);
+  accent-color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
 }
 
@@ -1372,8 +1372,8 @@ body.header-scrolled .client-program-tab-bar {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
-  background: rgba(191, 168, 77, 0.25);
-  border: 1px solid rgba(191, 168, 77, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
@@ -1382,8 +1382,8 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-historial-item-btn:hover {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.65);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 /* ========== Info tab – Cliente + Acceso al programa ========== */
@@ -1480,7 +1480,7 @@ body.header-scrolled .client-program-tab-bar {
 .client-program-info-empty-icon {
   display: block;
   font-size: 32px;
-  color: rgba(191, 168, 77, 0.4);
+  color: rgba(255, 255, 255, 0.4);
   margin-bottom: 16px;
   line-height: 1;
 }
@@ -1535,9 +1535,9 @@ body.header-scrolled .client-program-tab-bar {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(145deg, rgba(191, 168, 77, 0.22), rgba(191, 168, 77, 0.06));
-  border: 1px solid rgba(191, 168, 77, 0.18);
-  color: rgba(191, 168, 77, 0.85);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 20px;
   font-weight: 600;
   display: flex;
@@ -1562,7 +1562,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-profile-email {
   font-size: 14px;
-  color: rgba(191, 168, 77, 0.82);
+  color: rgba(255, 255, 255, 0.82);
   text-decoration: none;
   display: inline-block;
   overflow: hidden;
@@ -1707,14 +1707,14 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-program-item--selected {
-  background: rgba(191, 168, 77, 0.07);
-  border-color: rgba(191, 168, 77, 0.25);
-  box-shadow: 0 0 0 1px rgba(191, 168, 77, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .client-program-info-program-item--selected:hover {
-  background: rgba(191, 168, 77, 0.09);
-  border-color: rgba(191, 168, 77, 0.32);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.32);
 }
 
 .client-program-info-program-thumb {
@@ -1730,8 +1730,8 @@ body.header-scrolled .client-program-tab-bar {
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: rgba(191, 168, 77, 0.1);
-  color: rgba(191, 168, 77, 0.82);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 17px;
   font-weight: 600;
   display: flex;
@@ -1755,7 +1755,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(191, 168, 77, 0.75);
+  background: rgba(255, 255, 255, 0.75);
   color: rgba(26, 26, 26, 0.95);
   font-size: 11px;
   font-weight: 700;
@@ -1828,14 +1828,14 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-access-btn--on {
-  color: rgba(191, 168, 77, 0.88);
-  background: rgba(191, 168, 77, 0.1);
-  border-color: rgba(191, 168, 77, 0.28);
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .client-program-info-access-btn--on:hover {
-  background: rgba(191, 168, 77, 0.14);
-  border-color: rgba(191, 168, 77, 0.38);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.38);
 }
 
 .client-program-info-date {
@@ -1850,8 +1850,8 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-date:focus {
-  border-color: rgba(191, 168, 77, 0.45);
-  box-shadow: 0 0 0 2px rgba(191, 168, 77, 0.12);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
 }
 
 .client-program-info-msg {

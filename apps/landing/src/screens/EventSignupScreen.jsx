@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { doc, getDoc, collection, addDoc, serverTimestamp, runTransaction, increment } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import heroLogoSrc from '../assets/hero-logo.svg';
 import wakeLogotypeSrc from '../assets/Logotipo-WAKE-positivo.svg';
 import './EventSignupScreen.css';
@@ -164,16 +165,43 @@ const STEP_ICONS = [
   </svg>,
 ];
 
-// ─── Steps definition ─────────────────────────────────────────────
-const STEPS = [
+// ─── V1 hard-coded steps (fallback when event has no fields) ──────
+const V1_STEPS = [
   { field: 'nombre',   question: '¿Cómo te llamas?',               type: 'text',   placeholder: 'Tu nombre completo', autoComplete: 'name' },
   { field: 'email',    question: '¿Cuál es tu email?',              type: 'email',  placeholder: 'nombre@email.com',   autoComplete: 'email' },
   { field: 'telefono', question: '¿Cuál es tu teléfono?',           type: 'tel',    placeholder: '+57 300 000 0000',   autoComplete: 'tel' },
   { field: 'edad',     question: '¿Cuántos años tienes?',           type: 'number', placeholder: '25',                 autoComplete: 'off' },
   { field: 'genero',   question: '¿Con qué género te identificas?', type: 'choice', options: ['Masculino', 'Femenino', 'Prefiero no decir'] },
 ];
-const TOTAL_STEPS = STEPS.length;
-const INITIAL_FORM = { nombre: '', email: '', telefono: '', edad: '', genero: '' };
+const V1_INITIAL_FORM = { nombre: '', email: '', telefono: '', edad: '', genero: '' };
+
+// Build steps from V2 event.fields array
+const DEFAULT_PLACEHOLDERS = {
+  f_nombre:   'Tu nombre completo',
+  f_email:    'correo@ejemplo.com',
+  f_telefono: '+57 300 000 0000',
+  f_edad:     '25',
+};
+
+function buildStepsFromFields(fields) {
+  return fields.map(f => ({
+    field: f.id,
+    question: f.label,
+    type: (f.type === 'select' || f.type === 'radio') ? 'choice'
+        : f.type === 'multiselect' ? 'multiselect'
+        : f.type,
+    placeholder: f.placeholder || DEFAULT_PLACEHOLDERS[f.id] || '',
+    autoComplete: 'off',
+    required: Boolean(f.required),
+    options: f.options || [],
+  }));
+}
+
+function buildInitialForm(steps) {
+  const form = {};
+  steps.forEach(s => { form[s.field] = s.type === 'multiselect' ? [] : ''; });
+  return form;
+}
 
 function relativeLuminance(r, g, b) {
   return [r, g, b]
@@ -181,24 +209,139 @@ function relativeLuminance(r, g, b) {
     .reduce((acc, c, i) => acc + c * [0.2126, 0.7152, 0.0722][i], 0);
 }
 
+function formatEventDateLong(ts) {
+  if (!ts) return null;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// ─── Flier Card ───────────────────────────────────────────────────
+function FlierCard({ event, flipped, onFlip, hasImage }) {
+  const dateStr = formatEventDateLong(event?.date);
+  const hasDetails = Boolean(dateStr || event?.location || event?.description);
+  const canFlip = hasDetails;
+
+  return (
+    <div
+      className={`es-flier-card${!canFlip ? ' es-flier-card--no-flip' : ''}${flipped ? ' es-flier-card--flipped' : ''}`}
+      onClick={canFlip ? onFlip : undefined}
+      role={canFlip ? 'button' : undefined}
+      aria-label={canFlip ? (flipped ? 'Ver imagen' : 'Ver detalles del evento') : undefined}
+    >
+      <div className="es-flier-card-inner">
+
+        {/* ── Front ── */}
+        <div className="es-flier-card-front">
+          {hasImage ? (
+            <>
+              <img src={event.image_url} alt={event.title} className="es-flier-card-img" />
+              <div className="es-flier-card-front-overlay" />
+              {canFlip && (
+                <button
+                  className="es-flier-card-flip-btn"
+                  onClick={e => { e.stopPropagation(); onFlip(); }}
+                  aria-label="Ver detalles"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8" />
+                    <path d="M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16" />
+                  </svg>
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="es-flier-card-no-img">
+              {canFlip && (
+                <button
+                  className="es-flier-card-flip-btn"
+                  onClick={e => { e.stopPropagation(); onFlip(); }}
+                  aria-label="Ver detalles"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8" />
+                    <path d="M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16" />
+                  </svg>
+                </button>
+              )}
+              <div className="es-flier-card-no-img-lines" aria-hidden="true">
+                <div /><div /><div />
+              </div>
+              <h2 className="es-flier-card-no-img-title">{event?.title}</h2>
+            </div>
+          )}
+        </div>
+
+        {/* ── Back ── */}
+        {hasDetails && (
+          <div className="es-flier-card-back">
+            <button
+              className="es-flier-card-flip-btn"
+              onClick={e => { e.stopPropagation(); onFlip(); }}
+              aria-label="Volver"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8" />
+                <path d="M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16" />
+              </svg>
+            </button>
+            <div className="es-flier-card-back-content">
+              <h2 className="es-flier-card-back-title">{event?.title}</h2>
+              {dateStr && (
+                <div className="es-flier-card-detail">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  <span>{dateStr}</span>
+                </div>
+              )}
+              {event?.location && (
+                <div className="es-flier-card-detail">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  <span>{event.location}</span>
+                </div>
+              )}
+              {event?.description && (
+                <p className="es-flier-card-desc">{event.description}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────
 export default function EventSignupScreen() {
   const { eventId } = useParams();
-  // phase: loading | hero | form | submitting | success | not_found | closed | full | waitlist | waitlist_success
+  // phase: loading | gate | hero | form | submitting | success | not_found | closed | full | waitlist | waitlist_success
   const [phase, setPhase] = useState('loading');
   const [event, setEvent] = useState(null);
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [steps, setSteps] = useState(V1_STEPS);
+  const [isV2, setIsV2] = useState(false);
+  const [form, setForm] = useState(V1_INITIAL_FORM);
   const [step, setStep] = useState(0);
   const [stepKey, setStepKey] = useState(0);
   const [direction, setDirection] = useState('forward');
   const [error, setError] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   // Default: white (PWA onboarding palette), not gold
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
   const [accentIsDark, setAccentIsDark] = useState(true); // white = needs dark text
   const [copied, setCopied] = useState(false);
   const [posterLoaded, setPosterLoaded] = useState(false);
+  const [checkInToken, setCheckInToken] = useState(null);
   const [waitlistContact, setWaitlistContact] = useState('');
   const [waitlistError, setWaitlistError] = useState(null);
+  const [cardFlipped, setCardFlipped] = useState(false);
   const inputRef = useRef(null);
 
   const accentCss = `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})`;
@@ -211,37 +354,39 @@ export default function EventSignupScreen() {
     '--accent-text': accentTextCss,
   };
 
+  // Auth state — needed for wake_users_only gating
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => { setAuthUser(u); setAuthReady(true); });
+    return unsub;
+  }, []);
+
+  // Auto-advance from gate once auth resolves and user is signed in
+  useEffect(() => {
+    if (phase === 'gate' && authReady && authUser) setPhase('hero');
+  }, [phase, authReady, authUser]);
+
   // Load event
   useEffect(() => {
-    console.log('[EventSignup] loading event', eventId);
     getDoc(doc(firestore, 'events', eventId))
       .then(snap => {
-        if (!snap.exists()) {
-          console.warn('[EventSignup] event not found', eventId);
-          setPhase('not_found');
-          return;
-        }
+        if (!snap.exists()) { setPhase('not_found'); return; }
         const data = snap.data();
-        if (data.status === 'closed') {
-          console.log('[EventSignup] event closed', eventId);
-          setEvent(data);
-          setPhase('closed');
-          return;
-        }
+        if (data.status === 'closed') { setEvent(data); setPhase('closed'); return; }
         if (data.max_registrations != null && (data.registration_count ?? 0) >= data.max_registrations) {
-          console.log('[EventSignup] event full', eventId);
-          setEvent(data);
-          setPhase('full');
-          return;
+          setEvent(data); setPhase('full'); return;
         }
-        console.log('[EventSignup] event loaded', { eventId, title: data.title });
+        // V2: build dynamic steps from fields array
+        if (data.fields && data.fields.length > 0) {
+          const dynSteps = buildStepsFromFields(data.fields);
+          setSteps(dynSteps);
+          setForm(buildInitialForm(dynSteps));
+          setIsV2(true);
+        }
         setEvent(data);
-        setTimeout(() => setPhase('hero'), 1400);
+        // wake_users_only: show gate phase (auth check happens in render)
+        setTimeout(() => setPhase(data.wake_users_only ? 'gate' : 'hero'), 1400);
       })
-      .catch(err => {
-        console.error('[EventSignup] failed to load event', eventId, err);
-        setPhase('not_found');
-      });
+      .catch(() => setPhase('not_found'));
   }, [eventId]);
 
   // Color extraction — canvas-based, no library needed
@@ -289,6 +434,7 @@ export default function EventSignupScreen() {
   // ── Navigation ──────────────────────────────────────────────────
   function startForm() {
     setStep(0); setStepKey(0); setDirection('forward'); setError(null);
+    setCardFlipped(false);
     setPhase('form');
   }
 
@@ -300,13 +446,20 @@ export default function EventSignupScreen() {
 
   // ── Validation ──────────────────────────────────────────────────
   function validateCurrent() {
-    const s = STEPS[step];
-    const val = String(form[s.field] ?? '').trim();
-    if (!val) { setError('Este campo es obligatorio'); return false; }
-    if (s.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+    const s = steps[step];
+    const val = form[s.field];
+    if (s.type === 'multiselect') {
+      if (s.required && (!Array.isArray(val) || val.length === 0)) {
+        setError('Selecciona al menos una opción'); return false;
+      }
+      return true;
+    }
+    const str = String(val ?? '').trim();
+    if (s.required !== false && !str) { setError('Este campo es obligatorio'); return false; }
+    if (s.type === 'email' && str && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str)) {
       setError('Ingresa un email válido'); return false;
     }
-    if (s.type === 'number' && (Number(val) < 1 || Number(val) > 99)) {
+    if (s.type === 'number' && str && (Number(str) < 1 || Number(str) > 99)) {
       setError('Ingresa una edad válida'); return false;
     }
     return true;
@@ -314,7 +467,7 @@ export default function EventSignupScreen() {
 
   function advance() {
     if (!validateCurrent()) return;
-    if (step < TOTAL_STEPS - 1) {
+    if (step < steps.length - 1) {
       setDirection('forward'); setError(null);
       setStep(s => s + 1); setStepKey(k => k + 1);
     } else {
@@ -327,44 +480,50 @@ export default function EventSignupScreen() {
   }
 
   function selectChoice(val) {
-    const next = { ...form, genero: val };
+    const s = steps[step];
+    const next = { ...form, [s.field]: val };
     setForm(next);
-    setTimeout(() => submitForm(next), 240);
+    if (step < steps.length - 1) {
+      setDirection('forward'); setError(null);
+      setTimeout(() => { setStep(st => st + 1); setStepKey(k => k + 1); }, 240);
+    } else {
+      setTimeout(() => submitForm(next), 240);
+    }
+  }
+
+  function toggleMultiselect(val) {
+    const s = steps[step];
+    setForm(prev => {
+      const cur = Array.isArray(prev[s.field]) ? prev[s.field] : [];
+      return { ...prev, [s.field]: cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val] };
+    });
+    setError(null);
   }
 
   // ── Submit ───────────────────────────────────────────────────────
   async function submitForm(finalForm) {
     setPhase('submitting'); setError(null);
     try {
+      const qrEnabled = event?.settings?.enable_qr_checkin === true;
+      const token = qrEnabled ? crypto.randomUUID() : null;
       const eventRef = doc(firestore, 'events', eventId);
       const regRef = doc(collection(firestore, 'event_signups', eventId, 'registrations'));
-      console.log('[EventSignup] submitting', { eventId, email: finalForm.email });
       await runTransaction(firestore, async tx => {
         const eventSnap = await tx.get(eventRef);
         const d = eventSnap.data();
         const count = d.registration_count ?? 0;
-        if (d.max_registrations != null && count >= d.max_registrations) {
-          throw new Error('full');
-        }
-        tx.set(regRef, {
-          nombre: finalForm.nombre, email: finalForm.email,
-          telefono: finalForm.telefono, edad: Number(finalForm.edad),
-          genero: finalForm.genero, check_in_token: crypto.randomUUID(),
-          checked_in: false, checked_in_at: null, created_at: serverTimestamp(),
-        });
-        if (d.max_registrations != null) {
-          tx.update(eventRef, { registration_count: increment(1) });
-        }
+        if (d.max_registrations != null && count >= d.max_registrations) throw new Error('full');
+        const payload = isV2
+          ? { responses: finalForm, check_in_token: token, checked_in: false, checked_in_at: null, created_at: serverTimestamp() }
+          : { nombre: finalForm.nombre, email: finalForm.email, telefono: finalForm.telefono, edad: Number(finalForm.edad), genero: finalForm.genero, check_in_token: token, checked_in: false, checked_in_at: null, created_at: serverTimestamp() };
+        tx.set(regRef, payload);
+        if (d.max_registrations != null) tx.update(eventRef, { registration_count: increment(1) });
       });
-      console.log('[EventSignup] registration created', regRef.id);
       setEvent(prev => ({ ...prev, registration_count: (prev.registration_count ?? 0) + 1 }));
+      setCheckInToken(token);
       setPhase('success');
     } catch (err) {
-      if (err.message === 'full') {
-        setPhase('full');
-        return;
-      }
-      console.error('[EventSignup] submission failed', err);
+      if (err.message === 'full') { setPhase('full'); return; }
       setPhase('form'); setStep(0); setStepKey(k => k + 1);
       setError('Ocurrió un error. Intenta de nuevo.');
     }
@@ -393,13 +552,50 @@ export default function EventSignupScreen() {
   }
 
   const hasImage = Boolean(event?.image_url);
-  const currentStep = STEPS[step];
+  const currentStep = steps[step];
   const spotsLeft = event?.max_registrations != null
     ? event.max_registrations - (event.registration_count ?? 0)
     : null;
   const filledPct = event?.max_registrations != null
     ? (event.registration_count ?? 0) / event.max_registrations
     : null;
+
+  // ── GATE (wake_users_only + not signed in) ────────────────────────
+  if (phase === 'gate') {
+    if (!authReady) {
+      return (
+        <div className="es-page es-page--loading" style={cssVars}>
+          <AmbientOrbs />
+          <WakeLoader size={68} />
+        </div>
+      );
+    }
+    // authUser truthy → useEffect above advances to 'hero'; render loading briefly
+    if (authUser) {
+      return (
+        <div className="es-page es-page--loading" style={cssVars}>
+          <AmbientOrbs />
+          <WakeLoader size={68} />
+        </div>
+      );
+    }
+    return (
+      <div className="es-page es-fade-in" style={cssVars}>
+        {hasImage && <div className="es-bg es-bg--blurred" style={{ backgroundImage: `url(${event.image_url})` }} />}
+        <div className="es-overlay es-overlay--dark" />
+        <AmbientOrbs />
+        <a href="/" className="es-logo-link" aria-label="Wake">
+          <img src={wakeLogotypeSrc} alt="Wake" className="es-logo" />
+        </a>
+        <div className="es-gate es-fade-in">
+          {hasImage && <img src={event.image_url} alt={event.title} className="es-gate-poster" />}
+          <h2 className="es-gate-title">{event?.title}</h2>
+          <p className="es-gate-sub">Este evento es exclusivo para usuarios de Wake.</p>
+          <a href="/app" className="es-cta">Abrir la app Wake</a>
+        </div>
+      </div>
+    );
+  }
 
   // ── LOADING ──────────────────────────────────────────────────────
   if (phase === 'loading') {
@@ -582,7 +778,7 @@ export default function EventSignupScreen() {
       {/* Curved progress line — form only */}
       {phase === 'form' && (
         <div className="es-progress-line-wrap">
-          <ProgressLine step={step} totalSteps={TOTAL_STEPS} />
+          <ProgressLine step={step} totalSteps={steps.length} />
         </div>
       )}
 
@@ -590,21 +786,14 @@ export default function EventSignupScreen() {
       {phase === 'hero' && (
         <div className="es-hero es-fade-in">
           <div className="es-hero-body">
-            {hasImage ? (
-              <div className="es-poster-wrap">
-                <div className="es-poster-glow" />
-                <img
-                  src={event.image_url}
-                  alt={event.title}
-                  className={`es-poster${posterLoaded ? ' es-poster--loaded' : ''}`}
-                  onLoad={() => setPosterLoaded(true)}
-                />
-              </div>
-            ) : (
-              <div className="es-hero-no-image">
-                <h1 className="es-hero-title">{event.title}</h1>
-              </div>
-            )}
+            <div className="es-flier-card-wrap">
+              <FlierCard
+                event={event}
+                flipped={cardFlipped}
+                onFlip={() => setCardFlipped(f => !f)}
+                hasImage={hasImage}
+              />
+            </div>
           </div>
           <div className="es-hero-footer">
             {filledPct !== null && filledPct >= 0.6 && (
@@ -629,7 +818,7 @@ export default function EventSignupScreen() {
         <div className="es-form-shell es-fade-in">
           {/* Top thin progress bar */}
           <div className="es-topbar">
-            <div className="es-topbar-fill" style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }} />
+            <div className="es-topbar-fill" style={{ width: `${((step + 1) / steps.length) * 100}%` }} />
           </div>
           {/* Back */}
           <button className="es-back" onClick={goBack} aria-label="Volver">
@@ -643,9 +832,15 @@ export default function EventSignupScreen() {
             key={stepKey}
             className={`es-step ${direction === 'forward' ? 'es-step--enter-up' : 'es-step--enter-down'}`}
           >
-            {/* Icon */}
-            <div className="es-step-icon">{STEP_ICONS[step]}</div>
-            <span className="es-step-count">{step + 1} / {TOTAL_STEPS}</span>
+            {/* Icon — use V1 icons for known indices, generic dot otherwise */}
+            <div className="es-step-icon">
+              {STEP_ICONS[step] ?? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+              )}
+            </div>
+            <span className="es-step-count">{step + 1} / {steps.length}</span>
             <h2 className="es-question">{currentStep.question}</h2>
 
             {currentStep.type === 'choice' ? (
@@ -653,7 +848,7 @@ export default function EventSignupScreen() {
                 {currentStep.options.map(opt => (
                   <button
                     key={opt}
-                    className={`es-choice ${form.genero === opt ? 'es-choice--selected' : ''}`}
+                    className={`es-choice ${form[currentStep.field] === opt ? 'es-choice--selected' : ''}`}
                     onClick={() => selectChoice(opt)}
                   >
                     {opt}
@@ -661,12 +856,43 @@ export default function EventSignupScreen() {
                 ))}
                 {error && <p className="es-error">{error}</p>}
               </div>
+            ) : currentStep.type === 'multiselect' ? (
+              <div className="es-choices">
+                {currentStep.options.map(opt => (
+                  <button
+                    key={opt}
+                    className={`es-choice ${Array.isArray(form[currentStep.field]) && form[currentStep.field].includes(opt) ? 'es-choice--selected' : ''}`}
+                    onClick={() => toggleMultiselect(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+                {error && <p className="es-error">{error}</p>}
+                <button className="es-cta" onClick={advance}>
+                  {step === steps.length - 1 ? 'Registrarme' : 'Continuar'}
+                </button>
+              </div>
+            ) : currentStep.type === 'textarea' ? (
+              <div className="es-input-wrap">
+                <textarea
+                  ref={inputRef}
+                  className="es-input es-input--textarea"
+                  placeholder={currentStep.placeholder}
+                  value={form[currentStep.field]}
+                  onChange={e => { setForm(prev => ({ ...prev, [currentStep.field]: e.target.value })); setError(null); }}
+                  rows={4}
+                />
+                {error && <p className="es-error">{error}</p>}
+                <button className="es-cta" onClick={advance}>
+                  {step === steps.length - 1 ? 'Registrarme' : 'Continuar'}
+                </button>
+              </div>
             ) : (
               <div className="es-input-wrap">
                 <input
                   ref={inputRef}
                   className="es-input"
-                  type={currentStep.type}
+                  type={currentStep.type === 'number' ? 'number' : currentStep.type === 'date' ? 'date' : currentStep.type}
                   placeholder={currentStep.placeholder}
                   autoComplete={currentStep.autoComplete}
                   inputMode={currentStep.type === 'number' ? 'numeric' : undefined}
@@ -681,7 +907,7 @@ export default function EventSignupScreen() {
                 />
                 {error && <p className="es-error">{error}</p>}
                 <button className="es-cta" onClick={advance}>
-                  {step === TOTAL_STEPS - 1 ? 'Registrarme' : 'Continuar'}
+                  {step === steps.length - 1 ? 'Registrarme' : 'Continuar'}
                 </button>
               </div>
             )}
@@ -697,7 +923,25 @@ export default function EventSignupScreen() {
       )}
 
       {/* ── SUCCESS ── */}
-      {phase === 'success' && (
+      {phase === 'success' && (() => {
+        // Find first name: V1 uses form.nombre; V2 looks for a name-like field in responses
+        const firstName = (() => {
+          if (form.nombre) return form.nombre.split(' ')[0];
+          const nameStep = steps.find(s => s.question.toLowerCase().includes('nombre') || s.question.toLowerCase().includes('name') || s.field.toLowerCase().includes('nombre'));
+          if (nameStep) { const v = form[nameStep.field]; if (v && typeof v === 'string') return v.split(' ')[0]; }
+          return null;
+        })();
+        const confirmMsg = event?.settings?.confirmation_message;
+        const toEmail = (() => {
+          if (form.email) return form.email;
+          const emailStep = steps.find(s => s.type === 'email' || s.field.toLowerCase().includes('email'));
+          if (emailStep) return form[emailStep.field] || null;
+          return null;
+        })();
+        const qrUrl = checkInToken
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(JSON.stringify({ eventId, token: checkInToken }))}&bgcolor=1a1a1a&color=ffffff&qzone=1`
+          : null;
+        return (
         <div className="es-success es-fade-in">
           <div className="es-success-body">
             {/* Expanding rings */}
@@ -712,10 +956,44 @@ export default function EventSignupScreen() {
               </svg>
             </div>
             <h1 className="es-success-title">
-              {form.nombre ? `¡${form.nombre.split(' ')[0]}, estás dentro!` : '¡Estás dentro!'}
+              {firstName ? `¡${firstName}, estás dentro!` : '¡Estás dentro!'}
             </h1>
-            <p className="es-success-sub">Nos vemos en el evento.</p>
-            {event?.title && <p className="es-success-event">{event.title}</p>}
+            <p className="es-success-sub">{confirmMsg || 'Nos vemos en el evento.'}</p>
+
+            {(event?.date || event?.location) && (
+              <div className="es-success-event-details">
+                {event.date && (
+                  <div className="es-success-event-detail">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    <span>{formatEventDateLong(event.date)}</span>
+                  </div>
+                )}
+                {event.location && (
+                  <div className="es-success-event-detail">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                    <span>{event.location}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {qrUrl && (
+              <div className="es-success-qr">
+                <img src={qrUrl} alt="QR Check-in" width={160} height={160} className="es-success-qr-img" />
+                <p className="es-success-qr-hint">
+                  Muestra este QR en la entrada
+                  {toEmail && <><br /><span>También enviado a {toEmail}</span></>}
+                </p>
+              </div>
+            )}
           </div>
           <div className="es-success-footer">
             <button className={`es-cta es-cta--share${copied ? ' es-cta--copied' : ''}`} onClick={handleShare}>
@@ -723,7 +1001,8 @@ export default function EventSignupScreen() {
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

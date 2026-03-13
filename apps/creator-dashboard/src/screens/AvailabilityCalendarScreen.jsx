@@ -8,6 +8,7 @@ import { getUser } from '../services/firestoreService';
 import '../components/CalendarView.css';
 import './AvailabilityCalendarScreen.css';
 import '../components/PropagateChangesModal.css';
+import logger from '../utils/logger';
 
 const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -132,7 +133,7 @@ export default function AvailabilityCalendarScreen() {
       setAvailability(avail);
       return avail;
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [user?.uid]);
 
@@ -147,7 +148,7 @@ export default function AvailabilityCalendarScreen() {
       const list = await getBookingsForCreator(user.uid, { status: 'scheduled' });
       setBookings(list);
     } catch (e) {
-      console.error('Error loading bookings:', e);
+      logger.error('Error loading bookings:', e);
       setBookingsError(e?.message || 'Error al cargar reservas');
       setBookings([]);
     }
@@ -157,7 +158,6 @@ export default function AvailabilityCalendarScreen() {
     loadBookings();
   }, [loadBookings]);
 
-  // Refetch bookings when selecting a day so reserved slots reflect latest state
   useEffect(() => {
     if (selectedDateStr && user?.uid) loadBookings();
   }, [selectedDateStr, user?.uid, loadBookings]);
@@ -446,7 +446,6 @@ export default function AvailabilityCalendarScreen() {
     <DashboardLayout screenName="Disponibilidad para llamadas">
       <div className="availability-container">
         <div className="availability-body">
-          {/* Left: Controls */}
           <div className="availability-sidebar-left">
             <div className="availability-sidebar-header">
               <h3 className="availability-sidebar-title">Gestionar disponibilidad</h3>
@@ -642,7 +641,6 @@ export default function AvailabilityCalendarScreen() {
             )}
           </div>
 
-          {/* Middle: Day timeline */}
           <div className="availability-day-panel">
             <div className="availability-day-panel-header">
               <h3 className="availability-day-panel-title">
@@ -717,7 +715,6 @@ export default function AvailabilityCalendarScreen() {
             </div>
           </div>
 
-          {/* Right: Calendar */}
           <div className="availability-calendar-panel">
             <div className="availability-calendar-panel-header">
               <h3 className="availability-calendar-panel-title">Calendario</h3>
@@ -791,7 +788,6 @@ export default function AvailabilityCalendarScreen() {
         </div>
       </div>
 
-      {/* Slot detail modal */}
       <Modal
         isOpen={!!slotDetailModal}
         onClose={() => setSlotDetailModal(null)}
@@ -802,7 +798,6 @@ export default function AvailabilityCalendarScreen() {
         {slotDetailModal && (
           <div className="slot-detail-modal">
             <div className="slot-detail-modal-body">
-              {/* Left: slot info + call link */}
               <div className="slot-detail-modal-left">
                 <div className={`slot-detail-hero slot-detail-hero--${slotDetailModal.booking ? (slotDetailModal.booking.callLink?.trim() ? 'ready' : 'pending') : 'available'}`}>
                   <div className="slot-detail-hero-time">
@@ -849,11 +844,9 @@ export default function AvailabilityCalendarScreen() {
                 )}
               </div>
 
-              {/* Right: profile */}
               {slotDetailModal.booking && (
                 <div className="slot-detail-modal-right">
                   <div className="slot-detail-grid">
-                    {/* Who – person snapshot */}
                     <div className="slot-detail-card slot-detail-card--who">
                   <h3 className="slot-detail-card-title">Quién es</h3>
                   {clientUserDataError && (
@@ -882,7 +875,6 @@ export default function AvailabilityCalendarScreen() {
                   )}
                 </div>
 
-                {/* Contact */}
                 {clientUserData && (clientUserData.email || clientUserData.phoneNumber) && (
                   <div className="slot-detail-card slot-detail-card--contact">
                     <h3 className="slot-detail-card-title">Contacto</h3>
@@ -903,7 +895,6 @@ export default function AvailabilityCalendarScreen() {
                   </div>
                 )}
 
-                {/* Context – location + physical */}
                 {clientUserData && (clientUserData.country || clientUserData.city || clientUserData.height != null || clientUserData.bodyweight != null) && (
                   <div className="slot-detail-card slot-detail-card--context">
                     <h3 className="slot-detail-card-title">Contexto</h3>

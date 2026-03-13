@@ -1,14 +1,15 @@
 // Program Analytics Service - Efficiently aggregates program statistics
 import { firestore } from '../config/firebase';
-import { 
-  collection, 
-  getDocs, 
-  query, 
+import {
+  collection,
+  getDocs,
+  query,
   where,
   doc,
   getDoc,
   collectionGroup
 } from 'firebase/firestore';
+import logger from '../utils/logger';
 
 class ProgramAnalyticsService {
   /**
@@ -17,7 +18,7 @@ class ProgramAnalyticsService {
    */
   async getProgramAnalytics(programId) {
     try {
-      console.log('📊 Fetching analytics for program:', programId);
+      logger.log('📊 Fetching analytics for program:', programId);
       
       // Get program structure first (modules, sessions, exercises)
       const programStructure = await this.getProgramStructure(programId);
@@ -52,17 +53,19 @@ class ProgramAnalyticsService {
         progression: this.calculateProgressionMetrics(enrolledUsers)
       };
       
-      console.log('✅ Analytics calculated:', analytics);
+      logger.log('✅ Analytics calculated:', analytics);
       return analytics;
       
     } catch (error) {
-      console.error('❌ Error fetching program analytics:', error);
+      logger.error('❌ Error fetching program analytics:', error);
       throw error;
     }
   }
   
+  // ============ DATA FETCHING ============
+
   /**
-   * Get program structure (modules, sessions, exercises)
+   * Get program structure (modules, sessions, exercises count)
    */
   async getProgramStructure(programId) {
     try {
@@ -112,7 +115,7 @@ class ProgramAnalyticsService {
         modules
       };
     } catch (error) {
-      console.error('❌ Error getting program structure:', error);
+      logger.error('❌ Error getting program structure:', error);
       return {
         totalModules: 0,
         totalSessions: 0,
@@ -144,7 +147,7 @@ class ProgramAnalyticsService {
           }
         });
       } catch (error) {
-        console.warn('⚠️ Could not query purchases collection:', error);
+        logger.warn('⚠️ Could not query purchases collection:', error);
       }
       
       // Also check users collection for course enrollment
@@ -160,7 +163,7 @@ class ProgramAnalyticsService {
           }
         });
       } catch (error) {
-        console.warn('⚠️ Could not query users collection:', error);
+        logger.warn('⚠️ Could not query users collection:', error);
       }
       
       if (userIds.size === 0) {
@@ -204,7 +207,7 @@ class ProgramAnalyticsService {
           }
           return null;
         }).catch(error => {
-          console.error(`❌ Error reading user ${userId}:`, error);
+          logger.error(`❌ Error reading user ${userId}:`, error);
           return null;
         })
       );
@@ -213,7 +216,7 @@ class ProgramAnalyticsService {
       return results.filter(user => user !== null);
       
     } catch (error) {
-      console.error('❌ Error getting enrolled users:', error);
+      logger.error('❌ Error getting enrolled users:', error);
       return [];
     }
   }
@@ -251,7 +254,7 @@ class ProgramAnalyticsService {
           
           return userSessions;
         } catch (error) {
-          console.error(`❌ Error getting session history for user ${user.userId}:`, error);
+          logger.error(`❌ Error getting session history for user ${user.userId}:`, error);
           return [];
         }
       });
@@ -260,7 +263,7 @@ class ProgramAnalyticsService {
       return results.flat();
       
     } catch (error) {
-      console.error('❌ Error getting all session history:', error);
+      logger.error('❌ Error getting all session history:', error);
       return [];
     }
   }
@@ -301,7 +304,7 @@ class ProgramAnalyticsService {
             allExercises[doc.id].users.add(user.userId);
           });
         } catch (error) {
-          console.error(`❌ Error getting exercise history for user ${user.userId}:`, error);
+          logger.error(`❌ Error getting exercise history for user ${user.userId}:`, error);
         }
       });
       
@@ -315,13 +318,15 @@ class ProgramAnalyticsService {
       return allExercises;
       
     } catch (error) {
-      console.error('❌ Error getting all exercise history:', error);
+      logger.error('❌ Error getting all exercise history:', error);
       return {};
     }
   }
   
+  // ============ METRIC CALCULATIONS ============
+
   /**
-   * Calculate enrollment metrics
+   * Enrollment counts, trends, duration, and demographics
    */
   calculateEnrollmentMetrics(enrolledUsers) {
     const now = new Date();
@@ -821,9 +826,11 @@ class ProgramAnalyticsService {
     };
   }
 
+  // ============ CROSS-PROGRAM AGGREGATION ============
+
   /**
-   * Aggregate analytics from multiple programs
-   * This combines data from all programs for a creator
+   * Combines analytics from all of a creator's programs into a single summary.
+   * Deduplicates users across programs for accurate demographic totals.
    */
   async getAggregatedAnalyticsForCreator(programIds) {
     try {
@@ -884,7 +891,7 @@ class ProgramAnalyticsService {
           const enrolledUsers = await this.getEnrolledUsers(programId);
           return enrolledUsers.map(user => ({ ...user, programId }));
         } catch (error) {
-          console.error(`Error fetching enrolled users for program ${programId}:`, error);
+          logger.error(`Error fetching enrolled users for program ${programId}:`, error);
           return [];
         }
       });
@@ -895,7 +902,7 @@ class ProgramAnalyticsService {
       // Fetch analytics for all programs in parallel
       const analyticsPromises = programIds.map(programId => 
         this.getProgramAnalytics(programId).catch(error => {
-          console.error(`Error fetching analytics for program ${programId}:`, error);
+          logger.error(`Error fetching analytics for program ${programId}:`, error);
           return { programId, analytics: null }; // Return null for failed programs
         }).then(analytics => ({ programId, analytics }))
       );
@@ -1296,7 +1303,7 @@ class ProgramAnalyticsService {
         programs: programStats
       };
     } catch (error) {
-      console.error('❌ Error aggregating analytics:', error);
+      logger.error('❌ Error aggregating analytics:', error);
       throw error;
     }
   }

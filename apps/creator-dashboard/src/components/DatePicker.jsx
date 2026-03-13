@@ -1,101 +1,64 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './DatePicker.css';
 
-const DatePicker = ({ value, onChange, error, max, placeholder, disabled }) => {
+const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowFuture }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(value ? new Date(value) : null);
   const [currentMonth, setCurrentMonth] = useState(() => {
-    if (value) {
-      return new Date(value);
-    }
-    if (max) {
-      return new Date(max);
-    }
+    if (value) return new Date(value);
+    if (max) return new Date(max);
     const today = new Date();
+    if (allowFuture) return new Date(today.getFullYear(), today.getMonth(), 1);
     return new Date(today.getFullYear() - 13, today.getMonth(), 1);
   });
-  const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [showYearPicker, setShowYearPicker] = useState(false);
   const containerRef = useRef(null);
-  const monthButtonRef = useRef(null);
-  const yearButtonRef = useRef(null);
-  const monthDropdownRef = useRef(null);
-  const yearDropdownRef = useRef(null);
 
-  // Calculate dates - memoize to prevent unnecessary recalculations
   const today = useRef(new Date());
   today.current.setHours(0, 0, 0, 0);
-  const maxDate = useRef(max ? new Date(max) : new Date(today.current.getFullYear() - 13, today.current.getMonth(), today.current.getDate()));
+  const maxDate = useRef(
+    max
+      ? new Date(max)
+      : allowFuture
+        ? new Date(new Date().getFullYear() + 5, 11, 31)
+        : new Date(today.current.getFullYear() - 13, today.current.getMonth(), today.current.getDate())
+  );
   maxDate.current.setHours(23, 59, 59, 999);
-  const minDate = useRef(new Date(1900, 0, 1));
+  const minDate = useRef(allowFuture ? new Date(2020, 0, 1) : new Date(1900, 0, 1));
 
-  // Only update currentMonth when value prop actually changes from outside
-  // Don't reset when user is interacting with the picker
   const prevValueRef = useRef(value);
   useEffect(() => {
-    // Only update if value prop changed from outside (not from user interaction)
     if (prevValueRef.current !== value) {
       prevValueRef.current = value;
-    if (value) {
-        // Parse YYYY-MM-DD string and create date at noon to avoid timezone issues
-        const dateParts = value.split('-');
-        const dateValue = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), 12, 0, 0);
+      if (value) {
+        const [y, m, d] = value.split('-');
+        const dateValue = new Date(parseInt(y), parseInt(m) - 1, parseInt(d), 12, 0, 0);
         setSelectedDate(dateValue);
         setCurrentMonth(new Date(dateValue.getFullYear(), dateValue.getMonth(), 1));
       } else {
         setSelectedDate(null);
-        const maxDateValue = maxDate.current;
-        setCurrentMonth(new Date(maxDateValue.getFullYear(), maxDateValue.getMonth(), 1));
+        setCurrentMonth(new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1));
       }
     }
   }, [value]);
 
-  // Handle clicks outside
+  // Close on outside click
   useEffect(() => {
     if (!isOpen) return;
-
-    const handleDocumentClick = (e) => {
-      // Check if click is on month button or dropdown
-      if (monthButtonRef.current?.contains(e.target) || monthDropdownRef.current?.contains(e.target)) {
-        return;
-      }
-      // Check if click is on year button or dropdown
-      if (yearButtonRef.current?.contains(e.target) || yearDropdownRef.current?.contains(e.target)) {
-        return;
-      }
-      // Check if click is inside the popup (but not on buttons/dropdowns)
+    const close = (e) => {
       const popup = containerRef.current?.querySelector('.date-picker-popup');
-      if (popup && popup.contains(e.target)) {
-        // Close dropdowns but keep popup open
-        setShowMonthPicker(false);
-        setShowYearPicker(false);
-        return;
-      }
-      // Click outside - close everything
+      if (popup?.contains(e.target)) return;
       setIsOpen(false);
-      setShowMonthPicker(false);
-      setShowYearPicker(false);
     };
-
-    // Use setTimeout to ensure this runs after React's event handlers
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('mousedown', handleDocumentClick);
-    }, 0);
-
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('mousedown', handleDocumentClick);
-    };
-  }, [isOpen, showMonthPicker, showYearPicker]);
+    const id = setTimeout(() => document.addEventListener('mousedown', close), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', close); };
+  }, [isOpen]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    // Parse YYYY-MM-DD string directly to avoid timezone issues
     if (typeof dateString === 'string' && dateString.includes('-')) {
       const [year, month, day] = dateString.split('-');
       return `${day}/${month}/${year}`;
     }
-    // Fallback for Date objects
     if (dateString instanceof Date) {
       const year = dateString.getFullYear();
       const month = String(dateString.getMonth() + 1).padStart(2, '0');
@@ -106,83 +69,50 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled }) => {
   };
 
   const handleOpen = () => {
-    if (!disabled) {
-      setIsOpen(true);
-      if (!selectedDate) {
-        setSelectedDate(new Date(maxDate.current));
-      }
-    }
+    if (!disabled) setIsOpen(true);
   };
 
   const handleDateClick = (day) => {
     const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    // Set to noon to avoid timezone issues when converting to ISO string
     newDate.setHours(12, 0, 0, 0);
     setSelectedDate(newDate);
-    
-    // Format date as YYYY-MM-DD without timezone conversion issues
     const year = newDate.getFullYear();
     const month = String(newDate.getMonth() + 1).padStart(2, '0');
     const dayStr = String(newDate.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${dayStr}`;
-    
-      onChange({ target: { value: dateString } });
-      setIsOpen(false);
+    onChange({ target: { value: `${year}-${month}-${dayStr}` } });
+    setIsOpen(false);
   };
 
-  const handleMonthSelect = (monthIndex) => {
-    // Create a new date object with the selected month
-    const newYear = currentMonth.getFullYear();
-    let newMonthDate = new Date(newYear, monthIndex, 1);
-    
-    // Clamp to valid range
-    if (newMonthDate.getTime() > maxDate.current.getTime()) {
-      newMonthDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
-    } else if (newMonthDate.getTime() < minDate.current.getTime()) {
-      newMonthDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
-    }
-    
-    // Force a new object reference to ensure React detects the change
-    setCurrentMonth(new Date(newMonthDate.getTime()));
-    setShowMonthPicker(false);
+  const handlePrevMonth = (e) => {
+    e.stopPropagation();
+    const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+    if (newDate < new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1)) return;
+    setCurrentMonth(newDate);
   };
 
-  const handleYearSelect = (year) => {
-    // Create a new date object with the selected year
-    const currentMonthIndex = currentMonth.getMonth();
-    let newMonthDate = new Date(year, currentMonthIndex, 1);
-    
-    // Clamp to valid range
-    if (newMonthDate.getTime() > maxDate.current.getTime()) {
-      newMonthDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
-    } else if (newMonthDate.getTime() < minDate.current.getTime()) {
-      newMonthDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
-    }
-    
-    // Force a new object reference to ensure React detects the change
-    setCurrentMonth(new Date(newMonthDate.getTime()));
-    setShowYearPicker(false);
+  const handleNextMonth = (e) => {
+    e.stopPropagation();
+    const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    if (newDate > new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1)) return;
+    setCurrentMonth(newDate);
   };
 
-  const getAvailableYears = () => {
-    const years = [];
-    for (let year = maxDate.current.getFullYear(); year >= minDate.current.getFullYear(); year--) {
-      years.push(year);
-    }
-    return years;
+  const handleMonthYearSelect = (e) => {
+    e.stopPropagation();
+    const [month, year] = e.target.value.split('-');
+    setCurrentMonth(new Date(parseInt(year), parseInt(month), 1));
   };
 
-  const getDaysInMonth = () => {
-    return new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-  };
+  const getDaysInMonth = () =>
+    new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
 
-  const getFirstDayOfMonth = () => {
-    return new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
-  };
+  const getFirstDayOfMonth = () =>
+    new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
 
   const isDisabled = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     date.setHours(0, 0, 0, 0);
+    if (allowFuture) return date > maxDate.current || date < minDate.current;
     return date > maxDate.current || date < minDate.current || date > today.current;
   };
 
@@ -195,23 +125,41 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled }) => {
     );
   };
 
+  const isToday = (day) => {
+    const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const t = today.current;
+    return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear();
+  };
+
   const monthNames = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-
   const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+  // Build month-year options
+  const monthYearOptions = [];
+  const startYear = minDate.current.getFullYear();
+  const endYear = maxDate.current.getFullYear();
+  const minMonthDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
+  const maxMonthDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
+  for (let year = startYear; year <= endYear; year++) {
+    for (let month = 0; month < 12; month++) {
+      const d = new Date(year, month, 1);
+      if (d < minMonthDate || d > maxMonthDate) continue;
+      monthYearOptions.push({ value: `${month}-${year}`, label: `${monthNames[month]} ${year}` });
+    }
+  }
+
+  const currentSelectValue = `${currentMonth.getMonth()}-${currentMonth.getFullYear()}`;
+  const canGoPrev = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1) >= minMonthDate;
+  const canGoNext = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1) <= maxMonthDate;
 
   const days = [];
   const firstDay = getFirstDayOfMonth();
   const daysInMonth = getDaysInMonth();
-
-  for (let i = 0; i < firstDay; i++) {
-    days.push(null);
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    days.push(day);
-  }
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let day = 1; day <= daysInMonth; day++) days.push(day);
 
   return (
     <div className="date-picker-wrapper" ref={containerRef}>
@@ -222,123 +170,52 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled }) => {
         <span className={value ? '' : 'placeholder'}>
           {value ? formatDate(value) : (placeholder || 'Selecciona tu fecha de nacimiento')}
         </span>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2">
-          <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round"/>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
       </div>
 
       {isOpen && (
         <>
-          <div 
-            className="date-picker-overlay" 
-            onClick={() => {
-              setIsOpen(false);
-              setShowMonthPicker(false);
-              setShowYearPicker(false);
-            }} 
-          />
+          <div className="date-picker-overlay" onClick={() => setIsOpen(false)} />
           <div className="date-picker-popup">
+            {/* Header: prev arrow · month-year select · next arrow */}
             <div className="date-picker-header">
-              <div className="date-picker-month-year">
-                <div className="date-picker-select-wrapper">
-                  <button 
-                    ref={monthButtonRef}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMonthPicker(!showMonthPicker);
-                      setShowYearPicker(false);
-                    }}
-                    type="button" 
-                    className={`date-picker-month-btn ${showMonthPicker ? 'active' : ''}`}
-                  >
-                    {monthNames[currentMonth.getMonth()]}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                  {showMonthPicker && (
-                    <div 
-                      ref={monthDropdownRef}
-                      className="date-picker-dropdown"
-                    >
-                      {monthNames.map((month, idx) => {
-                        const monthDate = new Date(currentMonth.getFullYear(), idx, 1);
-                        const maxMonthDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
-                        const minMonthDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
-                        const disabled = monthDate > maxMonthDate || monthDate < minMonthDate;
-                        const isCurrentMonth = idx === currentMonth.getMonth();
-                        
-                        return (
-                          <button
-                            key={idx}
-                            className={`date-picker-dropdown-item ${isCurrentMonth ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (!disabled) {
-                                handleMonthSelect(idx);
-                              }
-                            }}
-                            disabled={disabled}
-                            type="button"
-                          >
-                            {month}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                <div className="date-picker-select-wrapper">
-                  <button 
-                    ref={yearButtonRef}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowYearPicker(!showYearPicker);
-                      setShowMonthPicker(false);
-                    }}
-                    type="button" 
-                    className={`date-picker-year-btn ${showYearPicker ? 'active' : ''}`}
-                  >
-                    {currentMonth.getFullYear()}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                  {showYearPicker && (
-                    <div 
-                      ref={yearDropdownRef}
-                      className="date-picker-dropdown year-dropdown"
-                    >
-                      {getAvailableYears().map((year) => {
-                        const yearDate = new Date(year, currentMonth.getMonth(), 1);
-                        const maxYearDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
-                        const minYearDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
-                        const disabled = yearDate > maxYearDate || yearDate < minYearDate;
-                        const isCurrentYear = year === currentMonth.getFullYear();
-                        
-                        return (
-                          <button
-                            key={year}
-                            className={`date-picker-dropdown-item ${isCurrentYear ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (!disabled) {
-                                handleYearSelect(year);
-                              }
-                            }}
-                            disabled={disabled}
-                            type="button"
-                          >
-                            {year}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <button
+                type="button"
+                className="date-picker-nav-btn"
+                onClick={handlePrevMonth}
+                disabled={!canGoPrev}
+                aria-label="Mes anterior"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18L9 12L15 6" />
+                </svg>
+              </button>
+              <select
+                className="date-picker-month-year-select"
+                value={currentSelectValue}
+                onChange={handleMonthYearSelect}
+                onClick={e => e.stopPropagation()}
+              >
+                {monthYearOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="date-picker-nav-btn"
+                onClick={handleNextMonth}
+                disabled={!canGoNext}
+                aria-label="Mes siguiente"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18L15 12L9 6" />
+                </svg>
+              </button>
             </div>
 
             <div className="date-picker-weekdays">
@@ -352,22 +229,23 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled }) => {
                 if (day === null) {
                   return <div key={`empty-${idx}`} className="date-picker-day empty" />;
                 }
-                const disabled = isDisabled(day);
-                const selected = isSelected(day);
+                const dis = isDisabled(day);
+                const sel = isSelected(day);
+                const tod = isToday(day);
                 return (
                   <button
                     key={day}
-                    className={`date-picker-day ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-                    onClick={() => !disabled && handleDateClick(day)}
-                    disabled={disabled}
                     type="button"
+                    className={`date-picker-day${sel ? ' selected' : ''}${dis ? ' disabled' : ''}${tod ? ' today' : ''}`}
+                    onClick={() => !dis && handleDateClick(day)}
+                    disabled={dis}
                   >
                     {day}
                   </button>
                 );
               })}
             </div>
-        </div>
+          </div>
         </>
       )}
 

@@ -7,6 +7,7 @@ import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
 import { handleAutoLoginFromToken } from '../utils/autoLogin';
 import { ASSET_BASE } from '../config/assets';
+import logger from '../utils/logger';
 import './LoginScreen.css';
 
 const LoginScreen = () => {
@@ -15,7 +16,7 @@ const LoginScreen = () => {
   const { user, isCreator, webOnboardingCompleted, loading, userRole } = useAuth();
 
   useEffect(() => {
-    console.log('[LoginScreen] mounted', {
+    logger.log('[LoginScreen] mounted', {
       pathname: location.pathname,
       windowPath: window.location.pathname,
       search: location.search,
@@ -35,72 +36,60 @@ const LoginScreen = () => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLegalModalVisible, setIsLegalModalVisible] = useState(false);
 
-  // Attempt auto-login if token is present in URL
   useEffect(() => {
-    // Skip if already in progress or user is logged in
     if (autoLoginInProgress || user) return;
-    
+
     const urlParams = new URLSearchParams(location.search);
     const redirectPath = urlParams.get('redirect');
-    
-    // Check for token in redirect parameter (from ProtectedRoute) or directly in URL
+
     let token = urlParams.get('token');
     let fromApp = urlParams.get('fromApp') === 'true';
-    
-    // If token is in redirect parameter, parse it
+
     if (!token && redirectPath) {
       const redirectParams = new URLSearchParams(redirectPath.split('?')[1] || '');
       token = redirectParams.get('token');
       fromApp = redirectParams.get('fromApp') === 'true' || fromApp;
     }
 
-    // Only attempt auto-login if we have a token and came from app
     if (token && fromApp) {
-      console.log('🔍 LoginScreen: Attempting auto-login from token...');
+      logger.log('[LoginScreen] Attempting auto-login from token...');
       setAutoLoginInProgress(true);
 
       handleAutoLoginFromToken(token)
         .then((success) => {
           if (success) {
-            console.log('✅ LoginScreen: Auto-login successful');
-            // Redirect will be handled by the next useEffect when user state updates
+            logger.log('[LoginScreen] Auto-login successful');
           } else {
-            console.warn('⚠️ LoginScreen: Auto-login failed, showing login form');
+            logger.warn('[LoginScreen] Auto-login failed, showing login form');
             setAutoLoginInProgress(false);
           }
         })
         .catch((error) => {
-          console.error('❌ LoginScreen: Auto-login error:', error);
+          logger.error('[LoginScreen] Auto-login error:', error);
           setAutoLoginInProgress(false);
         });
     }
   }, [location.search, user]);
 
-  // Redirect logged-in users away from login page - wait for role to load
   useEffect(() => {
-    // Don't redirect if still loading or no user
     if (loading || !user) return;
-    
-    // Wait for userRole to be loaded (not null) before redirecting
+
     if (userRole === null) return;
-    
-    // Only redirect if we're on the login page (use location.pathname - relative to basename /creators)
+
     const currentPath = location.pathname;
     if (currentPath !== '/login') {
-      console.log('[LoginScreen] Skip redirect: not on login route', { currentPath, windowPath: window.location.pathname });
       return;
     }
 
-    console.log('[LoginScreen] Redirecting logged-in user', { 
-      userRole, 
-      isCreator, 
-      webOnboardingCompleted 
+    logger.log('[LoginScreen] Redirecting logged-in user', {
+      userRole,
+      isCreator,
+      webOnboardingCompleted,
     });
 
-    // Check for redirect parameter first
     const urlParams = new URLSearchParams(window.location.search);
     const redirectPath = urlParams.get('redirect');
-    
+
     if (redirectPath) {
       try {
         const [path] = redirectPath.split('?');
@@ -109,12 +98,10 @@ const LoginScreen = () => {
           return;
         }
       } catch (e) {
-        // Ignore errors
+        // Ignore malformed redirect params
       }
     }
 
-    // Default redirect based on role
-    // Admins and creators should go to creator pages
     if (isCreator && webOnboardingCompleted !== null) {
       if (webOnboardingCompleted === false) {
         navigate('/onboarding', { replace: true });
@@ -122,8 +109,7 @@ const LoginScreen = () => {
         navigate('/lab', { replace: true });
       }
     } else if (!isCreator) {
-      // Regular users: creator dashboard is for creators only. Redirect to PWA.
-      console.log('[LoginScreen] User is not creator, redirecting to PWA');
+      logger.log('[LoginScreen] User is not creator, redirecting to PWA');
       window.location.href = '/';
     }
   }, [user, loading, userRole, isCreator, webOnboardingCompleted, navigate, location.pathname]);
@@ -179,21 +165,17 @@ const LoginScreen = () => {
     }
 
     setIsLoading(true);
-    console.log('[LoginScreen] signIn: attempting email/password login', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
+    logger.log('[LoginScreen] signIn: attempting email/password login', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
     try {
       await authService.signInUser(email, password);
-      console.log('[LoginScreen] signIn: success, waiting for AuthContext redirect');
-      // AuthContext will automatically fetch user role and handle redirect
       setTimeout(() => {
         setIsLoading(false);
       }, 100);
     } catch (error) {
-      console.error('[LoginScreen] signIn: error', { code: error?.code, message: error?.message });
+      logger.error('[LoginScreen] signIn: error', { code: error?.code, message: error?.message });
       setIsLoading(false);
       
-      // Handle specific Firebase errors
       let errorMessage = 'Ocurrió un error. Por favor intenta de nuevo.';
-      
       switch (error.code) {
         case 'auth/user-not-found':
           errorMessage = 'No encontramos una cuenta con este correo electrónico.';
@@ -243,29 +225,24 @@ const LoginScreen = () => {
       return;
     }
 
-    // Validate terms acceptance
     if (!acceptTerms) {
       alert('Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
       return;
     }
 
     setIsLoading(true);
-    console.log('[LoginScreen] register: attempting account creation', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
+    logger.log('[LoginScreen] register: attempting account creation', { email: email.replace(/(.{2}).*(@.*)/, '$1***$2') });
     try {
       const initialDisplayName = email.split('@')[0];
       await authService.registerUser(email, password, initialDisplayName);
-      console.log('[LoginScreen] register: success, waiting for AuthContext redirect');
-      // AuthContext will automatically fetch user role and handle redirect
       setTimeout(() => {
         setIsLoading(false);
       }, 100);
     } catch (error) {
-      console.error('[LoginScreen] register: error', { code: error?.code, message: error?.message });
+      logger.error('[LoginScreen] register: error', { code: error?.code, message: error?.message });
       setIsLoading(false);
       
-      // Handle specific Firebase errors
       let errorMessage = 'Ocurrió un error al crear la cuenta. Por favor intenta de nuevo.';
-      
       switch (error.code) {
         case 'auth/email-already-in-use':
           errorMessage = 'Ya existe una cuenta con este correo electrónico';
@@ -285,13 +262,11 @@ const LoginScreen = () => {
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
-    console.log('[LoginScreen] Google: attempting sign-in');
+    logger.log('[LoginScreen] Google: attempting sign-in');
     try {
       const result = await googleAuthService.signIn();
-      console.log('[LoginScreen] Google: result', { success: result.success, error: result?.error });
+      logger.log('[LoginScreen] Google: result', { success: result.success, error: result?.error });
       if (result.success) {
-        // AuthContext will automatically fetch user role and handle redirect
-        // Wait a moment for AuthContext to update, then let useEffect handle redirect
         setTimeout(() => {
           setIsLoading(false);
         }, 100);
@@ -300,7 +275,7 @@ const LoginScreen = () => {
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Google Sign-In Error:', error);
+      logger.error('[LoginScreen] Google Sign-In Error:', error);
       alert('Error al iniciar sesión con Google');
       setIsLoading(false);
     }
@@ -321,14 +296,13 @@ const LoginScreen = () => {
       await authService.resetPassword(email);
       alert('Revisa tu correo (spam). Puede estar en la carpeta de spam.');
     } catch (error) {
-      console.error('Password Reset Error:', error);
+      logger.error('[LoginScreen] Password Reset Error:', error);
       alert('Error al enviar el email de recuperación');
     }
   };
 
   const isFormValid = validateEmail(email) && validatePassword(password);
 
-  // Show loading while auto-login is in progress
   if (autoLoginInProgress) {
     return (
       <div style={{
@@ -349,22 +323,19 @@ const LoginScreen = () => {
   return (
     <div className="login-container">
       <div className="login-content">
-        {/* WAKE Logo */}
         <div className="logo-container">
-          <img 
+          <img
             src={`${ASSET_BASE}wake-logo-new.png`}
-            alt="Wake Logo" 
+            alt="Wake Logo"
             className="logo"
           />
           <p className="login-subtitle">Creadores</p>
         </div>
 
-        {/* Welcome Text */}
         <h1 className="welcome-text">
           {isSignUp ? "Crear Cuenta" : "Inicio"}
         </h1>
 
-        {/* Email Input */}
         <Input
           placeholder="Correo electrónico"
           value={email}
@@ -373,7 +344,6 @@ const LoginScreen = () => {
           error={emailError}
         />
 
-        {/* Password Input */}
         <Input
           placeholder="Contraseña"
           value={password}
@@ -382,7 +352,6 @@ const LoginScreen = () => {
           error={passwordError}
         />
 
-        {/* Terms and Conditions Agreement - Only show during signup */}
         {isSignUp && (
           <div className="terms-container">
             <div className="terms-row">
@@ -416,7 +385,6 @@ const LoginScreen = () => {
           </div>
         )}
 
-        {/* Main Action Button */}
         <Button
           title={isSignUp ? "Crear Cuenta" : "Iniciar Sesión"}
           onClick={isSignUp ? handleRegister : handleContinue}
@@ -425,8 +393,7 @@ const LoginScreen = () => {
           active={isSignUp ? (isFormValid && acceptTerms) : isFormValid}
         />
 
-        {/* Toggle between Sign In and Sign Up */}
-        <button 
+        <button
           onClick={() => {
             setIsSignUp(!isSignUp);
             setEmailError(null);
@@ -444,20 +411,17 @@ const LoginScreen = () => {
           </span>
         </button>
 
-        {/* Forgot Password Link - Only show when authentication fails */}
         {showForgotPassword && (
-          <button 
-            onClick={handleForgotPassword} 
+          <button
+            onClick={handleForgotPassword}
             className="forgot-password-button"
           >
             <span className="forgot-password-text">¿Olvidaste tu contraseña?</span>
           </button>
         )}
 
-        {/* Separator */}
         <div className="separator" />
 
-        {/* Google Sign-In Button */}
         <Button
           title="Continua con Google"
           onClick={handleGoogleLogin}
@@ -468,7 +432,6 @@ const LoginScreen = () => {
         />
       </div>
 
-      {/* Legal Documents Modal */}
       {isLegalModalVisible && (
         <div className="legal-modal-overlay" onClick={() => setIsLegalModalVisible(false)}>
           <div className="legal-modal-content" onClick={(e) => e.stopPropagation()}>

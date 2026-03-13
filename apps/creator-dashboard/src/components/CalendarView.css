@@ -24,10 +24,10 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(191, 168, 77, 0.15);
-  border: 1px solid rgba(191, 168, 77, 0.35);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 8px;
-  color: rgba(191, 168, 77, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   font-size: 13px;
   font-weight: 500;
 }
@@ -35,8 +35,8 @@
 .calendar-saving-bar-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(191, 168, 77, 0.35);
-  border-top-color: rgba(191, 168, 77, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: rgba(255, 255, 255, 0.95);
   border-radius: 50%;
   animation: calendar-saving-spin 0.7s linear infinite;
   flex-shrink: 0;
@@ -57,10 +57,10 @@
   gap: 6px;
   padding: 6px 8px;
   margin-top: 4px;
-  background: rgba(191, 168, 77, 0.2);
-  border: 1px solid rgba(191, 168, 77, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 6px;
-  color: rgba(191, 168, 77, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   font-size: 12px;
   font-weight: 500;
 }
@@ -110,7 +110,7 @@
 
 .calendar-month-year-select:focus {
   outline: none;
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -270,7 +270,7 @@
   padding: 3px 6px 3px 10px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-left: 3px solid rgba(191, 168, 77, 0.65);
+  border-left: 3px solid rgba(255, 255, 255, 0.65);
 }
 
 .calendar-week-plan-bar-clickable {
@@ -278,7 +278,7 @@
 }
 
 .calendar-week-plan-bar-clickable:hover {
-  background-color: rgba(78, 64, 44, 1);
+  background-color: rgba(50, 50, 55, 1);
   border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -410,22 +410,22 @@
 }
 
 .calendar-day-today {
-  background-color: rgba(191, 168, 77, 0.15);
-  border-color: rgba(191, 168, 77, 0.4);
-  color: rgba(191, 168, 77, 1);
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 1);
   font-weight: 600;
 }
 
 .calendar-day-selected {
-  background-color: rgba(191, 168, 77, 0.3);
-  border-color: rgba(191, 168, 77, 0.6);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
   color: rgba(255, 255, 255, 1);
   font-weight: 600;
 }
 
 .calendar-day-selected.calendar-day-today {
-  background-color: rgba(191, 168, 77, 0.4);
-  border-color: rgba(191, 168, 77, 0.7);
+  background-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .calendar-day:disabled {
@@ -441,7 +441,7 @@
 .calendar-day-has-plan-assignment {
   background: linear-gradient(
     to bottom,
-    var(--calendar-plan-gradient-start, rgba(78, 64, 44, 0.55)) 0%,
+    var(--calendar-plan-gradient-start, rgba(50, 50, 55, 0.55)) 0%,
     rgba(255, 255, 255, 0.04) 100%
   ) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
@@ -626,8 +626,8 @@
 }
 
 .calendar-day-drag-over {
-  background-color: rgba(191, 168, 77, 0.3) !important;
-  border-color: rgba(191, 168, 77, 0.8) !important;
+  background-color: rgba(255, 255, 255, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.8) !important;
   transform: scale(1.05);
 }
 
@@ -704,7 +704,7 @@
   font-size: 9px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
-  background-color: rgba(191, 168, 77, 0.9);
+  background-color: rgba(255, 255, 255, 0.9);
   padding: 2px 6px;
   border-radius: 4px;
   text-transform: uppercase;
@@ -859,14 +859,14 @@
 }
 
 .calendar-day-info-plan-btn-personalize {
-  background: rgba(191, 168, 77, 0.25);
+  background: rgba(255, 255, 255, 0.25);
   color: rgba(255, 255, 255, 0.95);
-  border-color: rgba(191, 168, 77, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .calendar-day-info-plan-btn-personalize:hover {
-  background: rgba(191, 168, 77, 0.35);
-  border-color: rgba(191, 168, 77, 0.7);
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .calendar-day-info-plan-btn-reset {

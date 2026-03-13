@@ -1621,6 +1621,30 @@ class LibraryService {
       throw error;
     }
   }
+  async addExerciseToLibrarySession(uid, sessionId, exerciseData) {
+    const exercisesRef = collection(
+      firestore,
+      'creator_libraries',
+      uid,
+      'sessions',
+      sessionId,
+      'exercises'
+    );
+    return await addDoc(exercisesRef, exerciseData);
+  }
+
+  async deleteExerciseFromLibrarySession(uid, sessionId, exerciseId) {
+    const exerciseRef = doc(
+      firestore,
+      'creator_libraries',
+      uid,
+      'sessions',
+      sessionId,
+      'exercises',
+      exerciseId
+    );
+    await deleteDoc(exerciseRef);
+  }
 }
 
 export default new LibraryService();
