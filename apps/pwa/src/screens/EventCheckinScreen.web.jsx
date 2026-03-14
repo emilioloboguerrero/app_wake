@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import WakeLoader from '../components/WakeLoader';
@@ -29,12 +29,12 @@ export default function EventCheckinScreen() {
 
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(firestore, 'events', eventId)).then(snap => {
-      if (!snap.exists() || snap.data().creator_id !== user.uid) {
+    eventService.getEvent(eventId).then(event => {
+      if (!event || event.creator_id !== user.uid) {
         setAccessStatus('denied');
         return;
       }
-      setEvent({ id: snap.id, ...snap.data() });
+      setEvent(event);
       setAccessStatus('ready');
     }).catch(() => setAccessStatus('denied'));
   }, [eventId, user]);
@@ -139,26 +139,13 @@ export default function EventCheckinScreen() {
     } catch {}
 
     try {
-      const regQuery = query(
-        collection(firestore, 'event_signups', eventId, 'registrations'),
-        where('check_in_token', '==', token)
-      );
-      const snap = await getDocs(regQuery);
-
-      if (snap.empty) {
+      const { status, reg } = await eventService.checkInByToken(eventId, token);
+      if (status === 'invalid') {
         setResult({ type: 'invalid' });
+      } else if (status === 'already') {
+        setResult({ type: 'already', reg });
       } else {
-        const regDoc = snap.docs[0];
-        const reg = { id: regDoc.id, ...regDoc.data() };
-        if (reg.checked_in) {
-          setResult({ type: 'already', reg });
-        } else {
-          await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regDoc.id), {
-            checked_in: true,
-            checked_in_at: serverTimestamp(),
-          });
-          setResult({ type: 'success', reg });
-        }
+        setResult({ type: 'success', reg });
       }
     } catch {
       setResult({ type: 'error' });

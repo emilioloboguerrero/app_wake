@@ -1,9 +1,21 @@
 import { firestore } from '../config/firebase';
 import {
-  collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, serverTimestamp, increment
+  collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, serverTimestamp, increment, Timestamp
 } from 'firebase/firestore';
 
 class EventService {
+  makeDateTimestamp(dateStr) {
+    if (!dateStr) return null;
+    return Timestamp.fromDate(new Date(dateStr + 'T00:00:00'));
+  }
+
+  async checkInRegistration(eventId, regId) {
+    await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regId), {
+      checked_in: true,
+      checked_in_at: serverTimestamp(),
+    });
+  }
+
   async getEventsByCreator(creatorId) {
     const snap = await getDocs(query(
       collection(firestore, 'events'),
@@ -24,11 +36,18 @@ class EventService {
   }
 
   async createEvent(eventId, eventData) {
-    await setDoc(doc(firestore, 'events', eventId), eventData);
+    await setDoc(doc(firestore, 'events', eventId), {
+      ...eventData,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
   }
 
   async updateEvent(eventId, eventData) {
-    await updateDoc(doc(firestore, 'events', eventId), eventData);
+    await updateDoc(doc(firestore, 'events', eventId), {
+      ...eventData,
+      updated_at: serverTimestamp(),
+    });
   }
 
   async deleteEvent(eventId) {

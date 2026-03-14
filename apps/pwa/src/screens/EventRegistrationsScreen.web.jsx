@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  doc, getDoc, collection, getDocs, query, orderBy,
-  updateDoc, deleteDoc, serverTimestamp,
-} from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import WakeLoader from '../components/WakeLoader';
@@ -298,28 +295,25 @@ export default function EventRegistrationsScreen() {
 
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(firestore, 'events', eventId)).then(async snap => {
-      if (!snap.exists() || snap.data().creator_id !== user.uid) {
+    eventService.getEvent(eventId).then(async event => {
+      if (!event || event.creator_id !== user.uid) {
         navigate('/creator/events', { replace: true });
         return;
       }
-      setEvent({ id: snap.id, ...snap.data() });
+      setEvent(event);
 
-      const [regSnap, waitSnap] = await Promise.all([
-        getDocs(query(collection(firestore, 'event_signups', eventId, 'registrations'), orderBy('created_at', 'desc'))),
-        getDocs(query(collection(firestore, 'event_signups', eventId, 'waitlist'), orderBy('created_at', 'desc'))),
+      const [regs, waitlist] = await Promise.all([
+        eventService.getRegistrations(eventId),
+        eventService.getWaitlist(eventId),
       ]);
-      setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setWaitlist(waitSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setRegistrations(regs);
+      setWaitlist(waitlist);
       setStatus('ready');
     }).catch(() => navigate('/creator/events', { replace: true }));
   }, [eventId, user, navigate]);
 
   async function handleManualCheckIn(regId) {
-    await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regId), {
-      checked_in: true,
-      checked_in_at: serverTimestamp(),
-    });
+    await eventService.manualCheckIn(eventId, regId);
     setRegistrations(prev => prev.map(r =>
       r.id === regId ? { ...r, checked_in: true, checked_in_at: new Date() } : r
     ));
@@ -327,7 +321,7 @@ export default function EventRegistrationsScreen() {
   }
 
   async function handleDeleteRegistration(regId) {
-    await deleteDoc(doc(firestore, 'event_signups', eventId, 'registrations', regId));
+    await eventService.deleteRegistration(eventId, regId);
     setRegistrations(prev => prev.filter(r => r.id !== regId));
     setSelectedReg(null);
   }

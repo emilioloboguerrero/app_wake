@@ -481,6 +481,22 @@ class OneRepMaxService {
    * @param {string} exerciseName - Exercise name
    * @returns {Array} - Array of history entries
    */
+  async getHistoryByKey(userId, exerciseKey) {
+    try {
+      const historyRef = collection(firestore, 'users', userId, 'oneRepMaxHistory', exerciseKey, 'records');
+      const snap = await getDocs(query(historyRef, orderBy('date', 'asc')));
+      return snap.docs.map(d => {
+        const data = d.data();
+        let dateVal = data.date;
+        if (dateVal && typeof dateVal.toDate === 'function') dateVal = dateVal.toDate().toISOString();
+        return { date: dateVal, value: data.estimate };
+      });
+    } catch (err) {
+      logger.error('[1RM] getHistoryByKey error', exerciseKey, err?.message);
+      return [];
+    }
+  }
+
   async getHistoryForExercise(userId, libraryId, exerciseName) {
     try {
       const exerciseKey = `${libraryId}_${exerciseName}`;

@@ -25,7 +25,6 @@ const AnimatedKeyboardAwareScrollView = Animated.createAnimatedComponent(Keyboar
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import firestoreService from '../services/firestoreService';
 import logger from '../utils/logger';
 import hybridDataService from '../services/hybridDataService';
@@ -48,7 +47,6 @@ import {
   validatePhoneNumber,
   validateGender
 } from '../utils/inputValidation';
-const firestore = getFirestore();
 
 // Gender options for modal
 const GENDER_OPTIONS = [
@@ -917,18 +915,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     
     setUsernameValidating(true);
     try {
-      // Query Firestore to check if username exists
-      const usersQuery = query(
-        collection(firestore, 'users'),
-        where('username', '==', username.toLowerCase())
-      );
-      const querySnapshot = await getDocs(usersQuery);
-      
-      if (querySnapshot.empty) {
-        setUsernameAvailable(true); // Username is available
-      } else {
-        setUsernameAvailable(false); // Username is taken
-      }
+      const taken = await firestoreService.isUsernameTaken(username);
+      setUsernameAvailable(!taken);
     } catch (error) {
       logger.error('Error validating username:', error);
       setUsernameAvailable(null);

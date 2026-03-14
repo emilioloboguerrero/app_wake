@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import {
-  serverTimestamp, Timestamp
-} from 'firebase/firestore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -729,7 +726,7 @@ export default function EventResultsScreen() {
       const eventData = {
         title: title.trim(),
         description: description.trim(),
-        date: eventDate ? Timestamp.fromDate(new Date(eventDate + 'T00:00:00')) : null,
+        date: eventService.makeDateTimestamp(eventDate),
         location: eventLocation.trim(),
         access,
         max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
@@ -742,7 +739,6 @@ export default function EventResultsScreen() {
         status: targetStatus,
         fields: validFields,
         image_url: finalImageUrl,
-        updated_at: serverTimestamp(),
       };
 
       await eventService.updateEvent(eventId, eventData);
@@ -792,10 +788,7 @@ export default function EventResultsScreen() {
   }
 
   async function handleManualCheckIn(regId) {
-    await eventService.updateRegistration(eventId, regId, {
-      checked_in: true,
-      checked_in_at: serverTimestamp(),
-    });
+    await eventService.checkInRegistration(eventId, regId);
     queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
   }
 

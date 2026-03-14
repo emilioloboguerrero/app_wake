@@ -18,8 +18,6 @@ import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import '../components/PropagateChangesModal.css';
-import { doc, query, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
 import {
   DndContext,
   closestCenter,
@@ -37,7 +35,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { deleteField } from 'firebase/firestore';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
@@ -901,8 +898,6 @@ const LibrarySessionDetailScreen = () => {
           measures: exerciseFromLib?.measures || [],
           objectives: exerciseFromLib?.objectives || [],
           order: nextOrder,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
         };
         await libraryService.addExerciseToLibrarySession(user.uid, sessionId, newExercise);
         setHasMadeChanges(true);
@@ -1866,8 +1861,8 @@ const LibrarySessionDetailScreen = () => {
         objectives: exerciseDraft.objectives || [],
         customMeasureLabels: exerciseDraft.customMeasureLabels && typeof exerciseDraft.customMeasureLabels === 'object' ? exerciseDraft.customMeasureLabels : {},
         customObjectiveLabels: exerciseDraft.customObjectiveLabels && typeof exerciseDraft.customObjectiveLabels === 'object' ? exerciseDraft.customObjectiveLabels : {},
-        name: deleteField(),
-        title: deleteField()
+        name: libraryService.deleteFieldSentinel(),
+        title: libraryService.deleteFieldSentinel()
       };
       
       await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, newExercise.id, updateData);

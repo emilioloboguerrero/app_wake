@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy, doc, updateDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import eventService from '../services/eventService';
 import { FixedWakeHeader, WakeHeaderSpacer } from '../components/WakeHeader';
 import WakeLoader from '../components/WakeLoader';
 
@@ -23,30 +24,38 @@ export default function EventsManagementScreen() {
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const navigate = useNavigate();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [registrationCounts, setRegistrationCounts] = useState({});
+  const queryClient = useQueryClient();
   const [copiedId, setCopiedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
 
-  useEffect(() => {
-    if (!user) return;
-    getDocs(query(
-      collection(firestore, 'events'),
-      where('creator_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    )).then(async snap => {
-      const eventsData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setEvents(eventsData);
-      const counts = {};
-      await Promise.all(eventsData.map(async ev => {
-        const regSnap = await getDocs(collection(firestore, 'event_signups', ev.id, 'registrations'));
-        counts[ev.id] = regSnap.size;
-      }));
-      setRegistrationCounts(counts);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [user]);
+  const eventsQueryKey = ['events', 'creator', user?.uid];
+
+  const { data: events = [], isLoading: loading } = useQuery({
+    queryKey: eventsQueryKey,
+    queryFn: () => eventService.getEventsByCreator(user.uid),
+    enabled: !!user?.uid,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ eventId, nextStatus }) => eventService.updateEventStatus(eventId, nextStatus),
+    onMutate: async ({ eventId, nextStatus }) => {
+      setTogglingId(eventId);
+      await queryClient.cancelQueries({ queryKey: eventsQueryKey });
+      const previous = queryClient.getQueryData(eventsQueryKey);
+      queryClient.setQueryData(eventsQueryKey, old =>
+        old?.map(e => e.id === eventId ? { ...e, status: nextStatus } : e)
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(eventsQueryKey, context.previous);
+    },
+    onSettled: () => {
+      setTogglingId(null);
+      queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+    },
+  });
 
   async function copyLink(ev) {
     const url = `https://wakelab.co/e/${ev.id}`;
@@ -55,15 +64,9 @@ export default function EventsManagementScreen() {
     setTimeout(() => setCopiedId(null), 2000);
   }
 
-  async function toggleStatus(ev) {
+  function toggleStatus(ev) {
     const nextStatus = ev.status === 'active' ? 'closed' : 'active';
-    setTogglingId(ev.id);
-    try {
-      await updateDoc(doc(firestore, 'events', ev.id), { status: nextStatus });
-      setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, status: nextStatus } : e));
-    } finally {
-      setTogglingId(null);
-    }
+    toggleStatusMutation.mutate({ eventId: ev.id, nextStatus });
   }
 
   if (loading) {
@@ -104,7 +107,7 @@ export default function EventsManagementScreen() {
           <div style={s.list}>
             {events.map(ev => {
               const { label, color } = statusConfig(ev.status);
-              const count = registrationCounts[ev.id] ?? 0;
+              const count = ev.registration_count ?? 0;
               const max = ev.max_registrations;
               const pct = max ? Math.min(count / max * 100, 100) : null;
               const eventDate = formatEventDate(ev.date);

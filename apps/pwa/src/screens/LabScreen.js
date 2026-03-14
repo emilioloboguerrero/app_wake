@@ -9,8 +9,9 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
-import { collection, doc, getDoc, getDocs, query, orderBy, updateDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import firestoreService from '../services/firestoreService';
+import oneRepMaxService from '../services/oneRepMaxService';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -830,15 +831,14 @@ const LabScreen = ({ navigation }) => {
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
       const start = toYYYYMMDD(startD);
 
-      const [userSnap, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        getDoc(doc(firestore, 'users', uid)),
+      const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
+        firestoreService.getUser(uid),
         exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
         getDiaryEntriesInRange(uid, start, end),
         getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
         getReadinessInRange(uid, start, end),
       ]);
 
-      const uData = userSnap.exists() ? userSnap.data() : null;
       if (uData) setUserData(uData);
       if (sessionResult?.sessions) setSessions(sessionResult.sessions);
       setDiaryEntries(entries || []);
@@ -855,25 +855,8 @@ const LabScreen = ({ navigation }) => {
 
         const histories = await Promise.all(
           topKeys.map(async (key) => {
-            try {
-              const q = query(
-                collection(firestore, 'users', uid, 'oneRepMaxHistory', key, 'records'),
-                orderBy('date', 'asc')
-              );
-              const snap = await getDocs(q);
-              return {
-                exerciseKey: key,
-                records: snap.docs.map((d) => {
-                  const data = d.data();
-                  let dateVal = data.date;
-                  if (dateVal && typeof dateVal.toDate === 'function') dateVal = dateVal.toDate().toISOString();
-                  return { date: dateVal, value: data.estimate };
-                }),
-              };
-            } catch (err) {
-              logger.error('[Lab] 1RM history fetch error', key, err?.message);
-              return { exerciseKey: key, records: [] };
-            }
+            const records = await oneRepMaxService.getHistoryByKey(uid, key);
+            return { exerciseKey: key, records };
           })
         );
         setOneRepMaxHistories(histories);
@@ -2283,7 +2266,7 @@ const LabScreen = ({ navigation }) => {
     setWeightUnit(u);
     const uid = user?.uid || auth.currentUser?.uid;
     if (uid) {
-      updateDoc(doc(firestore, 'users', uid), { weightUnit: u }).catch(() => {});
+      firestoreService.updateUser(uid, { weightUnit: u }).catch(() => {});
     }
   };
 

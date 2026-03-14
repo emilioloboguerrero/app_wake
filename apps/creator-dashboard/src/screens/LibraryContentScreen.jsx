@@ -10,7 +10,7 @@ import Input from '../components/Input';
 import MeasuresObjectivesEditorModal from '../components/MeasuresObjectivesEditorModal';
 import libraryService from '../services/libraryService';
 import measureObjectivePresetsService from '../services/measureObjectivePresetsService';
-import { deleteField } from 'firebase/firestore';
+
 import {
   DndContext,
   closestCenter,
@@ -2733,8 +2733,8 @@ const LibraryContentScreen = () => {
         alternatives: exerciseDraft.alternatives || {},
         measures: exerciseDraft.measures || [],
         objectives: exerciseDraft.objectives || [],
-        name: deleteField(),
-        title: deleteField()
+        name: libraryService.deleteFieldSentinel(),
+        title: libraryService.deleteFieldSentinel()
       };
       
       await libraryService.updateExerciseInLibrarySession(

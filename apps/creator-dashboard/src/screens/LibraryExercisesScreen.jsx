@@ -9,8 +9,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import libraryService from '../services/libraryService';
-import { firestore } from '../config/firebase';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+
 import logger from '../utils/logger';
 import './LibraryExercisesScreen.css';
 // Muscle display names (matching mobile app)
@@ -300,16 +299,7 @@ const LibraryExercisesScreen = () => {
       setIsCreatingExercise(true);
       setError(null);
 
-      const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
-      await updateDoc(libraryDocRef, {
-        [newExerciseName.trim()]: {
-          muscle_activation: {},
-          implements: [],
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
-        },
-        updated_at: serverTimestamp()
-      });
+      await libraryService.addExerciseToLibrary(libraryId, newExerciseName.trim());
 
       const updatedLibrary = await libraryService.getLibraryById(libraryId);
       if (updatedLibrary) {

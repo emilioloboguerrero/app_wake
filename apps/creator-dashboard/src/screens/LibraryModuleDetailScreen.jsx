@@ -7,8 +7,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+
 import {
   DndContext,
   closestCenter,

@@ -1,11 +1,10 @@
 // Web wrapper for CourseStructureScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 import firestoreService from '../services/firestoreService';
-import { useAuth } from '../contexts/AuthContext';
-
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
 const CourseStructureScreenBase = CourseStructureScreenModule.default;
@@ -14,50 +13,24 @@ const CourseStructureScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { courseId } = useParams();
-  const { user } = useAuth(); // Get user from AuthContext
-  
-  const [course, setCourse] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-  const hasFetchedRef = React.useRef(false);
-  
-  // Get course from location state or fetch it
-  React.useEffect(() => {
-    if (hasFetchedRef.current) return;
-    
-    const fetchCourse = async () => {
-      hasFetchedRef.current = true;
-      
-      if (location.state?.course) {
-        setCourse(location.state.course);
-        setLoading(false);
-        return;
-      }
-      
-      if (!courseId) {
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        const courseData = await firestoreService.getCourse(courseId);
-        if (courseData) {
-          const transformedCourse = {
-            id: courseData.id || courseId,
-            courseId: courseData.id || courseId,
-            title: courseData.title || 'Programa sin título',
-            ...courseData
-          };
-          setCourse(transformedCourse);
-        }
-      } catch (error) {
-        logger.error('Error fetching course:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchCourse();
-  }, [courseId, location.state?.course]);
+  const courseFromState = location.state?.course;
+
+  const { data: course, isLoading: loading } = useQuery({
+    queryKey: ['programs', courseId],
+    queryFn: async () => {
+      if (courseFromState) return courseFromState;
+      const courseData = await firestoreService.getCourse(courseId);
+      if (!courseData) return null;
+      return {
+        id: courseData.id || courseId,
+        courseId: courseData.id || courseId,
+        title: courseData.title || 'Programa sin título',
+        ...courseData,
+      };
+    },
+    enabled: !!courseId || !!courseFromState,
+    staleTime: 2 * 60 * 1000,
+  });
   
   // Create navigation adapter
   const navigation = {

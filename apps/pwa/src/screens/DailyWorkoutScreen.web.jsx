@@ -2,6 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 import firestoreService from '../services/firestoreService';
@@ -39,10 +40,6 @@ const DailyWorkoutScreen = () => {
     }
   }, [contextUser]);
 
-  const [course, setCourse] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-  const hasFetchedRef = React.useRef(false);
-
   const [selectedDate, setSelectedDate] = useState(() => toYYYYMMDD(new Date()));
   const [dateTransitioning, setDateTransitioning] = useState(false);
   const dateTransitionTimeoutRef = React.useRef(null);
@@ -62,12 +59,7 @@ const DailyWorkoutScreen = () => {
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
 
-  const [initialPlannedDates, setInitialPlannedDates] = useState([]);
-  const [initialEntriesDates, setInitialEntriesDates] = useState([]);
-  const [initialDataMonthKey, setInitialDataMonthKey] = useState(null);
-
-  React.useEffect(() => {
-    if (!user?.uid || !courseId) return;
+  const currentMonthMeta = React.useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
@@ -75,25 +67,30 @@ const DailyWorkoutScreen = () => {
     const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
     const lastDay = new Date(y, m + 1, 0).getDate();
     const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    logger.log('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
-    let cancelled = false;
-    Promise.all([
-      firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
-      exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end)
-    ]).then(([planned, entries]) => {
-      if (!cancelled) {
-        const plannedArr = Array.isArray(planned) ? planned : [];
-        const entriesArr = Array.isArray(entries) ? entries : [];
-        logger.log('[DailyWorkoutScreen.web] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
-        setInitialPlannedDates(plannedArr);
-        setInitialEntriesDates(entriesArr);
-        setInitialDataMonthKey(key);
-      }
-    }).catch((e) => {
-      logger.error('[DailyWorkoutScreen] pre-fetch planned/entries error:', e);
-    });
-    return () => { cancelled = true; };
-  }, [user?.uid, courseId]);
+    return { key, start, end };
+  }, []);
+
+  const { data: prefetchedDates } = useQuery({
+    queryKey: ['daily-prefetch', user?.uid, courseId, currentMonthMeta.key],
+    queryFn: async () => {
+      const { start, end, key } = currentMonthMeta;
+      logger.log('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
+      const [planned, entries] = await Promise.all([
+        firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
+        exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
+      ]);
+      const plannedArr = Array.isArray(planned) ? planned : [];
+      const entriesArr = Array.isArray(entries) ? entries : [];
+      logger.log('[DailyWorkoutScreen.web] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
+      return { planned: plannedArr, entries: entriesArr };
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: !!user?.uid && !!courseId,
+  });
+
+  const initialPlannedDates = prefetchedDates?.planned ?? [];
+  const initialEntriesDates = prefetchedDates?.entries ?? [];
+  const initialDataMonthKey = prefetchedDates ? currentMonthMeta.key : null;
 
   const fetchDatesWithEntries = useCallback(
     async (startDate, endDate) => {
@@ -139,50 +136,32 @@ const DailyWorkoutScreen = () => {
     [isOneOnOne, user?.uid, courseId]
   );
 
-  React.useEffect(() => {
-    if (hasFetchedRef.current) return;
+  const courseFromState = location.state?.course;
 
-    const fetchCourse = async () => {
-      hasFetchedRef.current = true;
-
-      if (location.state?.course) {
-        const rawCourse = location.state.course;
-        const transformedCourse = {
+  const { data: course, isLoading: loading } = useQuery({
+    queryKey: ['programs', courseId],
+    queryFn: async () => {
+      if (courseFromState) {
+        const rawCourse = courseFromState;
+        return {
           id: rawCourse.id || rawCourse.courseId || courseId,
           courseId: rawCourse.courseId || rawCourse.id || courseId,
           title: rawCourse.title || 'Programa sin título',
-          ...rawCourse
+          ...rawCourse,
         };
-        setCourse(transformedCourse);
-        setLoading(false);
-        return;
       }
-
-      if (!courseId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const courseData = await firestoreService.getCourse(courseId);
-        if (courseData) {
-          const transformedCourse = {
-            id: courseData.id || courseId,
-            courseId: courseData.id || courseId,
-            title: courseData.title || 'Programa sin título',
-            ...courseData
-          };
-          setCourse(transformedCourse);
-        }
-      } catch (error) {
-        logger.error('Error fetching course:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCourse();
-  }, [courseId, location.state?.course]);
+      const courseData = await firestoreService.getCourse(courseId);
+      if (!courseData) return null;
+      return {
+        id: courseData.id || courseId,
+        courseId: courseData.id || courseId,
+        title: courseData.title || 'Programa sin título',
+        ...courseData,
+      };
+    },
+    staleTime: 30 * 60 * 1000,
+    enabled: !!courseId,
+  });
 
   const navigation = {
     navigate: (routeName, params) => {

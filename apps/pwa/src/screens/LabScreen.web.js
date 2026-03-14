@@ -8,8 +8,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
-import { collection, doc, getDoc, getDocs, query, orderBy, updateDoc } from 'firebase/firestore';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -31,6 +30,9 @@ import { useNavigate } from 'react-router-dom';
 import { consumePendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
 import bodyProgressService from '../services/bodyProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
+import firestoreService from '../services/firestoreService';
+import oneRepMaxService from '../services/oneRepMaxService';
+import hybridDataService from '../services/hybridDataService';
 import { getReadinessInRange } from '../services/readinessService';
 import { getDiaryEntriesInRange, getEffectivePlanForUser } from '../services/nutritionFirestoreService';
 import {
@@ -41,6 +43,8 @@ import {
 } from '../utils/weekCalculation';
 import logger from '../utils/logger';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { cacheConfig } from '../config/queryClient';
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -794,40 +798,16 @@ function GoalWeightModal({ visible, onClose, currentGoal, unit, userId, onSaved 
   );
 }
 
-// ─── AmbientOrbs ──────────────────────────────────────────────────────────────
-
-function AmbientOrbs({ rgb }) {
-  const [r,g,b]=rgb;
-  return (
-    <div style={{position:'fixed',inset:0,pointerEvents:'none',overflow:'hidden',zIndex:0}}>
-      <div style={{position:'absolute',width:320,height:320,borderRadius:'50%',background:`rgba(${r},${g},${b},0.13)`,filter:'blur(72px)',top:-80,right:-60,animation:'labOrbDrift1 13s ease-in-out infinite alternate'}}/>
-      <div style={{position:'absolute',width:260,height:260,borderRadius:'50%',background:`rgba(${r},${g},${b},0.10)`,filter:'blur(72px)',bottom:'5%',left:-70,animation:'labOrbDrift2 17s ease-in-out infinite alternate'}}/>
-      <div style={{position:'absolute',width:200,height:200,borderRadius:'50%',background:`rgba(${r},${g},${b},0.07)`,filter:'blur(72px)',top:'40%',right:'8%',animation:'labOrbDrift3 21s ease-in-out infinite alternate'}}/>
-    </div>
-  );
-}
-
-// ─── LabFAB ───────────────────────────────────────────────────────────────────
-
-function LabFAB({ rgb, onPress }) {
-  const [r,g,b]=rgb;
-  return (
-    <button onClick={onPress} style={{'--lab-fab-glow':`rgba(${r},${g},${b},0.45)`,position:'fixed',bottom:90,right:20,width:56,height:56,borderRadius:28,background:`rgb(${r},${g},${b})`,border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',zIndex:900,animation:'labFabPulse 2.6s ease-in-out infinite',boxShadow:`0 4px 20px rgba(${r},${g},${b},0.4),0 2px 8px rgba(0,0,0,0.4)`,transition:'transform 0.12s',fontFamily:'inherit'}}
-      onMouseDown={e=>e.currentTarget.style.transform='scale(0.94)'}
-      onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M12 5v14M5 12h14" stroke="#1a1a1a" strokeWidth="2.5" strokeLinecap="round"/>
-      </svg>
-    </button>
-  );
-}
-
 // ─── EstadoScreen ─────────────────────────────────────────────────────────────
 
-function EstadoScreen({ userData, bodyLogEntries, weightStats, weightUnit, goalWeight, thisWeekSessions, proteinAdherence7d, topExercises, topInsight, accentRGB, onOpenBodyEntry, readinessScoreToday, readinessToday, tendencia30d, bodyCompInference, thisWeekSessionDates }) {
-  const [r,g,b] = accentRGB;
-  const [expandedTile, setExpandedTile] = useState(null);
-
+function EstadoScreen({
+  userData, bodyLogEntries, weightStats, weightUnit, goalWeight,
+  thisWeekSessions, proteinAdherence7d, topExercises, topInsight,
+  accentRGB, onOpenBodyEntry, readinessScoreToday,
+  bodyCompInference,
+  sessionList, oneRepMaxHistories, readinessByDay,
+}) {
+  const [r, g, b] = accentRGB;
   const trainingTarget = userData?.onboardingData?.trainingDaysPerWeek || 4;
 
   const latestKg = bodyLogEntries.filter(e => e.weight != null).slice(-1)[0]?.weight;
@@ -839,182 +819,294 @@ function EstadoScreen({ userData, bodyLogEntries, weightStats, weightUnit, goalW
     : null;
   const delta30 = weightStats?.delta30;
 
-  const getReadinessLabel = (score) => {
-    if (score === null) return 'Sin datos hoy';
-    if (score >= 7.5) return 'Listo para entrenar';
-    if (score >= 5)   return 'Entrena con cuidado';
-    return 'Prioriza el descanso';
-  };
-
-  const tendenciaStr = tendencia30d !== null
-    ? `${tendencia30d >= 0 ? '+' : ''}${tendencia30d}%`
-    : '—';
-  const tendenciaColor = tendencia30d !== null
-    ? (tendencia30d >= 0 ? '#4ade80' : '#f87171')
-    : 'rgba(255,255,255,0.45)';
-
   const glass = {
     background: 'rgba(255,255,255,0.06)',
     border: '1px solid rgba(255,255,255,0.10)',
     borderRadius: 16,
   };
 
-  const toggleTile = (key) => setExpandedTile(prev => prev === key ? null : key);
+  // ── Muscle volume (current & previous week) ───────────────────────────────
+  const currentWeekKey = getMondayWeek(new Date());
+  const prevWeekKey = getPreviousWeekKey(currentWeekKey);
+  const weekVolume = userData?.weeklyMuscleVolume?.[currentWeekKey] || {};
+  const prevWeekVolume = userData?.weeklyMuscleVolume?.[prevWeekKey] || {};
+  const thisWeekTotalSets = Object.values(weekVolume).reduce((s, v) => s + (v || 0), 0);
 
-  const weekDayData = useMemo(() => {
+  const muscleGroups = useMemo(() => {
+    const groups = [
+      { key: 'empuje',  label: 'Empuje',  muscles: ['pecs', 'triceps', 'front_delts'] },
+      { key: 'jalon',   label: 'Jalón',   muscles: ['lats', 'rhomboids', 'biceps', 'rear_delts'] },
+      { key: 'piernas', label: 'Piernas', muscles: ['quads', 'hamstrings', 'glutes', 'calves'] },
+      { key: 'hombros', label: 'Hombros', muscles: ['side_delts', 'traps'] },
+      { key: 'core',    label: 'Core',    muscles: ['abs', 'obliques', 'lower_back', 'hip_flexors'] },
+    ];
+    return groups
+      .map(grp => ({ ...grp, sets: grp.muscles.reduce((s, m) => s + (weekVolume[m] || 0), 0) }))
+      .filter(grp => grp.sets > 0)
+      .sort((a, z) => z.sets - a.sets);
+  }, [weekVolume]);
+
+  // ── 28-day calendar ───────────────────────────────────────────────────────
+  const { calendar28, trainedCount28, currentStreak } = useMemo(() => {
+    const trainedDates = new Set(
+      (sessionList || []).map(s => s.completedAt ? toYYYYMMDD(new Date(s.completedAt)) : null).filter(Boolean)
+    );
     const today = new Date();
-    const mondayOffset = (today.getDay() + 6) % 7;
-    const todayStr = toYYYYMMDD(today);
-    return ['L','M','X','J','V','S','D'].map((label, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() - mondayOffset + i);
+    const days = [];
+    for (let i = 27; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
       const ds = toYYYYMMDD(d);
-      return { label, ds, had: thisWeekSessionDates?.has(ds) || false, isToday: ds === todayStr, isFuture: d > today };
+      days.push({ date: ds, trained: trainedDates.has(ds), isToday: i === 0 });
+    }
+    const count = days.filter(d => d.trained).length;
+    let streak = 0;
+    for (let i = 0; i < 90; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      if (trainedDates.has(toYYYYMMDD(d))) streak++;
+      else if (i > 0) break;
+    }
+    return { calendar28: days, trainedCount28: count, currentStreak: streak };
+  }, [sessionList]);
+
+  // ── Recovery 7-day average ────────────────────────────────────────────────
+  const recoveryAvg7d = useMemo(() => {
+    const entries = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const e = readinessByDay?.[toYYYYMMDD(d)];
+      if (e) entries.push(e);
+    }
+    if (!entries.length) return null;
+    return {
+      energy: Math.round(entries.reduce((s, e) => s + (e.energy || 0), 0) / entries.length * 10) / 10,
+      sleep:  Math.round(entries.reduce((s, e) => s + (e.sleep  || 0), 0) / entries.length * 10) / 10,
+      count:  entries.length,
+    };
+  }, [readinessByDay]);
+
+  // ── Balance status pill ───────────────────────────────────────────────────
+  const balanceStatus = useMemo(() => {
+    const dayOfWeek = (new Date().getDay() + 6) % 7;
+    const expectedSoFar = dayOfWeek >= 4 ? Math.ceil(trainingTarget * 0.6) : Math.ceil(trainingTarget * 0.3);
+    const lowEnergy = readinessScoreToday !== null && readinessScoreToday < 5;
+    if (thisWeekSessions >= trainingTarget && !lowEnergy) return { label: 'Semana completa', color: '#4ade80' };
+    if (lowEnergy) return { label: 'Prioriza el descanso', color: '#f87171' };
+    if (thisWeekSessions < Math.max(0, expectedSoFar - 1) && dayOfWeek >= 3) return { label: 'Ponle más', color: `rgb(${r},${g},${b})` };
+    return { label: 'En progreso', color: `rgb(${r},${g},${b})` };
+  }, [thisWeekSessions, trainingTarget, readinessScoreToday, r, g, b]);
+
+  // ── Star lift (most improved exercise) ───────────────────────────────────
+  const starLift = useMemo(() => {
+    if (!topExercises.length) return null;
+    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    let best = null, bestGain = -Infinity;
+    topExercises.forEach(ex => {
+      const hist = (oneRepMaxHistories || []).find(h => h.exerciseKey === ex.key);
+      if (!hist?.records?.length) return;
+      const oldRecs = hist.records.filter(r => new Date(r.date) <= thirtyDaysAgo);
+      if (oldRecs.length > 0 && ex.current > 0) {
+        const oldVal = oldRecs[oldRecs.length - 1].value;
+        const gain = ex.current - oldVal;
+        if (gain > bestGain) {
+          bestGain = gain;
+          best = { ...ex, oldVal, gain, gainPct: oldVal > 0 ? Math.round((gain / oldVal) * 1000) / 10 : null, history: hist.records.slice(-12) };
+        }
+      }
     });
-  }, [thisWeekSessionDates]);
+    if (!best) {
+      const ex = topExercises[0];
+      const hist = (oneRepMaxHistories || []).find(h => h.exerciseKey === ex.key);
+      best = { ...ex, oldVal: null, gain: null, gainPct: null, history: hist?.records?.slice(-12) || [] };
+    }
+    return best;
+  }, [topExercises, oneRepMaxHistories]);
+
+  // ── Weight sparkline ──────────────────────────────────────────────────────
+  const weightSparkData = useMemo(() => {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+    const cutoffStr = toYYYYMMDD(cutoff);
+    return bodyLogEntries
+      .filter(e => e.weight != null && e.date >= cutoffStr)
+      .map(e => ({ date: e.date, value: weightUnit === 'lbs' ? Math.round(e.weight * 2.20462 * 10) / 10 : e.weight }));
+  }, [bodyLogEntries, weightUnit]);
 
   return (
-    <div>
-      {/* ── HERO: 3 tiles ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: expandedTile ? 8 : 20, paddingTop: 8 }}>
+    <div style={{ paddingTop: 8 }}>
 
-        {/* Tile 1 — HOY */}
+      {/* ── 1. INSIGHT ─────────────────────────────────────────────────────── */}
+      {topInsight && (
         <div
-          className="lab-hero-tile-1"
-          onClick={() => readinessToday && toggleTile('hoy')}
-          style={{
-            '--lab-accent-glow': `rgba(${r},${g},${b},0.45)`,
-            ...glass,
-            padding: '14px 10px 12px',
-            cursor: readinessToday ? 'pointer' : 'default',
-            position: 'relative',
-            overflow: 'hidden',
-            borderColor: expandedTile === 'hoy' ? `rgba(${r},${g},${b},0.5)` : 'rgba(255,255,255,0.10)',
-            transition: 'border-color 0.2s',
-            animation: readinessScoreToday !== null ? 'labTilePulse 2.6s ease-in-out infinite' : undefined,
-          }}
+          className="lab-insight-shimmer"
+          style={{ ...glass, padding: '16px 18px', marginBottom: 12, borderColor: `rgba(${r},${g},${b},0.3)`, animation: 'labInsightFade 0.5s ease 0.1s both' }}
         >
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>ESTADO HOY</div>
-          <div className="lab-num-reveal" style={{ fontSize: 'clamp(1.7rem, 6vw, 2.5rem)', fontWeight: 800, color: readinessScoreToday !== null ? `rgb(${r},${g},${b})` : 'rgba(255,255,255,0.25)', lineHeight: 1, letterSpacing: '-0.02em' }}>
-            {readinessScoreToday !== null ? readinessScoreToday : '—'}
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: 6, lineHeight: 1.3 }}>
-            {getReadinessLabel(readinessScoreToday)}
-          </div>
-          {readinessToday && (
-            <div style={{ position: 'absolute', bottom: 7, right: 8, fontSize: 9, color: 'rgba(255,255,255,0.2)', transform: expandedTile === 'hoy' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</div>
-          )}
-          {!readinessToday && (
-            <div style={{ marginTop: 8 }}>
-              <span style={{ fontSize: '0.6rem', color: `rgba(${r},${g},${b},0.7)`, fontWeight: 600, cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); /* readiness logging handled elsewhere */ }}>+ Registrar</span>
+          <div style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: `rgba(${r},${g},${b},0.7)`, marginBottom: 8 }}>INSIGHT</div>
+          <div style={{ fontSize: '0.93rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.55, fontWeight: 500 }}>{topInsight}</div>
+        </div>
+      )}
+
+      {/* ── 2. CARGA Y RECUPERACIÓN ─────────────────────────────────────────── */}
+      <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>CARGA Y RECUPERACIÓN</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center', marginBottom: proteinAdherence7d ? 14 : 0 }}>
+          {/* Left: load */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Esta semana</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 3 }}>
+              <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>{thisWeekSessions}</span>
+              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>/ {trainingTarget}</span>
             </div>
-          )}
+            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)' }}>sesiones</div>
+            {thisWeekTotalSets > 0 && (
+              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)', marginTop: 3 }}>{thisWeekTotalSets} series totales</div>
+            )}
+          </div>
+          {/* Center */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.08)' }} />
+            <div style={{ padding: '4px 10px', borderRadius: 999, background: `rgba(${r},${g},${b},0.12)`, border: `1px solid rgba(${r},${g},${b},0.3)`, fontSize: '0.6rem', fontWeight: 700, color: balanceStatus.color, textAlign: 'center', whiteSpace: 'nowrap' }}>{balanceStatus.label}</div>
+            <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.08)' }} />
+          </div>
+          {/* Right: recovery */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Recuperación</div>
+            {recoveryAvg7d ? (
+              <>
+                <div style={{ marginBottom: 6 }}>
+                  <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#60a5fa', lineHeight: 1 }}>{recoveryAvg7d.energy}</span>
+                  <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>energía</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#a78bfa', lineHeight: 1 }}>{recoveryAvg7d.sleep}</span>
+                  <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>sueño</span>
+                </div>
+                <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>prom {recoveryAvg7d.count} días</div>
+              </>
+            ) : (
+              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', lineHeight: 1.5 }}>Sin datos de readiness</div>
+            )}
+          </div>
         </div>
-
-        {/* Tile 2 — SEMANA */}
-        <div
-          className="lab-hero-tile-2"
-          onClick={() => toggleTile('semana')}
-          style={{
-            ...glass,
-            padding: '14px 10px 12px',
-            cursor: 'pointer',
-            position: 'relative',
-            overflow: 'hidden',
-            borderColor: expandedTile === 'semana' ? `rgba(${r},${g},${b},0.35)` : 'rgba(255,255,255,0.10)',
-            transition: 'border-color 0.2s',
-          }}
-        >
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>ESTA SEMANA</div>
-          <div className="lab-num-reveal" style={{ fontSize: 'clamp(1.7rem, 6vw, 2.5rem)', fontWeight: 800, color: thisWeekSessions >= trainingTarget ? '#4ade80' : '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>
-            {thisWeekSessions}
+        {/* Protein bar */}
+        {proteinAdherence7d && (
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+              <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)' }}>Proteína prom. 7 días</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: proteinAdherence7d.pct >= 80 ? '#4ade80' : 'rgba(255,255,255,0.8)' }}>
+                {proteinAdherence7d.avg}g <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>/ {proteinAdherence7d.target}g</span>
+              </span>
+            </div>
+            <div style={{ height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 999, width: `${Math.min(100, proteinAdherence7d.pct)}%`, background: proteinAdherence7d.pct >= 80 ? '#4ade80' : `rgb(${r},${g},${b})`, transition: 'width 0.6s ease' }} />
+            </div>
           </div>
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: 6, lineHeight: 1.3 }}>
-            / {trainingTarget} sesiones
-          </div>
-          <div style={{ position: 'absolute', bottom: 7, right: 8, fontSize: 9, color: 'rgba(255,255,255,0.2)', transform: expandedTile === 'semana' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</div>
-        </div>
-
-        {/* Tile 3 — TENDENCIA */}
-        <div
-          className="lab-hero-tile-3"
-          onClick={() => topExercises.length > 0 && toggleTile('tendencia')}
-          style={{
-            ...glass,
-            padding: '14px 10px 12px',
-            cursor: topExercises.length > 0 ? 'pointer' : 'default',
-            position: 'relative',
-            overflow: 'hidden',
-            borderColor: expandedTile === 'tendencia' ? `rgba(${r},${g},${b},0.35)` : 'rgba(255,255,255,0.10)',
-            transition: 'border-color 0.2s',
-          }}
-        >
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>TENDENCIA</div>
-          <div className="lab-num-reveal" style={{ fontSize: 'clamp(1.4rem, 5vw, 2.1rem)', fontWeight: 800, color: tendenciaColor, lineHeight: 1, letterSpacing: '-0.01em' }}>
-            {tendenciaStr}
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: 6, lineHeight: 1.3 }}>
-            Fuerza · 30 días
-          </div>
-          {topExercises.length > 0 && (
-            <div style={{ position: 'absolute', bottom: 7, right: 8, fontSize: 9, color: 'rgba(255,255,255,0.2)', transform: expandedTile === 'tendencia' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* ── EXPANDED TILE DETAIL ── */}
-      {expandedTile && (
-        <div className="lab-subtab-enter" style={{ ...glass, padding: '14px 16px', marginBottom: 16, position: 'relative', overflow: 'hidden' }}>
-          {expandedTile === 'hoy' && readinessToday && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              {[
-                { label: 'Energía',  value: readinessToday.energy,  color: '#60a5fa' },
-                { label: 'Frescura', value: readinessToday.soreness, color: '#4ade80' },
-                { label: 'Sueño',    value: typeof readinessToday.sleep === 'number' ? readinessToday.sleep.toFixed(1) : readinessToday.sleep, color: '#a78bfa' },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color }}>{value ?? '—'}</div>
-                  <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
+      {/* ── 3. MÚSCULO ACTIVO ───────────────────────────────────────────────── */}
+      <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>MÚSCULO ACTIVO — ESTA SEMANA</div>
+        {muscleGroups.length > 0 ? (
+          <>
+            <LabMuscleHeatmap weekVolume={weekVolume} previousWeekVolume={prevWeekVolume} />
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {muscleGroups.map((grp, i) => (
+                <div key={grp.key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.72rem', color: i === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.55)' }}>{grp.label}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)' }}>{grp.sets} series</span>
+                  </div>
+                  <div style={{ height: 3, borderRadius: 999, background: 'rgba(255,255,255,0.07)' }}>
+                    <div style={{ height: '100%', borderRadius: 999, width: `${Math.min(100, (grp.sets / (muscleGroups[0]?.sets || 1)) * 100)}%`, background: i === 0 ? `rgb(${r},${g},${b})` : 'rgba(255,255,255,0.22)', transition: 'width 0.5s ease' }} />
+                  </div>
                 </div>
               ))}
             </div>
-          )}
-          {expandedTile === 'semana' && (
+          </>
+        ) : (
+          <div style={{ paddingBottom: 4, fontSize: '0.8rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>
+            Completa sesiones esta semana para ver qué músculos has trabajado.
+          </div>
+        )}
+      </div>
+
+      {/* ── 4. TU HISTORIAL — 28 días ───────────────────────────────────────── */}
+      <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>TU HISTORIAL</div>
+          <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>
+            <span style={{ color: `rgb(${r},${g},${b})`, fontWeight: 700 }}>{trainedCount28}</span>
+            <span> / 28 días entrenados</span>
+            {currentStreak >= 2 && <span style={{ color: `rgb(${r},${g},${b})`, fontWeight: 700 }}> · {currentStreak} racha</span>}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {calendar28.map(({ date, trained, isToday }) => (
+            <div
+              key={date}
+              style={{
+                aspectRatio: '1',
+                borderRadius: 4,
+                background: trained ? `rgba(${r},${g},${b},0.85)` : 'rgba(255,255,255,0.05)',
+                border: isToday ? `1.5px solid rgba(${r},${g},${b},0.8)` : '1px solid rgba(255,255,255,0.06)',
+              }}
+            />
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 14, marginTop: 10, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 9, height: 9, borderRadius: 2, background: `rgba(${r},${g},${b},0.85)` }} />
+            <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.28)' }}>Entrenado</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 9, height: 9, borderRadius: 2, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+            <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.28)' }}>Descanso</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 5. LEVANTAMIENTO ESTRELLA ───────────────────────────────────────── */}
+      {starLift && (
+        <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>LEVANTAMIENTO ESTRELLA</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: starLift.history?.length > 1 ? 14 : 0 }}>
             <div>
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: proteinAdherence7d ? 12 : 0 }}>
-                {weekDayData.map(({ label, ds, had, isToday, isFuture }) => (
-                  <div key={ds} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: '50%',
-                      background: had ? `rgba(${r},${g},${b},0.85)` : isFuture ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)',
-                      border: isToday ? `1.5px solid rgba(${r},${g},${b},0.7)` : '1px solid rgba(255,255,255,0.08)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {had && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#1a1a1a' }} />}
-                    </div>
-                    <span style={{ fontSize: '0.6rem', color: isToday ? '#fff' : 'rgba(255,255,255,0.35)', fontWeight: isToday ? 600 : 400 }}>{label}</span>
-                  </div>
-                ))}
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.65)', marginBottom: 4 }}>{starLift.name}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: `rgb(${r},${g},${b})`, lineHeight: 1, letterSpacing: '-0.02em' }}>{Math.round(starLift.current)}</span>
+                <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)' }}>kg</span>
+                <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.25)' }}>1RM est.</span>
               </div>
-              {proteinAdherence7d && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Proteína promedio</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: proteinAdherence7d.pct >= 80 ? '#4ade80' : 'rgba(255,255,255,0.8)' }}>
-                    {proteinAdherence7d.avg}g / {proteinAdherence7d.target}g
-                  </span>
+            </div>
+            {starLift.gain !== null && starLift.gain > 0 && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ padding: '5px 14px', borderRadius: 999, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', color: '#4ade80', fontSize: '0.9rem', fontWeight: 700, marginBottom: 4 }}>
+                  +{Math.round(starLift.gain * 10) / 10} kg
                 </div>
-              )}
+                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>últimos 30 días</div>
+              </div>
+            )}
+          </div>
+          {starLift.history?.length > 1 && (
+            <div style={{ height: 64 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={starLift.history} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                  <Line type="monotone" dataKey="value" stroke={`rgb(${r},${g},${b})`} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                  <YAxis domain={['auto', 'auto']} hide />
+                  <Tooltip
+                    contentStyle={{ background: 'rgba(26,26,26,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.72rem', color: '#fff' }}
+                    formatter={(v) => [`${v} kg`, '1RM est.']}
+                    labelFormatter={() => ''}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           )}
-          {expandedTile === 'tendencia' && topExercises.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {topExercises.slice(0, 3).map((ex, i) => (
+          {topExercises.length > 1 && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {topExercises.filter(ex => ex.key !== starLift?.key).slice(0, 2).map(ex => (
                 <div key={ex.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: i === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)' }}>{ex.name}</span>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                    <span style={{ fontSize: i === 0 ? '1rem' : '0.9rem', fontWeight: 700, color: '#fff' }}>{Math.round(ex.current)} kg</span>
-                    <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)' }}>1RM</span>
-                  </div>
+                  <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>{ex.name}</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{Math.round(ex.current)} kg</span>
                 </div>
               ))}
             </div>
@@ -1022,48 +1114,72 @@ function EstadoScreen({ userData, bodyLogEntries, weightStats, weightUnit, goalW
         </div>
       )}
 
-      {/* ── CUERPO ── */}
+      {/* ── 6. COMPOSICIÓN ──────────────────────────────────────────────────── */}
       {latestDisplay != null ? (
-        <div style={{ ...glass, padding: 16, marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>CUERPO</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontSize: 'clamp(2rem, 7vw, 2.8rem)', fontWeight: 800, color: '#fff', letterSpacing: '-0.02em', lineHeight: 1 }}>{latestDisplay}</span>
-                <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.45)', fontWeight: 400 }}>{weightUnit}</span>
-              </div>
-              {delta30 != null && (
-                <div style={{ marginTop: 6 }}>
-                  <span style={{
-                    display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600,
-                    background: delta30 < 0 ? 'rgba(74,222,128,0.12)' : delta30 > 0 ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.06)',
-                    color: delta30 < 0 ? '#4ade80' : delta30 > 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.5)',
-                    border: `1px solid ${delta30 < 0 ? 'rgba(74,222,128,0.25)' : delta30 > 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.1)'}`,
-                  }}>
-                    {delta30 > 0 ? '+' : ''}{Math.round(delta30 * 10) / 10} {weightUnit} en 30 días
-                  </span>
-                </div>
-              )}
-            </div>
-            {goalWeightDisplay != null && latestDisplay != null && (
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>META</div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>{goalWeightDisplay} {weightUnit}</div>
-                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-                  {Math.abs(Math.round((goalWeightDisplay - latestDisplay) * 10) / 10)} {weightUnit} restante
-                </div>
-              </div>
-            )}
-          </div>
+        <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>COMPOSICIÓN</div>
           {bodyCompInference && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.78rem', color: `rgba(${r},${g},${b},0.9)`, fontWeight: 500, lineHeight: 1.4 }}>
+            <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, marginBottom: 12, background: `rgba(${r},${g},${b},0.12)`, border: `1px solid rgba(${r},${g},${b},0.3)`, color: `rgb(${r},${g},${b})`, lineHeight: 1.5 }}>
               {bodyCompInference}
             </div>
           )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: weightSparkData.length > 1 ? 12 : 0 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: '2.4rem', fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>{latestDisplay}</span>
+                <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.4)' }}>{weightUnit}</span>
+              </div>
+              {delta30 != null && (
+                <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: delta30 < 0 ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.07)', color: delta30 < 0 ? '#4ade80' : 'rgba(255,255,255,0.7)', border: `1px solid ${delta30 < 0 ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.12)'}` }}>
+                  {delta30 > 0 ? '+' : ''}{Math.round(delta30 * 10) / 10} {weightUnit} · 30 días
+                </span>
+              )}
+            </div>
+            {goalWeightDisplay != null && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>META</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'rgba(255,255,255,0.75)' }}>{goalWeightDisplay} {weightUnit}</div>
+              </div>
+            )}
+          </div>
+          {weightSparkData.length > 1 && (
+            <div style={{ height: 60 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={weightSparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                  <Line type="monotone" dataKey="value" stroke={`rgba(${r},${g},${b},0.8)`} strokeWidth={2} dot={false} />
+                  {goalWeightDisplay != null && <ReferenceLine y={goalWeightDisplay} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 3" />}
+                  <YAxis domain={['auto', 'auto']} hide />
+                  <Tooltip
+                    contentStyle={{ background: 'rgba(26,26,26,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.72rem', color: '#fff' }}
+                    formatter={(v) => [`${v} ${weightUnit}`, 'Peso']}
+                    labelFormatter={(l) => l}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {goalWeightDisplay != null && latestDisplay != null && weightSparkData.length > 0 && (() => {
+            const startW = weightSparkData[0]?.value;
+            if (!startW || Math.abs(goalWeightDisplay - startW) < 0.1) return null;
+            const total = Math.abs(goalWeightDisplay - startW);
+            const done = Math.abs(latestDisplay - startW);
+            const pct = Math.min(100, Math.max(0, (done / total) * 100));
+            return (
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)' }}>Progreso hacia meta</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: `rgb(${r},${g},${b})` }}>{Math.round(pct)}%</span>
+                </div>
+                <div style={{ height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: `rgba(${r},${g},${b},0.8)`, transition: 'width 0.6s ease' }} />
+                </div>
+              </div>
+            );
+          })()}
         </div>
       ) : (
         <div style={{ ...glass, padding: 16, marginBottom: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>CUERPO</div>
+          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>COMPOSICIÓN</div>
           <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.45)', marginBottom: 10 }}>Registra tu primer peso para comenzar</div>
           <button
             onClick={onOpenBodyEntry}
@@ -1071,32 +1187,6 @@ function EstadoScreen({ userData, bodyLogEntries, weightStats, weightUnit, goalW
           >
             + Registrar peso
           </button>
-        </div>
-      )}
-
-      {/* ── FORMA DEL MOMENTO ── */}
-      {topExercises.length > 0 && (
-        <div style={{ ...glass, padding: '14px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>FORMA DEL MOMENTO</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {topExercises.slice(0, 3).map((ex, i) => (
-              <div key={ex.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', color: i === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)' }}>{ex.name}</span>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                  <span style={{ fontSize: i === 0 ? '1.1rem' : '0.95rem', fontWeight: 700, color: '#fff' }}>{Math.round(ex.current)} kg</span>
-                  <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)' }}>1RM</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── INSIGHT ── */}
-      {topInsight && (
-        <div className="lab-insight-shimmer" style={{ ...glass, padding: '14px 16px', marginBottom: 12, animation: 'labInsightFade 0.5s ease 0.4s both' }}>
-          <div style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>INSIGHT</div>
-          <div style={{ fontSize: '0.88rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.55 }}>{topInsight}</div>
         </div>
       )}
     </div>
@@ -1372,23 +1462,16 @@ const LabScreen = () => {
   const [fallbackUser, setFallbackUser] = useState(null);
   const user = contextUser || fallbackUser || auth.currentUser;
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const uid = user?.uid ?? null;
 
   const [activeScreen, setActiveScreen] = useState('estado');
   const [historialTab, setHistorialTab] = useState('fuerza');
-  const [loading, setLoading] = useState(true);
-  const [userData, setUserData] = useState(null);
-  const [sessions, setSessions] = useState({});
-  const [diaryEntries, setDiaryEntries] = useState([]);
-  const [plan, setPlan] = useState(null);
-  const [readinessEntries, setReadinessEntries] = useState([]);
-  const [oneRepMaxHistories, setOneRepMaxHistories] = useState([]);
   const [selectedExerciseKey, setSelectedExerciseKey] = useState(null);
   const [rangeWeeks, setRangeWeeks] = useState(8);
-  const [bodyLogEntries, setBodyLogEntries] = useState([]);
   const [weightUnit, setWeightUnit] = useState('kg');
   const [goalWeight, setGoalWeight] = useState(null);
   const [weightRange, setWeightRange] = useState(30);
-  const [cuerpoLoaded, setCuerpoLoaded] = useState(false);
   const [entryModalVisible, setEntryModalVisible] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
@@ -1399,89 +1482,72 @@ const LabScreen = () => {
 
   // ─── data loading ──────────────────────────────────────────────────────────
 
-  const loadData = useCallback(async () => {
-    const uid = user?.uid || auth.currentUser?.uid;
-    if (!uid) { setLoading(false); return; }
-    setLoading(true);
-    try {
+  const mainQuery = useQuery({
+    queryKey: ['lab', 'main', uid],
+    queryFn: async () => {
       const end = toYYYYMMDD(new Date());
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
       const start = toYYYYMMDD(startD);
-
-      const [userSnap, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        getDoc(doc(firestore, 'users', uid)),
+      const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
+        firestoreService.getUser(uid),
         exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
         getDiaryEntriesInRange(uid, start, end),
         getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
         getReadinessInRange(uid, start, end),
       ]);
+      return {
+        userData: uData || null,
+        sessions: sessionResult?.sessions || {},
+        diaryEntries: entries || [],
+        plan: planResult?.plan || null,
+        readinessEntries: readinessData || [],
+      };
+    },
+    enabled: !!uid,
+    ...cacheConfig.analytics,
+  });
 
-      const uData = userSnap.exists() ? userSnap.data() : null;
-      if (uData) setUserData(uData);
-      if (sessionResult?.sessions) setSessions(sessionResult.sessions);
-      setDiaryEntries(entries || []);
-      setPlan(planResult?.plan || null);
-      setReadinessEntries(readinessData || []);
+  const topKeys = useMemo(() => {
+    const est = mainQuery.data?.userData?.oneRepMaxEstimates;
+    if (!est) return [];
+    return Object.entries(est)
+      .filter(([, v]) => v?.current && v?.lastUpdated)
+      .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
+      .slice(0, 5)
+      .map(([k]) => k);
+  }, [mainQuery.data?.userData?.oneRepMaxEstimates]);
 
-      if (uData?.oneRepMaxEstimates) {
-        const topKeys = Object.entries(uData.oneRepMaxEstimates)
-          .filter(([, v]) => v?.current && v?.lastUpdated)
-          .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
-          .slice(0, 5)
-          .map(([k]) => k);
+  const oneRmQuery = useQuery({
+    queryKey: ['lab', '1rm', uid, topKeys],
+    queryFn: () =>
+      Promise.all(
+        topKeys.map(key =>
+          oneRepMaxService.getHistoryByKey(uid, key).then(records => ({ exerciseKey: key, records }))
+        )
+      ),
+    enabled: !!uid && topKeys.length > 0,
+    ...cacheConfig.analytics,
+  });
 
-        const histories = await Promise.all(
-          topKeys.map(async (key) => {
-            try {
-              const q = query(
-                collection(firestore, 'users', uid, 'oneRepMaxHistory', key, 'records'),
-                orderBy('date', 'asc')
-              );
-              const snap = await getDocs(q);
-              return {
-                exerciseKey: key,
-                records: snap.docs.map((d) => {
-                  const data = d.data();
-                  let dateVal = data.date;
-                  if (dateVal && typeof dateVal.toDate === 'function') dateVal = dateVal.toDate().toISOString();
-                  return { date: dateVal, value: data.estimate };
-                }),
-              };
-            } catch (err) {
-              logger.error('[Lab] 1RM history fetch error', key, err?.message);
-              return { exerciseKey: key, records: [] };
-            }
-          })
-        );
-        setOneRepMaxHistories(histories);
-      }
-    } catch (err) {
-      logger.error('[Lab] loadData error', err?.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
+  const bodyQuery = useQuery({
+    queryKey: ['lab', 'body', uid],
+    queryFn: () => bodyProgressService.getEntries(uid),
+    enabled: !!uid,
+    ...cacheConfig.analytics,
+  });
 
-  const loadCuerpoData = useCallback(async () => {
-    const uid = user?.uid || auth.currentUser?.uid;
-    if (!uid) return;
-    try {
-      const entries = await bodyProgressService.getEntries(uid);
-      setBodyLogEntries(entries);
-      setCuerpoLoaded(true);
-    } catch (err) {
-      logger.error('[Lab] loadCuerpoData error', err?.message);
-    }
-  }, [user?.uid]);
+  const loading = mainQuery.isLoading;
+  const userData = mainQuery.data?.userData ?? null;
+  const sessions = mainQuery.data?.sessions ?? {};
+  const diaryEntries = mainQuery.data?.diaryEntries ?? [];
+  const plan = mainQuery.data?.plan ?? null;
+  const readinessEntries = mainQuery.data?.readinessEntries ?? [];
+  const oneRepMaxHistories = oneRmQuery.data ?? [];
+  const bodyLogEntries = bodyQuery.data ?? [];
 
   useEffect(() => {
     if (!contextUser && auth.currentUser) setFallbackUser(auth.currentUser);
   }, [contextUser]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // Load cuerpo data on mount (needed for Estado screen)
-  useEffect(() => { loadCuerpoData(); }, [loadCuerpoData]);
 
   const openBodyEntryModal = useCallback(() => {
     setEditingEntry(null);
@@ -1509,14 +1575,13 @@ const LabScreen = () => {
   const openEditEntry = (entry) => { setEditingEntry(entry); setEntryModalVisible(true); };
 
   const handleEntrySaved = useCallback(() => {
-    setCuerpoLoaded(false);
-    loadCuerpoData();
-  }, [loadCuerpoData]);
+    queryClient.invalidateQueries({ queryKey: ['lab', 'body', uid] });
+  }, [queryClient, uid]);
 
   const handleWeightUnitChange = (u) => {
     setWeightUnit(u);
     const uid = user?.uid || auth.currentUser?.uid;
-    if (uid) updateDoc(doc(firestore, 'users', uid), { weightUnit: u }).catch(() => {});
+    if (uid) hybridDataService.updateUserProfile(uid, { weightUnit: u }).catch(() => {});
   };
 
   const handleDeletePhoto = async (photo) => {
@@ -2048,8 +2113,7 @@ const LabScreen = () => {
   const accentRGB = useMemo(() => {
     const todayEntry = readinessByDay[toYYYYMMDD(new Date())];
     if (todayEntry) {
-      const sleepScore = Math.min((todayEntry.sleep || 0) / 8, 1) * 10;
-      const score = ((todayEntry.energy || 0) + (11 - (todayEntry.soreness || 5)) + sleepScore) / 3;
+      const score = ((todayEntry.energy || 0) + (11 - (todayEntry.soreness || 5)) + (todayEntry.sleep || 0)) / 3;
       if (score >= 7.5) return [80, 200, 120];
       if (score >= 5)   return [160, 180, 220];
       return [200, 80, 80];
@@ -2060,11 +2124,8 @@ const LabScreen = () => {
   const readinessScoreToday = useMemo(() => {
     const entry = readinessByDay[toYYYYMMDD(new Date())];
     if (!entry) return null;
-    const sleepScore = Math.min((entry.sleep || 0) / 8, 1) * 10;
-    return Math.round(((entry.energy || 0) + (11 - (entry.soreness || 5)) + sleepScore) / 3 * 10) / 10;
+    return Math.round(((entry.energy || 0) + (11 - (entry.soreness || 5)) + (entry.sleep || 0)) / 3 * 10) / 10;
   }, [readinessByDay]);
-
-  const readinessToday = useMemo(() => readinessByDay[toYYYYMMDD(new Date())] || null, [readinessByDay]);
 
   const tendencia30d = useMemo(() => {
     if (!topExercises.length || !oneRepMaxHistories.length) return null;
@@ -2096,19 +2157,6 @@ const LabScreen = () => {
     return null;
   }, [bodyLogEntries, tendencia30d]);
 
-  const thisWeekSessionDates = useMemo(() => {
-    const today = new Date();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
-    const set = new Set();
-    sessionList.forEach(s => {
-      if (s.completedAt && new Date(s.completedAt) >= monday)
-        set.add(toYYYYMMDD(new Date(s.completedAt)));
-    });
-    return set;
-  }, [sessionList]);
-
   const thisWeekSessions = useMemo(() => {
     const today=new Date();
     const monday=new Date(today); monday.setDate(today.getDate()-((today.getDay()+6)%7)); monday.setHours(0,0,0,0);
@@ -2122,23 +2170,6 @@ const LabScreen = () => {
     const avg=Math.round(vals.reduce((s,v)=>s+v,0)/7);
     return { avg, target:Math.round(plan.daily_protein_g), pct:Math.round((avg/plan.daily_protein_g)*100) };
   }, [nutritionByDay, plan]);
-
-  const trainingDatesSet = useMemo(() => {
-    const s=new Set();
-    sessionList.forEach(sess=>{ if (sess.completedAt) s.add(toYYYYMMDD(new Date(sess.completedAt))); });
-    return s;
-  }, [sessionList]);
-
-  const readinessWeekAvg = useMemo(() => {
-    const entries=[];
-    for (let i=0;i<7;i++) { const d=new Date(); d.setDate(d.getDate()-i); const e=readinessByDay[toYYYYMMDD(d)]; if (e) entries.push(e); }
-    if (!entries.length) return null;
-    return {
-      energy:Math.round(entries.reduce((s,e)=>s+e.energy,0)/entries.length*10)/10,
-      sleep:Math.round(entries.reduce((s,e)=>s+e.sleep,0)/entries.length*10)/10,
-      count:entries.length,
-    };
-  }, [readinessByDay]);
 
   const topInsight = useMemo(() =>
     recoveryWarning||energyInsight||trainingVsRestInsight||proteinInsight||rpeInsight||null,
@@ -2823,7 +2854,6 @@ const LabScreen = () => {
 
   return (
     <SafeAreaView style={{ flex:1, backgroundColor:'#1a1a1a' }} edges={['left','right']}>
-      <AmbientOrbs rgb={accentRGB} />
       <FixedWakeHeader />
       <ScrollView style={{ flex:1 }} contentContainerStyle={{ flexGrow:1, paddingBottom:100 }} showsVerticalScrollIndicator={false}>
         <WakeHeaderContent>
@@ -2867,10 +2897,10 @@ const LabScreen = () => {
                     accentRGB={accentRGB}
                     onOpenBodyEntry={()=>{ setEditingEntry(null); setEntryModalVisible(true); }}
                     readinessScoreToday={readinessScoreToday}
-                    readinessToday={readinessToday}
-                    tendencia30d={tendencia30d}
                     bodyCompInference={bodyCompInference}
-                    thisWeekSessionDates={thisWeekSessionDates}
+                    sessionList={sessionList}
+                    oneRepMaxHistories={oneRepMaxHistories}
+                    readinessByDay={readinessByDay}
                   />
                 </div>
               )}
@@ -2903,8 +2933,6 @@ const LabScreen = () => {
           <View style={{ height:120 }} />
         </WakeHeaderContent>
       </ScrollView>
-
-      <LabFAB rgb={accentRGB} onPress={()=>{ setEditingEntry(null); setEntryModalVisible(true); }} />
 
       <BodyEntryModal
         visible={entryModalVisible}

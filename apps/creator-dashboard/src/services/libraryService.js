@@ -190,6 +190,19 @@ class LibraryService {
     }
   }
 
+  async addExerciseToLibrary(libraryId, exerciseName) {
+    const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
+    await updateDoc(libraryDocRef, {
+      [exerciseName]: {
+        muscle_activation: {},
+        implements: [],
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      },
+      updated_at: serverTimestamp(),
+    });
+  }
+
   // Get exercises from a library document
   getExercisesFromLibrary(libraryData) {
     if (!libraryData) return [];
@@ -1621,6 +1634,10 @@ class LibraryService {
       throw error;
     }
   }
+  deleteFieldSentinel() {
+    return deleteField();
+  }
+
   async addExerciseToLibrarySession(uid, sessionId, exerciseData) {
     const exercisesRef = collection(
       firestore,
@@ -1630,7 +1647,11 @@ class LibraryService {
       sessionId,
       'exercises'
     );
-    return await addDoc(exercisesRef, exerciseData);
+    return await addDoc(exercisesRef, {
+      ...exerciseData,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
   }
 
   async deleteExerciseFromLibrarySession(uid, sessionId, exerciseId) {

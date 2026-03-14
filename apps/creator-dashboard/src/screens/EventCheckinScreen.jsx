@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { firestore } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
 import logger from '../utils/logger';
 import './EventCheckinScreen.css';
@@ -29,12 +28,12 @@ export default function EventCheckinScreen() {
   // ─── Data fetching ───
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(firestore, 'events', eventId)).then(snap => {
-      if (!snap.exists() || snap.data().creator_id !== user.uid) {
+    eventService.getEvent(eventId).then(event => {
+      if (!event || event.creator_id !== user.uid) {
         setAccessStatus('denied');
         return;
       }
-      setEvent({ id: snap.id, ...snap.data() });
+      setEvent(event);
       setAccessStatus('ready');
     }).catch(() => setAccessStatus('denied'));
   }, [eventId, user]);
@@ -132,27 +131,13 @@ export default function EventCheckinScreen() {
     } catch {}
 
     try {
-      const regQuery = query(
-        collection(firestore, 'event_signups', eventId, 'registrations'),
-        where('check_in_token', '==', token)
-      );
-      const snap = await getDocs(regQuery);
-
-      if (snap.empty) {
+      const checkResult = await eventService.checkInByToken(eventId, token);
+      if (checkResult.status === 'invalid') {
         setResult({ type: 'invalid' });
+      } else if (checkResult.status === 'already') {
+        setResult({ type: 'already', reg: checkResult.reg });
       } else {
-        const regDoc = snap.docs[0];
-        const reg = { id: regDoc.id, ...regDoc.data() };
-
-        if (reg.checked_in) {
-          setResult({ type: 'already', reg });
-        } else {
-          await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regDoc.id), {
-            checked_in: true,
-            checked_in_at: serverTimestamp(),
-          });
-          setResult({ type: 'success', reg });
-        }
+        setResult({ type: 'success', reg: checkResult.reg });
       }
     } catch (err) {
       logger.error('[Checkin] lookup failed', err);

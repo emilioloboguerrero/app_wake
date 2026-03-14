@@ -1,6 +1,7 @@
 // Web wrapper for CourseDetailScreen - provides React Router navigation
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
 import LoadingScreen from './LoadingScreen';
@@ -15,89 +16,45 @@ const CourseDetailScreen = () => {
   const location = useLocation();
   const { courseId } = useParams();
   const { user } = useAuth();
-  
-  const [course, setCourse] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Fetch course data from URL param or location state
-  useEffect(() => {
-    const fetchCourse = async () => {
-      // Fix: Check location state first (when navigating from library with course param)
-      const courseFromState = location.state?.course;
+
+  const courseFromState = location.state?.course;
+
+  const { data: course, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['programs', courseId],
+    queryFn: async () => {
       if (courseFromState) {
         logger.log('✅ Using course from navigation state:', courseFromState);
-        setCourse(courseFromState);
-        setLoading(false);
-        return;
+        return courseFromState;
       }
-      
-      // If no course in state, fetch from courseId in URL
-      if (!courseId) {
-        setError('Course ID is required');
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        setLoading(true);
-        setError(null);
-        logger.log('🔍 Fetching course data for courseId:', courseId);
-        
-        // Fix: Fetch course even without user (for public course viewing)
-        // The base component will handle user-specific logic like ownership checks
-        const courseData = await firestoreService.getCourse(courseId);
-        
-        if (!courseData) {
-          setError('Course not found');
-          setLoading(false);
-          return;
-        }
-        
-        // Transform to match expected format
-        const transformedCourse = {
-          id: courseData.id || courseId,
-          courseId: courseData.id || courseId,
-          title: courseData.title || 'Programa sin título',
-          image_url: courseData.image_url || null,
-          discipline: courseData.discipline || 'General',
-          creator_id: courseData.creator_id || null,
-          creatorName: courseData.creatorName || courseData.creator_name || 'Creador no especificado',
-          description: courseData.description || null,
-          difficulty: courseData.difficulty || null,
-          duration: courseData.duration || null,
-          price: courseData.price || null,
-          access_duration: courseData.access_duration || null,
-          free_trial: courseData.free_trial || {},
-          status: courseData.status || 'published',
-          video_intro_url: courseData.video_intro_url || null,
-          ...courseData // Include any other properties
-        };
-        
-        logger.log('✅ Course data loaded:', transformedCourse);
-        setCourse(transformedCourse);
-      } catch (err) {
-        logger.error('❌ Error fetching course:', err);
-        setError(err.message || 'Error al cargar el programa');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    // Fix: Fetch course regardless of user availability
-    // The base component will handle user-specific checks
-    fetchCourse();
-    
-    // Safety timeout: Clear loading after 10 seconds if something goes wrong
-    const safetyTimeout = setTimeout(() => {
-      logger.warn('⚠️ Web wrapper: Safety timeout - clearing loading state after 10s');
-      setLoading(false);
-    }, 10000);
-    
-    return () => {
-      clearTimeout(safetyTimeout);
-    };
-  }, [courseId, location.state]); // Added location.state to dependencies
+      logger.log('🔍 Fetching course data for courseId:', courseId);
+      const courseData = await firestoreService.getCourse(courseId);
+      if (!courseData) throw new Error('Course not found');
+      const transformedCourse = {
+        id: courseData.id || courseId,
+        courseId: courseData.id || courseId,
+        title: courseData.title || 'Programa sin título',
+        image_url: courseData.image_url || null,
+        discipline: courseData.discipline || 'General',
+        creator_id: courseData.creator_id || null,
+        creatorName: courseData.creatorName || courseData.creator_name || 'Creador no especificado',
+        description: courseData.description || null,
+        difficulty: courseData.difficulty || null,
+        duration: courseData.duration || null,
+        price: courseData.price || null,
+        access_duration: courseData.access_duration || null,
+        free_trial: courseData.free_trial || {},
+        status: courseData.status || 'published',
+        video_intro_url: courseData.video_intro_url || null,
+        ...courseData,
+      };
+      logger.log('✅ Course data loaded:', transformedCourse);
+      return transformedCourse;
+    },
+    staleTime: 30 * 60 * 1000,
+    enabled: !!courseId,
+  });
+
+  const error = queryError?.message ?? null;
   
   // Create navigation adapter that matches React Navigation API
   const navigation = {

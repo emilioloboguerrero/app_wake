@@ -17,7 +17,7 @@ import measureObjectivePresetsService from '../services/measureObjectivePresetsS
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import programAnalyticsService from '../services/programAnalyticsService';
-import { deleteField } from 'firebase/firestore';
+
 import {
   useProgram,
   useModules,
@@ -3510,8 +3510,8 @@ const ProgramDetailScreen = () => {
         objectives: newExerciseDraft.objectives || [],
         customObjectiveLabels: newExerciseDraft.customObjectiveLabels && typeof newExerciseDraft.customObjectiveLabels === 'object' ? newExerciseDraft.customObjectiveLabels : {},
         customMeasureLabels: newExerciseDraft.customMeasureLabels && typeof newExerciseDraft.customMeasureLabels === 'object' ? newExerciseDraft.customMeasureLabels : {},
-        name: deleteField(),
-        title: deleteField()
+        name: libraryService.deleteFieldSentinel(),
+        title: libraryService.deleteFieldSentinel()
       };
       
       if (sessionIsLibraryRef && user) {
@@ -3700,8 +3700,8 @@ const ProgramDetailScreen = () => {
         alternatives: exerciseDraft.alternatives || {},
         measures: exerciseDraft.measures || [],
         objectives: exerciseDraft.objectives || [],
-        name: deleteField(),
-        title: deleteField()
+        name: libraryService.deleteFieldSentinel(),
+        title: libraryService.deleteFieldSentinel()
       };
       
       if (sessionIsLibraryRef && user) {

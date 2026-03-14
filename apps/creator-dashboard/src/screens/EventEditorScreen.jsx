@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  doc, serverTimestamp, Timestamp
-} from 'firebase/firestore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -531,7 +528,7 @@ export default function EventEditorScreen() {
       const eventData = {
         title: title.trim(),
         description: description.trim(),
-        date: date ? Timestamp.fromDate(new Date(date + 'T00:00:00')) : null,
+        date: eventService.makeDateTimestamp(date),
         location: location.trim(),
         access,
         max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
@@ -544,14 +541,12 @@ export default function EventEditorScreen() {
         status: targetStatus,
         fields: validFields,
         image_url: finalImageUrl,
-        updated_at: serverTimestamp(),
       };
 
       if (!isNewDoc) {
         await eventService.updateEvent(evId, eventData);
       } else {
         eventData.creator_id = user.uid;
-        eventData.created_at = serverTimestamp();
         eventData.registration_count = 0;
         await eventService.createEvent(evId, eventData);
         navigate(`/events/${evId}/edit`, { replace: true });

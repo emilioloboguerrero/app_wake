@@ -5,8 +5,27 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
-import { handleAutoLoginFromToken } from '../utils/autoLogin';
+import { auth } from '../config/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 import { ASSET_BASE } from '../config/assets';
+
+const handleAutoLoginFromToken = async (token) => {
+  if (!token) return false;
+  try {
+    const response = await fetch('https://us-central1-wolf-20b8b.cloudfunctions.net/verifyToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    if (!result.success || !result.customToken) return false;
+    await signInWithCustomToken(auth, result.customToken);
+    return true;
+  } catch {
+    return false;
+  }
+};
 import logger from '../utils/logger';
 import './LoginScreen.css';
 
