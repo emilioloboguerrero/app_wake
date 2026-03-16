@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -36,184 +37,35 @@ const SessionsScreen = ({ navigation }) => {
     () => createStyles(screenWidth, screenHeight),
     [screenWidth, screenHeight],
   );
-  const { user: contextUser, loading: authLoading } = useAuth();
-  const [fallbackUser, setFallbackUser] = useState(null);
-  const user = contextUser || fallbackUser;
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [resolvedUserId, setResolvedUserId] = useState(null); // Handles web auth race
-  const lastDocRef = useRef(null); // Track last document for pagination
-  const userResolveTimerRef = useRef(null);
-  const initialLoadAttemptedRef = useRef(false);
+  const { user: contextUser } = useAuth();
+  const user = contextUser || auth.currentUser;
+  const userId = user?.uid;
 
-  React.useEffect(() => {
-    if (!contextUser && Platform.OS === 'web') {
-      const current = auth.currentUser;
-      if (current) {
-        logger.log('📊 SessionsScreen: Using fallback Firebase user (AuthContext not yet set after navigation)');
-        setFallbackUser(current);
-      }
-    }
-  }, [contextUser]);
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ['sessions', userId],
+    queryFn: ({ pageParam = null }) =>
+      exerciseHistoryService.getSessionHistoryPaginated(userId, PAGE_SIZE, pageParam),
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastDoc : undefined,
+    enabled: !!userId,
+    staleTime: 10 * 60 * 1000,
+  });
 
-  const loadSessions = useCallback(async (isInitialLoad = false) => {
-    // Resolve user from context, fallback state, or Firebase auth (web can lag context after route change)
-    const resolvedUser = user || auth.currentUser || (resolvedUserId ? { uid: resolvedUserId } : null);
-    const userId = resolvedUser?.uid;
+  const sessions = useMemo(() => {
+    if (!data) return [];
+    return data.pages
+      .flatMap(page => Object.values(page.sessions || {}))
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  }, [data]);
 
-    if (!userId) {
-      logger.log('⚠️ SessionsScreen: Cannot load sessions - user not available');
-      if (isInitialLoad) {
-        setLoading(false);
-        setHasMore(false);
-      }
-      return;
-    }
-    // On native, wait for AuthContext; on web, load as soon as we have userId (avoids stuck loading after nav from Lab)
-    if (Platform.OS !== 'web' && authLoading) {
-      if (isInitialLoad) {
-        setLoading(false);
-        setHasMore(false);
-      }
-      return;
-    }
-    
-    try {
-      if (isInitialLoad) {
-        setLoading(true);
-        setSessions([]); // Clear existing sessions on initial load
-        lastDocRef.current = null; // Reset pagination
-        setHasMore(true);
-      } else {
-        setLoadingMore(true);
-      }
-      
-      logger.log('📊 Loading sessions for user:', userId, { isInitialLoad, hasLastDoc: !!lastDocRef.current });
-      
-      // Get paginated session history
-      const result = await exerciseHistoryService.getSessionHistoryPaginated(
-        userId,
-        PAGE_SIZE,
-        lastDocRef.current
-      );
-      
-      logger.log('📊 Paginated result received:', {
-        sessionsCount: Object.keys(result.sessions || {}).length,
-        hasMore: result.hasMore,
-        hasLastDoc: !!result.lastDoc
-      });
-      
-      const newSessions = Object.values(result.sessions || {});
-      
-      logger.log('📊 Session history received:', {
-        count: newSessions.length,
-        hasMore: result.hasMore
-      });
-      
-      // Convert to array and sort by date (newest first) - should already be sorted, but ensure
-      const sortedNewSessions = newSessions.sort((a, b) => {
-        const dateA = a.completedAt ? new Date(a.completedAt) : new Date(0);
-        const dateB = b.completedAt ? new Date(b.completedAt) : new Date(0);
-        return dateB - dateA; // Descending order (newest first)
-      });
-      
-      // Append new sessions to existing ones (for pagination)
-      // Use functional update to avoid dependency on sessions.length
-      if (isInitialLoad) {
-        setSessions(sortedNewSessions);
-      } else {
-        setSessions(prev => {
-          const combined = [...prev, ...sortedNewSessions];
-          logger.log('✅ Sessions loaded (pagination):', {
-            newCount: sortedNewSessions.length,
-            previousCount: prev.length,
-            totalCount: combined.length,
-            hasMore: result.hasMore
-          });
-          return combined;
-        });
-      }
-      
-      // Update pagination state
-      lastDocRef.current = result.lastDoc;
-      setHasMore(result.hasMore);
-      
-      if (isInitialLoad) {
-        logger.log('✅ Sessions loaded (initial):', {
-          newCount: sortedNewSessions.length,
-          totalCount: sortedNewSessions.length,
-          hasMore: result.hasMore
-        });
-      }
-    } catch (error) {
-      logger.error('❌ Error loading sessions:', error);
-      logger.error('❌ Error details:', {
-        message: error.message,
-        stack: error.stack
-      });
-      if (isInitialLoad) {
-        setSessions([]); // Set empty array on error for initial load
-      }
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [user?.uid, authLoading]);
-
-  // Load more sessions when reaching end of list
-  const loadMoreSessions = useCallback(() => {
-    // Only load more if user is available, not already loading, and has more to load
-    if (!authLoading && user?.uid && !loadingMore && hasMore && !loading) {
-      logger.log('📊 Loading more sessions...');
-      loadSessions(false);
-    } else {
-      logger.log('📊 Load more skipped:', {
-        authLoading,
-        hasUser: !!user?.uid,
-        loadingMore,
-        hasMore,
-        loading
-      });
-    }
-  }, [authLoading, user?.uid, loadingMore, hasMore, loading, loadSessions]);
-
-  // Trigger initial load as soon as we have a uid from any source (context, fallback, or auth.currentUser).
-  // Reading auth.currentUser inside the effect avoids depending on state updates after navigation (e.g. Lab → Sessions).
-  useEffect(() => {
-    const uid = auth.currentUser?.uid ?? user?.uid ?? resolvedUserId;
-    if (!uid) {
-      if (!authLoading) setLoading(false);
-      return;
-    }
-    if (initialLoadAttemptedRef.current) return;
-    initialLoadAttemptedRef.current = true;
-    logger.log('📊 SessionsScreen: Initial load triggered for uid:', uid, { fromAuth: !!auth.currentUser?.uid, fromUser: !!user?.uid });
-    loadSessions(true);
-  }, [user?.uid, resolvedUserId, authLoading, loadSessions]);
-
-  // Fallback: poll auth.currentUser a few times if we still have no uid (web race / slow restore)
-  useEffect(() => {
-    const uid = auth.currentUser?.uid ?? user?.uid ?? resolvedUserId;
-    if (uid || authLoading) return;
-    let attempts = 0;
-    userResolveTimerRef.current = setInterval(() => {
-      attempts += 1;
-      const current = auth.currentUser;
-      if (current?.uid) {
-        logger.log('📊 SessionsScreen: Resolved user from auth.currentUser (poll):', current.uid);
-        setResolvedUserId(current.uid);
-        clearInterval(userResolveTimerRef.current);
-      } else if (attempts >= 10) {
-        clearInterval(userResolveTimerRef.current);
-        logger.log('⚠️ SessionsScreen: No user after poll retries');
-        setLoading(false);
-        setHasMore(false);
-      }
-    }, 300);
-    return () => clearInterval(userResolveTimerRef.current);
-  }, [authLoading, user?.uid, resolvedUserId]);
+  const loadingMore = isFetchingNextPage;
+  const hasMore = !!hasNextPage;
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -456,7 +308,7 @@ const SessionsScreen = ({ navigation }) => {
             <BottomSpacer />
           </>
         )}
-        onEndReached={loadMoreSessions}
+        onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
         onEndReachedThreshold={0.5} // Trigger when 50% from bottom
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true} // Optimize performance

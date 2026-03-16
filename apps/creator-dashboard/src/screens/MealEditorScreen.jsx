@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -99,33 +100,31 @@ export default function MealEditorScreen() {
   const [mealFormManual, setMealFormManual] = useState({
     name: '', food_id: '', serving_id: '0', units: 1, calories: '', protein: '', carbs: '', fat: '',
   });
-  const [mealLoading, setMealLoading] = useState(isEdit);
   const [isEditingMealName, setIsEditingMealName] = useState(false);
+  const seededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', itemsJson: '', video_url: '' });
   const [mealSortBy, setMealSortBy] = useState('name'); // 'name' | 'calories' | 'protein' | 'carbs' | 'fat'
   const [mealSortMenuOpen, setMealSortMenuOpen] = useState(false);
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
 
+  const { data: mealData, isLoading: mealLoading } = useQuery({
+    queryKey: ['nutrition', 'meal', creatorId, mealId],
+    queryFn: () => nutritionDb.getMealById(creatorId, mealId),
+    enabled: !!mealId && mealId !== 'new' && !!creatorId,
+  });
   useEffect(() => {
-    if (!mealId || mealId === 'new' || !creatorId) {
-      if (!mealId || mealId === 'new') navigate('/nutrition', { replace: true });
-      return;
+    if (!mealId || mealId === 'new') navigate('/nutrition', { replace: true });
+  }, [mealId, navigate]);
+  useEffect(() => {
+    if (mealData && !seededRef.current) {
+      seededRef.current = true;
+      const videoUrl = mealData.video_url ?? mealData.videoUrl ?? '';
+      setMealFormName(mealData.name ?? '');
+      setMealFormItems(Array.isArray(mealData.items) ? mealData.items : []);
+      setMealFormVideoUrl(videoUrl);
+      lastSavedRef.current = { name: mealData.name ?? '', itemsJson: JSON.stringify(mealData.items ?? []), video_url: videoUrl };
     }
-    let cancelled = false;
-    setMealLoading(true);
-    nutritionDb.getMealById(creatorId, mealId).then((meal) => {
-      if (cancelled) return;
-      if (meal) {
-        const videoUrl = meal.video_url ?? meal.videoUrl ?? '';
-        setMealFormName(meal.name ?? '');
-        setMealFormItems(Array.isArray(meal.items) ? meal.items : []);
-        setMealFormVideoUrl(videoUrl);
-        lastSavedRef.current = { name: meal.name ?? '', itemsJson: JSON.stringify(meal.items ?? []), video_url: videoUrl };
-      }
-      setMealLoading(false);
-    }).catch(() => setMealLoading(false));
-    return () => { cancelled = true; };
-  }, [mealId, creatorId, navigate]);
+  }, [mealData]);
 
   useEffect(() => {
     if (!mealId || !creatorId || mealLoading) return;

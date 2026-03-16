@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { queryClient } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import availabilityService from '../services/availabilityService';
@@ -102,20 +104,62 @@ export default function AvailabilityCalendarScreen() {
   const { user } = useAuth();
   const today = useMemo(() => new Date(), []);
   const [currentDate, setCurrentDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const [availability, setAvailability] = useState({ timezone: '', days: {} });
   const [selectedDateStr, setSelectedDateStr] = useState(null);
-  const [slots, setSlots] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [timelineDragOver, setTimelineDragOver] = useState(false);
-  const [bookings, setBookings] = useState([]);
-  const [bookingsError, setBookingsError] = useState(null);
   const [slotDetailModal, setSlotDetailModal] = useState(null); // { slot, booking? }
-  const [clientUserData, setClientUserData] = useState(null);
-  const [clientUserDataError, setClientUserDataError] = useState(null);
   const [callLinkInput, setCallLinkInput] = useState('');
   const [savingCallLink, setSavingCallLink] = useState(false);
+
+  const { data: availability = { timezone: '', days: {} } } = useQuery({
+    queryKey: ['availability', user?.uid],
+    queryFn: () => availabilityService.getAvailability(user.uid),
+    enabled: !!user?.uid,
+  });
+
+  const { data: bookings = [], error: bookingsError } = useQuery({
+    queryKey: ['bookings', user?.uid],
+    queryFn: () => getBookingsForCreator(user.uid, { status: 'scheduled' }),
+    enabled: !!user?.uid,
+  });
+
+  const { data: slots = [], isLoading: loading, error: slotsError } = useQuery({
+    queryKey: ['availability', user?.uid, selectedDateStr],
+    queryFn: () => availabilityService.getDaySlots(user.uid, selectedDateStr),
+    enabled: !!user?.uid && !!selectedDateStr,
+  });
+
+  const slotDetailBookingUserId = slotDetailModal?.booking?.userId;
+  const { data: clientUserData, error: clientUserDataError } = useQuery({
+    queryKey: ['user', slotDetailBookingUserId],
+    queryFn: () => getUser(slotDetailBookingUserId),
+    enabled: !!slotDetailBookingUserId,
+    select: (userDoc) => {
+      if (!userDoc) return null;
+      let age = userDoc.age;
+      if ((age == null || age === '') && userDoc.birthDate) {
+        const bd = userDoc.birthDate?.toDate ? userDoc.birthDate.toDate() : new Date(userDoc.birthDate);
+        if (!Number.isNaN(bd.getTime())) {
+          age = new Date().getFullYear() - bd.getFullYear();
+          const m = new Date().getMonth() - bd.getMonth();
+          if (m < 0 || (m === 0 && new Date().getDate() < bd.getDate())) age--;
+        }
+      }
+      return {
+        displayName: userDoc.displayName || userDoc.name || '',
+        email: userDoc.email || '',
+        age: age ?? null,
+        gender: userDoc.gender || '',
+        country: userDoc.country || '',
+        city: userDoc.city || userDoc.location || '',
+        phoneNumber: userDoc.phoneNumber || '',
+        height: userDoc.height ?? null,
+        bodyweight: userDoc.bodyweight ?? userDoc.weight ?? null,
+        onboardingData: userDoc.onboardingData || null,
+      };
+    },
+  });
   const timelineWrapRef = useRef(null);
 
   const [batchStart, setBatchStart] = useState('12:00');
@@ -126,60 +170,6 @@ export default function AvailabilityCalendarScreen() {
   /** Minutes for the single draggable slot (15–120, step 15). */
   const [dragSlotMinutes, setDragSlotMinutes] = useState(30);
 
-  const loadAvailability = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const avail = await availabilityService.getAvailability(user.uid);
-      setAvailability(avail);
-      return avail;
-    } catch (e) {
-      logger.error(e);
-    }
-  }, [user?.uid]);
-
-  useEffect(() => {
-    loadAvailability();
-  }, [loadAvailability]);
-
-  const loadBookings = useCallback(async () => {
-    if (!user?.uid) return;
-    setBookingsError(null);
-    try {
-      const list = await getBookingsForCreator(user.uid, { status: 'scheduled' });
-      setBookings(list);
-    } catch (e) {
-      logger.error('Error loading bookings:', e);
-      setBookingsError(e?.message || 'Error al cargar reservas');
-      setBookings([]);
-    }
-  }, [user?.uid]);
-
-  useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
-
-  useEffect(() => {
-    if (selectedDateStr && user?.uid) loadBookings();
-  }, [selectedDateStr, user?.uid, loadBookings]);
-
-  const loadSlotsForDay = useCallback(async (dateStr) => {
-    if (!user?.uid || !dateStr) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const daySlots = await availabilityService.getDaySlots(user.uid, dateStr);
-      setSlots(daySlots);
-    } catch (e) {
-      setError(e?.message || 'Error al cargar');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (selectedDateStr) loadSlotsForDay(selectedDateStr);
-    else setSlots([]);
-  }, [selectedDateStr, loadSlotsForDay]);
 
   const handleDayClick = (cell) => {
     setSelectedDateStr(cell.dateStr);
@@ -216,8 +206,8 @@ export default function AvailabilityCalendarScreen() {
         (a, b) => new Date(a.startUtc).getTime() - new Date(b.startUtc).getTime()
       );
       await availabilityService.setDaySlots(user.uid, selectedDateStr, merged, tz);
-      setSlots(merged);
-      await loadAvailability();
+      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, selectedDateStr] });
+      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid] });
     } catch (e) {
       setError(e?.message || 'Error al añadir');
     } finally {
@@ -269,15 +259,15 @@ export default function AvailabilityCalendarScreen() {
           (a, b) => new Date(a.startUtc).getTime() - new Date(b.startUtc).getTime()
         );
         await availabilityService.setDaySlots(user.uid, selectedDateStr, merged, tz);
-        setSlots(merged);
-        await loadAvailability();
+        await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, selectedDateStr] });
+        await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid] });
       } catch (err) {
         setError(err?.message || 'Error al añadir');
       } finally {
         setSaving(false);
       }
     },
-    [selectedDateStr, user?.uid, slots, availability.timezone, loadAvailability]
+    [selectedDateStr, user?.uid, slots, availability.timezone]
   );
 
   const handleTimelineDrop = useCallback(
@@ -369,65 +359,16 @@ export default function AvailabilityCalendarScreen() {
     e.stopPropagation();
     const booking = getBookingForSlot(slot);
     setSlotDetailModal({ slot, booking });
-    setClientUserData(null);
-    setClientUserDataError(null);
     setCallLinkInput(booking?.callLink ?? '');
   }, [getBookingForSlot]);
 
-  // Fetch client user data when modal opens with a booking
-  useEffect(() => {
-    if (!slotDetailModal?.booking?.clientUserId) {
-      setClientUserData(null);
-      setClientUserDataError(null);
-      return;
-    }
-    let cancelled = false;
-    setClientUserDataError(null);
-    getUser(slotDetailModal.booking.clientUserId)
-      .then((userDoc) => {
-        if (cancelled) return;
-        if (!userDoc) {
-          setClientUserData(null);
-          return;
-        }
-        let age = userDoc.age;
-        if ((age == null || age === '') && userDoc.birthDate) {
-          const bd = userDoc.birthDate?.toDate ? userDoc.birthDate.toDate() : new Date(userDoc.birthDate);
-          if (!Number.isNaN(bd.getTime())) {
-            age = new Date().getFullYear() - bd.getFullYear();
-            const m = new Date().getMonth() - bd.getMonth();
-            if (m < 0 || (m === 0 && new Date().getDate() < bd.getDate())) age--;
-          }
-        }
-        setClientUserData({
-          displayName: userDoc.displayName || userDoc.name || '',
-          email: userDoc.email || '',
-          age: age ?? null,
-          gender: userDoc.gender || '',
-          country: userDoc.country || '',
-          city: userDoc.city || userDoc.location || '',
-          phoneNumber: userDoc.phoneNumber || '',
-          height: userDoc.height ?? null,
-          bodyweight: userDoc.bodyweight ?? userDoc.weight ?? null,
-          onboardingData: userDoc.onboardingData || null,
-        });
-      })
-      .catch((err) => {
-        if (!cancelled) setClientUserDataError(err?.message || 'No se pudo cargar la información del cliente');
-      });
-    return () => { cancelled = true; };
-  }, [slotDetailModal?.booking?.clientUserId]);
 
   const handleSaveCallLink = useCallback(async () => {
     if (!slotDetailModal?.booking?.id) return;
     setSavingCallLink(true);
     try {
       await updateBookingCallLink(slotDetailModal.booking.id, callLinkInput);
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === slotDetailModal.booking.id ? { ...b, callLink: callLinkInput.trim() || null } : b
-        )
-      );
+      queryClient.invalidateQueries({ queryKey: ['bookings', user?.uid] });
       setSlotDetailModal((prev) =>
         prev?.booking ? { ...prev, booking: { ...prev.booking, callLink: callLinkInput.trim() || null } } : prev
       );
@@ -647,7 +588,7 @@ export default function AvailabilityCalendarScreen() {
                 {selectedDateStr ? `Horario – ${selectedDateLabel}` : 'Horario del día'}
               </h3>
               {bookingsError && (
-                <p className="availability-bookings-error" title={bookingsError}>
+                <p className="availability-bookings-error" title={bookingsError?.message}>
                   No se pudieron cargar las reservas. Las franjas reservadas podrían no mostrarse.
                 </p>
               )}
@@ -850,7 +791,7 @@ export default function AvailabilityCalendarScreen() {
                     <div className="slot-detail-card slot-detail-card--who">
                   <h3 className="slot-detail-card-title">Quién es</h3>
                   {clientUserDataError && (
-                    <p className="slot-detail-error">{clientUserDataError}</p>
+                    <p className="slot-detail-error">{clientUserDataError?.message || 'No se pudo cargar la información del cliente'}</p>
                   )}
                   {clientUserData && (
                     <div className="slot-detail-who">

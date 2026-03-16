@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -13,38 +14,41 @@ const PlanSessionDetailScreen = () => {
   const { planId, moduleId, sessionId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [showScopeModal, setShowScopeModal] = useState(false);
   const [scopeModalLibraryId, setScopeModalLibraryId] = useState(null);
   const [applyingScope, setApplyingScope] = useState(false);
 
+  const { data: sessionData, isLoading: queryLoading, error: queryError } = useQuery({
+    queryKey: ['plans', planId, 'modules', moduleId, 'sessions'],
+    queryFn: async () => {
+      const sessions = await plansService.getSessionsByModule(planId, moduleId);
+      return sessions.find(s => s.id === sessionId) ?? null;
+    },
+    enabled: !!user && !!planId && !!moduleId && !!sessionId,
+  });
+
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const actionStartedRef = useRef(false);
+  const loading = queryLoading || actionLoading;
+  const error = actionError ?? queryError?.message ?? null;
+
   useEffect(() => {
-    const loadAndDecide = async () => {
-      if (!user || !planId || !moduleId || !sessionId) {
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        setError(null);
-        const sessions = await plansService.getSessionsByModule(planId, moduleId);
-        const sessionData = sessions.find(s => s.id === sessionId) || null;
+    if (queryLoading || sessionData === undefined || actionStartedRef.current) return;
+    if (!sessionData) { setActionError('Sesión no encontrada'); return; }
+    actionStartedRef.current = true;
 
-        if (!sessionData) {
-          setError('Sesión no encontrada');
-          setLoading(false);
-          return;
-        }
+    if (sessionData.useLocalContent) {
+      navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`, { replace: true });
+      return;
+    }
 
-        if (sessionData.useLocalContent) {
-          navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`, { replace: true });
-          return;
-        }
+    const librarySessionId = sessionData.librarySessionRef;
 
-        const librarySessionId = sessionData.librarySessionRef;
-
-        if (!librarySessionId) {
+    if (!librarySessionId) {
+      setActionLoading(true);
+      (async () => {
+        try {
           const librarySession = await libraryService.createLibrarySession(user.uid, {
             title: sessionData.title || 'Sesión',
             image_url: sessionData.image_url || null,
@@ -92,20 +96,19 @@ const PlanSessionDetailScreen = () => {
             replace: true,
             state: { returnTo: `/plans/${planId}` },
           });
-          return;
+        } catch (err) {
+          logger.error('Error loading plan session:', err);
+          setActionError(err.message || 'Error al cargar la sesión');
+        } finally {
+          setActionLoading(false);
         }
+      })();
+      return;
+    }
 
-        setScopeModalLibraryId(librarySessionId);
-        setShowScopeModal(true);
-      } catch (err) {
-        logger.error('Error loading plan session:', err);
-        setError(err.message || 'Error al cargar la sesión');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadAndDecide();
-  }, [user, planId, moduleId, sessionId, navigate]);
+    setScopeModalLibraryId(librarySessionId);
+    setShowScopeModal(true);
+  }, [sessionData, queryLoading, planId, moduleId, sessionId, user, navigate]);
 
   const handleScopeEverywhere = () => {
     if (!scopeModalLibraryId) return;

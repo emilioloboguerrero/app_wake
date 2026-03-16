@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useAuth } from '../contexts/AuthContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
 import logger from '../utils/logger';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import './EventCheckinScreen.css';
 
 // ─── Result states ─────────────────────────────────────────────────
@@ -15,8 +17,6 @@ export default function EventCheckinScreen() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [event, setEvent] = useState(null);
-  const [accessStatus, setAccessStatus] = useState('loading'); // loading | ready | denied
   const [scannerState, setScannerState] = useState('idle'); // idle | scanning | processing
   const [result, setResult] = useState(null); // { type, reg }
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
@@ -26,17 +26,13 @@ export default function EventCheckinScreen() {
   const resetTimerRef = useRef(null);
 
   // ─── Data fetching ───
-  useEffect(() => {
-    if (!user) return;
-    eventService.getEvent(eventId).then(event => {
-      if (!event || event.creator_id !== user.uid) {
-        setAccessStatus('denied');
-        return;
-      }
-      setEvent(event);
-      setAccessStatus('ready');
-    }).catch(() => setAccessStatus('denied'));
-  }, [eventId, user]);
+  const { data: event, isLoading: eventLoading } = useQuery({
+    queryKey: queryKeys.events.detail(eventId),
+    queryFn: () => eventService.getEvent(eventId),
+    enabled: !!user && !!eventId,
+    ...cacheConfig.events,
+  });
+  const accessStatus = eventLoading ? 'loading' : (!event || event.creator_id !== user?.uid) ? 'denied' : 'ready';
 
   useEffect(() => {
     if (!event?.image_url) return;

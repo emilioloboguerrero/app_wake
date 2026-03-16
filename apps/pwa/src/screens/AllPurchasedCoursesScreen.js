@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../config/queryClient';
 import {
   View,
   Text,
@@ -11,12 +13,9 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
-import { isWeb } from '../utils/platform';
 import purchaseService from '../services/purchaseService';
-import consolidatedDataService from '../services/consolidatedDataService';
 import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -35,118 +34,14 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
   const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  const [allCourses, setAllCourses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data: allCourses = [], isLoading: loading, isError } = useQuery({
+    queryKey: queryKeys.user.courses(user?.uid),
+    queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
+    enabled: !!user?.uid,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    if (user?.uid) {
-      logger.log('🔄 AllPurchasedCoursesScreen: useEffect triggered, user.uid:', user.uid);
-      fetchAllCourses();
-    } else {
-      logger.log('⚠️ AllPurchasedCoursesScreen: useEffect triggered but no user.uid');
-    }
-  }, [user]);
-
-  // Refresh when screen comes into focus
-  // On web, useFocusEffect doesn't work (no NavigationContainer), so we use useEffect instead
-  const focusCallback = React.useCallback(() => {
-    if (user?.uid) {
-      logger.log('🔄 AllPurchasedCoursesScreen focused - refreshing...');
-      fetchAllCourses();
-    }
-  }, [user?.uid]);
-
-  // Use platform-specific focus effect
-  // On web, we'll use useEffect; on native, use useFocusEffect
-  // Note: isWeb is constant at module level, so conditional hook call is safe
-  if (!isWeb) {
-    useFocusEffect(focusCallback);
-  } else {
-    // On web, use useEffect since there's no NavigationContainer
-    useEffect(() => {
-      if (user?.uid) {
-        focusCallback();
-      }
-    }, [user?.uid, focusCallback]);
-  }
-
-  const fetchAllCourses = async () => {
-    try {
-      logger.log('🚀 AllPurchasedCoursesScreen.fetchAllCourses: START');
-      setLoading(true);
-      setError(null);
-      logger.log('📚 Fetching ALL purchased courses for user:', user.uid);
-      
-      // Get all courses (including inactive/expired) from purchaseService
-      // This gives us the status information (isActive, isExpired, etc.)
-      const allPurchasedCourses = await purchaseService.getUserPurchasedCourses(user.uid, true);
-      logger.log('✅ AllPurchasedCoursesScreen: Fetched all purchased courses:', allPurchasedCourses.length);
-      logger.log('📋 AllPurchasedCoursesScreen: Course data:', allPurchasedCourses);
-      
-      // Use the same service that MainScreen uses for consistency
-      // This ensures we get the same data structure and course details
-      const result = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
-      logger.log('✅ AllPurchasedCoursesScreen: Consolidated service result:', {
-        coursesCount: result?.courses?.length || 0,
-        hasDownloadedData: !!result?.downloadedData
-      });
-      
-      // Use purchaseService data if available (it has status info)
-      // Otherwise fallback to consolidated service
-      let courses = [];
-      if (allPurchasedCourses.length > 0) {
-        logger.log('✅ AllPurchasedCoursesScreen: Using purchaseService courses');
-        courses = allPurchasedCourses;
-      } else if (result?.courses && result.courses.length > 0) {
-        // Fallback: build course structure from consolidated service
-        logger.log('⚠️ AllPurchasedCoursesScreen: purchaseService returned empty, using consolidated service data');
-        const now = new Date();
-        courses = result.courses.map(course => {
-          // Try to get status from course data if available
-          const isActive = course.status === 'active' || course.isActive === true;
-          const expiresAt = course.expires_at || course.expiresAt;
-          const isNotExpired = expiresAt ? new Date(expiresAt) > now : true;
-          const isCancelled = course.status === 'cancelled';
-          
-          return {
-            id: `${user.uid}-${course.id}`,
-            courseId: course.id,
-            courseData: {
-              status: course.status || 'active',
-              expires_at: expiresAt,
-              purchased_at: course.purchased_at || new Date().toISOString()
-            },
-            courseDetails: course,
-            isActive: isActive && isNotExpired,
-            isExpired: !isNotExpired && !isCancelled,
-            isCompleted: false,
-            status: course.status || 'active',
-            expires_at: expiresAt
-          };
-        });
-      }
-      
-      logger.log('✅ AllPurchasedCoursesScreen: Final courses to display:', courses.length);
-      logger.log('📋 AllPurchasedCoursesScreen: Course data structure:', courses.map(c => ({
-        id: c.id,
-        courseId: c.courseId,
-        title: c.courseDetails?.title,
-        isActive: c.isActive,
-        isExpired: c.isExpired,
-        isCompleted: c.isCompleted,
-        status: c.status
-      })));
-      logger.log('💾 AllPurchasedCoursesScreen: Setting allCourses state with', courses.length, 'courses');
-      setAllCourses(courses);
-      logger.log('✅ AllPurchasedCoursesScreen: setAllCourses called, state should update');
-    } catch (error) {
-      logger.error('❌ Error fetching all purchased courses:', error);
-      setError('Error al cargar tus cursos');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const error = isError ? 'Error al cargar tus cursos' : null;
 
   const handleCoursePress = (purchaseData) => {
     navigation.navigate('CourseDetail', { course: purchaseData.courseDetails });

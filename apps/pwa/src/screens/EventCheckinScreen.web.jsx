@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { useQuery } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,8 +16,6 @@ export default function EventCheckinScreen() {
   const user = contextUser || auth.currentUser;
   const navigate = useNavigate();
 
-  const [event, setEvent] = useState(null);
-  const [accessStatus, setAccessStatus] = useState('loading'); // loading | ready | denied
   const [scannerState, setScannerState] = useState('idle'); // idle | scanning | processing
   const [result, setResult] = useState(null);
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
@@ -27,17 +26,19 @@ export default function EventCheckinScreen() {
   const processingRef = useRef(false);
   const resetTimerRef = useRef(null);
 
-  useEffect(() => {
-    if (!user) return;
-    eventService.getEvent(eventId).then(event => {
-      if (!event || event.creator_id !== user.uid) {
-        setAccessStatus('denied');
-        return;
-      }
-      setEvent(event);
-      setAccessStatus('ready');
-    }).catch(() => setAccessStatus('denied'));
-  }, [eventId, user]);
+  const { data: eventData, isLoading: eventLoading, isError: eventError } = useQuery({
+    queryKey: ['events', eventId],
+    queryFn: () => eventService.getEvent(eventId),
+    enabled: !!user && !!eventId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const event = eventData ?? null;
+  const accessStatus = eventLoading
+    ? 'loading'
+    : (!event || event.creator_id !== user?.uid || eventError)
+      ? 'denied'
+      : 'ready';
 
   useEffect(() => {
     if (!event?.image_url) return;
@@ -168,7 +169,6 @@ export default function EventCheckinScreen() {
 
     setResult(null);
     setScannerState('processing');
-    stopScanner();
 
     try {
       const video = videoRef.current;
@@ -182,6 +182,8 @@ export default function EventCheckinScreen() {
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(video, 0, 0, width, height);
+
+      stopScanner();
 
       let decodedText = null;
 
@@ -347,19 +349,19 @@ export default function EventCheckinScreen() {
                       {result.reg.checked_in_at && (
                         <p style={s.resultSub}>Entró a las {formatCheckinTime(result.reg.checked_in_at)}</p>
                       )}
-                      {result.type === 'unreadable' && (
-                        <>
-                          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="rgba(248,113,113,0.9)" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="15" y1="9" x2="9" y2="15" />
-                            <line x1="9" y1="9" x2="15" y2="15" />
-                          </svg>
-                          <h2 style={s.resultTitle}>No pudimos leer el QR</h2>
-                          <p style={s.resultSub}>
-                            Asegúrate de que esté bien enfocado y ocupa la mayor parte del cuadro.
-                          </p>
-                        </>
-                      )}
+                    </>
+                  )}
+                  {result.type === 'unreadable' && (
+                    <>
+                      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="rgba(248,113,113,0.9)" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="15" y1="9" x2="9" y2="15" />
+                        <line x1="9" y1="9" x2="15" y2="15" />
+                      </svg>
+                      <h2 style={s.resultTitle}>No pudimos leer el QR</h2>
+                      <p style={s.resultSub}>
+                        Asegúrate de que esté bien enfocado y ocupa la mayor parte del cuadro.
+                      </p>
                     </>
                   )}
                   {(result.type === 'invalid' || result.type === 'error') && (

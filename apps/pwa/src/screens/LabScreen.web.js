@@ -190,6 +190,7 @@ function WeightDrumPicker({ value, unit, onChange }) {
   const debounceRef = useRef(null);
   const suppressRef = useRef(false);
   const prevUnitRef = useRef(unit);
+  const userHasScrolled = useRef(false);
 
   const getIdx = useCallback(
     (val) => {
@@ -205,17 +206,17 @@ function WeightDrumPicker({ value, unit, onChange }) {
   );
 
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || value == null || userHasScrolled.current) return;
     suppressRef.current = true;
     containerRef.current.scrollTop = getIdx(value) * DRUM_ITEM_H;
     const t = setTimeout(() => { suppressRef.current = false; }, 300);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [value, getIdx]);
 
   useLayoutEffect(() => {
     if (prevUnitRef.current === unit) return;
     prevUnitRef.current = unit;
+    userHasScrolled.current = false;
     if (!containerRef.current) return;
     suppressRef.current = true;
     containerRef.current.scrollTop = getIdx(value) * DRUM_ITEM_H;
@@ -225,6 +226,7 @@ function WeightDrumPicker({ value, unit, onChange }) {
 
   const handleScroll = () => {
     if (suppressRef.current) return;
+    userHasScrolled.current = true;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (!containerRef.current) return;
@@ -377,11 +379,11 @@ function BodyEntryModal({ visible, onClose, entry, userId, unit, onUnitChange, o
   const fileInputRefs = useRef({});
   const confirmDeleteTimerRef = useRef(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!visible) return;
     if (isEditing && entry) {
       setDateStr(entry.date || todayStr());
-      setWeightKg(entry.weight ?? null);
+      setWeightKg(entry.weight ?? defaultWeightKg ?? 70);
       setNote(entry.note || '');
       setPhotos(entry.photos || []);
       setOriginalPhotos(entry.photos || []);
@@ -812,10 +814,10 @@ function EstadoScreen({
 
   const latestKg = bodyLogEntries.filter(e => e.weight != null).slice(-1)[0]?.weight;
   const latestDisplay = latestKg != null
-    ? (weightUnit === 'lbs' ? Math.round(latestKg * 2.20462 * 10) / 10 : latestKg)
+    ? parseFloat((weightUnit === 'lbs' ? latestKg * 2.20462 : latestKg).toFixed(2))
     : null;
   const goalWeightDisplay = goalWeight != null
-    ? (weightUnit === 'lbs' ? Math.round(goalWeight * 2.20462 * 10) / 10 : goalWeight)
+    ? parseFloat((weightUnit === 'lbs' ? goalWeight * 2.20462 : goalWeight).toFixed(2))
     : null;
   const delta30 = weightStats?.delta30;
 
@@ -927,7 +929,7 @@ function EstadoScreen({
     const cutoffStr = toYYYYMMDD(cutoff);
     return bodyLogEntries
       .filter(e => e.weight != null && e.date >= cutoffStr)
-      .map(e => ({ date: e.date, value: weightUnit === 'lbs' ? Math.round(e.weight * 2.20462 * 10) / 10 : e.weight }));
+      .map(e => ({ date: e.date, value: parseFloat((weightUnit === 'lbs' ? e.weight * 2.20462 : e.weight).toFixed(2)) }));
   }, [bodyLogEntries, weightUnit]);
 
   return (
@@ -950,14 +952,14 @@ function EstadoScreen({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center', marginBottom: proteinAdherence7d ? 14 : 0 }}>
           {/* Left: load */}
           <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '12px 14px' }}>
-            <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Esta semana</div>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Semana</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 3 }}>
               <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>{thisWeekSessions}</span>
               <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>/ {trainingTarget}</span>
             </div>
             <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)' }}>sesiones</div>
             {thisWeekTotalSets > 0 && (
-              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)', marginTop: 3 }}>{thisWeekTotalSets} series totales</div>
+              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)', marginTop: 3 }}>{parseFloat(Number(thisWeekTotalSets).toFixed(2))} series totales</div>
             )}
           </div>
           {/* Center */}
@@ -1094,7 +1096,7 @@ function EstadoScreen({
                   <YAxis domain={['auto', 'auto']} hide />
                   <Tooltip
                     contentStyle={{ background: 'rgba(26,26,26,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.72rem', color: '#fff' }}
-                    formatter={(v) => [`${v} kg`, '1RM est.']}
+                    formatter={(v) => [`${parseFloat(Number(v).toFixed(2))} kg`, '1RM est.']}
                     labelFormatter={() => ''}
                   />
                 </LineChart>
@@ -1151,7 +1153,7 @@ function EstadoScreen({
                   <YAxis domain={['auto', 'auto']} hide />
                   <Tooltip
                     contentStyle={{ background: 'rgba(26,26,26,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.72rem', color: '#fff' }}
-                    formatter={(v) => [`${v} ${weightUnit}`, 'Peso']}
+                    formatter={(v) => [`${parseFloat(Number(v).toFixed(2))} ${weightUnit}`, 'Peso']}
                     labelFormatter={(l) => l}
                   />
                 </LineChart>

@@ -5,27 +5,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
-import { auth } from '../config/firebase';
-import { signInWithCustomToken } from 'firebase/auth';
 import { ASSET_BASE } from '../config/assets';
-
-const handleAutoLoginFromToken = async (token) => {
-  if (!token) return false;
-  try {
-    const response = await fetch('https://us-central1-wolf-20b8b.cloudfunctions.net/verifyToken', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    if (!response.ok) return false;
-    const result = await response.json();
-    if (!result.success || !result.customToken) return false;
-    await signInWithCustomToken(auth, result.customToken);
-    return true;
-  } catch {
-    return false;
-  }
-};
 import logger from '../utils/logger';
 import './LoginScreen.css';
 
@@ -50,45 +30,9 @@ const LoginScreen = () => {
   const [emailError, setEmailError] = useState(null);
   const [passwordError, setPasswordError] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [autoLoginInProgress, setAutoLoginInProgress] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLegalModalVisible, setIsLegalModalVisible] = useState(false);
-
-  useEffect(() => {
-    if (autoLoginInProgress || user) return;
-
-    const urlParams = new URLSearchParams(location.search);
-    const redirectPath = urlParams.get('redirect');
-
-    let token = urlParams.get('token');
-    let fromApp = urlParams.get('fromApp') === 'true';
-
-    if (!token && redirectPath) {
-      const redirectParams = new URLSearchParams(redirectPath.split('?')[1] || '');
-      token = redirectParams.get('token');
-      fromApp = redirectParams.get('fromApp') === 'true' || fromApp;
-    }
-
-    if (token && fromApp) {
-      logger.log('[LoginScreen] Attempting auto-login from token...');
-      setAutoLoginInProgress(true);
-
-      handleAutoLoginFromToken(token)
-        .then((success) => {
-          if (success) {
-            logger.log('[LoginScreen] Auto-login successful');
-          } else {
-            logger.warn('[LoginScreen] Auto-login failed, showing login form');
-            setAutoLoginInProgress(false);
-          }
-        })
-        .catch((error) => {
-          logger.error('[LoginScreen] Auto-login error:', error);
-          setAutoLoginInProgress(false);
-        });
-    }
-  }, [location.search, user]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -321,23 +265,6 @@ const LoginScreen = () => {
   };
 
   const isFormValid = validateEmail(email) && validatePassword(password);
-
-  if (autoLoginInProgress) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <p>Iniciando sesión...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="login-container">

@@ -45,8 +45,6 @@ const ContentHubScreen = () => {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [creatorName, setCreatorName] = useState('');
 
-  const [librarySessions, setLibrarySessions] = useState([]);
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isSessionEditMode, setIsSessionEditMode] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionName, setSessionName] = useState('');
@@ -62,8 +60,6 @@ const ContentHubScreen = () => {
   const [sessionDeleteConfirmation, setSessionDeleteConfirmation] = useState('');
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
-  const [plans, setPlans] = useState([]);
-  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
   const { data: libraries = [], isLoading: librariesLoading } = useQuery({
     queryKey: ['libraries', user?.uid],
@@ -100,50 +96,44 @@ const ContentHubScreen = () => {
   });
 
 
-  // Map: librarySessionId -> plan titles (for showing which plan(s) a session belongs to)
-  const [sessionIdToPlanNames, setSessionIdToPlanNames] = useState({});
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [librarySearchQuery, setLibrarySearchQuery] = useState('');
   const [planSearchQuery, setPlanSearchQuery] = useState('');
 
-  // Load library sessions when sessions tab is active
-  useEffect(() => {
-    const loadSessions = async () => {
-      if (!user || activeTab !== 'sessions') {
-        return;
-      }
-
-      try {
-        setIsLoadingSessions(true);
-        const sessions = await libraryService.getSessionLibrary(user.uid);
-        setLibrarySessions(sessions);
-
-        const plansData = await plansService.getPlansByCreator(user.uid);
-        const map = {};
-        for (const plan of plansData) {
-          const modules = await plansService.getModulesByPlan(plan.id);
-          for (const mod of modules) {
-            const planSessions = await plansService.getSessionsByModule(plan.id, mod.id);
-            for (const ps of planSessions) {
-              if (ps.librarySessionRef) {
-                if (!map[ps.librarySessionRef]) map[ps.librarySessionRef] = [];
-                if (!map[ps.librarySessionRef].includes(plan.title)) {
-                  map[ps.librarySessionRef].push(plan.title || 'Plan sin nombre');
-                }
+  const { data: sessionsQueryData, isLoading: isLoadingSessions } = useQuery({
+    queryKey: ['library', 'sessions', user?.uid],
+    queryFn: async () => {
+      const sessions = await libraryService.getSessionLibrary(user.uid);
+      const plansData = await plansService.getPlansByCreator(user.uid);
+      const map = {};
+      for (const plan of plansData) {
+        const modules = await plansService.getModulesByPlan(plan.id);
+        for (const mod of modules) {
+          const planSessions = await plansService.getSessionsByModule(plan.id, mod.id);
+          for (const ps of planSessions) {
+            if (ps.librarySessionRef) {
+              if (!map[ps.librarySessionRef]) map[ps.librarySessionRef] = [];
+              if (!map[ps.librarySessionRef].includes(plan.title)) {
+                map[ps.librarySessionRef].push(plan.title || 'Plan sin nombre');
               }
             }
           }
         }
-        setSessionIdToPlanNames(map);
-      } catch (err) {
-        logger.error('Error loading library sessions:', err);
-      } finally {
-        setIsLoadingSessions(false);
       }
-    };
+      return { sessions, planMap: map };
+    },
+    enabled: !!user && activeTab === 'sessions',
+    staleTime: 2 * 60 * 1000,
+  });
+  const librarySessions = sessionsQueryData?.sessions ?? [];
+  const sessionIdToPlanNames = sessionsQueryData?.planMap ?? {};
 
-    loadSessions();
-  }, [user, activeTab]);
+  const { data: plans = [], isLoading: isLoadingPlans } = useQuery({
+    queryKey: ['library', 'plans', user?.uid],
+    queryFn: () => plansService.getPlansByCreator(user.uid),
+    enabled: !!user && activeTab === 'contenido',
+    staleTime: 2 * 60 * 1000,
+  });
 
   // When arriving from Programas y clientes (1-on-1 choice), redirect to programs page
   useEffect(() => {
@@ -151,27 +141,6 @@ const ContentHubScreen = () => {
       navigate('/programs', { replace: true, state: { openOneOnOneModal: true } });
     }
   }, [location.state?.openOneOnOneModal, user, navigate]);
-
-  // Load plans when contenido tab is active
-  useEffect(() => {
-    const loadPlans = async () => {
-      if (!user || activeTab !== 'contenido') {
-        return;
-      }
-
-      try {
-        setIsLoadingPlans(true);
-        const plansData = await plansService.getPlansByCreator(user.uid);
-        setPlans(plansData);
-      } catch (err) {
-        logger.error('Error loading plans:', err);
-      } finally {
-        setIsLoadingPlans(false);
-      }
-    };
-
-    loadPlans();
-  }, [user, activeTab]);
 
   const tabs = [
     { 
@@ -356,8 +325,7 @@ const ContentHubScreen = () => {
         });
       }
       
-      const sessions = await libraryService.getSessionLibrary(user.uid);
-      setLibrarySessions(sessions);
+      queryClient.invalidateQueries({ queryKey: ['library', 'sessions', user?.uid] });
       handleCloseSessionModal();
     } catch (err) {
       logger.error('Error creating session:', err);
@@ -397,12 +365,11 @@ const ContentHubScreen = () => {
         return;
       }
 
+      const willBeEmpty = librarySessions.length === 1;
       await libraryService.deleteLibrarySession(user.uid, sessionToDelete.id);
-      const sessions = await libraryService.getSessionLibrary(user.uid);
-      setLibrarySessions(sessions);
+      queryClient.invalidateQueries({ queryKey: ['library', 'sessions', user?.uid] });
       handleCloseSessionDeleteModal();
-      
-      if (sessions.length === 0) {
+      if (willBeEmpty) {
         setIsSessionEditMode(false);
       }
     } catch (err) {

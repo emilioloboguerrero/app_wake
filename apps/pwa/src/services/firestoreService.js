@@ -20,28 +20,6 @@ import {
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import logger from '../utils/logger';
 
-// Helper function to remove undefined values from an object recursively
-function removeUndefinedValues(obj) {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => removeUndefinedValues(item)).filter(item => item !== undefined);
-  }
-  
-  if (typeof obj === 'object') {
-    const cleaned = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value !== undefined) {
-        cleaned[key] = removeUndefinedValues(value);
-      }
-    }
-    return cleaned;
-  }
-  
-  return obj;
-}
 
 class FirestoreService {
   // ============ USER PROFILE ============
@@ -179,34 +157,6 @@ class FirestoreService {
       return [];
     }
   }
-
-  /**
-   * Create a new progress session document
-   * Document ID: {userId}_{courseId}_{sessionId}
-   */
-  async createProgressSession(sessionData) {
-    try {
-      
-      // Clean the data to remove undefined values
-      const cleanSessionData = removeUndefinedValues(sessionData);
-      
-      // Create document ID: userId_courseId_sessionId
-      const docId = `${sessionData.user_id}_${sessionData.course_id}_${sessionData.session_id}`;
-      
-      const progressRef = doc(firestore, 'progress', docId);
-      await setDoc(progressRef, {
-        ...cleanSessionData,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
-      });
-      
-      return docId;
-    } catch (error) {
-      logger.error('❌ Error creating progress session:', error);
-      throw error;
-    }
-  }
-
 
   /**
    * Get a specific progress session by ID from top-level progress collection.
@@ -2438,12 +2388,13 @@ class FirestoreService {
     return snap.docs.some(d => d.id !== excludeUid);
   }
 
-  // ============ REAL-TIME LISTENERS ============
-
-  subscribeToUserDoc(userId, callback, errorCallback) {
-    const userRef = doc(firestore, 'users', userId);
-    return onSnapshot(userRef, callback, errorCallback);
+  async getUserSubscriptions(userId) {
+    const subsRef = collection(firestore, 'users', userId, 'subscriptions');
+    const snap = await getDocs(subsRef);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
+
+  // ============ REAL-TIME LISTENERS ============
 
   subscribeToUserSubscriptions(userId, callback, errorCallback) {
     const subsRef = collection(firestore, 'users', userId, 'subscriptions');

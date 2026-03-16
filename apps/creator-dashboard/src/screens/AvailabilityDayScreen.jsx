@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import availabilityService from '../services/availabilityService';
+import { queryClient } from '../config/queryClient';
 import './AvailabilityDayScreen.css';
 
 const MONTHS = [
@@ -25,11 +27,8 @@ export default function AvailabilityDayScreen() {
   const { date: dateParam } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [slots, setSlots] = useState([]);
-  const [timezone, setTimezone] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const [mutationError, setMutationError] = useState(null);
 
   const [addStart, setAddStart] = useState('09:00');
   const [addEnd, setAddEnd] = useState('12:00');
@@ -38,25 +37,18 @@ export default function AvailabilityDayScreen() {
   const dateStr = dateParam;
   const isValidDate = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
 
-  const loadDay = useCallback(async () => {
-    if (!user?.uid || !dateStr) return;
-    setLoading(true);
-    setError(null);
-    try {
+  const { data: dayData, isLoading: loading, error: dayError } = useQuery({
+    queryKey: ['availability', user?.uid, dateStr],
+    queryFn: async () => {
       const avail = await availabilityService.getAvailability(user.uid);
-      setTimezone(avail.timezone || availabilityService.getCreatorTimezone());
       const daySlots = await availabilityService.getDaySlots(user.uid, dateStr);
-      setSlots(daySlots);
-    } catch (e) {
-      setError(e?.message || 'Error al cargar');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid, dateStr]);
-
-  useEffect(() => {
-    loadDay();
-  }, [loadDay]);
+      return { timezone: avail.timezone || availabilityService.getCreatorTimezone(), slots: daySlots };
+    },
+    enabled: !!user?.uid && !!dateStr,
+  });
+  const slots = dayData?.slots ?? [];
+  const timezone = dayData?.timezone ?? '';
+  const error = mutationError ?? dayError?.message ?? null;
 
   const handleAddSlots = async () => {
     if (!user?.uid || !dateStr) return;
@@ -65,18 +57,18 @@ export default function AvailabilityDayScreen() {
     const startMinutes = sh * 60 + sm;
     const endMinutes = eh * 60 + em;
     if (startMinutes >= endMinutes) {
-      setError('La hora de inicio debe ser anterior a la de fin.');
+      setMutationError('La hora de inicio debe ser anterior a la de fin.');
       return;
     }
     setSaving(true);
-    setError(null);
+    setMutationError(null);
     try {
       await availabilityService.addSlotsForDay(user.uid, dateStr, startMinutes, endMinutes, addDuration, timezone);
-      await loadDay();
+      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, dateStr] });
       setAddStart(addEnd);
       setAddEnd(addEnd === '12:00' ? '13:00' : String(eh + 1).padStart(2, '0') + ':00');
     } catch (e) {
-      setError(e?.message || 'Error al añadir');
+      setMutationError(e?.message || 'Error al añadir');
     } finally {
       setSaving(false);
     }
@@ -86,12 +78,12 @@ export default function AvailabilityDayScreen() {
     if (!user?.uid || !dateStr) return;
     const newSlots = slots.filter((_, i) => i !== index);
     setSaving(true);
-    setError(null);
+    setMutationError(null);
     try {
       await availabilityService.setDaySlots(user.uid, dateStr, newSlots, timezone);
-      setSlots(newSlots);
+      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, dateStr] });
     } catch (e) {
-      setError(e?.message || 'Error al eliminar');
+      setMutationError(e?.message || 'Error al eliminar');
     } finally {
       setSaving(false);
     }

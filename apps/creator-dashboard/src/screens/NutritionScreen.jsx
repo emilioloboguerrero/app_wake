@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
@@ -14,34 +15,30 @@ export default function NutritionScreen() {
   const { user } = useAuth();
   const creatorId = user?.uid ?? '';
 
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('recetas');
 
-  const [meals, setMeals] = useState([]);
-  const [mealsLoading, setMealsLoading] = useState(false);
   const [mealSearchQuery, setMealSearchQuery] = useState('');
   const [isNewMealModalOpen, setIsNewMealModalOpen] = useState(false);
   const [newMealName, setNewMealName] = useState('');
   const [newMealCreating, setNewMealCreating] = useState(false);
 
-  const [plans, setPlans] = useState([]);
-  const [plansLoading, setPlansLoading] = useState(false);
   const [planSearchQuery, setPlanSearchQuery] = useState('');
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planFormName, setPlanFormName] = useState('');
   const [planFormCreating, setPlanFormCreating] = useState(false);
 
-  const loadMeals = useCallback(async () => {
-    if (!creatorId) return;
-    setMealsLoading(true);
-    try {
-      const list = await nutritionDb.getMealsByCreator(creatorId);
-      setMeals(list);
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setMealsLoading(false);
-    }
-  }, [creatorId]);
+  const { data: meals = [], isLoading: mealsLoading } = useQuery({
+    queryKey: ['nutrition', 'meals', creatorId],
+    queryFn: () => nutritionDb.getMealsByCreator(creatorId),
+    enabled: !!creatorId,
+  });
+
+  const { data: plans = [], isLoading: plansLoading } = useQuery({
+    queryKey: ['nutrition', 'plans', creatorId],
+    queryFn: () => nutritionDb.getPlansByCreator(creatorId),
+    enabled: !!creatorId,
+  });
 
   const handleCreateMealAndOpen = async () => {
     const name = newMealName.trim();
@@ -49,6 +46,7 @@ export default function NutritionScreen() {
     setNewMealCreating(true);
     try {
       const mealId = await nutritionDb.createMeal(creatorId, { name, items: [] });
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'meals', creatorId] });
       setIsNewMealModalOpen(false);
       setNewMealName('');
       navigate(`/nutrition/meals/${mealId}`);
@@ -60,28 +58,6 @@ export default function NutritionScreen() {
     }
   };
 
-  const loadPlans = useCallback(async () => {
-    if (!creatorId) return;
-    setPlansLoading(true);
-    try {
-      const list = await nutritionDb.getPlansByCreator(creatorId);
-      setPlans(list);
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setPlansLoading(false);
-    }
-  }, [creatorId]);
-
-  useEffect(() => {
-    if (activeTab === 'recetas') {
-      loadMeals();
-    } else if (activeTab === 'planes') {
-      loadPlans();
-      loadMeals();
-    }
-  }, [activeTab, creatorId, loadMeals, loadPlans]);
-
   async function handleCreatePlanAndOpen() {
     const name = planFormName.trim();
     if (!name || !creatorId) return;
@@ -92,10 +68,10 @@ export default function NutritionScreen() {
         description: '',
         categories: [],
       });
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'plans', creatorId] });
       setIsPlanModalOpen(false);
       setPlanFormName('');
       navigate(`/nutrition/plans/${planId}`);
-      loadPlans();
     } catch (e) {
       logger.error(e);
       alert(e?.message || 'Error al crear el plan');

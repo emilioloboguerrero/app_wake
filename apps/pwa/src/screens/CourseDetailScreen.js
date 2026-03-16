@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { AppState } from 'react-native';
 import {
   View,
@@ -76,7 +77,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [expandedModules, setExpandedModules] = useState(new Set());
   const [processingPurchase, setProcessingPurchase] = useState(false); // Processing purchase flag
   const processingPurchaseRef = useRef(false); // Fix #8: Use ref for timeout
-  const firestoreListenerRef = useRef(null); // Firestore listener reference
   const postPurchaseFlowTriggeredRef = useRef(false); // Prevent duplicate post-purchase flow
   const pendingPostPurchaseRef = useRef(false); // Track pending post-purchase flow
   const postPurchaseTimeoutRef = useRef(null); // Timeout handler for post-purchase flow
@@ -100,6 +100,15 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [emailModalError, setEmailModalError] = useState('');
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
+
+  const effectiveUserUid = (user || auth.currentUser)?.uid;
+  const { data: userDocData } = useQuery({
+    queryKey: ['user', effectiveUserUid],
+    queryFn: () => firestoreService.getUser(effectiveUserUid),
+    enabled: !!effectiveUserUid,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: processingPurchase ? 2000 : false,
+  });
 
   const trialConfig = course?.free_trial || {};
   const trialDurationDays = trialConfig?.duration_days || 0;
@@ -338,6 +347,20 @@ const CourseDetailScreen = ({ navigation, route }) => {
       );
     }
   }, [user, course.id, navigation]);
+
+  useEffect(() => {
+    if (!userDocData || !course.id || !processingPurchase) return;
+    const courseData = userDocData.courses?.[course.id];
+    if (!courseData) return;
+    const ownsCourse = purchaseService.isCourseEntryActive(courseData);
+    if (ownsCourse && !postPurchaseFlowTriggeredRef.current) {
+      if (!readyNotificationSentRef.current) {
+        readyNotificationSentRef.current = true;
+        purchaseEventManager.notifyPurchaseReady(course.id);
+      }
+      handlePostPurchaseFlow();
+    }
+  }, [userDocData, course.id, processingPurchase, handlePostPurchaseFlow]);
 
   const checkCourseOwnership = React.useCallback(async () => {
     // Get user from context or Firebase auth as fallback
@@ -655,124 +678,6 @@ useEffect(() => {
     }
   }, [checkingOwnership, userOwnsCourse, user?.uid, course.id, processingPurchase]);
 
-  // Fix #7: Set up Firestore real-time listener for course ownership (optimized)
-  // This will automatically set up when user becomes available
-  useEffect(() => {
-    // Get user from context or Firebase auth as fallback
-    const effectiveUser = user || auth.currentUser;
-    
-    if (!effectiveUser?.uid || !course.id) {
-      logger.log(`⚠️ [Firestore Listener Setup] Skipping - effectiveUser.uid=${effectiveUser?.uid}, course.id=${course.id}, contextUser=${user?.uid}, firebaseUser=${auth.currentUser?.uid}`);
-      // Clean up any existing listener if user becomes unavailable
-      if (firestoreListenerRef.current) {
-        logger.log(`🧹 [Firestore Listener Setup] Cleaning up listener - user became unavailable`);
-        firestoreListenerRef.current();
-        firestoreListenerRef.current = null;
-      }
-      return;
-    }
-
-    logger.log(`🔍 [Firestore Listener Setup] Setting up listener for course: ${course.id}, user: ${effectiveUser.uid} (fromContext=${!!user}, fromFirebase=${!!auth.currentUser && !user})`);
-    
-    logger.log(`🔍 [Firestore Listener Setup] Creating onSnapshot listener...`);
-    firestoreListenerRef.current = firestoreService.subscribeToUserDoc(
-      effectiveUser.uid,
-      (snapshot) => {
-        logger.log(`🔔 [Firestore Listener] Snapshot received for user: ${effectiveUser.uid}`);
-        if (snapshot.exists()) {
-          const userData = snapshot.data();
-          const userCourses = userData?.courses || {};
-          logger.log(`🔍 [Firestore Listener] User has ${Object.keys(userCourses).length} courses in userData.courses`);
-          const courseData = userCourses[course.id];
-          logger.log(`🔍 [Firestore Listener] Looking for course ${course.id} in userCourses, found: ${!!courseData}`);
-
-          // Fix #7: Only process if course data exists (filter in callback)
-          if (!courseData) {
-            // Course not in user's courses - ensure state reflects this
-            logger.log(`🔍 [Firestore Listener] No course data found for course: ${course.id}, current userOwnsCourse=${userOwnsCourse}`);
-            if (userOwnsCourse) {
-              logger.log('🔄 [Firestore Listener] Course removed from user courses - updating state to false');
-              setUserOwnsCourse(false);
-              setOwnershipReady(false);
-            }
-            return;
-          }
-          
-          logger.log(`🔍 [Firestore Listener] Course data found for course: ${course.id}`);
-
-          // Use the same ownership check logic as checkCourseOwnership for consistency
-          // This properly handles trials (is_trial === true) and null expiration dates
-          logger.log(`🔍 [Firestore Listener] Course data found:`, {
-            status: courseData.status,
-            is_trial: courseData.is_trial,
-            expires_at: courseData.expires_at,
-            expires_at_parsed: courseData.expires_at ? new Date(courseData.expires_at).toISOString() : null,
-            expires_at_now_comparison: courseData.expires_at ? new Date(courseData.expires_at) > new Date() : 'null'
-          });
-          const ownsCourse = purchaseService.isCourseEntryActive(courseData);
-          logger.log(`🔍 [Firestore Listener] isCourseEntryActive result: ${ownsCourse}`);
-
-          // Fix: Always sync ownership state when course is owned
-          // This ensures the button shows correctly even if user already owns the course
-          if (ownsCourse) {
-            if (!readyNotificationSentRef.current) {
-              readyNotificationSentRef.current = true;
-              purchaseEventManager.notifyPurchaseReady(course.id);
-            }
-
-            // Always update state when course is owned (regardless of current state)
-            // This ensures the button shows "Ya tienes este programa" correctly
-            // Only skip if we're currently processing a purchase (let post-purchase flow handle it)
-            const isProcessingPurchase = processingPurchaseRef.current || pendingPostPurchaseRef.current;
-            if (!isProcessingPurchase) {
-              // Not processing purchase - user already owns, so always set both states to true
-              // This fixes the issue where button shows "Comprar" instead of "Ya tienes este programa"
-              // Always update, even if state appears correct, to ensure UI reflects ownership
-              if (!userOwnsCourse || !ownershipReady) {
-                logger.log(`✅ Course ownership confirmed via Firestore listener (sync): userOwnsCourse=${userOwnsCourse} -> true, ownershipReady=${ownershipReady} -> true`);
-              } else {
-                logger.log(`✅ Course ownership already set via Firestore listener: userOwnsCourse=${userOwnsCourse}, ownershipReady=${ownershipReady}`);
-              }
-              // Always set both states to ensure button shows correctly
-              setUserOwnsCourse(true);
-              setOwnershipReady(true);
-            }
-            
-            // If we're processing a purchase, trigger post-purchase flow
-            // Check if we're processing AND course is owned AND haven't triggered yet
-            const shouldTrigger = isProcessingPurchase && !postPurchaseFlowTriggeredRef.current;
-            
-            logger.log(`🔍 Firestore listener check: ownsCourse=${ownsCourse}, userOwnsCourse=${userOwnsCourse}, ownershipReady=${ownershipReady}, isProcessing=${isProcessingPurchase}, alreadyTriggered=${postPurchaseFlowTriggeredRef.current}, shouldTrigger=${shouldTrigger}`);
-            
-            if (shouldTrigger) {
-              logger.log('🔄 Purchase detected via Firestore listener, triggering post-purchase flow...');
-              handlePostPurchaseFlow();
-              return;
-            }
-          } else {
-            // Course is not owned - ensure state reflects this
-            logger.log(`❌ [Firestore Listener] Course NOT owned - ownsCourse=${ownsCourse}, current userOwnsCourse=${userOwnsCourse}`);
-            if (userOwnsCourse) {
-              logger.log('🔄 [Firestore Listener] Course ownership expired or inactive - updating state to false');
-              setUserOwnsCourse(false);
-              setOwnershipReady(false);
-            }
-          }
-        }
-      },
-      (error) => {
-        logger.error('Error in Firestore listener:', error);
-      }
-    );
-
-    // Cleanup listener on unmount
-    return () => {
-      if (firestoreListenerRef.current) {
-        firestoreListenerRef.current();
-        firestoreListenerRef.current = null;
-      }
-    };
-  }, [user?.uid, course.id, userOwnsCourse, ownershipReady, handlePostPurchaseFlow]); // Note: We check auth.currentUser inside the effect
 
   // Handle screen focus changes - pause video when screen loses focus
   // Only needed on native - on web, browser handles this

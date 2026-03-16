@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
   View,
   Text,
@@ -86,70 +88,27 @@ const PRsScreen = ({ navigation, route }) => {
   const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
-  const [estimates, setEstimates] = useState({});
-  const [loading, setLoading] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    logger.log('[PRsScreen] User state:', {
-      hasContextUser: !!contextUser,
-      contextUserId: contextUser?.uid ?? 'null/undefined',
-      hasAuthCurrentUser: !!auth.currentUser,
-      authCurrentUserId: auth.currentUser?.uid ?? 'null/undefined',
-      resolvedHasUser: !!user,
-      resolvedUid: user?.uid ?? 'null/undefined',
-    });
-  }, [contextUser, user]);
-
-  const loadEstimates = useCallback(async () => {
-    if (!user?.uid) {
-      logger.warn('⚠️ PRsScreen: Cannot load estimates - user not available');
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      logger.log('[PRsScreen] loadEstimates called for userId:', user.uid);
-      // Fetch both PRs and exercise history in parallel
-      const [estimates, allExerciseKeys] = await Promise.all([
+  const { data: estimates = {}, isLoading: loading } = useQuery({
+    queryKey: queryKeys.prs.all(user?.uid),
+    queryFn: async () => {
+      logger.log('[PRsScreen] fetching PRs for userId:', user.uid);
+      const [prs, allExerciseKeys] = await Promise.all([
         oneRepMaxService.getEstimatesForUser(user.uid),
-        exerciseHistoryService.getAllExerciseKeysFromExerciseHistory(user.uid)
+        exerciseHistoryService.getAllExerciseKeysFromExerciseHistory(user.uid),
       ]);
-      
-      // Create a merged data structure
-      const mergedData = {};
-      allExerciseKeys.forEach(exerciseKey => {
-        if (estimates[exerciseKey]) {
-          // Exercise has PR - use existing data
-          mergedData[exerciseKey] = estimates[exerciseKey];
-        } else {
-          // Exercise has history but no PR - create placeholder
-          mergedData[exerciseKey] = {
-            current: null, // No weight
-            lastUpdated: 'Historial disponible' // Placeholder
-          };
-        }
+      const merged = {};
+      allExerciseKeys.forEach(key => {
+        merged[key] = prs[key] ?? { current: null, lastUpdated: 'Historial disponible' };
       });
-      
-      setEstimates(mergedData);
-      logger.log('✅ All exercises loaded:', Object.keys(mergedData).length, 'exercises');
-      logger.log('📊 PRs:', Object.keys(estimates).length, '| History only:', allExerciseKeys.length - Object.keys(estimates).length);
-    } catch (error) {
-      logger.error('❌ Error loading exercises:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (user?.uid) {
-      loadEstimates();
-    } else {
-      setLoading(false);
-    }
-  }, [user?.uid, loadEstimates]);
+      logger.log('✅ All exercises loaded:', Object.keys(merged).length);
+      return merged;
+    },
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);

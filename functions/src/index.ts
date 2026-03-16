@@ -160,77 +160,6 @@ function parseExternalReference(reference: string): ParsedReference {
   };
 }
 
-const CHECKOUT_INTENT_COLLECTION = "checkout_intents";
-
-interface CheckoutIntentPayload {
-  externalReference: string;
-  userId: string;
-  userEmail?: string | null;
-  userName?: string | null;
-  courseId: string;
-  courseTitle?: string | null;
-  paymentType: PaymentKind;
-  subscriptionId?: string | null;
-}
-
-async function createCheckoutIntent(
-  payload: CheckoutIntentPayload
-): Promise<void> {
-  const {
-    externalReference,
-    userId,
-    userEmail = null,
-    userName = null,
-    courseId,
-    courseTitle = null,
-    paymentType,
-    subscriptionId = null,
-  } = payload;
-
-  const intentRef = db
-    .collection(CHECKOUT_INTENT_COLLECTION)
-    .doc(externalReference);
-
-  const timestamp = admin.firestore.FieldValue.serverTimestamp();
-
-  await intentRef.set(
-    {
-      userId,
-      userEmail,
-      userName,
-      courseId,
-      courseTitle,
-      paymentType,
-      subscriptionId,
-      status: "pending",
-      state: "pending",
-      startedAt: timestamp,
-      updatedAt: timestamp,
-    },
-    {merge: true}
-  );
-}
-
-async function updateCheckoutIntent(
-  externalReference: string | null | undefined,
-  updates: Record<string, unknown>
-): Promise<void> {
-  if (!externalReference) {
-    return;
-  }
-
-  const intentRef = db
-    .collection(CHECKOUT_INTENT_COLLECTION)
-    .doc(externalReference);
-
-  await intentRef.set(
-    {
-      ...updates,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    {merge: true}
-  );
-}
 
 // Helper: Calculate expiration date from access duration (same as app)
 function calculateExpirationDate(
@@ -362,15 +291,6 @@ export const createPaymentPreference = functions
         return;
       }
 
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data() || {};
-      const userEmail = userData?.email ?? null;
-      const userName =
-        userData?.display_name ??
-        userData?.name ??
-        userData?.fullName ??
-        null;
-
       const externalReference = buildExternalReference(userId, courseId, "otp");
 
       // Create preference
@@ -394,23 +314,6 @@ export const createPaymentPreference = functions
         courseId,
         externalReference,
       });
-
-      try {
-        await createCheckoutIntent({
-          externalReference,
-          userId,
-          userEmail,
-          userName,
-          courseId,
-          courseTitle: course.title || null,
-          paymentType: "otp",
-        });
-      } catch (intentError) {
-        functions.logger.error(
-          "Failed to create checkout intent",
-          intentError
-        );
-      }
 
       response.json({
         success: true,
@@ -510,28 +413,6 @@ export const createSubscriptionCheckout = functions
         );
         functions.logger.info("Subscription ID (preapproval_id):", result.id);
         functions.logger.info("External reference:", externalRef);
-
-        try {
-          await createCheckoutIntent({
-            externalReference: externalRef,
-            userId,
-            userEmail: user?.email ?? payerEmail ?? null,
-            userName:
-              user?.display_name ??
-              user?.name ??
-              user?.fullName ??
-              null,
-            courseId,
-            courseTitle: course.title || null,
-            paymentType: "sub",
-            subscriptionId: result.id,
-          });
-        } catch (intentError) {
-          functions.logger.error(
-            "Failed to create subscription checkout intent",
-            intentError
-          );
-        }
 
         let nextBillingDate: string | null = null;
 
@@ -1089,22 +970,6 @@ export const processPaymentWebhook = functions
             paymentId
           );
           
-          // Only update checkout intent, don't mark as fully processed
-          try {
-            await updateCheckoutIntent(paymentData?.external_reference, {
-              status: paymentData.status,
-              state: paymentData.status,
-              paymentStatus: paymentData.status,
-              paymentId,
-              pendingApprovalAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          } catch (intentUpdateError) {
-            functions.logger.error(
-              "Failed to update checkout intent for pending payment",
-              intentUpdateError
-            );
-          }
-          
           // DON'T mark as processed - allow payment.updated to process when approved
           response.status(200).send("OK");
           return;
@@ -1116,20 +981,6 @@ export const processPaymentWebhook = functions
           status: paymentData?.status || "unknown",
         });
 
-        try {
-          await updateCheckoutIntent(paymentData?.external_reference, {
-            status: paymentData?.status || "failed",
-            state: paymentData?.status || "failed",
-            paymentStatus: paymentData?.status || null,
-            paymentId,
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        } catch (intentUpdateError) {
-          functions.logger.error(
-            "Failed to update checkout intent for non-approved payment",
-            intentUpdateError
-          );
-        }
         response.status(200).send("OK");
         return;
       }
@@ -1373,26 +1224,6 @@ export const processPaymentWebhook = functions
           state: "completed",
         });
 
-        try {
-          await updateCheckoutIntent(paymentData?.external_reference, {
-            status: "completed",
-            state: "completed",
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            paymentId,
-            paymentStatus: paymentData.status,
-            userEmail,
-            userName,
-            courseTitle,
-            subscriptionId:
-              paymentData?.subscription_id ?? paymentData?.preapproval_id ?? null,
-          });
-        } catch (intentUpdateError) {
-          functions.logger.error(
-            "Failed to update checkout intent for subscription renewal",
-            intentUpdateError
-          );
-        }
-
         response.status(200).send("OK");
         return;
       }
@@ -1416,24 +1247,6 @@ export const processPaymentWebhook = functions
           state: "already_owned",
           payment_type: paymentType,
         });
-
-        try {
-          await updateCheckoutIntent(externalReference, {
-            status: "already_owned",
-            state: "already_owned",
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            paymentId,
-            paymentStatus: paymentData.status,
-            userEmail,
-            userName,
-            courseTitle,
-          });
-        } catch (intentUpdateError) {
-          functions.logger.error(
-            "Failed to update checkout intent for already owned course",
-            intentUpdateError
-          );
-        }
 
         response.status(200).send("OK");
         return;
@@ -1461,23 +1274,6 @@ export const processPaymentWebhook = functions
           payment_type: paymentType,
         });
         // Return 200 to prevent retries
-
-        try {
-          await updateCheckoutIntent(externalReference, {
-            status: "failed",
-            state: "failed",
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
-            failureReason: "Course missing access_duration",
-            userEmail,
-            userName,
-            courseTitle,
-          });
-        } catch (intentUpdateError) {
-          functions.logger.error(
-            "Failed to update checkout intent for missing access_duration",
-            intentUpdateError
-          );
-        }
 
         response.status(200).send("OK");
         return;
@@ -1612,31 +1408,6 @@ export const processPaymentWebhook = functions
         );
       });
 
-      try {
-        const completionPayload: Record<string, unknown> = {
-          status: "completed",
-          state: "completed",
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          paymentId,
-          paymentStatus: paymentData.status,
-          userEmail,
-          userName,
-          courseTitle,
-        };
-
-        if (isSubscription) {
-          completionPayload.subscriptionId =
-            paymentData?.subscription_id ?? paymentData?.preapproval_id ?? null;
-        }
-
-        await updateCheckoutIntent(externalReference, completionPayload);
-      } catch (intentUpdateError) {
-        functions.logger.error(
-          "Failed to update checkout intent after completion",
-          intentUpdateError
-        );
-      }
-
       response.status(200).send("OK");
     } catch (error: unknown) {
       const message = toErrorMessage(error);
@@ -1669,23 +1440,6 @@ export const processPaymentWebhook = functions
           functions.logger.error("Error writing error status:", writeError);
         }
 
-        try {
-          const externalReference =
-            request.body?.data?.external_reference ??
-            request.body?.data?.preapproval_id ??
-            null;
-          await updateCheckoutIntent(externalReference, {
-            status: "failed",
-            state: "failed",
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
-            failureReason: message ?? "Unknown error",
-          });
-        } catch (intentError) {
-          functions.logger.error(
-            "Failed to update checkout intent after non-retryable error",
-            intentError
-          );
-        }
         response.status(200).send("OK");
         break;
 
@@ -1864,49 +1618,6 @@ export const updateSubscriptionStatus = functions
     }
   });
 
-export const markStaleCheckoutIntents = functions.pubsub
-  .schedule("every 3 hours")
-  .onRun(async () => {
-    const cutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
-
-    try {
-      const snapshot = await db
-        .collection(CHECKOUT_INTENT_COLLECTION)
-        .where("status", "==", "pending")
-        .where("startedAt", "<", cutoffTimestamp)
-        .limit(200)
-        .get();
-
-      if (snapshot.empty) {
-        functions.logger.info("No stale checkout intents found");
-        return null;
-      }
-
-      const batch = db.batch();
-      snapshot.docs.forEach((docSnap) => {
-        batch.set(
-          docSnap.ref,
-          {
-            status: "abandoned",
-            state: "abandoned",
-            abandonedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          {merge: true}
-        );
-      });
-
-      await batch.commit();
-      functions.logger.info(
-        `Marked ${snapshot.size} checkout intents as abandoned`
-      );
-    } catch (error) {
-      functions.logger.error("Failed to mark stale checkout intents", error);
-    }
-
-    return null;
-  });
 
 /**
  * Lookup user by email or username for creator invite (one-on-one client add).

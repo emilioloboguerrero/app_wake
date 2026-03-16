@@ -1,5 +1,7 @@
 import logger from '../utils/logger';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryClient, queryKeys } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -299,13 +301,10 @@ const LibrarySessionDetailScreen = () => {
 
   const hasClientCopyRef = useRef(false);
   const [hasClientCopy, setHasClientCopy] = useState(false);
-  const [session, setSession] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [availableLibraries, setAvailableLibraries] = useState([]);
   const [availableExercises, setAvailableExercises] = useState([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeId, setActiveId] = useState(null);
   
@@ -406,7 +405,7 @@ const LibrarySessionDetailScreen = () => {
         await libraryService.updateLibrarySession(user.uid, sessionId, { image_url: item.url });
         setHasMadeChanges(true);
       }
-      setSession(prev => (prev ? { ...prev, image_url: item.url } : null));
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
     } catch (err) {
       logger.error('Error updating session image:', err);
       alert('Error al actualizar la imagen.');
@@ -440,134 +439,109 @@ const LibrarySessionDetailScreen = () => {
     }
   }, [effectiveIsClientEdit, effectiveClientSessionId, user, sessionId]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!user || !sessionId) {
-        setLoading(false);
-        return;
-      }
+  const { data: sessionQueryData, isLoading: loading, error: loadError } = useQuery({
+    queryKey: ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
+    queryFn: async () => {
+      if (!user || !sessionId) return null;
 
-      try {
-        setLoading(true);
-        setError(null);
-
-        if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-          const sessions = await plansService.getSessionsByModule(planInstancePlanId, planInstanceModuleId);
-          const sessionDoc = sessions.find((s) => s.id === sessionId) || null;
-          if (!sessionDoc) {
-            setError('Sesión no encontrada');
-            return;
-          }
-          const planExercises = await plansService.getExercisesBySession(planInstancePlanId, planInstanceModuleId, sessionId);
-          const exercisesWithSets = await Promise.all(
-            planExercises.map(async (ex) => {
-              const sets = await plansService.getSetsByExercise(planInstancePlanId, planInstanceModuleId, sessionId, ex.id);
-              return { ...ex, sets: sets || [] };
-            })
-          );
-          const sessionData = { ...sessionDoc, exercises: exercisesWithSets };
-          setSession(sessionData);
-          setExercises((sessionData.exercises || []).map((ex) => ({
-            ...ex,
-            dragId: `session-${ex.id}`,
-            isInSession: true
-          })));
-          const libraries = await libraryService.getLibrariesByCreator(user.uid);
-          setAvailableLibraries(libraries);
-          const iconsMap = {};
-          (libraries || []).forEach((lib) => {
-            iconsMap[lib.id] = lib.icon_url || lib.icon || null;
-          });
-          setLibraryIcons(iconsMap);
-          if (libraries?.length > 0) {
-            setSelectedLibraryId(libraries[0].id);
-            loadExercisesFromLibrary(libraries[0].id, libraries);
-          }
-          return;
-        }
-
-      // Use ref + sessionStorage so we don't overwrite with library when location.state is lost or component remounted
-        const ctx = clientEditContextRef.current;
-        const stored = sessionId ? getStoredClientEditContext(sessionId) : null;
-        const effectiveClientSessionId = clientSessionId ?? ctx.clientSessionId ?? stored?.clientSessionId;
-        const effectiveClientId = clientId ?? ctx.clientId ?? stored?.clientId;
-        const effectiveProgramId = programId ?? ctx.programId ?? stored?.programId;
-        const effectiveWeekKey = weekKey ?? ctx.weekKey ?? stored?.weekKey;
-        const effectiveEditScope = editScope ?? ctx.editScope ?? stored?.editScope;
-        const effectiveIsClientEdit = (effectiveEditScope === 'client') && !!effectiveClientSessionId;
-        const effectiveIsClientPlanEdit = (effectiveEditScope === 'client_plan') && !!effectiveClientId && !!effectiveProgramId && !!effectiveWeekKey;
-
-        let sessionData = null;
-        if (effectiveIsClientPlanEdit) {
-          const planContent = await clientPlanContentService.getClientPlanSessionContent(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessionId);
-          if (planContent?.session) {
-            let exercises = planContent.exercises || [];
-            const sessionFromPlan = planContent.session;
-            const librarySessionRef = sessionFromPlan.librarySessionRef;
-            let libSession = null;
-            if (librarySessionRef && user?.uid) {
-              try {
-                libSession = await libraryService.getLibrarySessionById(user.uid, librarySessionRef);
-                if (libSession?.exercises?.length && exercises.length === 0) {
-                  exercises = libSession.exercises;
-                }
-              } catch (err) {
-                logger.warn('[LibrarySessionDetail] fallback: could not load exercises from library', librarySessionRef, err);
-              }
-            }
-            sessionData = {
-              ...sessionFromPlan,
-              exercises,
-              image_url: sessionFromPlan.image_url ?? libSession?.image_url ?? null,
-              title: sessionFromPlan.title ?? libSession?.title ?? sessionFromPlan.title
-            };
-          }
-        } else if (effectiveIsClientEdit) {
-          sessionData = await clientSessionContentService.getClientSessionContent(effectiveClientSessionId);
-          const hasCopy = !!sessionData;
-          hasClientCopyRef.current = hasCopy;
-          setHasClientCopy(hasCopy);
-        }
-        if (!sessionData) {
-          sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
-        }
-        if (!sessionData) {
-          setError('Sesión no encontrada');
-          return;
-        }
-
-        setSession(sessionData);
-
-        const sessionExercises = (sessionData.exercises || []).map(ex => ({
-          ...ex,
-          dragId: `session-${ex.id}`,
-          isInSession: true
-        }));
-        setExercises(sessionExercises);
-
+      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
+        const sessions = await plansService.getSessionsByModule(planInstancePlanId, planInstanceModuleId);
+        const sessionDoc = sessions.find((s) => s.id === sessionId) || null;
+        if (!sessionDoc) return null;
+        const planExercises = await plansService.getExercisesBySession(planInstancePlanId, planInstanceModuleId, sessionId);
+        const exercisesWithSets = await Promise.all(
+          planExercises.map(async (ex) => {
+            const sets = await plansService.getSetsByExercise(planInstancePlanId, planInstanceModuleId, sessionId, ex.id);
+            return { ...ex, sets: sets || [] };
+          })
+        );
+        const sessionData = { ...sessionDoc, exercises: exercisesWithSets };
         const libraries = await libraryService.getLibrariesByCreator(user.uid);
-        setAvailableLibraries(libraries);
-
-        const iconsMap = {};
-        libraries.forEach(lib => {
-          iconsMap[lib.id] = lib.icon_url || lib.icon || null;
-        });
-        setLibraryIcons(iconsMap);
-
-        if (libraries.length > 0) {
-          setSelectedLibraryId(libraries[0].id);
-          loadExercisesFromLibrary(libraries[0].id, libraries);
-        }
-      } catch (err) {
-        logger.error('Error loading data:', err);
-        setError('Error al cargar los datos');
-      } finally {
-        setLoading(false);
+        return { session: sessionData, libraries, editMode: 'planInstance' };
       }
-    };
 
-    loadData();
-  }, [user, sessionId, isClientEdit, clientSessionId, isClientPlanEdit, clientId, programId, weekKey, editScope, isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId]);
+      // Resolve effective client-edit context from ref/sessionStorage
+      const effClientSessionId = effectiveClientSessionId;
+      const effClientId = effectiveClientId;
+      const effProgramId = effectiveProgramId;
+      const effWeekKey = effectiveWeekKey;
+      const effEditScope = effectiveEditScope;
+      const effIsClientEdit = (effEditScope === 'client') && !!effClientSessionId;
+      const effIsClientPlanEdit = (effEditScope === 'client_plan') && !!effClientId && !!effProgramId && !!effWeekKey;
+
+      if (effIsClientPlanEdit) {
+        const planContent = await clientPlanContentService.getClientPlanSessionContent(effClientId, effProgramId, effWeekKey, sessionId);
+        if (planContent?.session) {
+          let exercises = planContent.exercises || [];
+          const sessionFromPlan = planContent.session;
+          const librarySessionRef = sessionFromPlan.librarySessionRef;
+          let libSession = null;
+          if (librarySessionRef && user?.uid) {
+            try {
+              libSession = await libraryService.getLibrarySessionById(user.uid, librarySessionRef);
+              if (libSession?.exercises?.length && exercises.length === 0) {
+                exercises = libSession.exercises;
+              }
+            } catch (err) {
+              logger.warn('[LibrarySessionDetail] fallback: could not load exercises from library', librarySessionRef, err);
+            }
+          }
+          const clientSession = {
+            ...sessionFromPlan,
+            exercises,
+            image_url: sessionFromPlan.image_url ?? libSession?.image_url ?? null,
+            title: sessionFromPlan.title ?? libSession?.title ?? sessionFromPlan.title
+          };
+          const libraries = await libraryService.getLibrariesByCreator(user.uid);
+          return { session: clientSession, libraries, editMode: 'clientPlan' };
+        }
+      }
+
+      if (effIsClientEdit) {
+        const clientContent = await clientSessionContentService.getClientSessionContent(effClientSessionId);
+        if (clientContent) {
+          const libraries = await libraryService.getLibrariesByCreator(user.uid);
+          return { session: clientContent, libraries, editMode: 'client', hasCopy: true };
+        }
+      }
+
+      // Standard library session
+      const libSession = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      const libraries = await libraryService.getLibrariesByCreator(user.uid);
+      return { session: libSession, libraries, editMode: 'library' };
+    },
+    enabled: !!user && !!sessionId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  });
+
+  const session = sessionQueryData?.session ?? null;
+  const error = loadError?.message ?? (!loading && sessionQueryData === null ? 'Sesión no encontrada' : null);
+
+  const sessionDataSeededRef = useRef(false);
+  useEffect(() => {
+    if (!sessionQueryData || sessionDataSeededRef.current) return;
+    sessionDataSeededRef.current = true;
+    const { session: s, libraries, hasCopy } = sessionQueryData;
+    if (!s) return;
+    if (hasCopy !== undefined) {
+      hasClientCopyRef.current = hasCopy;
+      setHasClientCopy(hasCopy);
+    }
+    setExercises((s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true })));
+    if (libraries) {
+      setAvailableLibraries(libraries);
+      const iconsMap = {};
+      (libraries || []).forEach((lib) => { iconsMap[lib.id] = lib.icon_url || lib.icon || null; });
+      setLibraryIcons(iconsMap);
+      if (libraries.length > 0) {
+        setSelectedLibraryId(libraries[0].id);
+        loadExercisesFromLibrary(libraries[0].id, libraries);
+      }
+    }
+  }, [sessionQueryData]);
 
   const loadExercisesFromLibrary = useCallback(async (libraryId, libraries = null) => {
     if (!libraryId) return;
@@ -2800,11 +2774,8 @@ const LibrarySessionDetailScreen = () => {
                       hasClientCopyRef.current = false;
                       setHasClientCopy(false);
                       if (sessionId) setStoredClientEditContext(sessionId, null);
-                      const lib = await libraryService.getLibrarySessionById(user.uid, sessionId);
-                      if (lib) {
-                        setSession(lib);
-                        setExercises((lib.exercises || []).map(ex => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true })));
-                      }
+                      sessionDataSeededRef.current = false;
+                      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
                     } catch (err) {
                       logger.error('Error reverting to library:', err);
                       alert('Error al restablecer. Intenta de nuevo.');

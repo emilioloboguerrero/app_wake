@@ -617,34 +617,6 @@ class ExerciseHistoryService {
   }
 
   /**
-   * Get all exercise keys that have been completed (from exercise history directly)
-   * @param {string} userId - User ID
-   * @returns {Array} - Array of unique exercise keys
-   */
-  async getAllExerciseKeysFromExerciseHistory(userId) {
-    try {
-      logger.log('📊 Getting all exercise keys from exercise history for user:', userId);
-      
-      // Get all exercise history documents directly
-      const exerciseHistoryRef = collection(firestore, 'users', userId, 'exerciseHistory');
-      const querySnapshot = await getDocs(exerciseHistoryRef);
-      
-      // Extract exercise keys directly from exercise history
-      const exerciseKeys = [];
-      querySnapshot.forEach((doc) => {
-        const exerciseKey = doc.id; // Document ID is the exercise key
-        exerciseKeys.push(exerciseKey);
-      });
-      
-      logger.log('✅ Found', exerciseKeys.length, 'unique exercise keys from exercise history');
-      return exerciseKeys;
-    } catch (error) {
-      logger.error('❌ Error getting exercise keys from exercise history:', error);
-      return [];
-    }
-  }
-
-  /**
    * Get all exercise keys that have been completed (from session history)
    * @param {string} userId - User ID
    * @returns {Array} - Array of unique exercise keys

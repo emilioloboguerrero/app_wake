@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import programService from '../services/programService';
 import './ProductsScreen.css';
@@ -24,7 +25,7 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
   }, [location.pathname, location.key, location.state]);
 
   const { data: allPrograms = [], isLoading } = useQuery({
-    queryKey: ['programs', user?.uid],
+    queryKey: user ? queryKeys.programs.byCreator(user.uid) : ['programs', 'none'],
     queryFn: async () => {
       if (!user) return [];
       return await programService.getProgramsByCreator(user.uid);

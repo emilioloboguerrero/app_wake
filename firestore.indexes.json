@@ -92,6 +92,14 @@
       ]
     },
     {
+      "collectionGroup": "sessionHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "courseId", "order": "ASCENDING"},
+        {"fieldPath": "completedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "diary",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

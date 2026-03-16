@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../config/queryClient';
 import {
   SafeAreaView,
   ScrollView,
@@ -51,31 +53,6 @@ const SubscriptionsScreen = ({ navigation }) => {
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
   const user = contextUser || auth.currentUser;
   
-  // Log user state when component mounts and when user changes
-  useEffect(() => {
-    logger.log('🔍 SubscriptionsScreen: Component mounted/updated');
-    logger.log('🔍 SubscriptionsScreen: User from useAuth():', {
-      hasContextUser: !!contextUser,
-      contextUserId: contextUser?.uid || 'NO_UID',
-      hasFirebaseUser: !!auth.currentUser,
-      firebaseUserId: auth.currentUser?.uid || 'NO_UID',
-      hasEffectiveUser: !!user,
-      effectiveUserId: user?.uid || 'NO_UID',
-      userEmail: user?.email || 'NO_EMAIL',
-      userDisplayName: user?.displayName || 'NO_DISPLAY_NAME',
-      userProviderId: user?.providerData?.[0]?.providerId || 'NO_PROVIDER',
-      fullUserObject: user ? {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        emailVerified: user.emailVerified,
-        providerId: user.providerData?.[0]?.providerId
-      } : null
-    });
-  }, [user, contextUser]);
-  
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState({});
   const [isInfoModalVisible, setInfoModalVisible] = useState(false);
   const [showCancelSurvey, setShowCancelSurvey] = useState(false);
@@ -100,62 +77,16 @@ const SubscriptionsScreen = ({ navigation }) => {
     createInitialSurveyAnswers,
   );
 
-  // Load all subscriptions from subscriptions collection (primary source)
-  useEffect(() => {
-    logger.log('🔄 SubscriptionsScreen: useEffect triggered for subscriptions loading');
-    logger.log('🔄 SubscriptionsScreen: User check - hasUser:', !!user, 'hasUid:', !!user?.uid);
-    
-    if (!user?.uid) {
-      logger.warn('⚠️ SubscriptionsScreen: No user or user.uid, setting empty subscriptions');
-      setSubscriptions([]);
-      setLoading(false);
-      return;
-    }
+  const { data: rawSubscriptions = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.user.subscriptions(user?.uid),
+    queryFn: () => firestoreService.getUserSubscriptions(user.uid),
+    enabled: !!user?.uid,
+    staleTime: 2 * 60 * 1000,
+  });
 
-    logger.log('✅ SubscriptionsScreen: User.uid found:', user.uid);
-    logger.log('✅ SubscriptionsScreen: Setting up Firestore listener for user:', user.uid);
-    
-    const unsubscribe = firestoreService.subscribeToUserSubscriptions(
-      user.uid,
-      async (snapshot) => {
-        logger.log('📥 SubscriptionsScreen: Firestore snapshot received');
-        logger.log('📥 SubscriptionsScreen: Snapshot size:', snapshot.size, 'docs');
-        logger.log('📥 SubscriptionsScreen: User.uid used in query:', user.uid);
-        
-        const allItems = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
-
-        logger.log('📥 SubscriptionsScreen: All items from Firestore:', allItems.length);
-
-        // Filter only MercadoPago subscriptions
-        const mercadopagoItems = allItems
-          .filter((sub) => !sub.type || sub.type === 'mercadopago')
-          .map((sub) => ({
-            ...sub,
-            type: 'mercadopago',
-          }));
-
-        logger.log('✅ SubscriptionsScreen: MercadoPago subscriptions filtered:', mercadopagoItems.length);
-        logger.log('✅ SubscriptionsScreen: Setting subscriptions state');
-        
-        setSubscriptions(mercadopagoItems);
-        
-        setLoading(false);
-      },
-      (error) => {
-        logger.error('Error loading subscriptions:', error);
-        setLoading(false);
-        Alert.alert(
-          'Error',
-          'No se pudieron cargar tus suscripciones. Intenta más tarde.',
-        );
-      },
-    );
-
-    return () => unsubscribe();
-  }, [user?.uid]);
+  const subscriptions = rawSubscriptions
+    .filter((sub) => !sub.type || sub.type === 'mercadopago')
+    .map((sub) => ({ ...sub, type: 'mercadopago' }));
 
   const filteredSubscriptions = useMemo(() => {
     const allowedStatuses = new Set(['active', 'authorized', 'cancelled', 'expired']);

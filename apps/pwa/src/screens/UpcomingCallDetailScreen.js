@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   View,
   StyleSheet,
@@ -67,85 +68,51 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
     ]).start();
   }, []);
 
-  const [loading, setLoading] = useState(!paramBooking && !!bookingId);
-  const [error, setError] = useState(null);
-  const [booking, setBooking] = useState(paramBooking || null);
-  const [creatorName, setCreatorName] = useState(paramCreatorName || null);
-  const [creatorProfileUrl, setCreatorProfileUrl] = useState(null);
-  const [courseName, setCourseName] = useState(paramCourse?.name || paramCourse?.title || null);
-  const [courseImageUrl, setCourseImageUrl] = useState(paramCourse?.image_url || paramCourse?.imageUrl || null);
   const [copied, setCopied] = useState(false);
 
-  const callLink = booking?.callLink && String(booking.callLink).trim() ? String(booking.callLink).trim() : null;
-
-  const loadBookingAndRelated = useCallback(async () => {
-    if (paramBooking) {
-      setBooking(paramBooking);
-      setCreatorName(paramCreatorName || null);
-      setCourseName(paramCourse?.name || paramCourse?.title || null);
-      setCourseImageUrl(paramCourse?.image_url || paramCourse?.imageUrl || null);
-      if (paramBooking.creatorId) {
-        try {
-          const url = await profilePictureService.getProfilePictureUrl(paramBooking.creatorId);
-          setCreatorProfileUrl(url);
-        } catch {
-          // ignore
+  const { data, isLoading: loading, isError, error: fetchError } = useQuery({
+    queryKey: ['booking', bookingId ?? 'from-params', paramBooking?.id],
+    queryFn: async () => {
+      if (paramBooking) {
+        let creatorProfileUrl = null;
+        if (paramBooking.creatorId) {
+          creatorProfileUrl = await profilePictureService.getProfilePictureUrl(paramBooking.creatorId).catch(() => null);
         }
+        return {
+          booking: paramBooking,
+          creatorName: paramCreatorName || null,
+          courseName: paramCourse?.name || paramCourse?.title || null,
+          courseImageUrl: paramCourse?.image_url || paramCourse?.imageUrl || null,
+          creatorProfileUrl,
+        };
       }
-      setLoading(false);
-      return;
-    }
-    if (!bookingId) {
-      setLoading(false);
-      setError('No hay datos de la reserva.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
+      if (!bookingId) throw new Error('No hay datos de la reserva.');
       const b = await getBookingById(bookingId);
-      if (!b) {
-        setError('No se encontró la reserva o ya ha pasado.');
-        setBooking(null);
-        setLoading(false);
-        return;
-      }
-      setBooking(b);
-      let cn = null;
-      let cName = null;
-      let cImg = null;
+      if (!b) throw new Error('No se encontró la reserva o ya ha pasado.');
+      let cn = null, cName = null, cImg = null, creatorProfileUrl = null;
       if (b.courseId) {
-        try {
-          const course = await firestoreService.getCourse(b.courseId);
-          cn = course?.creatorName || course?.creator_name || null;
-          cName = course?.name || course?.title || null;
-          cImg = course?.image_url || course?.imageUrl || null;
-        } catch {
-          // ignore
-        }
+        const course = await firestoreService.getCourse(b.courseId).catch(() => null);
+        cn = course?.creatorName || course?.creator_name || null;
+        cName = course?.name || course?.title || null;
+        cImg = course?.image_url || course?.imageUrl || null;
       }
-      setCreatorName(cn);
-      setCourseName(cName);
-      setCourseImageUrl(cImg);
       if (b.creatorId) {
-        try {
-          const url = await profilePictureService.getProfilePictureUrl(b.creatorId);
-          setCreatorProfileUrl(url);
-        } catch {
-          // ignore
-        }
+        creatorProfileUrl = await profilePictureService.getProfilePictureUrl(b.creatorId).catch(() => null);
       }
-    } catch (e) {
-      setError(e?.message || 'Error al cargar la reserva.');
-      setBooking(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [paramBooking, paramCreatorName, paramCourse, bookingId]);
+      return { booking: b, creatorName: cn, courseName: cName, courseImageUrl: cImg, creatorProfileUrl };
+    },
+    enabled: !!paramBooking || !!bookingId,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    loadBookingAndRelated();
-  }, [loadBookingAndRelated]);
+  const booking = data?.booking ?? null;
+  const creatorName = data?.creatorName ?? null;
+  const creatorProfileUrl = data?.creatorProfileUrl ?? null;
+  const courseName = data?.courseName ?? null;
+  const courseImageUrl = data?.courseImageUrl ?? null;
+  const error = isError ? (fetchError?.message || 'Error al cargar la reserva.') : null;
+
+  const callLink = booking?.callLink && String(booking.callLink).trim() ? String(booking.callLink).trim() : null;
 
   const handleCopyLink = useCallback(async () => {
     if (!callLink) return;

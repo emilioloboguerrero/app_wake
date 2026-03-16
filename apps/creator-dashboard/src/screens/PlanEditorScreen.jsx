@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -171,7 +172,6 @@ export default function PlanEditorScreen() {
   const isAssignmentScope = editScope === 'assignment' && assignmentId;
 
   const [planName, setPlanName] = useState('');
-  const [planLoading, setPlanLoading] = useState(true);
   const [dailyCalories, setDailyCalories] = useState('');
   const [dailyProtein, setDailyProtein] = useState('');
   const [dailyCarbs, setDailyCarbs] = useState('');
@@ -179,6 +179,7 @@ export default function PlanEditorScreen() {
   /** 'balanced' | 'high_protein' | 'low_carb' | 'keto' | 'custom'. When not 'custom', grams are derived from calories + preset. */
   const [distributionPreset, setDistributionPreset] = useState('balanced');
   const [categories, setCategories] = useState(() => DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i)));
+  const seededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', macros: '', categoriesJson: '' });
   const [categoryEditModal, setCategoryEditModal] = useState({ open: false, categoryIndex: -1, label: '', confirmingDelete: false });
   const [deleteOptionModal, setDeleteOptionModal] = useState({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 });
@@ -210,71 +211,66 @@ export default function PlanEditorScreen() {
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
   useEffect(() => {
-    if (!planId || !creatorId) {
-      navigate('/nutrition', { replace: true });
-      return;
-    }
-    if (isAssignmentScope && !assignmentId) {
-      navigate(returnTo || '/nutrition', { replace: true });
-      return;
-    }
-    let cancelled = false;
-    setPlanLoading(true);
-    (async () => {
-      try {
-        const mealsList = await nutritionDb.getMealsByCreator(creatorId);
-        if (cancelled) return;
-        setMeals(mealsList || []);
+    if (!planId || !creatorId) navigate('/nutrition', { replace: true });
+    else if (isAssignmentScope && !assignmentId) navigate(returnTo || '/nutrition', { replace: true });
+  }, [planId, creatorId, isAssignmentScope, assignmentId, navigate, returnTo]);
 
-        let plan = null;
-        if (isAssignmentScope) {
-          const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
-          if (cancelled) return;
-          if (copy) {
-            plan = copy;
-          } else {
-            const effectivePlanId = assignmentPlanId || planId;
-            plan = await nutritionDb.getPlanById(creatorId, effectivePlanId);
-          }
-        } else {
-          plan = await nutritionDb.getPlanById(creatorId, planId);
-        }
-        if (cancelled) return;
-        if (plan) {
-          setPlanName(plan.name ?? '');
-          const cal = plan.daily_calories != null ? String(plan.daily_calories) : '';
-          const p = plan.daily_protein_g != null ? String(plan.daily_protein_g) : '';
-          const c = plan.daily_carbs_g != null ? String(plan.daily_carbs_g) : '';
-          const f = plan.daily_fat_g != null ? String(plan.daily_fat_g) : '';
-          setDailyCalories(cal);
-          setDailyProtein(p);
-          setDailyCarbs(c);
-          setDailyFat(f);
-          const inferred = inferPresetFromGrams(
-            plan.daily_calories ?? 0,
-            plan.daily_protein_g,
-            plan.daily_carbs_g,
-            plan.daily_fat_g
-          );
-          setDistributionPreset(inferred);
-          const cats = Array.isArray(plan.categories) && plan.categories.length > 0
-            ? plan.categories.map((c, i) => normalizeCategory(c, i))
-            : DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i));
-          setCategories(cats);
-          lastSavedRef.current = {
-            name: plan.name ?? '',
-            macros: JSON.stringify({ cal: plan.daily_calories, p: plan.daily_protein_g, c: plan.daily_carbs_g, f: plan.daily_fat_g }),
-            categoriesJson: JSON.stringify(cats),
-          };
-        }
-      } catch (e) {
-        logger.error(e);
-      } finally {
-        if (!cancelled) setPlanLoading(false);
+  const { data: mealsData } = useQuery({
+    queryKey: ['nutrition', 'meals', creatorId],
+    queryFn: () => nutritionDb.getMealsByCreator(creatorId),
+    enabled: !!creatorId,
+  });
+
+  const { data: planData, isLoading: planLoading } = useQuery({
+    queryKey: isAssignmentScope
+      ? ['nutrition', 'plan', 'assignment', assignmentId]
+      : ['nutrition', 'plan', creatorId, planId],
+    queryFn: async () => {
+      if (isAssignmentScope) {
+        const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
+        if (copy) return copy;
+        const effectivePlanId = assignmentPlanId || planId;
+        return nutritionDb.getPlanById(creatorId, effectivePlanId);
       }
-    })();
-    return () => { cancelled = true; };
-  }, [planId, creatorId, navigate, isAssignmentScope, assignmentId, assignmentPlanId, returnTo]);
+      return nutritionDb.getPlanById(creatorId, planId);
+    },
+    enabled: !!planId && !!creatorId && (!isAssignmentScope || !!assignmentId),
+  });
+
+  useEffect(() => {
+    if (mealsData) setMeals(mealsData);
+  }, [mealsData]);
+
+  useEffect(() => {
+    if (planData && !seededRef.current) {
+      seededRef.current = true;
+      setPlanName(planData.name ?? '');
+      const cal = planData.daily_calories != null ? String(planData.daily_calories) : '';
+      const p = planData.daily_protein_g != null ? String(planData.daily_protein_g) : '';
+      const c = planData.daily_carbs_g != null ? String(planData.daily_carbs_g) : '';
+      const f = planData.daily_fat_g != null ? String(planData.daily_fat_g) : '';
+      setDailyCalories(cal);
+      setDailyProtein(p);
+      setDailyCarbs(c);
+      setDailyFat(f);
+      const inferred = inferPresetFromGrams(
+        planData.daily_calories ?? 0,
+        planData.daily_protein_g,
+        planData.daily_carbs_g,
+        planData.daily_fat_g
+      );
+      setDistributionPreset(inferred);
+      const cats = Array.isArray(planData.categories) && planData.categories.length > 0
+        ? planData.categories.map((c, i) => normalizeCategory(c, i))
+        : DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i));
+      setCategories(cats);
+      lastSavedRef.current = {
+        name: planData.name ?? '',
+        macros: JSON.stringify({ cal: planData.daily_calories, p: planData.daily_protein_g, c: planData.daily_carbs_g, f: planData.daily_fat_g }),
+        categoriesJson: JSON.stringify(cats),
+      };
+    }
+  }, [planData]);
 
   // When calories or distribution preset change (and not custom), recompute macro grams.
   useEffect(() => {

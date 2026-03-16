@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { queryClient } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import PlanStructureSidebar from '../components/PlanStructureSidebar';
 import PlanWeeksGrid from '../components/PlanWeeksGrid';
@@ -21,9 +23,6 @@ const PlanDetailScreen = () => {
   const { planId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [plan, setPlan] = useState(null);
-  const [loading, setLoading] = useState(planId === 'new' ? false : true);
-  const [error, setError] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [planTitle, setPlanTitle] = useState('');
   const [planDescription, setPlanDescription] = useState('');
@@ -45,49 +44,48 @@ const PlanDetailScreen = () => {
 
   const isNew = planId === 'new';
 
-  const loadModulesWithSessions = async () => {
-    if (!planId) return;
-    const mods = await plansService.getModulesByPlan(planId);
-    const withSessions = await Promise.all(
-      mods.map(async (m) => {
-        const sessions = await plansService.getSessionsByModule(planId, m.id);
-        return { ...m, sessions };
-      })
-    );
-    setModulesWithSessions(withSessions);
-  };
+  const { data: plan, isLoading: planLoading, error: planError } = useQuery({
+    queryKey: ['plans', planId],
+    queryFn: () => plansService.getPlanById(planId),
+    enabled: !!user && !!planId && planId !== 'new',
+  });
+
+  const { data: modulesData, isLoading: modulesLoading } = useQuery({
+    queryKey: ['plans', planId, 'modules'],
+    queryFn: async () => {
+      let mods = await plansService.getModulesByPlan(planId);
+      if (mods.length === 0) {
+        await plansService.createModule(planId, 'Semana 1', 0);
+        mods = await plansService.getModulesByPlan(planId);
+      }
+      return await Promise.all(
+        mods.map(async (m) => {
+          const sessions = await plansService.getSessionsByModule(planId, m.id);
+          return { ...m, sessions };
+        })
+      );
+    },
+    enabled: !!user && !!planId && planId !== 'new',
+  });
+
+  const loading = planLoading || modulesLoading;
+  const error = planError?.message ?? null;
+
+  const planSeededRef = useRef(false);
+  useEffect(() => {
+    if (plan && !planSeededRef.current) {
+      planSeededRef.current = true;
+      setPlanTitle(plan.title || '');
+      setPlanDescription(plan.description || '');
+      setPlanDiscipline(plan.discipline || 'Fuerza');
+    }
+  }, [plan]);
 
   useEffect(() => {
-    if (!user || !planId) return;
-    if (planId === 'new') {
-      setPlan(null);
-      setLoading(false);
-      return;
+    if (modulesData) {
+      setModulesWithSessions(modulesData);
     }
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const p = await plansService.getPlanById(planId);
-        setPlan(p);
-        if (p) {
-          setPlanTitle(p.title || '');
-          setPlanDescription(p.description || '');
-          setPlanDiscipline(p.discipline || 'Fuerza');
-        }
-        let mods = await plansService.getModulesByPlan(planId);
-        if (mods.length === 0) {
-          await plansService.createModule(planId, 'Semana 1', 0);
-        }
-        await loadModulesWithSessions();
-      } catch (err) {
-        setError(err.message || 'Error al cargar el plan');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [user, planId]);
+  }, [modulesData]);
 
   const handleAddWeek = async () => {
     if (!planId) return;
@@ -99,7 +97,7 @@ const PlanDetailScreen = () => {
       const nextOrder = maxOrder + 1;
       const nextNum = nextOrder + 1;
       await plansService.createModule(planId, `Semana ${nextNum}`, nextOrder);
-      await loadModulesWithSessions();
+      await queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
       setHasMadeChanges(true);
     } catch (err) {
       alert(err.message || 'Error al añadir semana');
@@ -134,8 +132,8 @@ const PlanDetailScreen = () => {
         description: planDescription.trim(),
         discipline: planDiscipline,
       });
-      setPlan({ ...plan, title: planTitle, description: planDescription, discipline: planDiscipline });
       setIsEditModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['plans', planId] });
       setHasMadeChanges(true);
     } catch (err) {
       alert(err.message || 'Error al guardar');
@@ -151,7 +149,7 @@ const PlanDetailScreen = () => {
 
   const handleDeleteWeek = () => {
     setHasMadeChanges(true);
-    loadModulesWithSessions();
+    queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
   };
 
   const weekVolumeWeekOptions = React.useMemo(
@@ -376,7 +374,7 @@ const PlanDetailScreen = () => {
     );
   }
 
-  if (error || !plan) {
+  if (error || (!loading && !plan)) {
     return (
       <DashboardLayout screenName="Plan">
         <div className="plan-page">

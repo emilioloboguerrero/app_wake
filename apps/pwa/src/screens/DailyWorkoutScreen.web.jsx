@@ -57,8 +57,6 @@ const DailyWorkoutScreen = () => {
     };
   }, []);
 
-  const isOneOnOne = course?.deliveryType === 'one_on_one';
-
   const currentMonthMeta = React.useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -91,6 +89,35 @@ const DailyWorkoutScreen = () => {
   const initialPlannedDates = prefetchedDates?.planned ?? [];
   const initialEntriesDates = prefetchedDates?.entries ?? [];
   const initialDataMonthKey = prefetchedDates ? currentMonthMeta.key : null;
+
+  const courseFromState = location.state?.course;
+
+  const { data: course, isLoading: loading } = useQuery({
+    queryKey: ['programs', courseId],
+    queryFn: async () => {
+      if (courseFromState) {
+        const rawCourse = courseFromState;
+        return {
+          id: rawCourse.id || rawCourse.courseId || courseId,
+          courseId: rawCourse.courseId || rawCourse.id || courseId,
+          title: rawCourse.title || 'Programa sin título',
+          ...rawCourse,
+        };
+      }
+      const courseData = await firestoreService.getCourse(courseId);
+      if (!courseData) return null;
+      return {
+        id: courseData.id || courseId,
+        courseId: courseData.id || courseId,
+        title: courseData.title || 'Programa sin título',
+        ...courseData,
+      };
+    },
+    staleTime: 30 * 60 * 1000,
+    enabled: !!courseId,
+  });
+
+  const isOneOnOne = course?.deliveryType === 'one_on_one';
 
   const fetchDatesWithEntries = useCallback(
     async (startDate, endDate) => {
@@ -135,33 +162,6 @@ const DailyWorkoutScreen = () => {
     },
     [isOneOnOne, user?.uid, courseId]
   );
-
-  const courseFromState = location.state?.course;
-
-  const { data: course, isLoading: loading } = useQuery({
-    queryKey: ['programs', courseId],
-    queryFn: async () => {
-      if (courseFromState) {
-        const rawCourse = courseFromState;
-        return {
-          id: rawCourse.id || rawCourse.courseId || courseId,
-          courseId: rawCourse.courseId || rawCourse.id || courseId,
-          title: rawCourse.title || 'Programa sin título',
-          ...rawCourse,
-        };
-      }
-      const courseData = await firestoreService.getCourse(courseId);
-      if (!courseData) return null;
-      return {
-        id: courseData.id || courseId,
-        courseId: courseData.id || courseId,
-        title: courseData.title || 'Programa sin título',
-        ...courseData,
-      };
-    },
-    staleTime: 30 * 60 * 1000,
-    enabled: !!courseId,
-  });
 
   const navigation = {
     navigate: (routeName, params) => {

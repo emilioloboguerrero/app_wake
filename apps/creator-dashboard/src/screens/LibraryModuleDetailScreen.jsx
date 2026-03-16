@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
+import { queryClient, queryKeys } from '../config/queryClient';
 import logger from '../utils/logger';
 
 import {
@@ -124,11 +126,7 @@ const LibraryModuleDetailScreen = () => {
   const { user } = useAuth();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
-  const [module, setModule] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [availableSessions, setAvailableSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [sessionToDelete, setSessionToDelete] = useState(null);
@@ -147,88 +145,48 @@ const LibraryModuleDetailScreen = () => {
     })
   );
 
-  const loadModule = useCallback(async () => {
-    if (!user || !moduleId) return;
-
-    try {
-      const moduleData = await libraryService.getLibraryModuleById(user.uid, moduleId);
-      if (!moduleData) {
-        setError('Módulo no encontrado');
-        return;
-      }
-
-      setModule(moduleData);
-      
-      const sessionRefs = moduleData.sessionRefs || [];
+  const { data: moduleQueryData, isLoading: loading, error: loadError } = useQuery({
+    queryKey: ['library', 'module', moduleId],
+    queryFn: async () => {
+      const mod = await libraryService.getLibraryModuleById(user.uid, moduleId);
+      if (!mod) return null;
+      const sessionRefs = mod.sessionRefs || [];
       const loadedSessions = await Promise.all(
         sessionRefs.map(async (sessionRef) => {
           try {
-            const session = await libraryService.getLibrarySessionById(
-              user.uid, 
-              sessionRef.librarySessionRef || sessionRef
-            );
-            return {
-              ...session,
-              dragId: `module-${session.id}`,
-              order: sessionRef.order !== undefined ? sessionRef.order : 0,
-              isInModule: true
-            };
-          } catch (err) {
-            logger.error('Error loading session:', err);
-            return null;
-          }
+            const session = await libraryService.getLibrarySessionById(user.uid, sessionRef.librarySessionRef || sessionRef);
+            if (!session) return null;
+            return { ...session, dragId: `module-${session.id}`, order: sessionRef.order !== undefined ? sessionRef.order : 0, isInModule: true };
+          } catch (err) { logger.error('Error loading session:', err); return null; }
         })
       );
-      
-      const validSessions = loadedSessions
-        .filter(s => s !== null)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      
-      setSessions(validSessions);
-    } catch (err) {
-      logger.error('Error loading module:', err);
-      setError('Error al cargar el módulo');
-    }
-  }, [user, moduleId]);
+      const validSessions = loadedSessions.filter(Boolean).sort((a, b) => (a.order || 0) - (b.order || 0));
+      return { module: mod, sessions: validSessions };
+    },
+    enabled: !!user && !!moduleId,
+  });
 
-  const loadAvailableSessions = useCallback(async () => {
-    if (!user) return;
+  const { data: allSessionsData } = useQuery({
+    queryKey: queryKeys.library.sessions(user?.uid),
+    queryFn: () => libraryService.getSessionLibrary(user.uid),
+    enabled: !!user && !!moduleQueryData?.module,
+  });
 
-    try {
-      const allSessions = await libraryService.getSessionLibrary(user.uid);
-      const sessionRefs = module?.sessionRefs || [];
-      const existingSessionIds = new Set(
-        sessionRefs.map(ref => ref.librarySessionRef || ref)
-      );
-      
-      const available = allSessions
-        .filter(s => !existingSessionIds.has(s.id))
-        .map(s => ({
-          ...s,
-          dragId: `available-${s.id}`,
-          isInModule: false
-        }));
+  const module = moduleQueryData?.module ?? null;
+  const error = loadError?.message ?? (!loading && moduleQueryData === null ? 'Módulo no encontrado' : null);
 
-      setAvailableSessions(available);
-    } catch (err) {
-      logger.error('Error loading available sessions:', err);
-    }
-  }, [user, module]);
+  const availableSessions = useMemo(() => {
+    if (!allSessionsData || !moduleQueryData?.module) return [];
+    const sessionRefs = moduleQueryData.module.sessionRefs || [];
+    const existingIds = new Set(sessionRefs.map(ref => ref.librarySessionRef || ref));
+    return allSessionsData.filter(s => !existingIds.has(s.id)).map(s => ({ ...s, dragId: `available-${s.id}`, isInModule: false }));
+  }, [allSessionsData, moduleQueryData?.module]);
 
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await loadModule();
-      setLoading(false);
-    };
-    init();
-  }, [loadModule]);
-
-  useEffect(() => {
-    if (module) {
-      loadAvailableSessions();
+    if (moduleQueryData?.sessions) {
+      setSessions(moduleQueryData.sessions);
     }
-  }, [module, loadAvailableSessions]);
+  }, [moduleQueryData?.sessions]);
 
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
@@ -280,8 +238,8 @@ const LibraryModuleDetailScreen = () => {
         sessionRefs: newSessionRefs
       });
 
-      await loadModule();
-      await loadAvailableSessions();
+      await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
       alert('Error al agregar la sesión');
@@ -333,8 +291,8 @@ const LibraryModuleDetailScreen = () => {
         sessionRefs: updatedSessionRefs
       });
 
-      await loadModule();
-      await loadAvailableSessions();
+      await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
 
       setIsDeleteModalOpen(false);
       setSessionToDelete(null);

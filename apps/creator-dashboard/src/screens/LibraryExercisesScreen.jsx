@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -9,6 +10,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import libraryService from '../services/libraryService';
+import { queryClient } from '../config/queryClient';
 
 import logger from '../utils/logger';
 import './LibraryExercisesScreen.css';
@@ -194,11 +196,8 @@ const LibraryExercisesScreen = () => {
   const { user } = useAuth();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
-  const [library, setLibrary] = useState(null);
   const [allExercises, setAllExercises] = useState([]); // Store all exercises
   const [exercises, setExercises] = useState([]); // Filtered exercises
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState(new Set()); // Applied filter
@@ -232,39 +231,21 @@ const LibraryExercisesScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const muscleLabelsContainerRef = useRef(null);
 
+  const { data: libraryData, isLoading: loading, error: loadError } = useQuery({
+    queryKey: ['library', 'detail', libraryId],
+    queryFn: () => libraryService.getLibraryById(libraryId),
+    enabled: !!user && !!libraryId,
+  });
+  const library = libraryData ?? null;
+  const error = loadError?.message ?? (!loading && libraryData === null ? 'Biblioteca no encontrada' : null);
+
   useEffect(() => {
-    const loadLibrary = async () => {
-      if (!user || !libraryId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const libraryData = await libraryService.getLibraryById(libraryId);
-        if (!libraryData) {
-          setError('Biblioteca no encontrada');
-          return;
-        }
-
-        setLibrary(libraryData);
-        
-        const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-        exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-        setAllExercises(exerciseList);
-        setExercises(exerciseList);
-      } catch (err) {
-        logger.error('Error loading library:', err);
-        setError('Error al cargar la biblioteca');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadLibrary();
-  }, [user, libraryId]);
+    if (libraryData) {
+      const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
+      exerciseList.sort((a, b) => a.name.localeCompare(b.name));
+      setAllExercises(exerciseList);
+    }
+  }, [libraryData]);
 
   const handleToggleEditMode = () => {
     setIsEditMode(prev => !prev);
@@ -297,35 +278,15 @@ const LibraryExercisesScreen = () => {
 
     try {
       setIsCreatingExercise(true);
-      setError(null);
 
       await libraryService.addExerciseToLibrary(libraryId, newExerciseName.trim());
 
-      const updatedLibrary = await libraryService.getLibraryById(libraryId);
-      if (updatedLibrary) {
-        setLibrary(updatedLibrary);
-        const exercisesList = libraryService.getExercisesFromLibrary(updatedLibrary);
-        exercisesList.sort((a, b) => a.name.localeCompare(b.name));
-        setAllExercises(exercisesList);
-        setExercises(exercisesList);
-
-        const newExercise = exercisesList.find(ex => ex.name === newExerciseName.trim());
-        if (newExercise) {
-          setSelectedExercise(newExercise);
-          setExerciseViewMode('video');
-          setIsVideoPlaying(false);
-          setIsMuscleEditMode(false);
-          setEditingMuscles(new Set());
-          setMuscleEffectiveSets({});
-          setSelectedImplements(new Set(newExercise.data?.implements || []));
-        }
-      }
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
 
       // Close add exercise modal
       handleCloseAddExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      setError('Error al crear el ejercicio');
       alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
     } finally {
       setIsCreatingExercise(false);
@@ -399,31 +360,17 @@ const LibraryExercisesScreen = () => {
 
     try {
       setIsDeleting(true);
-      setError(null);
-      
-      await libraryService.deleteExercise(libraryId, exerciseToDelete.name);
-      
-      const libraryData = await libraryService.getLibraryById(libraryId);
-      if (!libraryData) {
-        setError('Biblioteca no encontrada');
-        return;
-      }
 
-      setLibrary(libraryData);
-      const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-      exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-      setAllExercises(exerciseList);
-      setExercises(exerciseList);
+      await libraryService.deleteExercise(libraryId, exerciseToDelete.name);
+
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
+
       if (exerciseToDelete && selectedExercise?.name === exerciseToDelete.name) {
         handleClearSelection();
       }
       handleCloseDeleteModal();
-      if (exerciseList.length === 0) {
-        setIsEditMode(false);
-      }
     } catch (err) {
       logger.error('Error deleting exercise:', err);
-      setError('Error al eliminar el ejercicio');
       alert('Error al eliminar el ejercicio. Por favor, intenta de nuevo.');
     } finally {
       setIsDeleting(false);
@@ -532,18 +479,7 @@ const LibraryExercisesScreen = () => {
           : ex
       ));
 
-      const libraryData = await libraryService.getLibraryById(libraryId);
-      if (libraryData) {
-        setLibrary(libraryData);
-        const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-        const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-        if (updatedExercise) {
-          setSelectedExercise(updatedExercise);
-        }
-        exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-        setAllExercises(exerciseList);
-        setExercises(exerciseList);
-      }
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
 
       setVideoUploadProgress(100);
     } catch (err) {
@@ -622,34 +558,12 @@ const LibraryExercisesScreen = () => {
 
       await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
 
-      const libraryData = await libraryService.getLibraryById(libraryId);
-      if (libraryData) {
-        setLibrary(libraryData);
-        const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-        const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-        if (updatedExercise) {
-          setSelectedExercise(updatedExercise);
-        }
-        exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-        setAllExercises(exerciseList);
-        setExercises(exerciseList);
-      }
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
     } catch (err) {
       logger.error('Error deleting video:', err);
       alert('Error al eliminar el video. Por favor, intenta de nuevo.');
       try {
-        const libraryData = await libraryService.getLibraryById(libraryId);
-        if (libraryData) {
-          setLibrary(libraryData);
-          const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-          const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-          if (updatedExercise) {
-            setSelectedExercise(updatedExercise);
-          }
-          exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-          setAllExercises(exerciseList);
-          setExercises(exerciseList);
-        }
+        await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
       } catch (refetchError) {
         logger.error('Error refetching after delete failure:', refetchError);
       }
@@ -823,28 +737,7 @@ const LibraryExercisesScreen = () => {
         muscle_activation: muscleActivation
       });
 
-      const libraryData = await libraryService.getLibraryById(libraryId);
-      if (!libraryData) {
-        setError('Biblioteca no encontrada');
-        return;
-      }
-
-      setLibrary(libraryData);
-      const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-      const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-      if (updatedExercise) {
-        setSelectedExercise(updatedExercise);
-        if (updatedExercise.data?.muscle_activation) {
-          const updatedEffectiveSets = {};
-          Object.keys(updatedExercise.data.muscle_activation).forEach(muscle => {
-            const dbValue = updatedExercise.data.muscle_activation[muscle];
-            if (dbValue !== undefined && dbValue !== null) {
-              updatedEffectiveSets[muscle] = (dbValue / 100).toFixed(1);
-            }
-          });
-          setMuscleEffectiveSets(updatedEffectiveSets);
-        }
-      }
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
 
       setIsMuscleEditMode(false);
     } catch (err) {
@@ -868,33 +761,7 @@ const LibraryExercisesScreen = () => {
         implements: implementsArray
       });
 
-      const libraryData = await libraryService.getLibraryById(libraryId);
-      if (!libraryData) {
-        setError('Biblioteca no encontrada');
-        return;
-      }
-
-      setLibrary(libraryData);
-      const exerciseList = libraryService.getExercisesFromLibrary(libraryData);
-      exerciseList.sort((a, b) => a.name.localeCompare(b.name));
-      setAllExercises(exerciseList);
-      if (selectedMuscles.size === 0) {
-        setExercises(exerciseList);
-      } else {
-        const filtered = exerciseList.filter(exercise => {
-          if (!exercise.data?.muscle_activation) return false;
-          const exerciseMuscles = Object.keys(exercise.data.muscle_activation);
-          return Array.from(selectedMuscles).some(muscle => exerciseMuscles.includes(muscle));
-        });
-        setExercises(filtered);
-      }
-      
-      const updatedExercise = exerciseList.find(ex => ex.name === selectedExercise.name);
-      if (updatedExercise) {
-        setSelectedExercise(updatedExercise);
-        const existingImplements = updatedExercise.data?.implements || [];
-        setSelectedImplements(new Set(existingImplements));
-      }
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
 
       setIsImplementsEditMode(false);
     } catch (err) {
@@ -985,11 +852,7 @@ const LibraryExercisesScreen = () => {
 
     try {
       await libraryService.updateLibrary(libraryId, { icon: iconId });
-      setLibrary(prev => ({
-        ...prev,
-        icon: iconId
-      }));
-      
+      await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
       setIsIconSelectorModalOpen(false);
     } catch (err) {
       logger.error('Error updating icon:', err);

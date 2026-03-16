@@ -1,6 +1,6 @@
 /**
  * Nutrition Firestore service — creator meal/plan library, assignments, user diary.
- * Paths: creator_nutrition_library/{creatorId}/meals|plans, nutrition_assignments, users/{userId}/nutrition/diary
+ * Paths: creator_nutrition_library/{creatorId}/meals|plans, nutrition_assignments, users/{userId}/diary
  */
 import {
   collection,
@@ -37,7 +37,7 @@ function assignmentsRef() {
 }
 
 function diaryRef(userId) {
-  return collection(firestore, 'users', userId, 'nutrition', 'diary');
+  return collection(firestore, 'users', userId, 'diary');
 }
 
 /**
@@ -221,7 +221,7 @@ export async function addDiaryEntry(userId, data) {
 }
 
 export async function deleteDiaryEntry(userId, entryId) {
-  await deleteDoc(doc(firestore, 'users', userId, 'nutrition', 'diary', entryId));
+  await deleteDoc(doc(firestore, 'users', userId, 'diary', entryId));
 }
 
 /**

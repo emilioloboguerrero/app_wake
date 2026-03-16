@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { queryClient, queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import logger from '../utils/logger';
@@ -287,8 +289,6 @@ const LibraryContentScreen = () => {
   const [librarySessions, setLibrarySessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   
   const [isModuleEditMode, setIsModuleEditMode] = useState(false);
   const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
@@ -384,85 +384,65 @@ const LibraryContentScreen = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [dataEditMenuOpen]);
 
-  // Load library modules (only if no moduleId or sessionId)
-  useEffect(() => {
-    const loadModules = async () => {
-      if (!user || moduleId || sessionId) return;
-      
-      try {
-        setLoading(true);
-        const modules = await libraryService.getModuleLibrary(user.uid);
-        // Sort modules by order field
-        const sortedModules = modules.sort((a, b) => {
-          const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
-          const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
-          return orderA - orderB;
-        });
-        setLibraryModules(sortedModules);
-      } catch (err) {
-        logger.error('Error loading library modules:', err);
-        setError('Error al cargar las semanas');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadModules();
-  }, [user, moduleId, sessionId]);
+  const { data: modulesData, isLoading: modulesLoading } = useQuery({
+    queryKey: queryKeys.library.modules(user?.uid),
+    queryFn: async () => {
+      const modules = await libraryService.getModuleLibrary(user.uid);
+      return modules.sort((a, b) => {
+        const orderA = a.order != null ? a.order : Infinity;
+        const orderB = b.order != null ? b.order : Infinity;
+        return orderA - orderB;
+      });
+    },
+    enabled: !!user && !moduleId && !sessionId,
+  });
+
+  const { data: moduleSessionsData, isLoading: moduleLoading } = useQuery({
+    queryKey: ['library', 'module', moduleId, 'sessions'],
+    queryFn: async () => {
+      const mod = await libraryService.getLibraryModuleById(user.uid, moduleId);
+      if (!mod) return null;
+      const sessions = await libraryService.getLibraryModuleSessions(user.uid, moduleId);
+      return { module: mod, sessions };
+    },
+    enabled: !!user && !!moduleId,
+  });
+
+  const { data: sessionExercisesData, isLoading: sessionLoading } = useQuery({
+    queryKey: ['library', 'session', sessionId, 'exercises'],
+    queryFn: async () => {
+      const session = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      return session ?? null;
+    },
+    enabled: !!user && !!sessionId,
+  });
+
+  const loading = modulesLoading || moduleLoading || sessionLoading;
+  const error = null;
 
   useEffect(() => {
-    const loadModuleSessions = async () => {
-      if (!user || !moduleId) {
-        setSelectedModule(null);
-        setLibrarySessions([]);
-        return;
-      }
-      
-      try {
-        setLoading(true);
-        const module = await libraryService.getLibraryModuleById(user.uid, moduleId);
-        if (module) {
-          setSelectedModule(module);
-          const sessions = await libraryService.getLibraryModuleSessions(user.uid, moduleId);
-          setLibrarySessions(sessions);
-        }
-      } catch (err) {
-        logger.error('Error loading module sessions:', err);
-        setError('Error al cargar las sesiones');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadModuleSessions();
-  }, [user, moduleId]);
+    if (modulesData) setLibraryModules(modulesData);
+  }, [modulesData]);
 
-  // Load selected session and its exercises (standalone or from module)
   useEffect(() => {
-    const loadSessionExercises = async () => {
-      if (!user || !sessionId) {
-        setSelectedSession(null);
-        setExercises([]);
-        return;
-      }
-      
-      try {
-        setLoading(true);
-        const session = await libraryService.getLibrarySessionById(user.uid, sessionId);
-        if (session) {
-          setSelectedSession(session);
-          setExercises(session.exercises || []);
-        }
-      } catch (err) {
-        logger.error('Error loading session exercises:', err);
-        setError('Error al cargar los ejercicios');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadSessionExercises();
-  }, [user, sessionId]);
+    if (moduleSessionsData?.module) {
+      setSelectedModule(moduleSessionsData.module);
+      setLibrarySessions(moduleSessionsData.sessions ?? []);
+    } else if (!moduleId) {
+      setSelectedModule(null);
+      setLibrarySessions([]);
+    }
+  }, [moduleSessionsData, moduleId]);
+
+  useEffect(() => {
+    if (sessionExercisesData) {
+      setSelectedSession(sessionExercisesData);
+      setExercises(sessionExercisesData.exercises || []);
+    } else if (!sessionId) {
+      setSelectedSession(null);
+      setExercises([]);
+    }
+  }, [sessionExercisesData, sessionId]);
 
   useEffect(() => {
     if (isCopySessionModalOpen && selectedModule) {
@@ -505,17 +485,9 @@ const LibraryContentScreen = () => {
         sessionRefs: [],
         order: newOrder
       });
-      
-      // Reload modules
-      const modules = await libraryService.getModuleLibrary(user.uid);
-      // Sort modules by order field
-      const sortedModules = modules.sort((a, b) => {
-        const orderA = a.order !== undefined && a.order !== null ? a.order : Infinity;
-        const orderB = b.order !== undefined && b.order !== null ? b.order : Infinity;
-        return orderA - orderB;
-      });
-      setLibraryModules(sortedModules);
-      
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.modules(user.uid) });
+
       // Close modal
       handleCloseModuleModal();
     } catch (err) {
@@ -552,10 +524,8 @@ const LibraryContentScreen = () => {
       
       setIsModuleEditMode(false);
       setOriginalModulesOrder([]);
-      
-      // Reload modules to get updated order
-      const modules = await libraryService.getModuleLibrary(user.uid);
-      setLibraryModules(modules);
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.modules(user.uid) });
     } catch (err) {
       logger.error('Error updating module order:', err);
       // Revert to original order on error
@@ -635,21 +605,20 @@ const LibraryContentScreen = () => {
       setIsDeletingModule(true);
       
       await libraryService.deleteLibraryModule(user.uid, moduleToDelete.id);
-      
-      // Reload modules
-      const modules = await libraryService.getModuleLibrary(user.uid);
-      setLibraryModules(modules);
-      
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.modules(user.uid) });
+
       // If the deleted module was selected, go back to modules list
       if (selectedModule && selectedModule.id === moduleToDelete.id) {
         setSelectedModule(null);
         setLibrarySessions([]);
         navigate('/library/content?tab=modules');
       }
-      
+
       // Close modal and exit edit mode if no modules left
       handleCloseDeleteModuleModal();
-      if (modules.length === 0) {
+      const remainingModules = libraryModules.filter(m => m.id !== moduleToDelete.id);
+      if (remainingModules.length === 0) {
         setIsModuleEditMode(false);
       }
     } catch (err) {
@@ -803,13 +772,11 @@ const LibraryContentScreen = () => {
         image_url: imageUrl
       };
       setSelectedSession(updatedSession);
-      
-      // Update in sessions list if we're viewing sessions
+
       if (selectedModule) {
-        const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
-        setLibrarySessions(sessions);
+        queryClient.invalidateQueries({ queryKey: ['library', 'module', selectedModule.id, 'sessions'] });
       }
-      
+
       // Close modal
       handleCloseSessionModal();
     } catch (err) {
@@ -856,11 +823,9 @@ const LibraryContentScreen = () => {
     try {
       setIsCreatingSession(true);
       await libraryService.addSessionToLibraryModule(user.uid, selectedModule.id, librarySessionId);
-      
-      // Reload sessions
-      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
-      setLibrarySessions(sessions);
-      
+
+      queryClient.invalidateQueries({ queryKey: ['library', 'module', selectedModule.id, 'sessions'] });
+
       handleCloseCopySessionModal();
     } catch (err) {
       logger.error('Error adding session to module:', err);
@@ -893,10 +858,8 @@ const LibraryContentScreen = () => {
       
       setIsSessionEditMode(false);
       setOriginalSessionsOrder([]);
-      
-      // Reload sessions
-      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
-      setLibrarySessions(sessions);
+
+      queryClient.invalidateQueries({ queryKey: ['library', 'module', selectedModule.id, 'sessions'] });
     } catch (err) {
       logger.error('Error updating session order:', err);
       // Revert to original order on error
@@ -958,20 +921,19 @@ const LibraryContentScreen = () => {
       
       // Remove session from module
       await libraryService.removeSessionFromLibraryModule(user.uid, selectedModule.id, sessionToDelete.id);
-      
-      // Reload sessions
-      const sessions = await libraryService.getLibraryModuleSessions(user.uid, selectedModule.id);
-      setLibrarySessions(sessions);
-      
+
+      queryClient.invalidateQueries({ queryKey: ['library', 'module', selectedModule.id, 'sessions'] });
+
       // If the deleted session was selected, go back to sessions list
       if (selectedSession && selectedSession.id === sessionToDelete.id) {
         setSelectedSession(null);
         setExercises([]);
       }
-      
+
       // Close modal and exit edit mode if no sessions left
       handleCloseDeleteSessionModal();
-      if (sessions.length === 0) {
+      const remainingSessions = librarySessions.filter(s => s.id !== sessionToDelete.id);
+      if (remainingSessions.length === 0) {
         setIsSessionEditMode(false);
       }
     } catch (err) {
@@ -2792,11 +2754,7 @@ const LibraryContentScreen = () => {
         }
       }
 
-      // Reload exercises
-      const sessionData = await libraryService.getLibrarySessionById(user.uid, sessionId);
-      if (sessionData) {
-        setExercises(sessionData.exercises || []);
-      }
+      queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId, 'exercises'] });
 
       // Close modal and reset
       handleCloseExerciseModal();

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryClient, queryKeys } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -89,21 +91,10 @@ const ClientProgramScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  const [client, setClient] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
   const [selectedProgramId, setSelectedProgramId] = useState(null); // Selected program (container/bin)
-  const [assignedPrograms, setAssignedPrograms] = useState([]);
-  const [plannedSessions, setPlannedSessions] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [planAssignments, setPlanAssignments] = useState({}); // Object mapping week keys to plan assignments
-  const [isLoadingPlanAssignments, setIsLoadingPlanAssignments] = useState(false);
-  const [contentPlanId, setContentPlanId] = useState(null); // Plan that provides content for selected program (for this client)
-  const [isLoadingContentPlan, setIsLoadingContentPlan] = useState(false);
-  const [isSavingContentPlan, setIsSavingContentPlan] = useState(false);
-  const [plans, setPlans] = useState([]);
   const [planningSearchQuery, setPlanningSearchQuery] = useState('');
   const [sidebarPulseTrigger, setSidebarPulseTrigger] = useState(null); // timestamp to trigger one-time pulse on sessions sidebar
   const [selectedDayInfoForPlan, setSelectedDayInfoForPlan] = useState(null); // { weekKey, planAssignments }
@@ -116,13 +107,8 @@ const ClientProgramScreen = () => {
   const [librarySessionsForAdd, setLibrarySessionsForAdd] = useState([]);
   const [isLoadingLibrarySessions, setIsLoadingLibrarySessions] = useState(false);
   const [planWeeksCount, setPlanWeeksCount] = useState({}); // { [planId]: number } for calendar plan bar label
-  const [completedSessionIds, setCompletedSessionIds] = useState(new Set()); // session IDs client has completed (for green indicator)
   const [performanceModalContext, setPerformanceModalContext] = useState(null); // { session, type, date?, weekKey?, weekContent? } or { historyOnlyData } from calendar history-only cards
-  const [sessionHistory, setSessionHistory] = useState([]); // Completed sessions from sessionHistory (independent of plans)
-  const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
   // Info tab: client user doc and access end date form
-  const [clientUserDoc, setClientUserDoc] = useState(null);
-  const [loadingClientUser, setLoadingClientUser] = useState(false);
   const [infoProgramId, setInfoProgramId] = useState(null);
   const [infoAccessEndDate, setInfoAccessEndDate] = useState('');
   const [infoNoEndDate, setInfoNoEndDate] = useState(true);
@@ -148,13 +134,10 @@ const ClientProgramScreen = () => {
   const [isAssigningSession, setIsAssigningSession] = useState(false);
   const [isDeletingSessionAssignment, setIsDeletingSessionAssignment] = useState(false);
   // Nutrition tab: creator's plans, client's assignment, assign form
-  const [nutritionPlans, setNutritionPlans] = useState([]);
-  const [clientNutritionAssignments, setClientNutritionAssignments] = useState([]);
   const [nutritionAssignPlanId, setNutritionAssignPlanId] = useState('');
   const [nutritionAssignStartDate, setNutritionAssignStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [nutritionAssignNoEndDate, setNutritionAssignNoEndDate] = useState(true);
   const [nutritionAssignEndDate, setNutritionAssignEndDate] = useState('');
-  const [isNutritionLoading, setIsNutritionLoading] = useState(false);
   const [isAssigningNutrition, setIsAssigningNutrition] = useState(false);
   const [isEndingNutrition, setIsEndingNutrition] = useState(false);
   const [nutritionPlanSearchQuery, setNutritionPlanSearchQuery] = useState('');
@@ -170,40 +153,12 @@ const ClientProgramScreen = () => {
   const [nutritionPlanDetail, setNutritionPlanDetail] = useState(null);
   const [isLoadingNutritionPlanDetail, setIsLoadingNutritionPlanDetail] = useState(false);
 
-  useEffect(() => {
-    const loadClient = async () => {
-      if (!clientId || !user) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const clientData = await oneOnOneService.getClientById(clientId);
-        if (!clientData) {
-          setError('Cliente no encontrado');
-          return;
-        }
-
-        // Verify the client belongs to the current creator
-        if (clientData.creatorId !== user.uid) {
-          setError('No tienes permiso para ver este cliente');
-          return;
-        }
-
-        setClient(clientData);
-      } catch (err) {
-        logger.error('Error loading client:', err);
-        setError('Error al cargar el cliente');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadClient();
-  }, [clientId, user]);
+  const { data: client, isLoading: loading, error: clientError } = useQuery({
+    queryKey: ['clients', 'detail', clientId],
+    queryFn: () => oneOnOneService.getClientById(clientId),
+    enabled: !!clientId && !!user,
+  });
+  const error = clientError?.message ?? (!loading && client && client.creatorId !== user?.uid ? 'No tienes permiso para ver este cliente' : (!loading && !client ? 'Cliente no encontrado' : null));
 
   // Restore tab when returning from session edit (back button passed returnState.tab)
   useEffect(() => {
@@ -213,90 +168,115 @@ const ClientProgramScreen = () => {
     }
   }, [location.pathname, location.state?.tab]);
 
-  // Load assigned programs when client loads (for program selector and plan/session assignment)
+  const { data: assignedPrograms = [] } = useQuery({
+    queryKey: ['assignedPrograms', client?.clientUserId, user?.uid],
+    queryFn: async () => {
+      const allPrograms = await programService.getProgramsByCreator(user.uid);
+      const oneOnOnePrograms = allPrograms.filter((p) => (p.deliveryType || 'low_ticket') === 'one_on_one');
+      return Promise.all(oneOnOnePrograms.map(async (program) => {
+        try {
+          const cp = await clientProgramService.getClientProgram(program.id, client.clientUserId);
+          return { ...program, isAssigned: !!cp, clientProgramId: cp?.id };
+        } catch {
+          return { ...program, isAssigned: false };
+        }
+      }));
+    },
+    enabled: !!client?.clientUserId && !!user?.uid,
+    staleTime: 2 * 60 * 1000,
+  });
+
   useEffect(() => {
-    const loadAssignedPrograms = async () => {
-      if (!user?.uid || !client?.clientUserId) return;
-      try {
-        const allPrograms = await programService.getProgramsByCreator(user.uid);
-        const oneOnOnePrograms = allPrograms.filter(
-          (p) => (p.deliveryType || 'low_ticket') === 'one_on_one'
-        );
-        const programsWithStatus = await Promise.all(
-          oneOnOnePrograms.map(async (program) => {
-            try {
-              const cp = await clientProgramService.getClientProgram(program.id, client.clientUserId);
-              return {
-                ...program,
-                isAssigned: !!cp,
-                clientProgramId: cp?.id
-              };
-            } catch {
-              return { ...program, isAssigned: false };
-            }
-          })
-        );
-        setAssignedPrograms(programsWithStatus);
-        // Auto-select first assigned program, or first one-on-one program if none assigned
-        setSelectedProgramId((prev) => {
-          if (prev) return prev; // Keep current selection
-          const assigned = programsWithStatus.find((p) => p.isAssigned);
-          return assigned?.id ?? programsWithStatus[0]?.id ?? null;
-        });
-      } catch (error) {
-        logger.error('Error loading assigned programs:', error);
-        setAssignedPrograms([]);
-      }
-    };
-    loadAssignedPrograms();
-  }, [user?.uid, client?.clientUserId]);
+    if (!assignedPrograms.length) return;
+    setSelectedProgramId((prev) => {
+      if (prev) return prev;
+      const assigned = assignedPrograms.find((p) => p.isAssigned);
+      return assigned?.id ?? assignedPrograms[0]?.id ?? null;
+    });
+  }, [assignedPrograms]);
 
   // Load client user doc when Info tab is active (for access end date)
   const isInfoTab = TAB_CONFIG[currentTabIndex]?.key === 'info';
-  useEffect(() => {
-    if (!isInfoTab || !client?.clientUserId) return;
-    let cancelled = false;
-    setLoadingClientUser(true);
-    setAccessEndDateError(null);
-    getUser(client.clientUserId)
-      .then((userDoc) => {
-        if (!cancelled) setClientUserDoc(userDoc);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setAccessEndDateError(err?.message || 'Error al cargar datos del usuario');
-          setClientUserDoc(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingClientUser(false);
-      });
-    return () => { cancelled = true; };
-  }, [isInfoTab, client?.clientUserId]);
+  const { data: clientUserDoc } = useQuery({
+    queryKey: queryKeys.user.detail(client?.clientUserId),
+    queryFn: () => getUser(client.clientUserId),
+    enabled: isInfoTab && !!client?.clientUserId,
+  });
+  const loadingClientUser = !isInfoTab ? false : !client?.clientUserId ? false : clientUserDoc === undefined;
 
   const isNutricionTab = TAB_CONFIG[currentTabIndex]?.key === 'nutricion';
-  useEffect(() => {
-    if (!isNutricionTab || !user?.uid) return;
-    let cancelled = false;
-    setIsNutritionLoading(true);
-    nutritionDb.getPlansByCreator(user.uid).then((list) => {
-      if (!cancelled) setNutritionPlans(list);
-    }).catch((e) => {
-      if (!cancelled) setNutritionPlans([]);
-    }).finally(() => {
-      if (!cancelled) setIsNutritionLoading(false);
-    });
-  }, [isNutricionTab, user?.uid]);
+  const { data: nutritionPlans = [], isLoading: isNutritionLoading } = useQuery({
+    queryKey: ['nutrition', 'plans', user?.uid],
+    queryFn: () => nutritionDb.getPlansByCreator(user.uid),
+    enabled: isNutricionTab && !!user?.uid,
+  });
 
-  useEffect(() => {
-    if (!isNutricionTab || !client?.clientUserId) return;
-    let cancelled = false;
-    nutritionDb.getAssignmentsByUser(client.clientUserId).then((list) => {
-      if (!cancelled) setClientNutritionAssignments(list);
-    }).catch(() => {
-      if (!cancelled) setClientNutritionAssignments([]);
-    });
-  }, [isNutricionTab, client?.clientUserId]);
+  const { data: clientNutritionAssignments = [] } = useQuery({
+    queryKey: ['nutrition', 'assignments', client?.clientUserId],
+    queryFn: () => nutritionDb.getAssignmentsByUser(client.clientUserId),
+    enabled: isNutricionTab && !!client?.clientUserId,
+  });
+
+  const { data: plans = [] } = useQuery({
+    queryKey: ['library', 'plans', user?.uid],
+    queryFn: () => plansService.getPlansByCreator(user.uid),
+    enabled: !!user?.uid,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const { data: clientProgramData } = useQuery({
+    queryKey: ['clientProgram', selectedProgramId, client?.clientUserId],
+    queryFn: async () => {
+      const cp = await clientProgramService.getClientProgram(selectedProgramId, client.clientUserId);
+      return { contentPlanId: cp?.content_plan_id ?? null, planAssignments: cp?.planAssignments ?? {} };
+    },
+    enabled: !!selectedProgramId && !!client?.clientUserId,
+    staleTime: 0,
+  });
+  const contentPlanId = clientProgramData?.contentPlanId ?? null;
+  const planAssignments = clientProgramData?.planAssignments ?? {};
+
+  const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
+  const needsSessionHistory = isPlanificacionTab;
+
+  const { data: plannedSessions = [] } = useQuery({
+    queryKey: ['plannedSessions', client?.clientUserId, currentDate.getFullYear(), currentDate.getMonth(), user?.uid],
+    queryFn: async () => {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const firstOfMonth = new Date(year, month, 1);
+      const lastOfMonth = new Date(year, month + 1, 0);
+      const daysInMonth = lastOfMonth.getDate();
+      const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7;
+      const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
+      const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
+      const startDate = new Date(year, month, 1 - startingDayOfWeek);
+      const endDate = new Date(year, month, daysInMonth + trailingCount);
+      const [programs, sessions] = await Promise.all([
+        programService.getProgramsByCreator(user.uid),
+        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate),
+      ]);
+      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
+      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
+      return enrichPlannedSessionsWithTitles(filtered, user.uid);
+    },
+    enabled: !!client?.clientUserId && !!user?.uid,
+    staleTime: 0,
+  });
+
+  const { data: completedSessionIds = new Set() } = useQuery({
+    queryKey: ['completedSessionIds', selectedProgramId, client?.clientUserId],
+    queryFn: () => clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId),
+    enabled: !!client?.clientUserId && !!selectedProgramId,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: sessionHistory = [], isLoading: isLoadingSessionHistory } = useQuery({
+    queryKey: ['sessionHistory', selectedProgramId, client?.clientUserId],
+    queryFn: () => clientProgramService.getClientSessionHistory(selectedProgramId, client.clientUserId),
+    enabled: needsSessionHistory && !!client?.clientUserId && !!selectedProgramId,
+    staleTime: 10 * 60 * 1000,
+  });
 
   // Load plan detail and meals (for summary: objectives, categories, recipe resolution) when client has an assignment
   useEffect(() => {
@@ -401,8 +381,7 @@ const ClientProgramScreen = () => {
       setNutritionAssignEndDate('');
         setNutritionAssignModalPlan(null);
       }
-      const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
-      setClientNutritionAssignments(list);
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
       alert(e?.message || 'Error al asignar plan');
@@ -421,8 +400,7 @@ const ClientProgramScreen = () => {
         logger.warn('Could not delete client nutrition plan copy:', e?.message);
       }
       await nutritionDb.deleteAssignment(assignmentId);
-      const list = await nutritionDb.getAssignmentsByUser(client.clientUserId);
-      setClientNutritionAssignments(list);
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
       alert(e?.message || 'Error al quitar asignación');
@@ -482,80 +460,6 @@ const ClientProgramScreen = () => {
     }
   };
 
-  // Load planned sessions when client or date changes (use clientUserId for client_sessions)
-  // Include overflow weeks (past/future month days visible in calendar grid) so sessions show there too
-  useEffect(() => {
-    if (!client?.clientUserId || !user?.uid) {
-      return;
-    }
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstOfMonth = new Date(year, month, 1);
-    const lastOfMonth = new Date(year, month + 1, 0);
-    const daysInMonth = lastOfMonth.getDate();
-    const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7; // Mon=0
-    const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
-    const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
-    const startDate = new Date(year, month, 1 - startingDayOfWeek);
-    const endDate = new Date(year, month, daysInMonth + trailingCount);
-    let cancelled = false;
-    (async () => {
-      try {
-        const [programs, sessions] = await Promise.all([
-          programService.getProgramsByCreator(user.uid),
-          clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
-        ]);
-        if (cancelled) return;
-        const creatorProgramIds = new Set((programs || []).map((p) => p.id));
-        const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
-        const enriched = await enrichPlannedSessionsWithTitles(filtered, user.uid);
-        if (cancelled) return;
-        setPlannedSessions(enriched);
-      } catch (err) {
-        if (!cancelled) setPlannedSessions([]);
-        logger.error('[ClientProgramScreen] loadPlannedSessions: error', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [client?.clientUserId, currentDate, user?.uid]);
-
-  // Load plans (for content dropdown) and content_plan_id when program selected
-  useEffect(() => {
-    const loadPlansAndContentPlan = async () => {
-      if (!user?.uid) return;
-      try {
-        const allPlans = await plansService.getPlansByCreator(user.uid);
-        setPlans(allPlans);
-      } catch (error) {
-        logger.error('Error loading plans:', error);
-        setPlans([]);
-      }
-    };
-    loadPlansAndContentPlan();
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (!selectedProgramId || !client?.clientUserId) {
-      setContentPlanId(null);
-      setPlanAssignments({});
-      return;
-    }
-    const loadContentPlan = async () => {
-      setIsLoadingContentPlan(true);
-      try {
-        const cp = await clientProgramService.getClientProgram(selectedProgramId, client.clientUserId);
-        setContentPlanId(cp?.content_plan_id ?? null);
-        setPlanAssignments(cp?.planAssignments ?? {});
-      } catch (error) {
-        logger.error('Error loading content plan:', error);
-        setContentPlanId(null);
-        setPlanAssignments({});
-      } finally {
-        setIsLoadingContentPlan(false);
-      }
-    };
-    loadContentPlan();
-  }, [selectedProgramId, client?.clientUserId]);
 
   // Ref to read latest weekContentByWeekKey inside async effect (skip refetch when already loaded)
   const weekContentByWeekKeyRef = React.useRef(weekContentByWeekKey);
@@ -771,66 +675,10 @@ const ClientProgramScreen = () => {
     setWeekVolumeDrawerOpen(true);
   }, []);
 
-  // Load completed session IDs for this client+program (from users.courseProgress) - for calendar completion indicator
-  useEffect(() => {
-    if (!client?.clientUserId || !selectedProgramId) {
-      logger.log('[ClientProgramScreen] completedSessionIds: skip load (missing clientUserId or selectedProgramId)', {
-        clientUserId: client?.clientUserId ?? null,
-        selectedProgramId: selectedProgramId ?? null
-      });
-      setCompletedSessionIds(new Set());
-      return;
-    }
-    let cancelled = false;
-    logger.log('[ClientProgramScreen] completedSessionIds: loading for', {
-      clientUserId: client.clientUserId,
-      selectedProgramId
-    });
-    clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId).then((ids) => {
-      if (!cancelled) {
-        logger.log('[ClientProgramScreen] completedSessionIds: loaded', { size: ids.size, sample: ids.size ? [...ids].slice(0, 10) : [] });
-        setCompletedSessionIds(ids);
-      }
-    }).catch((err) => {
-      if (!cancelled) {
-        logger.error('[ClientProgramScreen] completedSessionIds: load failed', err?.message || err);
-        setCompletedSessionIds(new Set());
-      }
-    });
-    return () => { cancelled = true; };
-  }, [client?.clientUserId, selectedProgramId]);
-
-  // Load session history when Planificación tab is active (for calendar completed indicators and history-only cards)
-  const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
-  const needsSessionHistory = isPlanificacionTab;
-
   // When on Planificación tab, use the program selected in Info (no selector on Planificación)
   useEffect(() => {
     if (isPlanificacionTab && infoProgramId) setSelectedProgramId(infoProgramId);
   }, [isPlanificacionTab, infoProgramId]);
-
-  useEffect(() => {
-    if (!needsSessionHistory || !client?.clientUserId || !selectedProgramId) {
-      if (needsSessionHistory && (!client?.clientUserId || !selectedProgramId)) {
-        setSessionHistory([]);
-      }
-      return;
-    }
-    let cancelled = false;
-    setIsLoadingSessionHistory(true);
-    setSessionHistory([]);
-    clientProgramService.getClientSessionHistory(selectedProgramId, client.clientUserId).then((items) => {
-      if (!cancelled) setSessionHistory(items);
-    }).catch((err) => {
-      if (!cancelled) {
-        logger.error('[ClientProgramScreen] sessionHistory load failed', err?.message);
-        setSessionHistory([]);
-      }
-    }).finally(() => {
-      if (!cancelled) setIsLoadingSessionHistory(false);
-    });
-    return () => { cancelled = true; };
-  }, [needsSessionHistory, client?.clientUserId, selectedProgramId]);
 
   // Map session history to date for calendar (so completed sessions persist when plan is deleted)
   const completedSessionsByDate = useMemo(() => {
@@ -890,17 +738,7 @@ const ClientProgramScreen = () => {
         sessionData.moduleId ?? null,
         sessionData.library_session_ref ? { library_session_ref: true } : {}
       );
-      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const [programs, sessions] = await Promise.all([
-        programService.getProgramsByCreator(user.uid),
-        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
-      ]);
-      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
-      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
-      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
-      setPlannedSessions(enriched);
-      
+      queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       logger.error('Error assigning session:', error);
@@ -915,8 +753,7 @@ const ClientProgramScreen = () => {
     try {
       const value = infoNoEndDate ? null : (infoAccessEndDate ? new Date(infoAccessEndDate + 'T23:59:59.999Z').toISOString() : null);
       await clientProgramService.setClientProgramAccessEndDate(client.clientUserId, infoProgramId, value);
-      const userDoc = await getUser(client.clientUserId);
-      setClientUserDoc(userDoc);
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(client.clientUserId) });
     } catch (err) {
       setAccessEndDateError(err?.message || 'Error al guardar');
     } finally {
@@ -943,11 +780,7 @@ const ClientProgramScreen = () => {
       const clientProgram = await clientProgramService.getClientProgram(selectedProgramId, client.clientUserId);
       if (!clientProgram) {
         await clientProgramService.assignProgramToClient(selectedProgramId, client.clientUserId);
-        setAssignedPrograms((prev) =>
-          prev.map((p) =>
-            p.id === selectedProgramId ? { ...p, isAssigned: true } : p
-          )
-        );
+        queryClient.invalidateQueries({ queryKey: ['assignedPrograms', client?.clientUserId, user?.uid] });
       }
 
       // Assign all weeks of the plan to consecutive calendar weeks starting at weekKey
@@ -958,11 +791,7 @@ const ClientProgramScreen = () => {
         weekKey
       );
 
-      const assignments = await clientProgramService.getPlanAssignments(
-        selectedProgramId,
-        client.clientUserId
-      );
-      setPlanAssignments(assignments || {});
+      queryClient.invalidateQueries({ queryKey: ['clientProgram', selectedProgramId, client?.clientUserId] });
       // Clear stale weekContentByWeekKey entries for reassigned weeks. assignPlanToConsecutiveWeeks
       // deletes client_plan_content for those weeks, so any cached fromClientCopy:true state is now
       // stale and would cause handleEditPlanSession to skip copyFromPlan → "session not found".
@@ -1013,23 +842,13 @@ const ClientProgramScreen = () => {
     setRemovingPlanWeekKey(weekKey);
     try {
       const weekKeysRemoved = await clientProgramService.removePlanEntirely(selectedProgramId, client.clientUserId, planId);
-      const assignments = await clientProgramService.getPlanAssignments(selectedProgramId, client.clientUserId);
-      setPlanAssignments(assignments || {});
+      queryClient.invalidateQueries({ queryKey: ['clientProgram', selectedProgramId, client?.clientUserId] });
+      queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
       setWeekContentByWeekKey((prev) => {
         const next = { ...prev };
         weekKeysRemoved.forEach((wk) => { delete next[wk]; });
         return next;
       });
-      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const [programs, sessions] = await Promise.all([
-        programService.getProgramsByCreator(user.uid),
-        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
-      ]);
-      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
-      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
-      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
-      setPlannedSessions(enriched);
     } catch (error) {
       logger.error('Error removing plan:', error);
       alert(`Error al quitar el plan: ${error.message || 'Error desconocido'}`);
@@ -1061,16 +880,7 @@ const ClientProgramScreen = () => {
         sessionData.library_session_ref ? { library_session_ref: true } : {}
       );
       logger.log('[ClientProgramScreen] handleSessionAssignment: wrote doc, reloading sessions for', client.clientUserId);
-      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const [programs, sessions] = await Promise.all([
-        programService.getProgramsByCreator(user.uid),
-        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
-      ]);
-      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
-      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
-      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
-      setPlannedSessions(enriched);
+      queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
       alert('Error al asignar la sesión');
@@ -1138,16 +948,7 @@ const ClientProgramScreen = () => {
         date,
         session.session_id
       );
-      const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const [programs, sessions] = await Promise.all([
-        programService.getProgramsByCreator(user.uid),
-        clientSessionService.getClientSessions(client.clientUserId, startDate, endDate)
-      ]);
-      const creatorProgramIds = new Set((programs || []).map((p) => p.id));
-      const filtered = (sessions || []).filter((s) => creatorProgramIds.has(s.program_id));
-      const enriched = await enrichPlannedSessionsWithTitles(filtered, user?.uid);
-      setPlannedSessions(enriched);
+      queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
       alert('Error al eliminar la sesión');
@@ -1522,15 +1323,13 @@ const ClientProgramScreen = () => {
 
   const handleContentPlanChange = async (planId) => {
     if (!client?.clientUserId || !selectedProgramId) return;
-    setIsSavingContentPlan(true);
     try {
       await clientProgramService.setClientContentPlan(selectedProgramId, client.clientUserId, planId || null);
-      setContentPlanId(planId || null);
+      queryClient.invalidateQueries({ queryKey: ['clientProgram', selectedProgramId, client?.clientUserId] });
     } catch (error) {
       logger.error('Error setting content plan:', error);
       alert('Error al guardar el contenido del programa');
     } finally {
-      setIsSavingContentPlan(false);
     }
   };
 

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { cacheConfig } from '../config/queryClient';
 import { View, StyleSheet, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
 import { ImageBackground, Image as ExpoImage } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -26,7 +28,6 @@ import SvgChat from '../components/icons/vectors_fig/Communication/Chat';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import { getMuscleDisplayName } from '../constants/muscles';
 import { getMuscleColorForText } from '../utils/muscleColorUtils';
-import { creatorProfileCache } from '../utils/cache';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { isAdmin, isCreator } from '../utils/roleHelper';
@@ -254,6 +255,19 @@ const StoryCard = React.memo(({ item, index, scrollValue, onLinkPress, isLast, i
   );
 });
 
+function detectCardType(rawValue) {
+  if (!rawValue || typeof rawValue !== 'string') return 'text';
+  const value = rawValue.trim();
+  if (value.startsWith('http')) {
+    const videoRegex = /\.(mp4|mov|m4v|webm|m3u8)(\?|$)/i;
+    const imageRegex = /\.(png|jpg|jpeg|webp|gif)(\?|$)/i;
+    if (videoRegex.test(value) || value.includes('youtube') || value.includes('vimeo')) return 'video';
+    if (imageRegex.test(value)) return 'image';
+    return 'link';
+  }
+  return 'text';
+}
+
 // Filter programs by viewer role (same logic as ProgramLibraryScreen)
 function filterProgramsByViewer(programs, viewerUid, viewerRole) {
   if (!programs || programs.length === 0) return programs;
@@ -274,9 +288,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const { creatorId, imageUrl: initialImageUrl } = route.params || {};
   const { user: contextUser } = useAuth();
   const effectiveViewer = contextUser || auth.currentUser;
-  const [imageUrl, setImageUrl] = useState(initialImageUrl || null);
-  const [loading, setLoading] = useState(!initialImageUrl && !!creatorId);
-  const [displayName, setDisplayName] = useState('');
+  const viewerUid = effectiveViewer?.uid || null;
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   
   // Calculate story card dimensions based on screen size
@@ -310,15 +322,95 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   // Programas tab: snap to 3 positions (0, general section, one-on-one section) via JS
   const [generalSectionHeight, setGeneralSectionHeight] = useState(0);
   const [oneOnOneSectionHeight, setOneOnOneSectionHeight] = useState(0);
-  const [creatorPrograms, setCreatorPrograms] = useState([]);
-  const [programsLoading, setProgramsLoading] = useState(true);
-  const [programsError, setProgramsError] = useState(null);
-  const [creatorCards, setCreatorCards] = useState([]);
-  const [creatorDoc, setCreatorDoc] = useState(null); // Store creator document for reuse
   const storyScrollX = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
-  const [creatorAge, setCreatorAge] = useState(null);
-  const [creatorLocation, setCreatorLocation] = useState(null);
+
+  const { data: creatorData, isLoading: creatorLoading, isError: creatorFetchError } = useQuery({
+    queryKey: ['creator', creatorId, 'viewer', viewerUid],
+    queryFn: async () => {
+      if (!creatorId) return null;
+
+      let viewerRole = 'user';
+      if (viewerUid) {
+        try {
+          const viewerDoc = await firestoreService.getUser(viewerUid);
+          viewerRole = viewerDoc?.role || 'user';
+        } catch { viewerRole = 'user'; }
+      }
+
+      const [creatorDocResult, programsResult] = await Promise.all([
+        firestoreService.getUser(creatorId),
+        firestoreService.getCoursesByCreatorId(creatorId),
+      ]);
+
+      const filteredPrograms = filterProgramsByViewer(programsResult, viewerUid, viewerRole);
+
+      let resolvedImageUrl = creatorDocResult?.profilePictureUrl || creatorDocResult?.image_url || creatorDocResult?.imageUrl || null;
+      if (!resolvedImageUrl) {
+        try {
+          resolvedImageUrl = await profilePictureService.getProfilePictureUrl(creatorId);
+        } catch {}
+      }
+      resolvedImageUrl = resolvedImageUrl || initialImageUrl || null;
+
+      const firstName = creatorDocResult?.firstName || creatorDocResult?.first_name || '';
+      const lastName = creatorDocResult?.lastName || creatorDocResult?.last_name || '';
+      const composedName = `${firstName} ${lastName}`.trim();
+      const resolvedName = composedName || creatorDocResult?.displayName || creatorDocResult?.display_name || creatorDocResult?.name || '';
+
+      const rawAge = creatorDocResult?.age ?? creatorDocResult?.edad ?? (typeof creatorDocResult?.birthdate === 'string' ? creatorDocResult.birthdate : creatorDocResult?.birthDate);
+      let computedAge = null;
+      if (typeof rawAge === 'number') {
+        computedAge = rawAge;
+      } else if (typeof rawAge === 'string') {
+        const parsed = parseInt(rawAge, 10);
+        if (!Number.isNaN(parsed)) computedAge = parsed;
+      } else if (rawAge instanceof Date) {
+        const now = new Date();
+        let ageYears = now.getFullYear() - rawAge.getFullYear();
+        const m = now.getMonth() - rawAge.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < rawAge.getDate())) ageYears--;
+        if (!Number.isNaN(ageYears)) computedAge = ageYears;
+      }
+      const resolvedAge = typeof computedAge === 'number' && !Number.isNaN(computedAge) && computedAge > 0 ? computedAge : null;
+
+      const city = creatorDocResult?.city || creatorDocResult?.location_city || creatorDocResult?.location?.city || creatorDocResult?.ciudad || null;
+      const country = creatorDocResult?.country || creatorDocResult?.location_country || creatorDocResult?.location?.country || creatorDocResult?.pais || null;
+      const locationParts = [city, country].filter(Boolean);
+      const resolvedLocation = locationParts.length > 0 ? locationParts.join(', ') : null;
+
+      const cardsMap = creatorDocResult?.cards || {};
+      const parsedCards = Object.entries(cardsMap).map(([title, value]) => ({
+        id: title,
+        title,
+        value,
+        type: detectCardType(value),
+      }));
+
+      return {
+        imageUrl: resolvedImageUrl,
+        displayName: resolvedName,
+        age: resolvedAge,
+        location: resolvedLocation,
+        cards: parsedCards,
+        creatorDoc: creatorDocResult,
+        programs: filteredPrograms,
+      };
+    },
+    enabled: !!creatorId,
+    ...cacheConfig.userProfile,
+  });
+
+  const imageUrl = creatorData?.imageUrl ?? initialImageUrl ?? null;
+  const loading = creatorLoading;
+  const displayName = creatorData?.displayName ?? '';
+  const creatorAge = creatorData?.age ?? null;
+  const creatorLocation = creatorData?.location ?? null;
+  const creatorCards = creatorData?.cards ?? [];
+  const creatorDoc = creatorData?.creatorDoc ?? null;
+  const creatorPrograms = creatorData?.programs ?? [];
+  const programsLoading = creatorLoading;
+  const programsError = creatorFetchError ? 'No se pudieron cargar los programas.' : null;
   const muscleScrollX = useRef(new Animated.Value(0)).current;
   const headerEntranceAnim = useRef(new Animated.Value(0)).current;
 
@@ -344,203 +436,6 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const [currentIndexOneOnOne, setCurrentIndexOneOnOne] = useState(0);
   const oneOnOneCarouselRef = useRef(null);
 
-  // OPTIMIZATION: Parallelize independent data loading with caching
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadAllData = async () => {
-      if (!creatorId) {
-        if (isMounted) {
-          setLoading(false);
-          setDisplayName('');
-          setProgramsLoading(false);
-        }
-        return;
-      }
-
-      // Resolve viewer uid and role for Library-style program filtering (admin: all, creator: published + own drafts, user: published only)
-      const viewerUid = effectiveViewer?.uid || null;
-      let viewerRole = 'user';
-      if (viewerUid) {
-        try {
-          const viewerDoc = await firestoreService.getUser(viewerUid);
-          viewerRole = viewerDoc?.role || 'user';
-        } catch {
-          viewerRole = 'user';
-        }
-      }
-      const cacheKey = `creator_${creatorId}_viewer_${viewerUid || 'anon'}`;
-      const cachedData = creatorProfileCache.get(cacheKey);
-
-      if (cachedData) {
-        logger.log('📦 Using cached creator data');
-        if (isMounted) {
-          setImageUrl(cachedData.imageUrl);
-          setDisplayName(cachedData.displayName);
-          setCreatorAge(cachedData.age);
-          setCreatorLocation(cachedData.location);
-          setCreatorCards(cachedData.cards);
-          setCreatorDoc(cachedData.creatorDoc);
-          setCreatorPrograms(cachedData.programs);
-          setLoading(false);
-          setProgramsLoading(false);
-        }
-        return;
-      }
-
-      try {
-        // Set loading states
-        if (isMounted) {
-          setLoading(true);
-          setProgramsLoading(true);
-          setProgramsError(null);
-        }
-
-        // OPTIMIZATION: Load creator data and programs in parallel (independent queries)
-        const [creatorDocResult, programsResult] = await Promise.all([
-          firestoreService.getUser(creatorId),
-          firestoreService.getCoursesByCreatorId(creatorId)
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        // Filter programs by viewer role (same as ProgramLibraryScreen)
-        const filteredPrograms = filterProgramsByViewer(programsResult, viewerUid, viewerRole);
-
-        // Process creator data
-        const creatorDoc = creatorDocResult;
-        if (!isMounted) {
-          return;
-        }
-
-        // Store creator document for reuse in other functions
-        setCreatorDoc(creatorDoc);
-
-        let fetchedUrl =
-          creatorDoc?.profilePictureUrl ||
-          creatorDoc?.image_url ||
-          creatorDoc?.imageUrl ||
-          null;
-
-        if (!fetchedUrl) {
-          try {
-            fetchedUrl = await profilePictureService.getProfilePictureUrl(creatorId);
-          } catch (imageError) {
-            logger.error('Error loading creator profile picture via service:', imageError);
-          }
-        }
-
-        const resolvedImage = fetchedUrl || initialImageUrl || null;
-        const firstName = creatorDoc?.firstName || creatorDoc?.first_name || '';
-        const lastName = creatorDoc?.lastName || creatorDoc?.last_name || '';
-        const composedName = `${firstName} ${lastName}`.trim();
-        const cardsMap = creatorDoc?.cards || {};
-        setImageUrl(resolvedImage);
-        setDisplayName(
-          composedName ||
-            creatorDoc?.displayName ||
-            creatorDoc?.display_name ||
-            creatorDoc?.name ||
-            ''
-        );
-        const rawAge =
-          creatorDoc?.age ??
-          creatorDoc?.edad ??
-          (typeof creatorDoc?.birthdate === 'string'
-            ? creatorDoc.birthdate
-            : creatorDoc?.birthDate);
-        let computedAge = null;
-        if (typeof rawAge === 'number') {
-          computedAge = rawAge;
-        } else if (typeof rawAge === 'string') {
-          const parsed = parseInt(rawAge, 10);
-          if (!Number.isNaN(parsed)) {
-            computedAge = parsed;
-          }
-        }
-        if (!computedAge && rawAge instanceof Date) {
-          const now = new Date();
-          let ageYears = now.getFullYear() - rawAge.getFullYear();
-          const m = now.getMonth() - rawAge.getMonth();
-          if (m < 0 || (m === 0 && now.getDate() < rawAge.getDate())) {
-            ageYears--;
-          }
-          if (!Number.isNaN(ageYears)) {
-            computedAge = ageYears;
-          }
-        }
-        setCreatorAge(
-          typeof computedAge === 'number' && !Number.isNaN(computedAge) && computedAge > 0
-            ? computedAge
-            : null
-        );
-
-        const city =
-          creatorDoc?.city ||
-          creatorDoc?.location_city ||
-          creatorDoc?.location?.city ||
-          creatorDoc?.ciudad ||
-          null;
-        const country =
-          creatorDoc?.country ||
-          creatorDoc?.location_country ||
-          creatorDoc?.location?.country ||
-          creatorDoc?.pais ||
-          null;
-        const locationParts = [city, country].filter(Boolean);
-        setCreatorLocation(locationParts.length > 0 ? locationParts.join(', ') : null);
-        const parsedCards = Object.entries(cardsMap).map(([title, value]) => ({
-          id: title,
-          title,
-          value,
-          type: detectCardType(value),
-        }));
-        setCreatorCards(parsedCards);
-
-        // Set programs after filtering by viewer role (same as Library)
-        setCreatorPrograms(filteredPrograms);
-
-        // Cache the results (5 minute TTL); cache filtered programs for this viewer
-        creatorProfileCache.set(cacheKey, {
-          imageUrl: resolvedImage,
-          displayName: composedName ||
-            creatorDoc?.displayName ||
-            creatorDoc?.display_name ||
-            creatorDoc?.name ||
-            '',
-          age: typeof computedAge === 'number' && !Number.isNaN(computedAge) && computedAge > 0
-            ? computedAge
-            : null,
-          location: locationParts.length > 0 ? locationParts.join(', ') : null,
-          cards: parsedCards,
-          creatorDoc: creatorDoc,
-          programs: filteredPrograms,
-        }, 5 * 60 * 1000); // 5 minutes TTL
-        
-        if (isMounted) {
-          setLoading(false);
-          setProgramsLoading(false);
-        }
-      } catch (error) {
-        if (isMounted) {
-          logger.error('Error loading creator profile data:', error);
-          setDisplayName('');
-          setProgramsError('No se pudieron cargar los programas.');
-          setCreatorPrograms([]);
-          setLoading(false);
-          setProgramsLoading(false);
-        }
-      }
-    };
-
-    loadAllData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [creatorId, initialImageUrl, effectiveViewer?.uid]);
 
   useEffect(() => {
     if (!loading && displayName) {
@@ -548,29 +443,6 @@ const CreatorProfileScreen = ({ navigation, route }) => {
       Animated.timing(headerEntranceAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
     }
   }, [loading, !!displayName]);
-
-  const detectCardType = (rawValue) => {
-    if (!rawValue || typeof rawValue !== 'string') {
-      return 'text';
-    }
-
-    const value = rawValue.trim();
-    if (value.startsWith('http')) {
-      const videoRegex = /\.(mp4|mov|m4v|webm|m3u8)(\?|$)/i;
-      const imageRegex = /\.(png|jpg|jpeg|webp|gif)(\?|$)/i;
-
-      if (videoRegex.test(value) || value.includes('youtube') || value.includes('vimeo')) {
-        return 'video';
-      }
-      if (imageRegex.test(value)) {
-        return 'image';
-      }
-      return 'link';
-    }
-    return 'text';
-  };
-
-  // Note: loadPrograms is now handled in loadAllData above (parallelized with creator data)
 
   // Helper function to get time period date range
   const getTimePeriodDateRange = (period) => {

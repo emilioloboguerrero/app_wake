@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { cacheConfig } from '../config/queryClient';
 import {
   View,
   StyleSheet,
@@ -78,48 +80,16 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
   
-  // FALLBACK: If AuthContext doesn't have user, check Firebase directly
-  const [fallbackUser, setFallbackUser] = React.useState(null);
-  const [userRole, setUserRole] = React.useState('user');
-  
-  React.useEffect(() => {
-    logger.log(`🔐 [ProgramLibraryScreen] Auth state - contextUser.uid=${contextUser?.uid}, auth.currentUser.uid=${auth.currentUser?.uid}`);
-    
-    if (!contextUser) {
-      // Try to get user directly from Firebase as fallback
-      const firebaseUser = auth.currentUser;
-      if (firebaseUser) {
-        logger.log('⚠️ [ProgramLibraryScreen] Using fallback Firebase user (AuthContext failed)');
-        setFallbackUser(firebaseUser);
-      }
-    }
-  }, [contextUser]);
-  
-  const user = contextUser || fallbackUser;
-  
-  // Fetch user role when user becomes available
-  React.useEffect(() => {
-    const fetchUserRole = async () => {
-      const effectiveUser = user || auth.currentUser;
-      if (!effectiveUser?.uid) {
-        logger.log('⚠️ [ProgramLibraryScreen] No user available for role fetch');
-        return;
-      }
-      
-      try {
-        logger.log(`🔍 [ProgramLibraryScreen] Fetching user role for uid=${effectiveUser.uid}`);
-        const userDoc = await firestoreService.getUser(effectiveUser.uid);
-        const role = userDoc?.role || 'user';
-        logger.log(`✅ [ProgramLibraryScreen] User role fetched: ${role} (uid=${effectiveUser.uid})`);
-        setUserRole(role);
-      } catch (error) {
-        logger.error('❌ [ProgramLibraryScreen] Error fetching user role:', error);
-        setUserRole('user'); // Default to user on error
-      }
-    };
-    
-    fetchUserRole();
-  }, [user?.uid]);
+  const user = contextUser || auth.currentUser;
+  const userId = user?.uid;
+
+  const { data: userDoc } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => firestoreService.getUser(userId),
+    enabled: !!userId,
+    ...cacheConfig.userProfile,
+  });
+  const userRole = userDoc?.role || 'user';
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -278,57 +248,19 @@ const ProgramLibraryScreen = ({ navigation }) => {
     }
   }, [user?.uid]);
 
-  // Define fetchCourses BEFORE useEffect so it can be called
-  const fetchCourses = useCallback(async () => {
-    try {
-      setState(prev => ({ ...prev, loading: true, error: null }));
-      
-      // Get effective user (from context or Firebase auth)
-      const effectiveUser = user || auth.currentUser;
-      
-      logger.log(`🔍 [ProgramLibraryScreen] Loading courses - effectiveUser.uid=${effectiveUser?.uid}, userRole=${userRole}, contextUser.uid=${contextUser?.uid}, fallbackUser.uid=${fallbackUser?.uid}`);
-      
-      if (!effectiveUser?.uid) {
-        logger.log('⚠️ [ProgramLibraryScreen] No user available, showing error');
-        setState(prev => ({
-          ...prev,
-          courses: [],
-          filteredCourses: [],
-          loading: false,
-          error: 'Debes iniciar sesión para ver tus programas.'
-        }));
-        return;
-      }
-      
-      logger.log(`🔍 [ProgramLibraryScreen] Loading all courses for user: ${effectiveUser.uid}, role: ${userRole}`);
-      const allCourses = await firestoreService.getCourses(effectiveUser.uid);
-      logger.log(`📚 [ProgramLibraryScreen] Total courses fetched: ${allCourses.length}`);
-      
-      // Filter courses based on user role
-      let filteredCourses;
+  const { data: fetchedCourses, isLoading: coursesLoading, isError: coursesError } = useQuery({
+    queryKey: ['programs', 'library', userId, userRole],
+    queryFn: async () => {
+      const allCourses = await firestoreService.getCourses(userId);
+      let filtered;
       if (isAdmin(userRole)) {
-        // Admins see ALL programs (published + drafts)
-        logger.log('👑 [ProgramLibraryScreen] Admin user - showing all programs (published + drafts)');
-        filteredCourses = allCourses;
+        filtered = allCourses;
       } else if (isCreator(userRole)) {
-        // Creators see published programs + their own drafts
-        logger.log(`🎨 [ProgramLibraryScreen] Creator user - showing published + own drafts (uid=${effectiveUser.uid})`);
-        filteredCourses = allCourses.filter(course => {
-          const isPublished = course.status === 'published';
-          const isOwnDraft = course.status !== 'published' && course.creator_id === effectiveUser.uid;
-          return isPublished || isOwnDraft;
-        });
-        logger.log(`📚 [ProgramLibraryScreen] Creator filtered courses: ${filteredCourses.length} (published + own drafts)`);
+        filtered = allCourses.filter(c => c.status === 'published' || (c.status !== 'published' && c.creator_id === userId));
       } else {
-        // Regular users see only published courses
-        logger.log('👤 [ProgramLibraryScreen] Regular user - showing only published programs');
-        filteredCourses = allCourses.filter(course => course.status === 'published');
+        filtered = allCourses.filter(c => c.status === 'published');
       }
-      
-      logger.log(`✅ [ProgramLibraryScreen] Filtered courses: ${filteredCourses.length} (total: ${allCourses.length})`);
-      
-      // Transform to match expected format
-      const coursesData = filteredCourses.map(course => ({
+      return filtered.map(course => ({
         id: course.id,
         courseId: course.id,
         title: course.title || 'Programa sin título',
@@ -341,82 +273,33 @@ const ProgramLibraryScreen = ({ navigation }) => {
         duration: course.duration || null,
         price: course.price || null,
         access_duration: course.access_duration || null,
-        ...course // Include any other properties
+        ...course,
       }));
-      
-      logger.log(`✅ [ProgramLibraryScreen] Courses loaded: ${coursesData.length} (role=${userRole})`);
-      
-      // Log sample of courses with their status
-      const sampleCourses = coursesData.slice(0, 3).map(c => ({
-        id: c.id,
-        title: c.title,
-        status: c.status,
-        creator_id: c.creator_id,
-        isOwnDraft: c.status !== 'published' && c.creator_id === effectiveUser.uid
-      }));
-      logger.log('📊 [ProgramLibraryScreen] Sample courses:', sampleCourses);
-      
-      setState(prev => ({
-        ...prev,
-        courses: coursesData,
-        filteredCourses: coursesData,
-        creators: [], // No longer needed
-        disciplines: [], // No longer needed
-        loading: false,
-        error: coursesData.length === 0 ? 'No hay programas disponibles en este momento.' : null
-      }));
-      
-      // Check for tutorials after loading is complete
-      await checkForTutorials();
-      
-    } catch (error) {
-      logger.error('❌ Error loading courses:', error);
-      logger.error('❌ Error details:', error.message);
-      
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: 'Error al cargar tus programas. Inténtalo de nuevo.'
-      }));
-    }
-  }, [user?.uid, userRole]); // Added userRole to dependencies so it refetches when role changes
+    },
+    enabled: !!userId,
+    ...cacheConfig.programStructure,
+  });
 
+  // Sync fetched courses into state and run tutorials once loaded
   useEffect(() => {
-    // Get effective user (from context or Firebase auth)
-    const effectiveUser = user || auth.currentUser;
-    
-    logger.log(`🔄 [ProgramLibraryScreen] useEffect triggered - effectiveUser.uid=${effectiveUser?.uid}, userRole=${userRole}`);
-    
-    // Check if user is available, or wait for it to become available
-    if (effectiveUser?.uid) {
-      logger.log(`✅ [ProgramLibraryScreen] User available, fetching courses...`);
-      fetchCourses();
-    } else {
-      logger.log(`⏳ [ProgramLibraryScreen] User not available yet, waiting...`);
-      // On web, user might not be available immediately
-      // Set loading to false with empty state if no user after a delay
-      const timeoutId = setTimeout(() => {
-        const finalUser = user || auth.currentUser;
-        if (!finalUser?.uid) {
-          logger.log(`⚠️ [ProgramLibraryScreen] Timeout: User still not available after delay`);
-          setState(prev => ({
-            ...prev,
-            loading: false,
-            error: 'Debes iniciar sesión para ver tus programas.'
-          }));
-        }
-      }, 2000); // Wait 2 seconds for user to load
-      
-      return () => clearTimeout(timeoutId);
-    }
-    
-    // Cleanup search timeout on unmount
+    if (coursesLoading) return;
+    const coursesData = fetchedCourses ?? [];
+    setState(prev => ({
+      ...prev,
+      courses: coursesData,
+      filteredCourses: coursesData,
+      loading: false,
+      error: coursesError
+        ? 'Error al cargar tus programas. Inténtalo de nuevo.'
+        : coursesData.length === 0
+          ? 'No hay programas disponibles en este momento.'
+          : null,
+    }));
+    if (!coursesError && coursesData.length > 0) checkForTutorials();
     return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  }, [user?.uid, userRole, fetchCourses]); // Added userRole and fetchCourses to dependencies
+  }, [fetchedCourses, coursesLoading, coursesError]);
 
   // Debounced search function
   const debouncedSearch = useCallback((query) => {

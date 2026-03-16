@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
   View,
   Text,
@@ -150,134 +152,49 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   }, [!!userProfile]);
 
-  // Load user profile data when screen mounts (for display)
-  useEffect(() => {
-    const loadProfileForDisplay = async () => {
-      // Always use auth.currentUser as source of truth
-      const currentUser = auth.currentUser;
-      const currentUserId = currentUser?.uid || user?.uid;
-      
-      if (!currentUserId) {
-        logger.log('⚠️ No user ID available - skipping profile load');
-        // Clear profile if no user
-        setUserProfile({
-          displayName: '',
-          username: '',
-          email: '',
-          phoneNumber: '',
-          gender: '',
-          bodyweight: null,
-          height: null,
-        });
-        setProfilePictureUrl(null);
-        previousUserIdRef.current = null;
-        setProfileLoading(false);
-        setLoading(false);
-        return;
-      }
-      
-      // If user ID has changed, clear profile data immediately
-      if (previousUserIdRef.current !== null && previousUserIdRef.current !== currentUserId) {
-        logger.log('🔄 User ID changed - clearing stale profile data:', {
-          previousUserId: previousUserIdRef.current,
-          currentUserId: currentUserId
-        });
-        setUserProfile({
-          displayName: '',
-          username: '',
-          email: '',
-          phoneNumber: '',
-          gender: '',
-          bodyweight: null,
-          height: null,
-        });
-        setProfilePictureUrl(null);
-      }
-      
-      previousUserIdRef.current = currentUserId;
-      
-      try {
-        // Double-check user ID before loading
-        if (previousUserIdRef.current !== currentUserId) {
-          logger.log('⚠️ User ID changed before profile load - aborting');
-          return;
-        }
-        
-        logger.log('📊 Loading profile for user:', currentUserId);
-        setProfileLoading(true);
-        const userData = await hybridDataService.loadUserProfile(currentUserId);
-        
-        // Final verification: check user hasn't changed during async load
-        const finalCurrentUser = auth.currentUser;
-        const finalUserId = finalCurrentUser?.uid || user?.uid;
-        if (finalUserId !== currentUserId) {
-          logger.log('⚠️ User ID changed during profile load - discarding results');
-          return;
-        }
-        
-        if (userData) {
-          logger.log('✅ Profile loaded successfully');
-          logger.log('[ProfileScreen] userData.role from hybridDataService:', userData?.role);
-          if (userData?.role) {
-            logger.log('[ProfileScreen] Setting userRole from cache:', userData.role);
-            setUserRole(userData.role);
-          } else {
-            logger.log('[ProfileScreen] role missing from cache, fetching directly from Firestore');
-            firestoreService.getUser(currentUserId).then(doc => {
-              logger.log('[ProfileScreen] Firestore getUser role result:', doc?.role);
-              setUserRole(doc?.role || 'user');
-            }).catch(err => {
-              logger.error('[ProfileScreen] Firestore role fetch failed:', err);
-              setUserRole('user');
-            });
-          }
-          setUserProfile({
-            displayName: userData?.displayName || '',
-            username: userData?.username || '',
-            email: finalCurrentUser?.email || user?.email || '',
-            phoneNumber: userData?.phoneNumber || '',
-            gender: userData?.gender || '',
-            bodyweight: userData?.bodyweight || null,
-            height: userData?.height || null,
-          });
-          
-          // Load profile picture if available
-          if (userData?.profilePictureUrl) {
-            setProfilePictureUrl(userData.profilePictureUrl);
-          } else {
-            // Try to load from cache/storage
-            const cachedUrl = await profilePictureService.getProfilePictureUrl(currentUserId);
-            if (cachedUrl) {
-              setProfilePictureUrl(cachedUrl);
-            }
-          }
-        }
-        
-        // Check for tutorials after loading profile
-        await checkForTutorials();
-        setProfileLoading(false);
-        setLoading(false);
-      } catch (error) {
-        logger.error('❌ Error loading profile for display:', error);
-        // Clear on error to prevent stale data
-        const fallbackUser = auth.currentUser || user;
-        setUserProfile({
-          displayName: fallbackUser?.displayName || '',
-          username: '',
-          email: fallbackUser?.email || '',
-          phoneNumber: '',
-          gender: '',
-          bodyweight: null,
-          height: null,
-        });
-        setProfileLoading(false);
-        setLoading(false);
-        setProfilePictureUrl(null);
-      }
-    };
+  const { data: profileQueryData, isLoading: profileQueryLoading } = useQuery({
+    queryKey: queryKeys.user.detail(user?.uid),
+    queryFn: () => hybridDataService.loadUserProfile(user.uid),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
 
-    loadProfileForDisplay();
-  }, [user]);
+  // Sync query data into form state and derived state
+  useEffect(() => {
+    if (profileQueryLoading) return;
+    const currentUser = auth.currentUser || user;
+    if (!profileQueryData) {
+      setUserProfile({ displayName: currentUser?.displayName || '', username: '', email: currentUser?.email || '', phoneNumber: '', gender: '', bodyweight: null, height: null });
+      setProfilePictureUrl(null);
+      setProfileLoading(false);
+      setLoading(false);
+      return;
+    }
+    const userData = profileQueryData;
+    logger.log('✅ Profile loaded successfully');
+    if (userData.role) {
+      setUserRole(userData.role);
+    } else {
+      firestoreService.getUser(user.uid).then(doc => setUserRole(doc?.role || 'user')).catch(() => setUserRole('user'));
+    }
+    setUserProfile({
+      displayName: userData.displayName || '',
+      username: userData.username || '',
+      email: currentUser?.email || '',
+      phoneNumber: userData.phoneNumber || '',
+      gender: userData.gender || '',
+      bodyweight: userData.bodyweight || null,
+      height: userData.height || null,
+    });
+    if (userData.profilePictureUrl) {
+      setProfilePictureUrl(userData.profilePictureUrl);
+    } else {
+      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); }).catch(() => {});
+    }
+    checkForTutorials();
+    setProfileLoading(false);
+    setLoading(false);
+  }, [profileQueryData, profileQueryLoading]);
 
   // Extract average color from profile picture for gradient (web: canvas, native: no-op)
   useEffect(() => {

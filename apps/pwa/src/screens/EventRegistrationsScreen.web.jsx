@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
@@ -286,44 +287,69 @@ export default function EventRegistrationsScreen() {
   const user = contextUser || auth.currentUser;
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState('loading');
-  const [event, setEvent] = useState(null);
-  const [registrations, setRegistrations] = useState([]);
-  const [waitlist, setWaitlist] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedReg, setSelectedReg] = useState(null);
+  const queryClient = useQueryClient();
+  const queryKey = ['events', eventId, 'registrations'];
 
-  useEffect(() => {
-    if (!user) return;
-    eventService.getEvent(eventId).then(async event => {
-      if (!event || event.creator_id !== user.uid) {
-        navigate('/creator/events', { replace: true });
-        return;
-      }
-      setEvent(event);
-
-      const [regs, waitlist] = await Promise.all([
+  const { data, isLoading, isError } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const ev = await eventService.getEvent(eventId);
+      if (!ev || ev.creator_id !== user.uid) throw new Error('access_denied');
+      const [regs, wl] = await Promise.all([
         eventService.getRegistrations(eventId),
         eventService.getWaitlist(eventId),
       ]);
-      setRegistrations(regs);
-      setWaitlist(waitlist);
-      setStatus('ready');
-    }).catch(() => navigate('/creator/events', { replace: true }));
-  }, [eventId, user, navigate]);
+      return { event: ev, registrations: regs, waitlist: wl };
+    },
+    enabled: !!user && !!eventId,
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (isError) navigate('/creator/events', { replace: true });
+  }, [isError, navigate]);
+
+  const event = data?.event ?? null;
+  const registrations = data?.registrations ?? [];
+  const waitlist = data?.waitlist ?? [];
+  const status = isLoading ? 'loading' : 'ready';
+
+  const checkInMutation = useMutation({
+    mutationFn: (regId) => eventService.manualCheckIn(eventId, regId),
+    onSuccess: (_, regId) => {
+      queryClient.setQueryData(queryKey, (old) => {
+        if (!old) return old;
+        const now = new Date();
+        return {
+          ...old,
+          registrations: old.registrations.map(r =>
+            r.id === regId ? { ...r, checked_in: true, checked_in_at: now } : r
+          ),
+        };
+      });
+      setSelectedReg(prev => prev?.id === regId ? { ...prev, checked_in: true, checked_in_at: new Date() } : prev);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (regId) => eventService.deleteRegistration(eventId, regId),
+    onSuccess: (_, regId) => {
+      queryClient.setQueryData(queryKey, (old) => {
+        if (!old) return old;
+        return { ...old, registrations: old.registrations.filter(r => r.id !== regId) };
+      });
+      setSelectedReg(null);
+    },
+  });
 
   async function handleManualCheckIn(regId) {
-    await eventService.manualCheckIn(eventId, regId);
-    setRegistrations(prev => prev.map(r =>
-      r.id === regId ? { ...r, checked_in: true, checked_in_at: new Date() } : r
-    ));
-    setSelectedReg(prev => prev?.id === regId ? { ...prev, checked_in: true, checked_in_at: new Date() } : prev);
+    await checkInMutation.mutateAsync(regId);
   }
 
   async function handleDeleteRegistration(regId) {
-    await eventService.deleteRegistration(eventId, regId);
-    setRegistrations(prev => prev.filter(r => r.id !== regId));
-    setSelectedReg(null);
+    await deleteMutation.mutateAsync(regId);
   }
 
   const columns = event ? buildColumns(event) : [];
