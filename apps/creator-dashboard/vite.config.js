@@ -12,6 +12,13 @@ export default defineConfig({
     port: 3000,
     host: true,
     open: false,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5001/wolf-20b8b/us-central1/api',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
   build: {
     outDir: 'build',

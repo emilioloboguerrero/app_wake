@@ -2263,3 +2263,320 @@ export const sendEventConfirmationEmail = functions
 
     return null;
   });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gen2 Express API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import express from "express";
+
+const firebaseApiKey = defineSecret("WAKE_WEB_API_KEY");
+
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+// ─── CORS ────────────────────────────────────────────────────────────────────
+
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Wake-Client,X-Firebase-AppCheck");
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  next();
+});
+
+// ─── Error helpers ───────────────────────────────────────────────────────────
+
+class WakeApiServerError extends Error {
+  status: number;
+  code: string;
+  field?: string;
+  retryAfter?: number;
+  constructor(code: string, message: string, status: number, field?: string) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.field = field;
+  }
+}
+
+function apiError(code: string, message: string, status: number, field?: string): WakeApiServerError {
+  return new WakeApiServerError(code, message, status, field);
+}
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+async function checkRateLimit(
+  id: string,
+  limitRpm: number,
+  collection: "rate_limit_windows" | "rate_limit_first_party" = "rate_limit_windows"
+): Promise<void> {
+  const windowMinute = Math.floor(Date.now() / 60000);
+  const docId = `${id}_${windowMinute}`;
+  const ref = db.collection(collection).doc(docId);
+  const secondsUntilReset = 60 - (Date.now() / 1000 % 60);
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    const count = doc.exists ? (doc.data()?.count ?? 0) : 0;
+    if (count >= limitRpm) {
+      const err = apiError("RATE_LIMITED", "Rate limit exceeded", 429);
+      err.retryAfter = Math.ceil(secondsUntilReset);
+      throw err;
+    }
+    tx.set(ref, { count: count + 1, expires_at: windowMinute + 2 }, { merge: true });
+  });
+}
+
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+
+interface AuthResult {
+  userId: string;
+  role: string;
+  authType: "firebase" | "apikey";
+}
+
+async function validateAuth(req: express.Request): Promise<AuthResult> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    throw apiError("UNAUTHENTICATED", "Missing Authorization header", 401);
+  }
+  const token = header.slice(7);
+
+  if (token.startsWith("wk_live_") || token.startsWith("wk_test_")) {
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    const snap = await db.collection("api_keys")
+      .where("key_hash", "==", hash)
+      .where("revoked", "==", false)
+      .limit(1)
+      .get();
+    if (snap.empty) throw apiError("UNAUTHENTICATED", "Invalid or revoked API key", 401);
+    const keyDoc = snap.docs[0];
+    const keyData = keyDoc.data();
+    keyDoc.ref.update({ last_used_at: admin.firestore.FieldValue.serverTimestamp() });
+    await checkRateLimit(keyDoc.id, keyData.rate_limit_rpm ?? 60);
+    const userDoc = await db.collection("users").doc(keyData.owner_id).get();
+    return { userId: keyData.owner_id, role: userDoc.data()?.role ?? "user", authType: "apikey" };
+  }
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    const userDoc = await db.collection("users").doc(decoded.uid).get();
+    await checkRateLimit(`user_${decoded.uid}`, 200, "rate_limit_first_party");
+    return { userId: decoded.uid, role: userDoc.data()?.role ?? "user", authType: "firebase" };
+  } catch (err) {
+    if (err instanceof WakeApiServerError) throw err;
+    throw apiError("UNAUTHENTICATED", "Invalid or expired token", 401);
+  }
+}
+
+// ─── Body validation ──────────────────────────────────────────────────────────
+
+type FieldType = "string" | "number" | "boolean" | "array" | "object" |
+  "optional_string" | "optional_number" | "optional_boolean" | "optional_array" | "optional_object";
+
+function validateBody<T>(schema: Record<string, FieldType>, body: unknown): T {
+  if (typeof body !== "object" || body === null) {
+    throw apiError("VALIDATION_ERROR", "Request body must be a JSON object", 400);
+  }
+  const b = body as Record<string, unknown>;
+  for (const [field, type] of Object.entries(schema)) {
+    const optional = type.startsWith("optional_");
+    const baseType = optional ? type.replace("optional_", "") : type;
+    if (optional && (b[field] === undefined || b[field] === null)) continue;
+    if (b[field] === undefined) {
+      throw apiError("VALIDATION_ERROR", `Missing required field '${field}'`, 400, field);
+    }
+    if (baseType === "array" && !Array.isArray(b[field])) {
+      throw apiError("VALIDATION_ERROR", `Field '${field}' must be an array`, 400, field);
+    } else if (baseType !== "array" && typeof b[field] !== baseType) {
+      throw apiError("VALIDATION_ERROR", `Field '${field}' must be a ${baseType}`, 400, field);
+    }
+  }
+  return b as T;
+}
+
+// ─── Routes: Health ───────────────────────────────────────────────────────────
+
+app.get("/api/v1/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ─── Routes: Auth ─────────────────────────────────────────────────────────────
+
+app.post("/api/v1/auth/signup", async (req, res, next) => {
+  try {
+    const body = validateBody<{ email: string; password: string; displayName?: string }>(
+      { email: "string", password: "string", displayName: "optional_string" },
+      req.body
+    );
+    const userRecord = await admin.auth().createUser({
+      email: body.email,
+      password: body.password,
+      displayName: body.displayName,
+    });
+    await db.collection("users").doc(userRecord.uid).set({
+      email: body.email,
+      displayName: body.displayName ?? "",
+      role: "user",
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    const signInRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey.value()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: body.email, password: body.password, returnSecureToken: true }),
+      }
+    );
+    const signInData = await signInRes.json() as { idToken?: string; error?: { message: string } };
+    if (!signInData.idToken) throw apiError("INTERNAL_ERROR", "Failed to sign in after signup", 500);
+    res.status(201).json({ userId: userRecord.uid, token: signInData.idToken });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/auth/login", async (req, res, next) => {
+  try {
+    const body = validateBody<{ email: string; password: string }>(
+      { email: "string", password: "string" },
+      req.body
+    );
+    const signInRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey.value()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: body.email, password: body.password, returnSecureToken: true }),
+      }
+    );
+    const signInData = await signInRes.json() as { idToken?: string; error?: { message: string } };
+    if (!signInData.idToken) throw apiError("UNAUTHENTICATED", "Invalid email or password", 401);
+    res.json({ token: signInData.idToken });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/auth/me", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    const data = userDoc.data();
+    res.json({ userId: auth.userId, role: auth.role, email: data?.email ?? "" });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/auth/logout", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    await admin.auth().revokeRefreshTokens(auth.userId);
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// ─── Routes: API Keys ─────────────────────────────────────────────────────────
+
+app.get("/api/v1/api-keys", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    if (auth.role !== "creator" && auth.role !== "admin") {
+      throw apiError("FORBIDDEN", "Only creators can manage API keys", 403);
+    }
+    const snap = await db.collection("api_keys")
+      .where("owner_id", "==", auth.userId)
+      .where("revoked", "==", false)
+      .get();
+    const keys = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        keyId: d.id,
+        keyPrefix: data.key_prefix,
+        name: data.name,
+        scopes: data.scopes,
+        createdAt: data.created_at?.toDate().toISOString() ?? null,
+        lastUsedAt: data.last_used_at?.toDate().toISOString() ?? null,
+        rateLimitRpm: data.rate_limit_rpm ?? 60,
+      };
+    });
+    res.json({ data: keys });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/api-keys", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    if (auth.role !== "creator" && auth.role !== "admin") {
+      throw apiError("FORBIDDEN", "Only creators can manage API keys", 403);
+    }
+    const body = validateBody<{ name: string; scopes: string[] }>(
+      { name: "string", scopes: "array" },
+      req.body
+    );
+    const rawKey = `wk_live_${crypto.randomBytes(32).toString("hex")}`;
+    const hash = crypto.createHash("sha256").update(rawKey).digest("hex");
+    const keyPrefix = rawKey.slice(0, 16);
+    const docRef = db.collection("api_keys").doc();
+    await docRef.set({
+      key_prefix: keyPrefix,
+      key_hash: hash,
+      owner_id: auth.userId,
+      scopes: body.scopes,
+      name: body.name,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      last_used_at: null,
+      revoked: false,
+      revoked_at: null,
+      rate_limit_rpm: 60,
+    });
+    res.status(201).json({ keyId: docRef.id, key: rawKey, name: body.name, scopes: body.scopes });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/v1/api-keys/:keyId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    if (auth.role !== "creator" && auth.role !== "admin") {
+      throw apiError("FORBIDDEN", "Only creators can manage API keys", 403);
+    }
+    const keyDoc = await db.collection("api_keys").doc(req.params.keyId).get();
+    if (!keyDoc.exists) throw apiError("NOT_FOUND", "API key not found", 404);
+    if (keyDoc.data()?.owner_id !== auth.userId) throw apiError("FORBIDDEN", "Not your API key", 403);
+    await keyDoc.ref.update({
+      revoked: true,
+      revoked_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// ─── Global error handler (must be last) ─────────────────────────────────────
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof WakeApiServerError) {
+    const body: Record<string, unknown> = { error: { code: err.code, message: err.message } };
+    if (err.field) (body.error as Record<string, unknown>).field = err.field;
+    if (err.status === 429 && err.retryAfter) res.setHeader("Retry-After", String(err.retryAfter));
+    res.status(err.status).json(body);
+    return;
+  }
+  functions.logger.error("Unhandled API error", err);
+  res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unexpected server error" } });
+});
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+export const api = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
+    minInstances: 1,
+    concurrency: 80,
+    secrets: [
+      "WAKE_WEB_API_KEY",
+      "FATSECRET_CLIENT_ID",
+      "FATSECRET_CLIENT_SECRET",
+    ],
+  },
+  app
+);

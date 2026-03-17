@@ -17,29 +17,30 @@
 // 14. Listener conflicts: Only one set of listeners active at a time
 // 15. Completeness flags: Denormalized flags prevent N+1 queries
 //
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { WakeApiError } from '../utils/apiClient';
+import authService from '../services/authService';
 
 // Create query client with optimized defaults
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof WakeApiError && error.code === 'UNAUTHENTICATED') {
+        authService.signOutUser();
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
-      // Default stale time: 5 minutes
       staleTime: 5 * 60 * 1000,
-      // Default cache time: 10 minutes
-      gcTime: 10 * 60 * 1000, // Previously cacheTime
-      // Retry failed requests
-      retry: 2,
-      // Disable refetch on window focus by default (respect staleTime instead)
-      // Individual queries can override this if needed
+      gcTime: 10 * 60 * 1000,
+      retry: false,
       refetchOnWindowFocus: false,
-      // Don't refetch on reconnect if data is fresh
       refetchOnReconnect: true,
-      // Refetch on mount if data is stale
       refetchOnMount: true,
     },
     mutations: {
-      // Retry mutations once on failure
-      retry: 1,
+      retry: false,
     },
   },
 });

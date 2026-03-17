@@ -44,7 +44,16 @@ export default {
     },
     web: {
       favicon: "./assets/favicon.png",
-      bundler: "metro"
+      bundler: "metro",
+      devServer: {
+        proxy: {
+          '/api': {
+            target: 'http://127.0.0.1:5001/wolf-20b8b/us-central1/api',
+            changeOrigin: true,
+            pathRewrite: { '^/api': '' },
+          },
+        },
+      },
     },
     scheme: "wake",
     plugins: [

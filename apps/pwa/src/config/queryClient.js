@@ -1,17 +1,26 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { WakeApiError } from '../utils/apiClient';
+import authService from '../services/authService';
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof WakeApiError && error.code === 'UNAUTHENTICATED') {
+        authService.signOutUser();
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 2 * 60 * 1000,
       gcTime: 10 * 60 * 1000,
-      retry: 2,
+      retry: false,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
     },
     mutations: {
-      retry: 1,
+      retry: false,
     },
   },
 });

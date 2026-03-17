@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "wolf-20b8b"
+    "default": "wolf-20b8b",
+    "production": "wolf-20b8b",
+    "staging": "wake-staging"
   }
 }
