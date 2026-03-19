@@ -29,7 +29,9 @@
     "eject": "npm run eject --prefix apps/pwa",
     "test": "npm run test --prefix apps/pwa",
     "lint": "npm run lint --prefix apps/pwa",
-    "setup:firebase": "echo 'Please configure Firebase manually using the documentation'"
+    "setup:firebase": "echo 'Please configure Firebase manually using the documentation'",
+    "seed:staging": "node scripts/seed-staging.js",
+    "validate:staging": "node scripts/validate-staging.js"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
