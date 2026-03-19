@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors
@@ -13,8 +12,8 @@ import {
   verticalListSortingStrategy, useSortable, arrayMove
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -478,24 +477,27 @@ export default function EventEditorScreen() {
     reader.readAsDataURL(file);
   }
 
-  async function uploadImage(evId) {
+  async function uploadImageForEvent(evId) {
     if (!imageFile) return imageUrl;
-    const storageRef = ref(storage, `events/${evId}/cover`);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, imageFile);
-      task.on(
-        'state_changed',
-        snap => setUploadProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-        reject,
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setImageFile(null);
-          setImageUrl(url);
-          setUploadProgress(null);
-          resolve(url);
-        }
-      );
+    const contentType = imageFile.type || 'image/jpeg';
+    const { data } = await apiClient.post(`/creator/events/${evId}/image/upload-url`, { contentType });
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(imageFile);
     });
+    const confirmRes = await apiClient.post(`/creator/events/${evId}/image/confirm`, { storagePath: data.storagePath });
+    setImageFile(null);
+    setUploadProgress(null);
+    const url = confirmRes.data.imageUrl;
+    setImageUrl(url);
+    return url;
   }
 
   async function handleSave(targetStatus = status) {
@@ -510,8 +512,6 @@ export default function EventEditorScreen() {
         setCurrentEventId(evId);
         isNewDoc = true;
       }
-
-      const finalImageUrl = await uploadImage(evId);
 
       const validFields = fields
         .filter(f => f.locked || f.label.trim())
@@ -540,16 +540,22 @@ export default function EventEditorScreen() {
         },
         status: targetStatus,
         fields: validFields,
-        image_url: finalImageUrl,
+        image_url: imageUrl,
       };
 
-      if (!isNewDoc) {
-        await eventService.updateEvent(evId, eventData);
-      } else {
+      if (isNewDoc) {
         eventData.creator_id = user.uid;
         eventData.registration_count = 0;
         await eventService.createEvent(evId, eventData);
         navigate(`/events/${evId}/edit`, { replace: true });
+      }
+
+      const finalImageUrl = await uploadImageForEvent(evId);
+
+      if (!isNewDoc) {
+        await eventService.updateEvent(evId, { ...eventData, image_url: finalImageUrl });
+      } else if (finalImageUrl !== imageUrl) {
+        await eventService.updateEvent(evId, { image_url: finalImageUrl });
       }
 
       queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });

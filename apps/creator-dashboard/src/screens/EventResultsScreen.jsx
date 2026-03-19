@@ -3,7 +3,6 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell
@@ -17,8 +16,8 @@ import {
   verticalListSortingStrategy, useSortable, arrayMove
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -686,22 +685,25 @@ export default function EventResultsScreen() {
 
   async function uploadImage() {
     if (!imageFile) return imageUrl;
-    const storageRef = ref(storage, `events/${eventId}/cover`);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, imageFile);
-      task.on(
-        'state_changed',
-        snap => setUploadProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-        reject,
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setImageFile(null);
-          setImageUrl(url);
-          setUploadProgress(null);
-          resolve(url);
-        }
-      );
+    const contentType = imageFile.type || 'image/jpeg';
+    const { data } = await apiClient.post(`/creator/events/${eventId}/image/upload-url`, { contentType });
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(imageFile);
     });
+    const confirmRes = await apiClient.post(`/creator/events/${eventId}/image/confirm`, { storagePath: data.storagePath });
+    setImageFile(null);
+    setUploadProgress(null);
+    const url = confirmRes.data.imageUrl;
+    setImageUrl(url);
+    return url;
   }
 
   async function handleSave(targetStatus = eventStatus) {

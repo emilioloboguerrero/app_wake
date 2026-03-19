@@ -2716,6 +2716,58 @@ app.patch("/api/v1/creator/profile", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+app.post("/api/v1/creator/profile/card-media/upload-url", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    assertCreator(auth);
+    const body = validateBody<{ contentType: string; filename?: string }>({ contentType: "string" }, req.body);
+    const allowedImage = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const allowedVideo = ["video/mp4", "video/x-m4v", "video/quicktime"];
+    const allowed = [...allowedImage, ...allowedVideo];
+    if (!allowed.includes(body.contentType)) {
+      throw apiError("VALIDATION_ERROR", "Unsupported contentType for card media", 400, "contentType");
+    }
+    const isVideo = allowedVideo.includes(body.contentType);
+    const ext = isVideo ? "mp4" : body.contentType.split("/")[1] ?? "jpg";
+    const timestamp = Date.now();
+    const storagePath = `cards/${auth.userId}/${timestamp}.${ext}`;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    let uploadUrl: string;
+    try {
+      [uploadUrl] = await admin.storage().bucket().file(storagePath).getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: expiresAt,
+        contentType: body.contentType,
+      });
+    } catch (e: unknown) {
+      functions.logger.error("getSignedUrl failed (card-media)", { error: e instanceof Error ? e.message : String(e) });
+      throw apiError("INTERNAL_ERROR", "Storage signing failed", 500);
+    }
+    res.json({ data: { uploadUrl, storagePath, expiresAt: expiresAt.toISOString() } });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/creator/profile/card-media/confirm", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    assertCreator(auth);
+    const body = validateBody<{ storagePath: string }>({ storagePath: "string" }, req.body);
+    if (!body.storagePath.startsWith(`cards/${auth.userId}/`)) {
+      throw apiError("FORBIDDEN", "Storage path does not belong to this user", 403);
+    }
+    const file = admin.storage().bucket().file(body.storagePath);
+    const [exists] = await file.exists();
+    if (!exists) throw apiError("NOT_FOUND", "File not found in storage", 404);
+    const downloadToken = crypto.randomUUID();
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: downloadToken } });
+    const bucketName = admin.storage().bucket().name;
+    const encodedPath = encodeURIComponent(body.storagePath);
+    const mediaUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+    res.json({ data: { mediaUrl } });
+  } catch (err) { next(err); }
+});
+
 app.get("/api/v1/creator/profile", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
@@ -8565,6 +8617,35 @@ function classifyMuscle(exerciseName: string): MuscleGroup | null {
   return null;
 }
 
+function classifyMuscleGranular(exerciseName: string): string | null {
+  const n = (exerciseName || "").toLowerCase();
+  if (/lower.back|lumbar|back.ext|hiperext|extensi[oó]n de espalda/.test(n)) return "lower_back";
+  if (/deadlift|peso muerto|romanian|rumana/.test(n)) return "lower_back";
+  if (/face pull|posterior|rear delt/.test(n)) return "rear_delts";
+  if (/lateral raise|alzada lateral|elevaci[oó]n lateral/.test(n)) return "side_delts";
+  if (/front raise|alzada frontal|elevaci[oó]n frontal/.test(n)) return "front_delts";
+  if (/overhead press|press militar|military press|arnold press|press de hombro|shoulder press/.test(n)) return "front_delts";
+  if (/shrug|encogimiento|trap/.test(n)) return "traps";
+  if (/tricep|extension de trícep|pushdown|jalón de trícep|tric/.test(n)) return "triceps";
+  if (/dip|fondos/.test(n)) return "triceps";
+  if (/press|pecho|chest|fly|apert/.test(n)) return "pecs";
+  if (/pull.up|chin.up|jalón|lat pulldown|pulldown|dominad/.test(n)) return "lats";
+  if (/row|remo|rhomboid|romboid/.test(n)) return "lats";
+  if (/curl|bicep|bícep/.test(n)) return "biceps";
+  if (/forearm|antebrazo|wrist|muñeca/.test(n)) return "forearms";
+  if (/hip thrust|empuje de cadera|glute bridge|puente/.test(n)) return "glutes";
+  if (/leg curl|femoral|isquio|hamstring/.test(n)) return "hamstrings";
+  if (/calf|gemelo|pantorrilla/.test(n)) return "calves";
+  if (/hip flex|flexor de cadera/.test(n)) return "hip_flexors";
+  if (/squat|sentadill|leg press|lunge|zancada|split squat|pistol/.test(n)) return "quads";
+  if (/leg ext|extensi[oó]n de pierna|quad/.test(n)) return "quads";
+  if (/glute|glúteo/.test(n)) return "glutes";
+  if (/russian twist|oblique|oblicuo/.test(n)) return "obliques";
+  if (/plank|plancha|crunch|situp|sit.up|leg raise|elevaci[oó]n de piernas|abdomi|ab /.test(n)) return "abs";
+  if (/neck|cuello/.test(n)) return "neck";
+  return null;
+}
+
 app.get("/api/v1/analytics/weekly-volume", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
@@ -8592,6 +8673,7 @@ app.get("/api/v1/analytics/weekly-volume", async (req, res, next) => {
       weekEndDate: string;
       totalSessions: number;
       muscleVolumes: Record<MuscleGroup, number>;
+      muscleBreakdown: Record<string, number>;
       totalSets: number;
     }
     const weekMap = new Map<string, WeekBucket>();
@@ -8612,6 +8694,7 @@ app.get("/api/v1/analytics/weekly-volume", async (req, res, next) => {
           weekEndDate: sundayStr,
           totalSessions: 0,
           muscleVolumes: { push: 0, pull: 0, legs: 0, shoulders: 0, core: 0 },
+          muscleBreakdown: {},
           totalSets: 0,
         });
       }
@@ -8626,8 +8709,11 @@ app.get("/api/v1/analytics/weekly-volume", async (req, res, next) => {
         });
         if (validSets.length === 0) continue;
         bucket.totalSets += validSets.length;
-        const muscle = classifyMuscle(ex.exerciseName ?? ex.name ?? "");
+        const exName = ex.exerciseName ?? ex.name ?? "";
+        const muscle = classifyMuscle(exName);
         if (muscle) bucket.muscleVolumes[muscle] += validSets.length;
+        const granular = classifyMuscleGranular(exName);
+        if (granular) bucket.muscleBreakdown[granular] = (bucket.muscleBreakdown[granular] ?? 0) + validSets.length;
       }
     }
 
@@ -10379,6 +10465,306 @@ app.patch("/api/v1/users/me/courses/:courseId/status", async (req, res, next) =>
 
     await db.collection("users").doc(auth.userId).update(update);
     res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
+// ── Courses ───────────────────────────────────────────────────────────────────
+
+app.get("/api/v1/courses", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    if (auth.role === "creator" || auth.role === "admin") {
+      const snap = await db.collection("courses").where("creator_id", "==", auth.userId).get();
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      res.json({ data });
+      return;
+    }
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    if (!userDoc.exists) { res.json({ data: [] }); return; }
+    const coursesMap = (userDoc.data()?.courses ?? {}) as Record<string, unknown>;
+    const courseIds = Object.keys(coursesMap);
+    if (courseIds.length === 0) { res.json({ data: [] }); return; }
+    const courseSnaps = await Promise.all(courseIds.map((id) => db.collection("courses").doc(id).get()));
+    const data = courseSnaps
+      .filter((s) => s.exists)
+      .map((s) => ({ id: s.id, ...s.data() }));
+    res.json({ data });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/creator/courses", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    assertCreator(auth);
+    const snap = await db.collection("courses").where("creator_id", "==", auth.userId).get();
+    res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (err) { next(err); }
+});
+
+app.patch("/api/v1/users/me/courses/:courseId/version", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId } = req.params;
+    const body = validateBody<{
+      versionId: string;
+      completedAt?: string;
+      downloaded_version?: string;
+      lastUpdated?: string;
+    }>({
+      versionId: "string",
+      completedAt: "optional_string",
+      downloaded_version: "optional_string",
+      lastUpdated: "optional_string",
+    }, req.body);
+
+    const update: Record<string, unknown> = {
+      [`courses.${courseId}.update_status`]: body.versionId,
+      [`courses.${courseId}.last_version_check`]: FieldValue.serverTimestamp(),
+    };
+    if (body.downloaded_version !== undefined) {
+      update[`courses.${courseId}.downloaded_version`] = body.downloaded_version;
+    }
+    if (body.lastUpdated !== undefined) {
+      update[`courses.${courseId}.lastUpdated`] = body.lastUpdated;
+    }
+
+    await db.collection("users").doc(auth.userId).update(update);
+    res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/users/me/courses/:courseId/trial", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId } = req.params;
+    const body = validateBody<{
+      durationInDays: number;
+      title?: string;
+      image_url?: string;
+      deliveryType?: string;
+      discipline?: string;
+      creatorName?: string;
+    }>({
+      durationInDays: "number",
+      title: "optional_string",
+      image_url: "optional_string",
+      deliveryType: "optional_string",
+      discipline: "optional_string",
+      creatorName: "optional_string",
+    }, req.body);
+
+    if (body.durationInDays <= 0) {
+      throw apiError("VALIDATION_ERROR", "durationInDays debe ser mayor a 0", 400, "durationInDays");
+    }
+
+    const userRef = db.collection("users").doc(auth.userId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) throw apiError("NOT_FOUND", "Usuario no encontrado", 404);
+
+    const userData = userDoc.data()!;
+    const trialHistory = (userData.free_trial_history ?? {}) as Record<string, Record<string, unknown>>;
+    const existingCourse = (userData.courses ?? {})[courseId] as Record<string, unknown> | undefined;
+
+    if (trialHistory[courseId]?.consumed) {
+      throw apiError("CONFLICT", "Trial ya consumido para este curso", 409);
+    }
+
+    if (existingCourse?.is_trial) {
+      const expiresAt = existingCourse.expires_at as string | undefined;
+      if (expiresAt && new Date(expiresAt) > new Date()) {
+        throw apiError("CONFLICT", "Ya tienes un trial activo para este curso", 409);
+      }
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + body.durationInDays * 24 * 60 * 60 * 1000);
+
+    const courseEntry: Record<string, unknown> = {
+      access_duration: `${body.durationInDays}_days_trial`,
+      expires_at: expiresAt.toISOString(),
+      trial_expires_at: expiresAt.toISOString(),
+      trial_started_at: now.toISOString(),
+      status: "active",
+      is_trial: true,
+      trial_duration_days: body.durationInDays,
+      trial_state: "active",
+      purchased_at: now.toISOString(),
+      deliveryType: body.deliveryType ?? "low_ticket",
+      title: body.title ?? "",
+      image_url: body.image_url ?? null,
+      discipline: body.discipline ?? null,
+      creatorName: body.creatorName ?? null,
+      completedTutorials: {
+        dailyWorkout: [],
+        warmup: [],
+        workoutExecution: [],
+        workoutCompletion: [],
+      },
+    };
+
+    const trialEntry: Record<string, unknown> = {
+      consumed: true,
+      last_started_at: now.toISOString(),
+      last_expires_at: expiresAt.toISOString(),
+    };
+
+    await userRef.update({
+      [`courses.${courseId}`]: courseEntry,
+      [`free_trial_history.${courseId}`]: trialEntry,
+    });
+
+    res.json({ data: { started: true } });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/users/me/courses/:courseId/backfill", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId } = req.params;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const userRef = db.collection("users").doc(auth.userId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) { res.json({ data: { backfilled: false } }); return; }
+
+    const userData = userDoc.data()!;
+    const coursesMap = (userData.courses ?? {}) as Record<string, unknown>;
+    if (coursesMap[courseId]) {
+      res.json({ data: { backfilled: false } });
+      return;
+    }
+
+    const now = new Date();
+    const farFuture = new Date(now);
+    farFuture.setFullYear(farFuture.getFullYear() + 10);
+
+    const courseEntry: Record<string, unknown> = {
+      access_duration: "one_on_one",
+      expires_at: farFuture.toISOString(),
+      status: "active",
+      purchased_at: now.toISOString(),
+      deliveryType: "one_on_one",
+      assigned_at: now.toISOString(),
+      title: body.title ?? "",
+      image_url: body.image_url ?? null,
+      discipline: body.discipline ?? null,
+      creatorName: body.creatorName ?? null,
+      completedTutorials: {
+        dailyWorkout: [],
+        warmup: [],
+        workoutExecution: [],
+        workoutCompletion: [],
+      },
+    };
+
+    await userRef.update({
+      [`courses.${courseId}`]: courseEntry,
+    });
+
+    res.json({ data: { backfilled: true } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/sessions/:sessionId/content", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { sessionId } = req.params;
+    const { courseId, creatorId: queryCreatorId } = req.query as Record<string, string | undefined>;
+
+    const contentSnap = await db.collection("client_session_content").doc(sessionId).get();
+    if (contentSnap.exists) {
+      const d = contentSnap.data() as Record<string, unknown>;
+      const owner = d.userId ?? d.clientUserId ?? d.client_id;
+      if (owner && owner !== auth.userId) throw apiError("FORBIDDEN", "No autorizado", 403);
+      const exercisesSnap = await db.collection("client_session_content").doc(sessionId)
+        .collection("exercises").orderBy("order", "asc").get();
+      const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+        const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+        return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+      }));
+      res.json({ data: { resolvedContent: { id: contentSnap.id, ...d, exercises } } });
+      return;
+    }
+
+    const clientSessionSnap = await db.collection("client_sessions").doc(sessionId).get();
+    if (!clientSessionSnap.exists) {
+      res.json({ data: { resolvedContent: null } });
+      return;
+    }
+    const clientSession = clientSessionSnap.data() as Record<string, unknown>;
+
+    if (clientSession.plan_id && clientSession.session_id && clientSession.module_id) {
+      const userId = clientSession.client_id as string;
+      const planId = clientSession.plan_id as string;
+      const weekKey = clientSession.week_key as string | undefined;
+      const moduleId = clientSession.module_id as string;
+      const planSessionId = clientSession.session_id as string;
+
+      if (weekKey) {
+        const docId = `${userId}_${planId}_${weekKey}`;
+        const planContentSnap = await db.collection("client_plan_content").doc(docId).get();
+        if (planContentSnap.exists) {
+          const sessionsSnap = await db.collection("client_plan_content").doc(docId)
+            .collection("sessions").orderBy("order", "asc").get();
+          const targetSession = sessionsSnap.docs.find((s) => {
+            const d = s.data() as Record<string, unknown>;
+            return s.id === planSessionId || d.source_session_id === planSessionId;
+          });
+          if (targetSession) {
+            const exSnap = await targetSession.ref.collection("exercises").orderBy("order", "asc").get();
+            const exercises = await Promise.all(exSnap.docs.map(async (exDoc) => {
+              const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+              return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+            }));
+            res.json({ data: { resolvedContent: { id: targetSession.id, ...targetSession.data(), exercises } } });
+            return;
+          }
+        }
+      }
+
+      const planSessionRef = db.collection("plans").doc(planId)
+        .collection("modules").doc(moduleId)
+        .collection("sessions").doc(planSessionId);
+      const planSessionSnap = await planSessionRef.get();
+      if (planSessionSnap.exists) {
+        const exercisesSnap = await planSessionRef.collection("exercises").orderBy("order", "asc").get();
+        const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+          const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+          return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+        }));
+        res.json({ data: { resolvedContent: { id: planSessionSnap.id, ...planSessionSnap.data(), exercises } } });
+        return;
+      }
+    }
+
+    if (clientSession.library_session_ref && clientSession.session_id) {
+      const libSessionId = clientSession.session_id as string;
+      let effectiveCreatorId = queryCreatorId;
+      if (!effectiveCreatorId && courseId) {
+        const courseDoc = await db.collection("courses").doc(courseId).get();
+        if (courseDoc.exists) {
+          const cData = courseDoc.data() as Record<string, unknown>;
+          effectiveCreatorId = (cData.creator_id ?? cData.creatorId) as string | undefined;
+        }
+      }
+      if (!effectiveCreatorId) {
+        res.json({ data: { resolvedContent: null } });
+        return;
+      }
+      const libSessionRef = db.collection("creator_libraries").doc(effectiveCreatorId)
+        .collection("sessions").doc(libSessionId);
+      const libSessionSnap = await libSessionRef.get();
+      if (!libSessionSnap.exists) { res.json({ data: { resolvedContent: null } }); return; }
+      const exercisesSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+      const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+        const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+        return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+      }));
+      res.json({ data: { resolvedContent: { id: libSessionSnap.id, ...libSessionSnap.data(), exercises } } });
+      return;
+    }
+
+    res.json({ data: { resolvedContent: null } });
   } catch (err) { next(err); }
 });
 
