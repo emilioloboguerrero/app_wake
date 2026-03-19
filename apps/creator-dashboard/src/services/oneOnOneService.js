@@ -3,7 +3,7 @@ import apiClient from '../utils/apiClient';
 class OneOnOneService {
   async lookupUserByEmailOrUsername(emailOrUsername) {
     const res = await apiClient.post('/creator/clients/lookup', {
-      email: emailOrUsername.trim(),
+      emailOrUsername: emailOrUsername.trim(),
     });
     return res.data;
   }
