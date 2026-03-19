@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { GlowingEffect, SkeletonCard, TubelightNavBar, AnimatedList, SpotlightTutorial } from '../components/ui';
 import libraryService from '../services/libraryService';
 import { cacheConfig, queryKeys } from '../config/queryClient';
@@ -457,6 +458,7 @@ const LibraryManagementScreen = () => {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
+    <ErrorBoundary>
     <DashboardLayout screenName="Biblioteca">
       <div className="lib-container">
 
@@ -523,6 +525,7 @@ const LibraryManagementScreen = () => {
         ]}
       />
     </DashboardLayout>
+  </ErrorBoundary>
   );
 };
 
