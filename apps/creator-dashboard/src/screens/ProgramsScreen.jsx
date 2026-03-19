@@ -11,9 +11,10 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import programService from '../services/programService';
 import libraryService from '../services/libraryService';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ProgramsScreen.css';
 
 const TUTORIAL_SCREENS = [
@@ -26,6 +27,7 @@ const TUTORIAL_SCREENS = [
 const ProgramsScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -83,10 +85,11 @@ const ProgramsScreen = () => {
   });
 
   const { data: userDoc } = useQuery({
-    queryKey: user ? queryKeys.user.detail(user.uid) : ['user', 'none'],
+    queryKey: ['creator', 'profile'],
     queryFn: async () => {
       if (!user) return null;
-      return await getUser(user.uid);
+      const { data } = await apiClient.get('/creator/profile');
+      return data;
     },
     enabled: !!user,
     staleTime: 10 * 60 * 1000,
@@ -294,15 +297,15 @@ const ProgramsScreen = () => {
   const handleCreateProgram = async () => {
     // Validate required fields
     if (!programName.trim()) {
-      alert('El nombre del programa es requerido');
+      showToast('El nombre del programa es requerido', 'error');
       return;
     }
     if (!discipline) {
-      alert('La disciplina es requerida');
+      showToast('La disciplina es requerida', 'error');
       return;
     }
     if (!programType) {
-      alert('El tipo es requerido');
+      showToast('El tipo es requerido', 'error');
       return;
     }
     if (!user || !creatorName) {
@@ -355,7 +358,7 @@ const ProgramsScreen = () => {
           setImageUploadProgress(100);
         } catch (uploadErr) {
           logger.error('Error uploading image:', uploadErr);
-          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
         } finally {
           setIsUploadingImage(false);
         }
@@ -381,7 +384,7 @@ const ProgramsScreen = () => {
           setIntroVideoUploadProgress(100);
         } catch (uploadErr) {
           logger.error('Error uploading intro video:', uploadErr);
-          alert(`Error al subir el video intro: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir el video intro: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
         } finally {
           setIsUploadingIntroVideo(false);
         }
@@ -412,7 +415,7 @@ const ProgramsScreen = () => {
           await programService.updateProgram(newProgram.id, { tutorials: tutorialsPayload });
         } catch (uploadErr) {
           logger.error('Error uploading tutorial videos:', uploadErr);
-          alert(`Error al subir los tutoriales: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir los tutoriales: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
         } finally {
           setIsUploadingTutorials(false);
         }
@@ -433,7 +436,7 @@ const ProgramsScreen = () => {
       }
     } catch (err) {
       logger.error('Error creating program:', err);
-      alert(`Error al crear el programa: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al crear el programa: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     }
   };
 
@@ -474,7 +477,7 @@ const ProgramsScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting program:', err);
-      alert('Error al eliminar el programa. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar el programa. Por favor, intenta de nuevo.', 'error');
     }
   };
 

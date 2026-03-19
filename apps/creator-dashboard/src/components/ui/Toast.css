@@ -1,0 +1,92 @@
+.toast-container {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px 9px 12px;
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: all;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+/* ── Variants ── */
+.toast-success {
+  background: rgba(22, 30, 26, 0.94);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  color: rgba(255, 255, 255, 0.90);
+}
+.toast-success .toast-icon { color: rgba(52, 211, 153, 0.9); }
+
+.toast-error {
+  background: rgba(30, 22, 22, 0.94);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: rgba(255, 255, 255, 0.90);
+}
+.toast-error .toast-icon { color: rgba(239, 68, 68, 0.9); }
+
+.toast-info {
+  background: rgba(24, 24, 28, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.90);
+}
+.toast-info .toast-icon { color: rgba(255, 255, 255, 0.55); }
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Enter / Exit animations ── */
+.toast-enter {
+  animation: toast-in 0.38s var(--spring, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.toast-exit {
+  animation: toast-out 0.26s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+}

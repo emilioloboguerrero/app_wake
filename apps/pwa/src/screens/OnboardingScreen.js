@@ -26,8 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-import hybridDataService from '../services/hybridDataService';
 import profilePictureService from '../services/profilePictureService';
 import authService from '../services/authService';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -813,8 +813,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     },
   }), [screenWidth, screenHeight]);
   const [loading, setLoading] = useState(false);
-  const [availableDisciplines, setAvailableDisciplines] = useState([]);
-  const [disciplinesLoading, setDisciplinesLoading] = useState(true);
   
   // Animation values for logo
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -888,24 +886,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
   }, [authEmail, formData.email]);
 
-  // Load available disciplines from database
-  useEffect(() => {
-    const loadDisciplines = async () => {
-      try {
-        setDisciplinesLoading(true);
-        const disciplines = await hybridDataService.loadAvailableDisciplines(user?.uid);
-        setAvailableDisciplines(disciplines || []);
-      } catch (error) {
-        logger.error('Error loading disciplines:', error);
-        setAvailableDisciplines([]);
-      } finally {
-        setDisciplinesLoading(false);
-      }
-    };
-    
-    loadDisciplines();
-  }, [user]);
-
   // Validate username uniqueness
   const validateUsername = async (username) => {
     if (!username || username.length < 3) {
@@ -915,6 +895,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     
     setUsernameValidating(true);
     try {
+      // TODO: no endpoint for isUsernameTaken — no REST endpoint for username availability check
       const taken = await firestoreService.isUsernameTaken(username);
       setUsernameAvailable(!taken);
     } catch (error) {
@@ -1421,7 +1402,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         // Continue anyway - Firestore update is more important
       }
 
-      await hybridDataService.updateUserProfile(uidForSubmit, userData);
+      await apiClient.patch('/users/me', userData);
 
       logger.debug('✅ Onboarding completed successfully');
       

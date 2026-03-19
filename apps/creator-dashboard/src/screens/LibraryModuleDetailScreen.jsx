@@ -9,6 +9,7 @@ import Button from '../components/Button';
 import libraryService from '../services/libraryService';
 import { queryClient, queryKeys } from '../config/queryClient';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 
 import {
   DndContext,
@@ -122,6 +123,7 @@ const DraggableSession = ({ session, isInModule = false, onDelete, isEditMode, o
 const LibraryModuleDetailScreen = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const location = useLocation();
   const { user } = useAuth();
   const backPath = location.state?.returnTo || '/content';
@@ -242,7 +244,7 @@ const LibraryModuleDetailScreen = () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
-      alert('Error al agregar la sesión');
+      showToast('Error al agregar la sesión', 'error');
     }
   };
 
@@ -260,7 +262,7 @@ const LibraryModuleDetailScreen = () => {
       });
     } catch (err) {
       logger.error('Error updating session order:', err);
-      alert('Error al actualizar el orden');
+      showToast('Error al actualizar el orden', 'error');
     }
   };
 
@@ -299,7 +301,7 @@ const LibraryModuleDetailScreen = () => {
       setDeleteConfirmation('');
     } catch (err) {
       logger.error('Error removing session:', err);
-      alert('Error al remover la sesión');
+      showToast('Error al remover la sesión', 'error');
     } finally {
       setIsDeleting(false);
     }

@@ -1,9 +1,9 @@
 // Firebase Auth service for Wake
 import { auth } from '../config/firebase';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   updateProfile,
   sendPasswordResetEmail,
   onAuthStateChanged,
@@ -18,10 +18,10 @@ import profilePictureService from './profilePictureService';
 import hybridDataService from './hybridDataService';
 import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
-import firestoreService from './firestoreService';
 import { handleError, handleNetworkOperation } from '../utils/errorHandler';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
+import apiClient from '../utils/apiClient';
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -42,19 +42,6 @@ class AuthService {
       await updateProfile(cred.user, {
         displayName: displayName
       });
-
-      // Create or update Firestore user doc so every sign-in method has a document
-      try {
-        await firestoreService.updateUser(cred.user.uid, {
-          email: cred.user.email,
-          displayName: displayName || cred.user.email?.split('@')[0] || 'Usuario',
-          provider: 'email',
-          lastLoginAt: new Date(),
-        });
-        logger.log('[AUTH] registerUser: Firestore user doc created/updated for uid:', cred.user?.uid);
-      } catch (docError) {
-        logger.warn('[AUTH] registerUser: Firestore doc create/update failed (non-fatal):', docError?.message);
-      }
 
       return cred.user;
     } catch (error) {
@@ -98,21 +85,6 @@ class AuthService {
         userId: finalUser?.uid
       });
 
-      // Create or update Firestore user doc so every sign-in method has a document
-      if (finalUser?.uid) {
-        try {
-          await firestoreService.updateUser(finalUser.uid, {
-            email: finalUser.email,
-            displayName: finalUser.displayName || finalUser.email?.split('@')[0] || 'Usuario',
-            provider: 'email',
-            lastLoginAt: new Date(),
-          });
-          logger.debug('[AUTH] signInUser: Firestore user doc created/updated for uid:', finalUser.uid);
-        } catch (docError) {
-          logger.warn('[AUTH] signInUser: Firestore doc create/update failed (non-fatal):', docError?.message);
-        }
-      }
-      
       return finalUser || userCredential.user;
     } catch (error) {
       logger.error('[AUTH] Sign in error:', error.code, error.message);
@@ -132,7 +104,14 @@ class AuthService {
     try {
       const currentUser = auth.currentUser;
       const userId = currentUser?.uid;
-      
+
+      // Revoke server-side refresh tokens before signing out locally
+      try {
+        await apiClient.post('/auth/logout', {});
+      } catch (logoutErr) {
+        logger.warn('[AUTH] Server-side logout failed (non-fatal):', logoutErr?.message);
+      }
+
       // Check if user signed in with Google and sign out (only if not in Expo Go)
       if (!isExpoGo) {
         const isGoogleSignedIn = await googleAuthService.isSignedIn();
@@ -140,7 +119,7 @@ class AuthService {
           await googleAuthService.signOut();
         }
       }
-      
+
       // Sign out from Firebase
       await signOut(auth);
       

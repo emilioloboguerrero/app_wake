@@ -1,76 +1,63 @@
 /**
  * Nutrition Firestore service — user diary, assignments, plan (read).
- * Paths: nutrition_assignments, client_nutrition_plan_content, users/{userId}/diary, creator_nutrition_library/{creatorId}/plans
- * Resolution: for a user's plan, prefer client_nutrition_plan_content (assignment copy) over library plan.
- *
- * Diary (meal logging): One document per logged food serving at users/{userId}/diary/{entryId}.
- * Each day is independent: query by date (YYYY-MM-DD). Plan targets (daily_calories, daily_*_g) come from
- * the assigned plan; what the user actually eats is stored only in diary entries. Past days can be edited
- * by loading getDiaryEntries(userId, date) and using addDiaryEntry, updateDiaryEntry, deleteDiaryEntry.
+ * Phase 3: fully migrated to API.
  */
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient, { WakeApiError } from '../utils/apiClient';
 import logger from '../utils/logger';
 
-const PLANS = 'plans';
-const CLIENT_NUTRITION_PLAN_CONTENT = 'client_nutrition_plan_content';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function planRef(creatorId, planId) {
-  return doc(firestore, 'creator_nutrition_library', creatorId, PLANS, planId);
+function toDateStr(value) {
+  if (!value) return new Date().toISOString().split('T')[0];
+  if (value instanceof Date) return value.toISOString().split('T')[0];
+  return String(value).split('T')[0];
 }
 
-function assignmentsRef() {
-  return collection(firestore, 'nutrition_assignments');
+function shapeDiaryEntry(e) {
+  return {
+    id: e.entryId,
+    date: e.date ?? null,
+    meal: e.meal ?? null,
+    food_id: e.foodId ?? null,
+    serving_id: e.servingId ?? null,
+    number_of_units: e.numberOfUnits ?? 1,
+    name: e.name ?? null,
+    food_category: e.foodCategory ?? null,
+    calories: e.calories ?? null,
+    protein: e.protein ?? null,
+    carbs: e.carbs ?? null,
+    fat: e.fat ?? null,
+    serving_unit: e.servingUnit ?? null,
+    grams_per_unit: e.gramsPerUnit ?? null,
+    createdAt: e.createdAt ?? null,
+  };
 }
 
-function diaryRef(userId) {
-  // 3 path segments = valid Firestore collection reference (must be odd count).
-  // Diary entries live at users/{userId}/diary/{entryId}.
-  return collection(firestore, 'users', userId, 'diary');
+function shapeAssignment(d) {
+  return {
+    id: d.assignmentId,
+    planId: d.assignmentId,   // truthy placeholder for getActiveAssignmentsForDate filter
+    plan: shapePlan(d.plan),
+    assignedBy: d.assignmentId, // truthy placeholder
+    startDate: d.startDate ?? null,
+    endDate: d.endDate ?? null,
+  };
 }
 
-export async function getAssignmentsByUser(userId) {
-  const q = query(
-    assignmentsRef(),
-    where('userId', '==', userId),
-    orderBy('startDate', 'desc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+function shapePlan(p) {
+  if (!p) return null;
+  return {
+    id: p.planId ?? null,
+    name: p.name ?? null,
+    daily_calories: p.dailyCalories ?? null,
+    daily_protein_g: p.dailyProteinG ?? null,
+    daily_carbs_g: p.dailyCarbsG ?? null,
+    daily_fat_g: p.dailyFatG ?? null,
+    categories: p.categories ?? [],
+  };
 }
 
-export async function getPlanById(creatorId, planId) {
-  const d = await getDoc(planRef(creatorId, planId));
-  return d.exists() ? { id: d.id, ...d.data() } : null;
-}
-
-/**
- * Get client nutrition plan content (personalized copy) for an assignment if it exists.
- * Used for resolution: copy first, then library plan.
- */
-export async function getClientNutritionPlanContent(assignmentId) {
-  if (!assignmentId) return null;
-  try {
-    const ref = doc(firestore, CLIENT_NUTRITION_PLAN_CONTENT, assignmentId);
-    const snap = await getDoc(ref);
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-  } catch (err) {
-    logger.warn('[nutritionFirestoreService] getClientNutritionPlanContent:', err?.message);
-    return null;
-  }
-}
+// ─── Utility (kept pure — no async) ──────────────────────────────────────────
 
 function parseAssignmentDate(value) {
   if (value == null) return null;
@@ -80,18 +67,6 @@ function parseAssignmentDate(value) {
   return null;
 }
 
-/**
- * Get the assignment that is active on a given date (startDate <= date and (no endDate or endDate >= date)).
- * If none, returns the most recent assignment by startDate (backward compatible).
- */
-function getActiveAssignmentForDate(assignments, date) {
-  const active = getActiveAssignmentsForDate(assignments, date);
-  return active[0] || assignments[0] || null;
-}
-
-/**
- * Get all assignments active on a given date (for program picker when user has multiple plans).
- */
 export function getActiveAssignmentsForDate(assignments, date = null) {
   const today = date ? new Date(date) : new Date();
   today.setHours(0, 0, 0, 0);
@@ -104,288 +79,199 @@ export function getActiveAssignmentsForDate(assignments, date = null) {
   });
 }
 
-function normalizePlanMacros(plan) {
-  if (!plan || typeof plan !== 'object') return plan;
-  return {
-    ...plan,
-    daily_protein_g: plan.daily_protein_g ?? plan.daily_protein ?? null,
-    daily_carbs_g: plan.daily_carbs_g ?? plan.daily_carbs ?? null,
-    daily_fat_g: plan.daily_fat_g ?? plan.daily_fat ?? null,
-  };
+// ─── Assignment / plan ────────────────────────────────────────────────────────
+
+export async function getAssignmentsByUser(userId) {
+  const tag = '[getAssignmentsByUser]';
+  const dateStr = toDateStr(new Date());
+  try {
+    const result = await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
+    return [shapeAssignment(result.data)];
+  } catch (err) {
+    if (err instanceof WakeApiError && err.code === 'NOT_FOUND') return [];
+    logger.error(tag, 'userId=', userId, 'error=', err?.message ?? err);
+    throw err;
+  }
 }
 
-/**
- * Returns whether the user has an active nutrition assignment (for routing only; no plan content read).
- * Use this when you only need to know "has plan" (e.g. bottom bar) to avoid permission issues.
- */
 export async function hasActiveNutritionAssignment(userId, onDate = null) {
   const tag = '[hasActiveNutritionAssignment]';
+  const dateStr = toDateStr(onDate);
   try {
-    const assignments = await getAssignmentsByUser(userId);
-    logger.log(tag, 'userId=', userId, 'assignmentsCount=', assignments?.length ?? 0, 'assignments=', assignments?.map((a) => ({ id: a.id, planId: a.planId, assignedBy: a.assignedBy, startDate: a.startDate, endDate: a.endDate })));
-    const assignment = getActiveAssignmentForDate(assignments, onDate);
-    const hasPlan = !!(assignment?.planId && assignment?.assignedBy);
-    logger.log(tag, 'activeAssignment=', assignment ? { id: assignment.id, planId: assignment.planId, assignedBy: assignment.assignedBy, startDate: assignment.startDate, endDate: assignment.endDate } : null, 'result hasPlan=', hasPlan);
-    return hasPlan;
+    await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
+    return true;
   } catch (err) {
+    if (err instanceof WakeApiError && err.code === 'NOT_FOUND') return false;
     logger.error(tag, 'userId=', userId, 'error=', err?.message ?? err, err);
     throw err;
   }
 }
 
-/**
- * Get the effective plan for a user: assignment copy if exists, else plan snapshot on assignment.
- * Uses the assignment that is active today (startDate <= today, endDate null or >= today); else most recent.
- * @param {string} userId - User id
- * @param {Date|string} [onDate] - Date to check (default: today)
- * @returns {Promise<{ plan: Object|null, assignment: Object|null }>}
- */
-export async function getEffectivePlanForUser(userId, onDate = null) {
-  const assignments = await getAssignmentsByUser(userId);
-  const assignment = getActiveAssignmentForDate(assignments, onDate);
-  if (!assignment?.planId || !assignment?.assignedBy) {
-    return { plan: null, assignment: null };
-  }
-  const copy = await getClientNutritionPlanContent(assignment.id);
-  if (copy) {
-    return { plan: normalizePlanMacros(copy), assignment };
-  }
-  const snapshot = assignment.plan && typeof assignment.plan === 'object'
-    ? { id: assignment.planId, ...assignment.plan }
-    : null;
-  if (snapshot) {
-    return { plan: normalizePlanMacros(snapshot), assignment };
-  }
+export async function getEffectivePlanForUser(_userId, onDate = null) {
+  const dateStr = toDateStr(onDate);
   try {
-    const libraryPlan = await getPlanById(assignment.assignedBy, assignment.planId);
-    return { plan: normalizePlanMacros(libraryPlan), assignment };
+    const result = await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
+    const d = result.data;
+    return {
+      plan: shapePlan({ ...d.plan, planId: d.assignmentId }),
+      assignment: {
+        id: d.assignmentId,
+        planId: d.assignmentId,
+        assignedBy: d.assignmentId,
+        startDate: d.startDate ?? null,
+        endDate: d.endDate ?? null,
+      },
+    };
   } catch (err) {
-    return { plan: null, assignment };
+    if (err instanceof WakeApiError && err.code === 'NOT_FOUND') return { plan: null, assignment: null };
+    throw err;
   }
 }
 
-/**
- * Get plan for a specific assignment (e.g. when user has pinned a default plan).
- * @param {string} userId - User id
- * @param {string} assignmentId - Assignment document id
- * @param {Date|string} [onDate] - Optional date (for validation; not used for resolution)
- * @returns {Promise<{ plan: Object|null, assignment: Object|null }>}
- */
-export async function getPlanForAssignmentId(userId, assignmentId, onDate = null) {
-  if (!assignmentId) return { plan: null, assignment: null };
-  const assignments = await getAssignmentsByUser(userId);
-  const assignment = assignments.find((a) => a.id === assignmentId);
-  if (!assignment?.planId || !assignment?.assignedBy) {
-    return { plan: null, assignment: null };
-  }
-  const copy = await getClientNutritionPlanContent(assignment.id);
-  if (copy) {
-    return { plan: normalizePlanMacros(copy), assignment };
-  }
-  const snapshot = assignment.plan && typeof assignment.plan === 'object'
-    ? { id: assignment.planId, ...assignment.plan }
-    : null;
-  if (snapshot) {
-    return { plan: normalizePlanMacros(snapshot), assignment };
-  }
-  try {
-    const libraryPlan = await getPlanById(assignment.assignedBy, assignment.planId);
-    return { plan: normalizePlanMacros(libraryPlan), assignment };
-  } catch (err) {
-    return { plan: null, assignment };
-  }
+export async function getPlanForAssignmentId(userId, _assignmentId, onDate = null) {
+  // The API resolves the active plan for the given date — no per-assignmentId endpoint exists.
+  return getEffectivePlanForUser(userId, onDate);
 }
 
-export async function getDiaryEntries(userId, date) {
-  const q = query(
-    diaryRef(userId),
-    where('date', '==', date),
-    orderBy('meal', 'asc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+// ─── Diary ────────────────────────────────────────────────────────────────────
+
+export async function getDiaryEntries(_userId, date) {
+  const result = await apiClient.get('/nutrition/diary', { params: { date } });
+  return (result?.data ?? []).map(shapeDiaryEntry);
 }
 
-/**
- * Get all diary entries in a date range (inclusive). One query = lightest/cheapest for aggregations
- * (e.g. average calories/macros last 7 days and % change vs previous 7 days).
- * @param {string} userId
- * @param {string} startDateYYYYMMDD
- * @param {string} endDateYYYYMMDD
- * @returns {Promise<Array<{ id: string, date: string, calories?: number, protein?: number, carbs?: number, fat?: number, ... }>>}
- */
-export async function getDiaryEntriesInRange(userId, startDateYYYYMMDD, endDateYYYYMMDD) {
-  if (!userId || !startDateYYYYMMDD || !endDateYYYYMMDD) return [];
-  const q = query(
-    diaryRef(userId),
-    where('date', '>=', startDateYYYYMMDD),
-    where('date', '<=', endDateYYYYMMDD)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
-
-/**
- * Get YYYY-MM-DD dates that have at least one diary entry in the given range (inclusive).
- */
-export async function getDatesWithEntries(userId, startDateYYYYMMDD, endDateYYYYMMDD) {
-  const q = query(
-    diaryRef(userId),
-    where('date', '>=', startDateYYYYMMDD),
-    where('date', '<=', endDateYYYYMMDD)
-  );
-  const snap = await getDocs(q);
-  const dates = new Set();
-  snap.docs.forEach((d) => {
-    const date = d.data().date;
-    if (date) dates.add(date);
+export async function getDiaryEntriesInRange(_userId, startDateYYYYMMDD, endDateYYYYMMDD) {
+  if (!startDateYYYYMMDD || !endDateYYYYMMDD) return [];
+  const result = await apiClient.get('/nutrition/diary', {
+    params: { startDate: startDateYYYYMMDD, endDate: endDateYYYYMMDD },
   });
+  return (result?.data ?? []).map(shapeDiaryEntry);
+}
+
+export async function getDatesWithEntries(_userId, startDateYYYYMMDD, endDateYYYYMMDD) {
+  const entries = await getDiaryEntriesInRange(_userId, startDateYYYYMMDD, endDateYYYYMMDD);
+  const dates = new Set();
+  entries.forEach((e) => { if (e.date) dates.add(e.date); });
   return Array.from(dates);
 }
 
-export async function addDiaryEntry(userId, data) {
-  const ref = await addDoc(diaryRef(userId), {
-    userId,
+export async function addDiaryEntry(_userId, data) {
+  const result = await apiClient.post('/nutrition/diary', {
     date: data.date,
     meal: data.meal ?? '',
-    food_id: data.food_id,
-    serving_id: data.serving_id,
-    number_of_units: data.number_of_units ?? 1,
+    foodId: data.food_id,
+    servingId: data.serving_id ?? '0',
+    numberOfUnits: data.number_of_units ?? 1,
     name: data.name ?? '',
-    food_category: data.food_category ?? null,
+    foodCategory: data.food_category ?? null,
     calories: data.calories ?? null,
     protein: data.protein ?? null,
     carbs: data.carbs ?? null,
     fat: data.fat ?? null,
-    serving_unit: data.serving_unit ?? null,
-    grams_per_unit: data.grams_per_unit ?? null,
-    servings: data.servings ?? null,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+    servingUnit: data.serving_unit ?? null,
+    gramsPerUnit: data.grams_per_unit ?? null,
+    ...(data.servings ? { servings: data.servings } : {}),
+  }, { idempotent: false });
+  return result?.data?.entryId;
 }
 
-export async function updateDiaryEntry(userId, entryId, data) {
-  const ref = doc(firestore, 'users', userId, 'diary', entryId);
+export async function updateDiaryEntry(_userId, entryId, data) {
   const update = {};
-  if (data.date != null) update.date = data.date;
-  if (data.meal != null) update.meal = data.meal;
-  if (data.food_id != null) update.food_id = data.food_id;
-  if (data.serving_id != null) update.serving_id = data.serving_id;
-  if (data.number_of_units != null) update.number_of_units = data.number_of_units;
-  if (data.name != null) update.name = data.name;
-  if (data.food_category !== undefined) update.food_category = data.food_category ?? null;
+  if (data.serving_id != null) update.servingId = data.serving_id;
+  if (data.number_of_units != null) update.numberOfUnits = data.number_of_units;
   if (data.calories != null) update.calories = data.calories;
   if (data.protein != null) update.protein = data.protein;
   if (data.carbs != null) update.carbs = data.carbs;
   if (data.fat != null) update.fat = data.fat;
-  if (data.serving_unit !== undefined) update.serving_unit = data.serving_unit ?? null;
-  if (data.grams_per_unit !== undefined) update.grams_per_unit = data.grams_per_unit ?? null;
-  if (data.servings !== undefined) update.servings = data.servings;
-  await updateDoc(ref, update);
+  await apiClient.patch(`/nutrition/diary/${entryId}`, update);
 }
 
-export async function deleteDiaryEntry(userId, entryId) {
-  await deleteDoc(doc(firestore, 'users', userId, 'diary', entryId));
+export async function deleteDiaryEntry(_userId, entryId) {
+  await apiClient.delete(`/nutrition/diary/${entryId}`);
 }
 
-function userMealsRef(userId) {
-  return collection(firestore, 'users', userId, 'meals');
+// ─── Saved foods ──────────────────────────────────────────────────────────────
+
+export async function getSavedFoods(_userId) {
+  const result = await apiClient.get('/nutrition/saved-foods');
+  return (result?.data ?? []).map((f) => ({
+    id: f.savedFoodId,
+    food_id: f.foodId,
+    name: f.name,
+    food_category: null,
+    serving_id: '0',
+    serving_description: f.servingUnit ?? null,
+    calories_per_unit: f.calories,
+    protein_per_unit: f.protein,
+    carbs_per_unit: f.carbs,
+    fat_per_unit: f.fat,
+    grams_per_unit: null,
+    servings: [],
+    savedAt: f.savedAt,
+  }));
 }
 
-export async function getUserMeals(userId) {
-  if (!userId) return [];
-  const q = query(userMealsRef(userId), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+export async function saveFood(_userId, data) {
+  const result = await apiClient.post('/nutrition/saved-foods', {
+    foodId: data.food_id,
+    name: data.name,
+    calories: data.calories_per_unit ?? data.calories ?? null,
+    protein: data.protein_per_unit ?? data.protein ?? null,
+    carbs: data.carbs_per_unit ?? data.carbs ?? null,
+    fat: data.fat_per_unit ?? data.fat ?? null,
+    servingUnit: data.serving_description ?? data.serving_unit ?? null,
+  }, { idempotent: false });
+  return result?.data?.savedFoodId;
 }
 
-export async function createUserMeal(userId, data) {
-  const ref = await addDoc(userMealsRef(userId), {
-    name: data.name ?? '',
+export async function deleteSavedFood(_userId, savedFoodId) {
+  await apiClient.delete(`/nutrition/saved-foods/${savedFoodId}`);
+}
+
+export async function updateSavedFood(_userId, savedFoodId, _data) {
+  const body = {};
+  if (_data.name !== undefined) body.name = _data.name;
+  if (_data.calories !== undefined) body.calories = _data.calories;
+  if (_data.protein !== undefined) body.protein = _data.protein;
+  if (_data.carbs !== undefined) body.carbs = _data.carbs;
+  if (_data.fat !== undefined) body.fat = _data.fat;
+  if (_data.serving_unit !== undefined) body.servingUnit = _data.serving_unit;
+  if (_data.servingUnit !== undefined) body.servingUnit = _data.servingUnit;
+  await apiClient.patch(`/nutrition/saved-foods/${savedFoodId}`, body);
+}
+
+export async function getUserMeals(_userId) {
+  const result = await apiClient.get('/nutrition/user-meals');
+  return (result?.data ?? []).map((m) => ({ id: m.mealId, ...m }));
+}
+
+export async function createUserMeal(_userId, data) {
+  const result = await apiClient.post('/nutrition/user-meals', {
+    name: data.name,
     items: data.items ?? [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
+  }, { idempotent: false });
+  return result?.data?.mealId;
 }
 
-export async function updateUserMeal(userId, mealId, data) {
-  const ref = doc(firestore, 'users', userId, 'meals', mealId);
-  await updateDoc(ref, {
-    ...(data.name !== undefined && { name: data.name }),
-    ...(data.items !== undefined && { items: data.items }),
-    updatedAt: serverTimestamp(),
-  });
+export async function updateUserMeal(_userId, mealId, data) {
+  const body = {};
+  if (data.name !== undefined) body.name = data.name;
+  if (data.items !== undefined) body.items = data.items;
+  await apiClient.patch(`/nutrition/user-meals/${mealId}`, body);
 }
 
-export async function deleteUserMeal(userId, mealId) {
-  await deleteDoc(doc(firestore, 'users', userId, 'meals', mealId));
-}
-
-function savedFoodsRef(userId) {
-  return collection(firestore, 'users', userId, 'saved_foods');
-}
-
-export async function getSavedFoods(userId) {
-  const q = query(savedFoodsRef(userId), orderBy('savedAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
-
-export async function saveFood(userId, data) {
-  const ref = await addDoc(savedFoodsRef(userId), {
-    userId,
-    food_id: data.food_id,
-    name: data.name,
-    food_category: data.food_category ?? null,
-    serving_id: data.serving_id,
-    serving_description: data.serving_description ?? null,
-    number_of_units: data.number_of_units ?? 1,
-    calories_per_unit: data.calories_per_unit ?? null,
-    protein_per_unit: data.protein_per_unit ?? null,
-    carbs_per_unit: data.carbs_per_unit ?? null,
-    fat_per_unit: data.fat_per_unit ?? null,
-    grams_per_unit: data.grams_per_unit ?? null,
-    servings: data.servings ?? [],
-    savedAt: serverTimestamp(),
-  });
-  return ref.id;
-}
-
-export async function updateSavedFood(userId, savedFoodId, data) {
-  const ref = doc(firestore, 'users', userId, 'saved_foods', savedFoodId);
-  const first = Array.isArray(data.servings) && data.servings.length > 0 ? data.servings[0] : null;
-  const update = {
-    name: data.name,
-    food_category: data.food_category ?? null,
-    servings: data.servings ?? [],
-  };
-  if (first) {
-    update.serving_id = first.serving_id ?? '0';
-    update.serving_description = first.serving_description ?? null;
-    update.calories_per_unit = first.calories != null ? first.calories : null;
-    update.protein_per_unit = first.protein != null ? first.protein : null;
-    update.carbs_per_unit = first.carbohydrate != null ? first.carbohydrate : null;
-    update.fat_per_unit = first.fat != null ? first.fat : null;
-    update.grams_per_unit = first.metric_serving_amount != null ? first.metric_serving_amount : null;
-  }
-  await updateDoc(ref, update);
-}
-
-export async function deleteSavedFood(userId, savedFoodId) {
-  await deleteDoc(doc(firestore, 'users', userId, 'saved_foods', savedFoodId));
+export async function deleteUserMeal(_userId, mealId) {
+  await apiClient.delete(`/nutrition/user-meals/${mealId}`);
 }
 
 export default {
   getAssignmentsByUser,
   getActiveAssignmentsForDate,
   hasActiveNutritionAssignment,
-  getPlanById,
-  getClientNutritionPlanContent,
   getEffectivePlanForUser,
   getPlanForAssignmentId,
   getDiaryEntries,
+  getDiaryEntriesInRange,
   getDatesWithEntries,
   addDiaryEntry,
   updateDiaryEntry,

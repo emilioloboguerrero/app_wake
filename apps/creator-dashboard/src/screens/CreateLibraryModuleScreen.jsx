@@ -6,12 +6,14 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ProgramDetailScreen.css';
 
 const CreateLibraryModuleScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [moduleName, setModuleName] = useState('');
@@ -33,7 +35,7 @@ const CreateLibraryModuleScreen = () => {
       navigate(backPath, { state: backState });
     } catch (err) {
       logger.error('Error creating library module:', err);
-      alert(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingModule(false);
     }

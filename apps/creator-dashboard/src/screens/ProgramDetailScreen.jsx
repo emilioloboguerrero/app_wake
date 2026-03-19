@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -649,6 +650,7 @@ const ProgramDetailScreen = () => {
   const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   
   const [selectedUserInfo, setSelectedUserInfo] = useState(null);
@@ -900,7 +902,7 @@ const ProgramDetailScreen = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
       setContentPlanId(planId || null);
     } catch (err) {
-      alert(err.message || 'Error al actualizar');
+      showToast(err.message || 'Error al actualizar', 'error');
     } finally {
       setIsSavingContentPlan(false);
     }
@@ -915,7 +917,7 @@ const ProgramDetailScreen = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
     } catch (err) {
-      alert(err?.message || 'Error al añadir semana');
+      showToast(err?.message || 'Error al añadir semana', 'error');
     } finally {
       setIsAddingWeek(false);
     }
@@ -1012,7 +1014,7 @@ const ProgramDetailScreen = () => {
     } catch (err) {
       logger.error('[ProgramDetailScreen] navigateToSessionEdit: error migrating session to library', err);
       logger.error('[ProgramDetailScreen] navigateToSessionEdit: error stack', err?.stack);
-      alert(err?.message || 'Error al abrir la sesión para editar.');
+      showToast(err?.message || 'Error al abrir la sesión para editar.', 'error');
     } finally {
       setIsMigratingSessionToLibrary(false);
     }
@@ -1593,7 +1595,7 @@ const ProgramDetailScreen = () => {
       handleCloseStatusModal();
     } catch (err) {
       logger.error('Error updating status:', err);
-      alert('Error al actualizar el estado del programa');
+      showToast('Error al actualizar el estado del programa', 'error');
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -1644,7 +1646,7 @@ const ProgramDetailScreen = () => {
       handleClosePriceModal();
     } catch (err) {
       logger.error('Error updating price:', err);
-      alert('Error al actualizar el precio del programa');
+      showToast('Error al actualizar el precio del programa', 'error');
     } finally {
       setIsUpdatingPrice(false);
     }
@@ -1696,14 +1698,14 @@ const ProgramDetailScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     // Validate file size (e.g., max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -1731,7 +1733,7 @@ const ProgramDetailScreen = () => {
       setImageUploadProgress(100);
     } catch (err) {
       logger.error('Error uploading image:', err);
-      alert('Error al subir la imagen. Por favor, intenta de nuevo.');
+      showToast('Error al subir la imagen. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUploadingImage(false);
       // Reset file input
@@ -1762,7 +1764,7 @@ const ProgramDetailScreen = () => {
       );
     } catch (err) {
       logger.error('Error deleting image:', err);
-      alert('Error al eliminar la imagen. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la imagen. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1795,7 +1797,7 @@ const ProgramDetailScreen = () => {
       handleCloseEditProgramModal();
     } catch (err) {
       logger.error('Error updating program:', err);
-      alert('Error al actualizar el programa');
+      showToast('Error al actualizar el programa', 'error');
     } finally {
       setIsUpdatingProgram(false);
     }
@@ -1844,7 +1846,7 @@ const ProgramDetailScreen = () => {
       handleCloseDurationModal();
     } catch (err) {
       logger.error('Error updating duration:', err);
-      alert('Error al actualizar la duración del programa');
+      showToast('Error al actualizar la duración del programa', 'error');
     } finally {
       setIsUpdatingDuration(false);
     }
@@ -1880,7 +1882,7 @@ const ProgramDetailScreen = () => {
       handleCloseWeightSuggestionsModal();
     } catch (err) {
       logger.error('Error updating weight suggestions settings:', err);
-      alert('Error al actualizar la configuración de sugerencias de peso');
+      showToast('Error al actualizar la configuración de sugerencias de peso', 'error');
     } finally {
       setIsUpdatingWeightSuggestions(false);
     }
@@ -1951,7 +1953,7 @@ const ProgramDetailScreen = () => {
       setIsFreeTrialModalOpen(false);
     } catch (err) {
       logger.error('Error updating free trial settings:', err);
-      alert('Error al actualizar la prueba gratis');
+      showToast('Error al actualizar la prueba gratis', 'error');
     } finally {
       setIsUpdatingFreeTrial(false);
     }
@@ -1973,7 +1975,7 @@ const ProgramDetailScreen = () => {
       setSelectedLibraryIds(new Set(currentSelected));
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
       setIsAuxiliaryLibrariesModalOpen(false);
     } finally {
       setIsLoadingLibraries(false);
@@ -2001,7 +2003,7 @@ const ProgramDetailScreen = () => {
   const handleUpdateAuxiliaryLibraries = async () => {
     if (!program || !program.id) {
       logger.error('Cannot update auxiliary libraries: program or program.id is missing');
-      alert('Error: No se pudo identificar el programa');
+      showToast('Error: No se pudo identificar el programa', 'error');
       return;
     }
 
@@ -2054,7 +2056,7 @@ const ProgramDetailScreen = () => {
         errorMessage = `Error ${err.code}`;
       }
       
-      alert(`Error al actualizar las bibliotecas auxiliares: ${errorMessage}`);
+      showToast(`Error al actualizar las bibliotecas auxiliares: ${errorMessage}`, 'error');
     } finally {
       setIsUpdatingAuxiliaryLibraries(false);
     }
@@ -2069,7 +2071,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, status }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar el estado');
+      showToast('Error al actualizar el estado', 'error');
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -2084,7 +2086,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, title: t }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar el nombre');
+      showToast('Error al actualizar el nombre', 'error');
     } finally {
       setIsUpdatingProgram(false);
     }
@@ -2101,7 +2103,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, price: numericPrice }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar el precio');
+      showToast('Error al actualizar el precio', 'error');
     } finally {
       setIsUpdatingPrice(false);
     }
@@ -2118,7 +2120,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, duration: durationString }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar la duración');
+      showToast('Error al actualizar la duración', 'error');
     } finally {
       setIsUpdatingDuration(false);
     }
@@ -2134,7 +2136,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, free_trial }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar la prueba gratis');
+      showToast('Error al actualizar la prueba gratis', 'error');
     } finally {
       setIsUpdatingFreeTrial(false);
     }
@@ -2148,7 +2150,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, weight_suggestions: !!enabled }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar sugerencias de peso');
+      showToast('Error al actualizar sugerencias de peso', 'error');
     } finally {
       setIsUpdatingWeightSuggestions(false);
     }
@@ -2163,7 +2165,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, availableLibraries: ids }));
     } catch (err) {
       logger.error(err);
-      alert('Error al actualizar bibliotecas');
+      showToast('Error al actualizar bibliotecas', 'error');
     } finally {
       setIsUpdatingAuxiliaryLibraries(false);
     }
@@ -2201,7 +2203,7 @@ const ProgramDetailScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('video/')) {
-      alert('Por favor, selecciona un archivo de video válido');
+      showToast('Por favor, selecciona un archivo de video válido', 'error');
       return;
     }
 
@@ -2266,7 +2268,7 @@ const ProgramDetailScreen = () => {
         stack: err.stack
       });
       const errorMessage = err.message || err.code || 'Error desconocido';
-      alert(`Error al subir el video: ${errorMessage}`);
+      showToast(`Error al subir el video: ${errorMessage}`, 'error');
     } finally {
       setIsUploadingAnuncioVideo(false);
       event.target.value = '';
@@ -2317,7 +2319,7 @@ const ProgramDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting video:', err);
-      alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar el video. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2325,7 +2327,7 @@ const ProgramDetailScreen = () => {
     const file = event.target.files[0];
     if (!file || !program) return;
     if (!file.type.startsWith('video/')) {
-      alert('Por favor, selecciona un archivo de video válido');
+      showToast('Por favor, selecciona un archivo de video válido', 'error');
       return;
     }
     try {
@@ -2347,7 +2349,7 @@ const ProgramDetailScreen = () => {
       setAnuncioVideoUploadProgress(100);
     } catch (err) {
       logger.error('Error uploading video:', err);
-      alert(err?.message || 'Error al subir el video');
+      showToast(err?.message || 'Error al subir el video', 'error');
     } finally {
       setIsUploadingAnuncioVideo(false);
       event.target.value = '';
@@ -2369,7 +2371,7 @@ const ProgramDetailScreen = () => {
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
     } catch (err) {
       logger.error('Error deleting video:', err);
-      alert('Error al eliminar el video');
+      showToast('Error al eliminar el video', 'error');
     }
   };
 
@@ -2393,7 +2395,7 @@ const ProgramDetailScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('video/')) {
-      alert('Por favor, selecciona un archivo de video válido');
+      showToast('Por favor, selecciona un archivo de video válido', 'error');
       return;
     }
 
@@ -2435,7 +2437,7 @@ const ProgramDetailScreen = () => {
         stack: err.stack
       });
       const errorMessage = err.message || err.code || 'Error desconocido';
-      alert(`Error al subir el video: ${errorMessage}`);
+      showToast(`Error al subir el video: ${errorMessage}`, 'error');
     } finally {
       setIsUploadingIntroVideo(false);
       event.target.value = '';
@@ -2466,7 +2468,7 @@ const ProgramDetailScreen = () => {
       );
     } catch (err) {
       logger.error('Error deleting intro video:', err);
-      alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar el video. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2517,7 +2519,7 @@ const ProgramDetailScreen = () => {
         if (originalModulesOrder.length > 0) {
           setModules([...originalModulesOrder]);
         }
-        alert('Error al guardar el orden de los módulos');
+        showToast('Error al guardar el orden de los módulos', 'error');
       }
     }, 1000),
     [programId, updateModuleOrderMutation, originalModulesOrder]
@@ -2538,7 +2540,7 @@ const ProgramDetailScreen = () => {
         if (originalSessionsOrder.length > 0) {
           setSessions([...originalSessionsOrder]);
         }
-        alert('Error al guardar el orden de las sesiones');
+        showToast('Error al guardar el orden de las sesiones', 'error');
       }
     }, 1000),
     [programId, selectedModule, updateSessionOrderMutation, originalSessionsOrder]
@@ -2629,7 +2631,7 @@ const ProgramDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error creating module:', err);
-      alert('Error al crear el módulo. Por favor, intenta de nuevo.');
+      showToast('Error al crear el módulo. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2642,7 +2644,7 @@ const ProgramDetailScreen = () => {
       setLibraryModules(modules);
     } catch (error) {
       logger.error('Error loading library modules:', error);
-      alert('Error al cargar los módulos de la biblioteca');
+      showToast('Error al cargar los módulos de la biblioteca', 'error');
     } finally {
       setIsLoadingLibraryModules(false);
     }
@@ -2667,7 +2669,7 @@ const ProgramDetailScreen = () => {
       handleCloseCopyModuleModal();
     } catch (err) {
       logger.error('Error creating module from library:', err);
-      alert(`Error al agregar el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al agregar el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingModule(false);
     }
@@ -2707,7 +2709,7 @@ const ProgramDetailScreen = () => {
       if (originalModulesOrder.length > 0) {
         setModules([...originalModulesOrder]);
       }
-      alert('Error al actualizar el orden de los módulos. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de los módulos. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingModuleOrder(false);
     }
@@ -2766,7 +2768,7 @@ const ProgramDetailScreen = () => {
       if (originalSessionsOrder.length > 0) {
         setSessions([...originalSessionsOrder]);
       }
-      alert('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingSessionOrder(false);
     }
@@ -2797,11 +2799,7 @@ const ProgramDetailScreen = () => {
         const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, module.libraryModuleRef);
         
         if (usageCheck.inUse) {
-          alert(
-            `⚠️ No se puede eliminar este módulo de la biblioteca.\n\n` +
-            `Está siendo usada en ${usageCheck.count} programa(s).\n\n` +
-            `Primero debes eliminar o reemplazar todas las referencias en los programas.`
-          );
+          showToast(`No se puede eliminar este módulo. Está siendo usado en ${usageCheck.count} programa(s). Primero debes eliminar o reemplazar todas las referencias.`, 'error');
           return;
         }
       } catch (error) {
@@ -2874,7 +2872,7 @@ const ProgramDetailScreen = () => {
         code: err.code,
         stack: err.stack
       });
-      alert(`Error al eliminar el módulo. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`);
+      showToast(`Error al eliminar el módulo. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`, 'error');
     } finally {
       setIsDeletingModule(false);
     }
@@ -3285,7 +3283,7 @@ const ProgramDetailScreen = () => {
       setExpandedSeries({}); // Reset expanded state
     } catch (error) {
       logger.error('Error opening exercise modal:', error);
-      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al abrir el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -3314,7 +3312,7 @@ const ProgramDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -3352,7 +3350,7 @@ const ProgramDetailScreen = () => {
       handleCloseLibraryExerciseModal();
     } catch (err) {
       logger.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -3452,7 +3450,7 @@ const ProgramDetailScreen = () => {
       Object.values(newExerciseDraft.primary)[0];
     
     if (!hasPrimary) {
-      alert('Por favor selecciona un ejercicio principal');
+      showToast('Por favor selecciona un ejercicio principal', 'error');
       return;
     }
 
@@ -3469,7 +3467,7 @@ const ProgramDetailScreen = () => {
       setsToCreate = Array.from({ length: count }, () => ({ ...defaultSet }));
     }
     if (setsToCreate.length === 0) {
-      alert('Por favor crea al menos una serie');
+      showToast('Por favor crea al menos una serie', 'error');
       return;
     }
 
@@ -3609,7 +3607,7 @@ const ProgramDetailScreen = () => {
       handleCloseCreateExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingNewExercise(false);
     }
@@ -3825,7 +3823,7 @@ const ProgramDetailScreen = () => {
       setUnsavedSetChanges({});
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingNewExercise(false);
     }
@@ -4162,7 +4160,7 @@ const ProgramDetailScreen = () => {
       await refreshIncompleteStatus();
     } catch (err) {
       logger.error('Error saving set changes:', err);
-      alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
+      showToast('Error al guardar los cambios. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingSetChanges(false);
     }
@@ -4234,7 +4232,7 @@ const ProgramDetailScreen = () => {
       if (originalSeriesOrder.length > 0) {
         setExerciseSets([...originalSeriesOrder]);
       }
-      alert('Error al actualizar el orden de las series. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de las series. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingSeriesOrder(false);
     }
@@ -4318,7 +4316,7 @@ const ProgramDetailScreen = () => {
       return newSet;
     } catch (err) {
       logger.error('Error creating set:', err);
-      alert('Error al crear la serie. Por favor, intenta de nuevo.');
+      showToast('Error al crear la serie. Por favor, intenta de nuevo.', 'error');
       throw err;
     } finally {
       setIsCreatingSet(false);
@@ -4376,7 +4374,7 @@ const ProgramDetailScreen = () => {
       await refreshIncompleteStatus();
     } catch (err) {
       logger.error('Error duplicando serie:', err);
-      alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al duplicar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -4438,7 +4436,7 @@ const ProgramDetailScreen = () => {
       await refreshIncompleteStatus();
     } catch (err) {
       logger.error('Error deleting set:', err);
-      alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -4721,7 +4719,7 @@ const ProgramDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -4759,7 +4757,7 @@ const ProgramDetailScreen = () => {
       setIsPresetSelectorOpen(false);
     } catch (err) {
       logger.error('Error applying preset:', err);
-      alert('Error al aplicar la plantilla. Por favor, intenta de nuevo.');
+      showToast('Error al aplicar la plantilla. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -4778,7 +4776,7 @@ const ProgramDetailScreen = () => {
         await applyPresetToExercise({ id, name: data.name, ...updates });
       } catch (err) {
         logger.error('Error creating preset:', err);
-        alert('Error al crear la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al crear la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'edit_preset' && presetBeingEditedId && data.name && user?.uid) {
@@ -4797,7 +4795,7 @@ const ProgramDetailScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating preset:', err);
-        alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al guardar la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'exercise') {
@@ -4816,7 +4814,7 @@ const ProgramDetailScreen = () => {
           await refreshIncompleteStatus();
         } catch (err) {
           logger.error('Error updating exercise:', err);
-          alert('Error al guardar. Por favor, intenta de nuevo.');
+          showToast('Error al guardar. Por favor, intenta de nuevo.', 'error');
           return;
         }
       }
@@ -4910,7 +4908,7 @@ const ProgramDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting alternative:', err);
-      alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la alternativa. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -4941,7 +4939,7 @@ const ProgramDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -4966,7 +4964,7 @@ const ProgramDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -4998,7 +4996,7 @@ const ProgramDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error loading exercises from library:', err);
-      alert('Error al cargar los ejercicios de la biblioteca');
+      showToast('Error al cargar los ejercicios de la biblioteca', 'error');
     } finally {
       setIsLoadingExercisesFromLibrary(false);
     }
@@ -5069,7 +5067,7 @@ const ProgramDetailScreen = () => {
         }
         
         if (exerciseExists) {
-          alert('Esta alternativa ya está agregada.');
+          showToast('Esta alternativa ya está agregada.', 'error');
           handleCloseLibraryExerciseModal();
           return;
         }
@@ -5149,7 +5147,7 @@ const ProgramDetailScreen = () => {
           }
           
           if (exerciseExists) {
-            alert('Esta alternativa ya está agregada.');
+            showToast('Esta alternativa ya está agregada.', 'error');
             handleCloseLibraryExerciseModal();
             return;
           }
@@ -5188,7 +5186,7 @@ const ProgramDetailScreen = () => {
       handleCloseLibraryExerciseModal();
     } catch (err) {
       logger.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -5221,7 +5219,7 @@ const ProgramDetailScreen = () => {
       if (originalExercisesOrder.length > 0) {
         setExercises([...originalExercisesOrder]);
       }
-      alert('Error al actualizar el orden de los ejercicios. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de los ejercicios. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingExerciseOrder(false);
     }
@@ -5317,7 +5315,7 @@ const ProgramDetailScreen = () => {
         code: err.code,
         stack: err.stack
       });
-      alert(`Error al eliminar el ejercicio. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`);
+      showToast(`Error al eliminar el ejercicio. Por favor, intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`, 'error');
     } finally {
       setIsDeletingExercise(false);
     }
@@ -5345,7 +5343,7 @@ const ProgramDetailScreen = () => {
       setLibrarySessions(sessions);
     } catch (error) {
       logger.error('Error loading library sessions:', error);
-      alert('Error al cargar las sesiones de la biblioteca');
+      showToast('Error al cargar las sesiones de la biblioteca', 'error');
     } finally {
       setIsLoadingLibrarySessions(false);
     }
@@ -5394,7 +5392,7 @@ const ProgramDetailScreen = () => {
       handleCloseCopySessionModal();
     } catch (err) {
       logger.error('Error creating session from library:', err);
-      alert(`Error al agregar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al agregar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -5443,14 +5441,14 @@ const ProgramDetailScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     // Validate file size (e.g., max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -5487,7 +5485,7 @@ const ProgramDetailScreen = () => {
         queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, image_url: item.url, image_path: null }));
       } catch (err) {
         logger.error('Error updating program image:', err);
-        alert('Error al asignar la imagen.');
+        showToast('Error al asignar la imagen.', 'error');
       }
       setIsMediaPickerOpen(false);
       return;
@@ -5507,7 +5505,7 @@ const ProgramDetailScreen = () => {
           setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
         } catch (err) {
           logger.error('Error updating session image:', err);
-          alert('Error al asignar la imagen.');
+          showToast('Error al asignar la imagen.', 'error');
         }
       }
     }
@@ -5543,7 +5541,7 @@ const ProgramDetailScreen = () => {
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
           logger.error('Error uploading session image - Full error:', uploadErr);
-          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
           return;
         } finally {
           setIsUploadingSessionImage(false);
@@ -5573,7 +5571,7 @@ const ProgramDetailScreen = () => {
       logger.error('Error code:', err.code);
       logger.error('Error message:', err.message);
       logger.error('Error stack:', err.stack);
-      alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -5624,7 +5622,7 @@ const ProgramDetailScreen = () => {
                 (progress) => setSessionImageUploadProgress(Math.round(progress))
               );
             } catch (uploadErr) {
-              alert(`Error al subir la imagen: ${uploadErr.message}`);
+              showToast(`Error al subir la imagen: ${uploadErr.message}`, 'error');
               return;
             } finally {
               setIsUploadingSessionImage(false);
@@ -5676,7 +5674,7 @@ const ProgramDetailScreen = () => {
           setSessionImageUploadProgress(100);
         } catch (uploadErr) {
           logger.error('Error uploading session image - Full error:', uploadErr);
-          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
           return;
         } finally {
           setIsUploadingSessionImage(false);
@@ -5734,7 +5732,7 @@ const ProgramDetailScreen = () => {
       logger.error('Error code:', err.code);
       logger.error('Error message:', err.message);
       logger.error('Error stack:', err.stack);
-      alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsUpdatingSession(false);
     }
@@ -5820,7 +5818,7 @@ const ProgramDetailScreen = () => {
       logger.error('Error code:', err.code);
       logger.error('Error message:', err.message);
       logger.error('Error stack:', err.stack);
-      alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -6158,7 +6156,7 @@ const ProgramDetailScreen = () => {
                     <div className="program-config-description-edit">
                       <textarea className="program-config-description-textarea" value={descriptionValue} onChange={(e) => setDescriptionValue(e.target.value)} placeholder="Escribe la descripción del programa..." rows={5} />
                       <div className="program-config-description-actions">
-                        <Button title={isUpdatingDescription ? 'Guardando...' : 'Guardar'} onClick={async () => { if (!program) return; try { setIsUpdatingDescription(true); await programService.updateProgram(program.id, { description: descriptionValue }); queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, description: descriptionValue })); setIsEditingDescription(false); } catch (err) { logger.error(err); alert('Error al actualizar la descripción'); } finally { setIsUpdatingDescription(false); } }} disabled={isUpdatingDescription} loading={isUpdatingDescription} />
+                        <Button title={isUpdatingDescription ? 'Guardando...' : 'Guardar'} onClick={async () => { if (!program) return; try { setIsUpdatingDescription(true); await programService.updateProgram(program.id, { description: descriptionValue }); queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, description: descriptionValue })); setIsEditingDescription(false); } catch (err) { logger.error(err); showToast('Error al actualizar la descripción', 'error'); } finally { setIsUpdatingDescription(false); } }} disabled={isUpdatingDescription} loading={isUpdatingDescription} />
                       </div>
                     </div>
                   ) : (

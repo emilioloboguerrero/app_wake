@@ -1,24 +1,112 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import ScreenSkeleton from '../components/ScreenSkeleton';
-import Modal from '../components/Modal';
 import programService from '../services/programService';
 import programAnalyticsService from '../services/programAnalyticsService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import './ProgramDetailScreen.css';
+import './LabScreen.css';
 
+// ─── Skeleton primitives ──────────────────────────────────────────
+const Skeleton = ({ w = '100%', h = 16, radius = 6, style = {} }) => (
+  <div className="sk-block" style={{ width: w, height: h, borderRadius: radius, ...style }} />
+);
+
+const WidgetSkeleton = () => (
+  <div className="ini-widget sk-widget">
+    <Skeleton w="60%" h={12} />
+    <Skeleton w="40%" h={32} style={{ marginTop: 12 }} />
+    <Skeleton w="80%" h={8} style={{ marginTop: 10 }} />
+  </div>
+);
+
+// ─── Metric widget ────────────────────────────────────────────────
+const Widget = ({ label, value, sub, trend, trendPositive, icon, onClick }) => (
+  <div className={`ini-widget ${onClick ? 'ini-widget--clickable' : ''}`} onClick={onClick}>
+    <div className="ini-widget-header">
+      <span className="ini-widget-label">{label}</span>
+      {icon && <span className="ini-widget-icon">{icon}</span>}
+    </div>
+    <div className="ini-widget-value">{value ?? '—'}</div>
+    <div className="ini-widget-footer">
+      {trend != null && (
+        <span className={`ini-widget-trend ${trendPositive ? 'ini-widget-trend--up' : 'ini-widget-trend--down'}`}>
+          {trendPositive ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
+        </span>
+      )}
+      {sub && <span className="ini-widget-sub">{sub}</span>}
+    </div>
+  </div>
+);
+
+// ─── Quick action card ────────────────────────────────────────────
+const QuickAction = ({ label, sub, onClick, icon }) => (
+  <button className="ini-quick" onClick={onClick}>
+    <span className="ini-quick-icon">{icon}</span>
+    <span className="ini-quick-body">
+      <span className="ini-quick-label">{label}</span>
+      <span className="ini-quick-sub">{sub}</span>
+    </span>
+    <svg className="ini-quick-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  </button>
+);
+
+// ─── Chart tooltip ────────────────────────────────────────────────
+const ChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="ini-tooltip">
+      <p className="ini-tooltip-label">{label}</p>
+      {payload.map(p => (
+        <p key={p.dataKey} className="ini-tooltip-value">{p.value}</p>
+      ))}
+    </div>
+  );
+};
+
+// ─── Section header ───────────────────────────────────────────────
+const SectionHeader = ({ title, sub }) => (
+  <div className="ini-section-header">
+    <h3 className="ini-section-title">{title}</h3>
+    {sub && <p className="ini-section-sub">{sub}</p>}
+  </div>
+);
+
+// ─── Empty state ──────────────────────────────────────────────────
+const EmptyState = ({ onCreateProgram, onAddClient }) => (
+  <div className="ini-empty">
+    <div className="ini-empty-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      </svg>
+    </div>
+    <h3 className="ini-empty-title">Tu dashboard está esperando</h3>
+    <p className="ini-empty-sub">
+      Crea tu primer programa o agrega un cliente para empezar a ver datos aquí.
+    </p>
+    <div className="ini-empty-actions">
+      <button className="ini-empty-btn ini-empty-btn--primary" onClick={onCreateProgram}>
+        Crear programa
+      </button>
+      <button className="ini-empty-btn" onClick={onAddClient}>
+        Agregar cliente
+      </button>
+    </div>
+  </div>
+);
+
+// ─── Main screen ──────────────────────────────────────────────────
 const LabScreen = () => {
   const { user } = useAuth();
-  const [selectedUserInfo, setSelectedUserInfo] = useState(null);
-  const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
-  const [statExplanation, setStatExplanation] = useState(null);
-  const [isStatExplanationModalOpen, setIsStatExplanationModalOpen] = useState(false);
+  const navigate = useNavigate();
+  const firstName = user?.displayName?.split(' ')[0];
 
   const { data: programs, isLoading: isLoadingPrograms } = useQuery({
     queryKey: user ? queryKeys.programs.byCreator(user.uid) : ['programs', 'none'],
@@ -30,601 +118,232 @@ const LabScreen = () => {
     ...cacheConfig.otherPrograms,
   });
 
-  const { data: analytics, isLoading: isLoadingAnalytics, error: analyticsQueryError } = useQuery({
+  const hasPrograms = programs && programs.length > 0;
+
+  const { data: analytics, isLoading: isLoadingAnalytics } = useQuery({
     queryKey: ['aggregatedAnalytics', user?.uid],
     queryFn: async () => {
-      if (!programs || programs.length === 0) return null;
-      const programIds = programs.map(p => p.id);
-      return await programAnalyticsService.getAggregatedAnalyticsForCreator(programIds);
+      if (!hasPrograms) return null;
+      const ids = programs.map(p => p.id);
+      return await programAnalyticsService.getAggregatedAnalyticsForCreator(ids);
     },
-    enabled: !!programs && programs.length > 0,
+    enabled: hasPrograms,
     ...cacheConfig.analytics,
   });
 
-  const analyticsError = analyticsQueryError ? 'Error al cargar las estadísticas' : null;
+  const isLoading = isLoadingPrograms || isLoadingAnalytics;
 
-  const handleShowUserInfo = (user) => {
-    setSelectedUserInfo(user);
-    setIsUserInfoModalOpen(true);
-  };
+  // ── Derived values ─────────────────────────────────────────────
+  const totalEnrolled    = analytics?.enrollment?.totalEnrolled ?? null;
+  const activeNow        = analytics?.enrollment?.activeEnrollments ?? null;
+  const completionRate   = analytics?.engagement?.completionRate ?? null;
+  const recentSignups    = analytics?.enrollment?.recentEnrollments30Days ?? null;
+  const recentChange     = analytics?.enrollment?.recentEnrollmentsPercentageChange ?? null;
+  const totalSessions    = analytics?.engagement?.totalSessionsCompleted ?? null;
+  const avgSessions      = analytics?.engagement?.averageSessionsPerUser ?? null;
+  const enrollmentsChart = analytics?.enrollment?.enrollmentsOverTime ?? [];
+  const sessionsChart    = analytics?.engagement?.sessionsCompletedOverTime ?? [];
+  const hasAnyData       = totalEnrolled != null && totalEnrolled > 0;
 
-  const handleShowStatExplanation = (statKey) => {
-    setStatExplanation(statKey);
-    setIsStatExplanationModalOpen(true);
-  };
-
-  const MetricCard = ({ statKey, value, label, onClick, percentageChange }) => (
-    <div className="lab-metric-card" onClick={() => handleShowStatExplanation(statKey)}>
-      <button className="lab-metric-info-icon" onClick={(e) => { e.stopPropagation(); handleShowStatExplanation(statKey); }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-          <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </button>
-      <div className="lab-metric-value">{value}</div>
-      {percentageChange !== null && (
-        <div className={`lab-metric-change ${percentageChange >= 0 ? 'lab-metric-change-positive' : 'lab-metric-change-negative'}`}>
-          {percentageChange >= 0 ? '↑' : '↓'} {Math.abs(percentageChange).toFixed(1)}%
-        </div>
-      )}
-      <div className="lab-metric-label">{label}</div>
-    </div>
-  );
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return firstName ? `Buenos días, ${firstName}` : 'Buenos días';
+    if (h < 19) return firstName ? `Buenas tardes, ${firstName}` : 'Buenas tardes';
+    return firstName ? `Buenas noches, ${firstName}` : 'Buenas noches';
+  })();
 
   return (
     <ErrorBoundary>
-    <DashboardLayout screenName="Lab">
-      <div className="program-tab-content">
-        <div className="lab-content">
-          {isLoadingAnalytics || isLoadingPrograms ? (
-            <ScreenSkeleton />
-          ) : analyticsError ? (
-            <div className="lab-error">
-              <p>{analyticsError}</p>
-            </div>
-          ) : analytics ? (
-            <>
-              {/* Enrollment Metrics */}
-              <div className="lab-section">
-                <h3 className="lab-section-title">Inscripciones</h3>
-                
-                {/* Enrollments and Free Trials Over Time - Full Width Above Cards */}
-                {analytics.enrollment.enrollmentsOverTime && analytics.enrollment.enrollmentsOverTime.length > 0 && (
-                  <div className="lab-chart-container lab-chart-full-width">
-                    <h4 className="lab-subsection-title">Inscripciones y Pruebas Gratis en el Tiempo (Últimos 30 días)</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={analytics.enrollment.enrollmentsOverTime}>
+      <DashboardLayout screenName="Inicio">
+        <div className="ini-root">
+
+          {/* ── Greeting ────────────────────────────────────────── */}
+          <div className="ini-greeting">
+            <h1 className="ini-greeting-text">{greeting}.</h1>
+            <p className="ini-greeting-sub">
+              {isLoading
+                ? 'Cargando tu resumen…'
+                : hasAnyData
+                  ? 'Aquí tienes lo que importa hoy.'
+                  : 'Configura tu espacio para ver datos aquí.'}
+            </p>
+          </div>
+
+          {/* ── Metric widgets ───────────────────────────────────── */}
+          <div className="ini-widgets">
+            {isLoading ? (
+              <>
+                <WidgetSkeleton />
+                <WidgetSkeleton />
+                <WidgetSkeleton />
+                <WidgetSkeleton />
+              </>
+            ) : (
+              <>
+                <Widget
+                  label="Clientes activos"
+                  value={activeNow}
+                  sub={totalEnrolled != null ? `de ${totalEnrolled} en total` : undefined}
+                  icon={
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                  onClick={() => navigate('/products?tab=clientes')}
+                />
+                <Widget
+                  label="Inscripciones (30 días)"
+                  value={recentSignups}
+                  trend={recentChange}
+                  trendPositive={recentChange >= 0}
+                  icon={
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                      <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M12 7a4 4 0 100 8 4 4 0 000-8zM20 8v6M23 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                />
+                <Widget
+                  label="Tasa de finalización"
+                  value={completionRate != null ? `${completionRate}%` : null}
+                  sub="de sesiones completadas"
+                  icon={
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M22 4L12 14.01l-3-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                />
+                <Widget
+                  label="Sesiones completadas"
+                  value={totalSessions}
+                  sub={avgSessions != null ? `${avgSessions} por usuario` : undefined}
+                  icon={
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                      <path d="M6 4v16M18 4v16M3 8h3M18 8h3M3 16h3M18 16h3M6 12h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                  }
+                />
+              </>
+            )}
+          </div>
+
+          {/* ── No data state ────────────────────────────────────── */}
+          {!isLoading && !hasAnyData && (
+            <EmptyState
+              onCreateProgram={() => navigate('/products/new')}
+              onAddClient={() => navigate('/products?tab=clientes')}
+            />
+          )}
+
+          {/* ── Charts (only when data exists) ───────────────────── */}
+          {!isLoading && hasAnyData && (
+            <div className="ini-charts">
+              {enrollmentsChart.length > 0 && (
+                <div className="ini-chart-card">
+                  <SectionHeader
+                    title="Inscripciones"
+                    sub="Últimos 30 días"
+                  />
+                  <div className="ini-chart-area">
+                    <ResponsiveContainer width="100%" height={160}>
+                      <AreaChart data={enrollmentsChart} margin={{ top: 4, right: 0, left: -24, bottom: 0 }}>
                         <defs>
-                          <linearGradient id="colorEnrollments" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorTrials" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
+                          <linearGradient id="gEnroll" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="rgba(255,255,255,0.5)" stopOpacity={1}/>
+                            <stop offset="95%" stopColor="rgba(255,255,255,0)"   stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Area 
-                          type="monotone" 
-                          dataKey="enrollments" 
-                          stroke="rgba(255, 255, 255, 1)" 
-                          fillOpacity={1} 
-                          fill="url(#colorEnrollments)" 
-                          name="Inscripciones"
-                        />
-                        <Area 
-                          type="monotone" 
-                          dataKey="trials" 
-                          stroke="rgba(255, 255, 255, 1)" 
-                          fillOpacity={1} 
-                          fill="url(#colorTrials)" 
-                          name="Pruebas Gratis"
-                        />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Area type="monotone" dataKey="enrollments" stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} fill="url(#gEnroll)" dot={false} />
                       </AreaChart>
                     </ResponsiveContainer>
-                  </div>
-                )}
-                
-                <div className="lab-enrollment-container">
-                  <div className="lab-metrics-grid">
-                    <MetricCard 
-                      statKey="totalEnrolled"
-                      value={analytics.enrollment.totalEnrolled}
-                      label="Total Inscritos"
-                    />
-                    <MetricCard 
-                      statKey="activeEnrollments"
-                      value={analytics.enrollment.activeEnrollments}
-                      label="Activos"
-                    />
-                    <MetricCard 
-                      statKey="trialUsers"
-                      value={analytics.enrollment.trialUsers}
-                      label="Pruebas Gratis"
-                    />
-                    <MetricCard 
-                      statKey="expiredEnrollments"
-                      value={analytics.enrollment.expiredEnrollments}
-                      label="Expirados"
-                    />
-                    <MetricCard 
-                      statKey="cancelledEnrollments"
-                      value={analytics.enrollment.cancelledEnrollments}
-                      label="Cancelados"
-                    />
-                    <MetricCard 
-                      statKey="recentEnrollments30Days"
-                      value={analytics.enrollment.recentEnrollments30Days}
-                      label="Últimos 30 días"
-                      percentageChange={analytics.enrollment.recentEnrollmentsPercentageChange}
-                    />
-                    <MetricCard 
-                      statKey="averageEnrollmentDurationDays"
-                      value={analytics.enrollment.averageEnrollmentDurationDays}
-                      label="Duración Promedio (días)"
-                    />
-                  </div>
-                </div>
-                
-                {/* Demographics Section */}
-                {analytics.enrollment.demographics && (
-                  <div className="lab-demographics-section">
-                    <h4 className="lab-subsection-title">Demografía de Usuarios</h4>
-                    
-                    {/* Most Common Customer Profile */}
-                    {((analytics.enrollment.mostCommonCustomer) || 
-                      (analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution)) && (
-                      <div className="lab-profile-age-container">
-                        {/* Customer Profile */}
-                        {analytics.enrollment.mostCommonCustomer && (
-                          <div className="lab-customer-profile">
-                            <h5 className="lab-profile-title">Perfil del Cliente Más Común</h5>
-                            <div className="lab-profile-cards-scrollable">
-                              {analytics.enrollment.mostCommonCustomer.age && (
-                                <div className="lab-profile-card">
-                                  <span className="lab-profile-card-label">Edad</span>
-                                  <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.age} años</span>
-                                </div>
-                              )}
-                              {analytics.enrollment.mostCommonCustomer.gender && (
-                                <div className="lab-profile-card">
-                                  <span className="lab-profile-card-label">Género</span>
-                                  <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.gender}</span>
-                                </div>
-                              )}
-                              {analytics.enrollment.mostCommonCustomer.city && (
-                                <div className="lab-profile-card">
-                                  <span className="lab-profile-card-label">Ciudad</span>
-                                  <span className="lab-profile-card-value">{analytics.enrollment.mostCommonCustomer.city}</span>
-                                </div>
-                              )}
-                              {Object.keys(analytics.enrollment.mostCommonCustomer.onboardingAnswers || {}).length > 0 && (
-                                <>
-                                  {Object.entries(analytics.enrollment.mostCommonCustomer.onboardingAnswers)
-                                    .filter(([key]) => key.toLowerCase() !== 'completedat' && key.toLowerCase() !== 'completed_at')
-                                    .map(([key, value]) => (
-                                    <div key={key} className="lab-profile-card">
-                                      <span className="lab-profile-card-label">{key}</span>
-                                      <span className="lab-profile-card-value">{value}</span>
-                                    </div>
-                                  ))}
-                                </>
-                              )}
-                            </div>
-                            <p className="lab-profile-sample-size">Basado en {analytics.enrollment.mostCommonCustomer.sampleSize} usuarios con datos completos</p>
-                          </div>
-                        )}
-                        
-                        {/* Age Distribution */}
-                        {analytics.enrollment.demographics.age && analytics.enrollment.demographics.age.distribution && Object.keys(analytics.enrollment.demographics.age.distribution).length > 0 && (
-                          <div className="lab-chart-container">
-                            <h5 className="lab-chart-title">Distribución por Edad</h5>
-                            <ResponsiveContainer width="100%" height={300}>
-                              <BarChart data={Object.entries(analytics.enrollment.demographics.age.distribution).map(([age, count]) => ({ age, count }))}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="age" />
-                                <YAxis />
-                                <Tooltip />
-                                <Bar dataKey="count" fill="rgba(255, 255, 255, 1)" />
-                              </BarChart>
-                            </ResponsiveContainer>
-                            {analytics.enrollment.demographics.age.average && (
-                              <p className="lab-chart-note">Edad promedio: {analytics.enrollment.demographics.age.average} años</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Gender Distribution and Top Cities */}
-                    {(analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0) || 
-                     (analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0) ? (
-                      <div className="lab-demographics-container">
-                        {/* Gender Distribution */}
-                        {analytics.enrollment.demographics.gender && Object.keys(analytics.enrollment.demographics.gender).length > 0 && (
-                          <div className="lab-chart-container">
-                            <h5 className="lab-chart-title">Distribución por Género</h5>
-                            <ResponsiveContainer width="100%" height={300}>
-                              <PieChart>
-                                <Pie
-                                  data={Object.entries(analytics.enrollment.demographics.gender).map(([gender, count]) => ({ name: gender, value: count }))}
-                                  cx="50%"
-                                  cy="50%"
-                                  labelLine={false}
-                                  stroke="none"
-                                  label={false}
-                                  outerRadius={100}
-                                  fill="#8884d8"
-                                  dataKey="value"
-                                >
-                                  {Object.entries(analytics.enrollment.demographics.gender).map((entry, index) => {
-                                    const colors = [
-                                      'rgba(255, 255, 255, 1)',
-                                      'rgba(255, 255, 255, 1)',
-                                      'rgba(100, 100, 100, 1)'
-                                    ];
-                                    const colorIndex = index < colors.length ? index : index % colors.length;
-                                    return <Cell key={`cell-${index}`} fill={colors[colorIndex]} stroke="none" />;
-                                  })}
-                                </Pie>
-                                <Tooltip />
-                                <Legend 
-                                  formatter={(value, entry) => {
-                                    const genderData = Object.entries(analytics.enrollment.demographics.gender);
-                                    const total = genderData.reduce((sum, [, count]) => sum + count, 0);
-                                    
-                                    const itemValue = entry.payload?.value || 0;
-                                    const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                                    
-                                    return `${value} ${percent}%`;
-                                  }}
-                                />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                        
-                        {/* Top Cities */}
-                        {analytics.enrollment.demographics.topCities && analytics.enrollment.demographics.topCities.length > 0 && (
-                          <div className="lab-chart-container">
-                            <h5 className="lab-chart-title">Top 10 Ciudades</h5>
-                            <ResponsiveContainer width="100%" height={300}>
-                              <BarChart data={analytics.enrollment.demographics.topCities} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis type="number" />
-                                <YAxis dataKey="city" type="category" width={100} />
-                                <Tooltip />
-                                <Bar dataKey="count" fill="rgba(255, 255, 255, 1)" />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-
-              {/* Engagement Metrics */}
-              <div className="lab-section">
-                <h3 className="lab-section-title">Compromiso</h3>
-                <div className="lab-engagement-container">
-                  <div className="lab-metrics-grid">
-                    <MetricCard 
-                      statKey="totalSessionsCompleted"
-                      value={analytics.engagement.totalSessionsCompleted}
-                      label="Sesiones Completadas"
-                    />
-                    <MetricCard 
-                      statKey="averageSessionsPerUser"
-                      value={analytics.engagement.averageSessionsPerUser}
-                      label="Promedio por Usuario"
-                    />
-                    <MetricCard 
-                      statKey="completionRate"
-                      value={`${analytics.engagement.completionRate}%`}
-                      label="Tasa de Finalización"
-                    />
-                    <MetricCard 
-                      statKey="usersWithAtLeastOneSession"
-                      value={analytics.engagement.usersWithAtLeastOneSession}
-                      label="Usuarios Activos"
-                    />
-                  </div>
-                  
-                  {/* Completion Rate Gauge */}
-                  <div className="lab-chart-container">
-                    <h4 className="lab-subsection-title">Tasa de Finalización</h4>
-                    <div className="lab-gauge-container">
-                      <div className="lab-gauge-circle" style={{
-                        background: `conic-gradient(rgba(255, 255, 255, 1) 0% ${analytics.engagement.completionRate}%, rgba(255, 255, 255, 0.1) ${analytics.engagement.completionRate}% 100%)`
-                      }}>
-                        <div className="lab-gauge-inner">
-                          <span className="lab-gauge-value">{analytics.engagement.completionRate}%</span>
-                          <span className="lab-gauge-label">Completación</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Sessions Completed Over Time */}
-                {analytics.engagement.sessionsCompletedOverTime && analytics.engagement.sessionsCompletedOverTime.length > 0 && (
-                  <div className="lab-chart-container">
-                    <h4 className="lab-subsection-title">Sesiones Completadas en el Tiempo (Últimos 30 días)</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={analytics.engagement.sessionsCompletedOverTime}>
-                        <defs>
-                          <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="rgba(255, 255, 255, 1)" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Area type="monotone" dataKey="count" stroke="rgba(255, 255, 255, 1)" fillOpacity={1} fill="url(#colorSessions)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-                
-                {/* Top Active Users Bar Chart */}
-                {analytics.engagement.topActiveUsers && analytics.engagement.topActiveUsers.length > 0 && (
-                  <div className="lab-top-users-container">
-                    <div className="lab-chart-container">
-                      <h4 className="lab-subsection-title">Top 10 Usuarios Más Activos</h4>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={analytics.engagement.topActiveUsers.map((user, index) => ({
-                          name: user.userName.length > 15 ? user.userName.substring(0, 15) + '...' : user.userName,
-                          sessions: user.sessionsCompleted
-                        }))}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                          <YAxis />
-                          <Tooltip />
-                          <Bar dataKey="sessions" fill="rgba(255, 255, 255, 1)" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="lab-top-users-list-container">
-                      <h4 className="lab-subsection-title">Lista de Usuarios</h4>
-                      <div className="lab-top-users-list">
-                        {analytics.engagement.topActiveUsers.map((user, index) => (
-                          <div key={user.userId} className="lab-top-user-item" onClick={() => handleShowUserInfo(user)}>
-                            <span className="lab-top-user-rank">#{index + 1}</span>
-                            <span className="lab-top-user-name lab-top-user-name-clickable">{user.userName}</span>
-                            <span className="lab-top-user-sessions">{user.sessionsCompleted} sesiones</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-
-              {/* Program Statistics */}
-              {programs && programs.length > 0 && (
-                <div className="lab-section">
-                  <h3 className="lab-section-title">Estadísticas por Programa</h3>
-                  <div className="lab-program-stats-container">
-                    {/* Users per Program */}
-                    <div className="lab-chart-container">
-                      <h4 className="lab-subsection-title">Usuarios por Programa</h4>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={programs.map(program => ({
-                          name: program.title || program.name || 'Sin título',
-                          users: analytics.programs?.[program.id]?.users || 0
-                        })).filter(p => p.users > 0)}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                          <YAxis />
-                          <Tooltip />
-                          <Bar dataKey="users" fill="rgba(255, 255, 255, 1)" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    
-                    {/* Program Distribution Pie Chart */}
-                    {analytics.programs && Object.keys(analytics.programs).length > 0 && (
-                      <div className="lab-chart-container">
-                        <h4 className="lab-subsection-title">Distribución de Programas</h4>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <PieChart>
-                            <Pie
-                              data={Object.entries(analytics.programs)
-                                .map(([programId, data]) => {
-                                  const program = programs.find(p => p.id === programId);
-                                  return {
-                                    name: program?.title || program?.name || 'Sin título',
-                                    value: data.users || 0
-                                  };
-                                })
-                                .filter(item => item.value > 0)}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              stroke="none"
-                              label={false}
-                              outerRadius={100}
-                              fill="#8884d8"
-                              dataKey="value"
-                            >
-                              {Object.entries(analytics.programs)
-                                .map(([programId, data]) => {
-                                  const program = programs.find(p => p.id === programId);
-                                  const colors = [
-                                    'rgba(255, 255, 255, 1)',
-                                    'rgba(255, 255, 255, 1)',
-                                    'rgba(100, 100, 100, 1)',
-                                    'rgba(255, 255, 255, 0.7)',
-                                    'rgba(255, 255, 255, 0.7)'
-                                  ];
-                                  const programIndex = Object.keys(analytics.programs).indexOf(programId);
-                                  return {
-                                    name: program?.title || program?.name || 'Sin título',
-                                    value: data.users || 0,
-                                    color: colors[programIndex % colors.length]
-                                  };
-                                })
-                                .filter(item => item.value > 0)
-                                .map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                                ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend 
-                              formatter={(value, entry) => {
-                                const total = Object.values(analytics.programs || {})
-                                  .reduce((sum, data) => sum + (data.users || 0), 0);
-                                
-                                const itemValue = entry.payload?.value || 0;
-                                const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                                
-                                return `${value} ${percent}%`;
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
 
-              {/* User Progression */}
-              <div className="lab-section">
-                <h3 className="lab-section-title">Progresión de Usuarios</h3>
-                <div className="lab-progression-container">
-                  <div className="lab-metrics-grid">
-                    <MetricCard 
-                      statKey="usersWithZeroSessions"
-                      value={analytics.progression.usersWithZeroSessions}
-                      label="0 Sesiones"
-                    />
-                    <MetricCard 
-                      statKey="usersWithOneToFiveSessions"
-                      value={analytics.progression.usersWithOneToFiveSessions}
-                      label="1-5 Sesiones"
-                    />
-                    <MetricCard 
-                      statKey="usersWithSixToTenSessions"
-                      value={analytics.progression.usersWithSixToTenSessions}
-                      label="6-10 Sesiones"
-                    />
-                    <MetricCard 
-                      statKey="usersWithTenPlusSessions"
-                      value={analytics.progression.usersWithTenPlusSessions}
-                      label="10+ Sesiones"
-                    />
-                    <MetricCard 
-                      statKey="averageWeeklyStreak"
-                      value={analytics.progression.averageWeeklyStreak}
-                      label="Racha Semanal Promedio"
-                    />
-                  </div>
-                  
-                  {/* User Progression Distribution */}
-                  <div className="lab-chart-container">
-                    <h4 className="lab-subsection-title">Distribución de Progresión de Usuarios</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(255, 255, 255, 1)' },
-                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(255, 255, 255, 1)' },
-                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(255, 255, 255, 0.7)' },
-                            { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
-                          ].filter(item => item.value > 0)}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          stroke="none"
-                          label={false}
-                          outerRadius={100}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {[
-                            { name: '0 Sesiones', value: analytics.progression.usersWithZeroSessions, color: 'rgba(255, 255, 255, 1)' },
-                            { name: '1-5 Sesiones', value: analytics.progression.usersWithOneToFiveSessions, color: 'rgba(255, 255, 255, 1)' },
-                            { name: '6-10 Sesiones', value: analytics.progression.usersWithSixToTenSessions, color: 'rgba(255, 255, 255, 0.7)' },
-                            { name: '10+ Sesiones', value: analytics.progression.usersWithTenPlusSessions, color: 'rgba(100, 100, 100, 1)' }
-                          ].filter(item => item.value > 0).map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend 
-                          formatter={(value, entry) => {
-                            const total = [
-                              analytics.progression.usersWithZeroSessions,
-                              analytics.progression.usersWithOneToFiveSessions,
-                              analytics.progression.usersWithSixToTenSessions,
-                              analytics.progression.usersWithTenPlusSessions
-                            ].reduce((sum, val) => sum + val, 0);
-                            
-                            const itemValue = entry.payload?.value || 0;
-                            const percent = total > 0 ? ((itemValue / total) * 100).toFixed(0) : 0;
-                            
-                            return `${value} ${percent}%`;
-                          }}
-                        />
-                      </PieChart>
+              {sessionsChart.length > 0 && (
+                <div className="ini-chart-card">
+                  <SectionHeader
+                    title="Actividad"
+                    sub="Sesiones completadas · últimos 30 días"
+                  />
+                  <div className="ini-chart-area">
+                    <ResponsiveContainer width="100%" height={160}>
+                      <AreaChart data={sessionsChart} margin={{ top: 4, right: 0, left: -24, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="gSessions" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="rgba(255,255,255,0.4)" stopOpacity={1}/>
+                            <stop offset="95%" stopColor="rgba(255,255,255,0)"   stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Area type="monotone" dataKey="count" stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} fill="url(#gSessions)" dot={false} />
+                      </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-              </div>
-            </>
-          ) : (
-            <div className="lab-loading">
-              <p>No hay programas disponibles</p>
+              )}
             </div>
           )}
+
+          {/* ── Quick actions ─────────────────────────────────────── */}
+          {!isLoading && (
+            <div className="ini-section">
+              <SectionHeader title="Accesos rápidos" />
+              <div className="ini-quick-list">
+                <QuickAction
+                  label="Programas y clientes"
+                  sub="Gestiona tu catálogo y clientes"
+                  onClick={() => navigate('/products')}
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                />
+                <QuickAction
+                  label="Biblioteca"
+                  sub="Ejercicios, sesiones y módulos"
+                  onClick={() => navigate('/content')}
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M2 20h20M4 20V8l8-5 8 5v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                />
+                <QuickAction
+                  label="Nutrición"
+                  sub="Recetas y planes alimenticios"
+                  onClick={() => navigate('/nutrition')}
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10M12 2c2.5 0 5 5 5 10s-2.5 10-5 10M12 2C9.5 2 7 7 7 12s2.5 10 5 10M2 12h20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                  }
+                />
+                <QuickAction
+                  label="Disponibilidad"
+                  sub="Configura tus horarios de llamadas"
+                  onClick={() => navigate('/availability')}
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  }
+                />
+              </div>
+            </div>
+          )}
+
         </div>
-      </div>
-
-      {/* User Info Modal */}
-      {isUserInfoModalOpen && selectedUserInfo && (
-        <Modal
-          isOpen={isUserInfoModalOpen}
-          onClose={() => setIsUserInfoModalOpen(false)}
-          title="Información del Usuario"
-        >
-          <div style={{ padding: '20px' }}>
-            <p><strong>Nombre:</strong> {selectedUserInfo.userName}</p>
-            {selectedUserInfo.userEmail && (
-              <p><strong>Email:</strong> {selectedUserInfo.userEmail}</p>
-            )}
-            <p><strong>Sesiones Completadas:</strong> {selectedUserInfo.sessionsCompleted}</p>
-          </div>
-        </Modal>
-      )}
-
-      {/* Stat Explanation Modal */}
-      {isStatExplanationModalOpen && statExplanation && (
-        <Modal
-          isOpen={isStatExplanationModalOpen}
-          onClose={() => setIsStatExplanationModalOpen(false)}
-          title="Explicación de Métrica"
-        >
-          <div style={{ padding: '20px' }}>
-            <p>Información sobre: {statExplanation}</p>
-          </div>
-        </Modal>
-      )}
-    </DashboardLayout>
+      </DashboardLayout>
     </ErrorBoundary>
   );
 };
 
 export default LabScreen;
-

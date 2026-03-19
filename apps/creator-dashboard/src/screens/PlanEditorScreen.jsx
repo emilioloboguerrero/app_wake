@@ -18,6 +18,7 @@ import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -161,6 +162,7 @@ export default function PlanEditorScreen() {
   const location = useLocation();
   const { planId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
 
   const editScope = location.state?.editScope;
@@ -409,14 +411,14 @@ export default function PlanEditorScreen() {
     try {
       const { propagated, errors } = await propagationService.propagateNutritionPlan(planId, creatorId);
       if (errors.length > 0) {
-        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+        showToast(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`, 'error');
       } else if (propagated > 0) {
-        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+        showToast(`Cambios propagados correctamente a ${propagated} usuario(s).`, 'success');
       }
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+      showToast(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }

@@ -30,9 +30,8 @@ import { useNavigate } from 'react-router-dom';
 import { consumePendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
 import bodyProgressService from '../services/bodyProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import firestoreService from '../services/firestoreService';
 import oneRepMaxService from '../services/oneRepMaxService';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import { getReadinessInRange } from '../services/readinessService';
 import { getDiaryEntriesInRange, getEffectivePlanForUser } from '../services/nutritionFirestoreService';
 import {
@@ -1491,7 +1490,7 @@ const LabScreen = () => {
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
       const start = toYYYYMMDD(startD);
       const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        firestoreService.getUser(uid),
+        apiClient.get('/users/me').then(r => r?.data ?? null),
         exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
         getDiaryEntriesInRange(uid, start, end),
         getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
@@ -1535,7 +1534,7 @@ const LabScreen = () => {
     queryKey: ['lab', 'body', uid],
     queryFn: () => bodyProgressService.getEntries(uid),
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    ...cacheConfig.userProfile,
   });
 
   const loading = mainQuery.isLoading;
@@ -1583,7 +1582,7 @@ const LabScreen = () => {
   const handleWeightUnitChange = (u) => {
     setWeightUnit(u);
     const uid = user?.uid || auth.currentUser?.uid;
-    if (uid) hybridDataService.updateUserProfile(uid, { weightUnit: u }).catch(() => {});
+    if (uid) apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
   };
 
   const handleDeletePhoto = async (photo) => {

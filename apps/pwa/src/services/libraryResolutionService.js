@@ -25,6 +25,7 @@ class LibraryResolutionService {
     try {
       logger.debug('🔄 Resolving client program:', { userId, programId });
       
+      // TODO: no endpoint for resolveClientProgram — no PWA-accessible endpoint for client_programs collection
       // Load client program overrides if exists
       const clientProgramId = `${userId}_${programId}`;
       let clientOverrides = null;
@@ -178,6 +179,7 @@ class LibraryResolutionService {
     }
 
     try {
+      // TODO: no endpoint for extractLibraryVersions — no client endpoint for creator_libraries version fields
       // Scan all modules for library references
       for (const module of modules) {
         // Check if module has library reference
@@ -256,6 +258,7 @@ class LibraryResolutionService {
     const changedSessions = [];
 
     try {
+      // TODO: no endpoint for checkLibraryVersionsChanged — no client endpoint for creator_libraries version fields
       // Check module versions
       if (storedVersions.modules) {
         for (const [moduleId, storedVersion] of Object.entries(storedVersions.modules)) {
@@ -324,6 +327,7 @@ class LibraryResolutionService {
    */
   async resolveLibraryModule(creatorId, libraryModuleRef, courseId, programModuleId) {
     try {
+      // TODO: no endpoint for resolveLibraryModule — GET /api/v1/creator/library/modules/:id requires assertCreator; not accessible from PWA user role
       // Fetch library module document
       const libraryModuleDoc = await getDoc(
         doc(firestore, 'creator_libraries', creatorId, 'modules', libraryModuleRef)
@@ -423,6 +427,7 @@ class LibraryResolutionService {
    */
   async resolveLibrarySession(creatorId, librarySessionRef, courseId, programModuleId, programSessionId, programOverrides = null, clientOverrides = null) {
     try {
+      // TODO: no endpoint for resolveLibrarySession — no PWA-accessible endpoint for creator_libraries sessions/exercises/sets
       // Fetch library session document
       const librarySessionDoc = await getDoc(
         doc(firestore, 'creator_libraries', creatorId, 'sessions', librarySessionRef)

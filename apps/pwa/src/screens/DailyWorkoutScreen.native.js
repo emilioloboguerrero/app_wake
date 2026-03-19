@@ -1,11 +1,19 @@
 // Native wrapper for DailyWorkoutScreen - provides date selector with calendar dots
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import firestoreService from '../services/firestoreService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector';
-import logger from '../utils/logger';
+import { cacheConfig } from '../config/queryClient';
+
+const _now = new Date();
+const _y = _now.getFullYear();
+const _m = _now.getMonth();
+const CURRENT_MONTH_KEY = `${_y}-${String(_m + 1).padStart(2, '0')}`;
+const CURRENT_MONTH_START = `${_y}-${String(_m + 1).padStart(2, '0')}-01`;
+const CURRENT_MONTH_END = `${_y}-${String(_m + 1).padStart(2, '0')}-${String(new Date(_y, _m + 1, 0).getDate()).padStart(2, '0')}`;
 
 const DailyWorkoutScreenModule = require('./DailyWorkoutScreen.js');
 const DailyWorkoutScreenBase = DailyWorkoutScreenModule.default;
@@ -28,38 +36,19 @@ export default function DailyWorkoutScreen({ navigation, route }) {
   const courseId = course?.courseId || course?.id;
   const isOneOnOne = course?.deliveryType === 'one_on_one';
 
-  const [initialPlannedDates, setInitialPlannedDates] = useState([]);
-  const [initialEntriesDates, setInitialEntriesDates] = useState([]);
-  const [initialDataMonthKey, setInitialDataMonthKey] = useState(null);
+  const { data: initialPlannedDates } = useQuery({
+    queryKey: ['workout', 'calendar', 'planned', courseId, CURRENT_MONTH_KEY],
+    queryFn: () => firestoreService.getDatesWithPlannedSessions(user.uid, courseId, CURRENT_MONTH_START, CURRENT_MONTH_END),
+    enabled: !!user?.uid && !!courseId && isOneOnOne,
+    ...cacheConfig.programStructure,
+  });
 
-  React.useEffect(() => {
-    if (!user?.uid || !courseId) return;
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    const key = `${y}-${String(m + 1).padStart(2, '0')}`;
-    const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    logger.debug('[DailyWorkoutScreen.native] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
-    let cancelled = false;
-    Promise.all([
-      firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
-      exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
-    ]).then(([planned, entries]) => {
-      if (!cancelled) {
-        const plannedArr = Array.isArray(planned) ? planned : [];
-        const entriesArr = Array.isArray(entries) ? entries : [];
-        logger.debug('[DailyWorkoutScreen.native] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
-        setInitialPlannedDates(plannedArr);
-        setInitialEntriesDates(entriesArr);
-        setInitialDataMonthKey(key);
-      }
-    }).catch((e) => {
-      logger.error('[DailyWorkoutScreen.native] pre-fetch planned/entries error:', e);
-    });
-    return () => { cancelled = true; };
-  }, [user?.uid, courseId]);
+  const { data: initialEntriesDates } = useQuery({
+    queryKey: ['workout', 'calendar', 'entries', courseId, CURRENT_MONTH_KEY],
+    queryFn: () => exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, CURRENT_MONTH_START, CURRENT_MONTH_END),
+    enabled: !!user?.uid && !!courseId && !isOneOnOne,
+    ...cacheConfig.programStructure,
+  });
 
   const fetchDatesWithEntries = useCallback(
     async (startDate, endDate) => {
@@ -103,23 +92,6 @@ export default function DailyWorkoutScreen({ navigation, route }) {
     [isOneOnOne, user?.uid, courseId]
   );
 
-  const currentMonthKey = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  })();
-
-  const passInitialPlanned = initialDataMonthKey === currentMonthKey ? initialPlannedDates : undefined;
-  const passInitialEntries = initialDataMonthKey === currentMonthKey && !isOneOnOne ? initialEntriesDates : undefined;
-  logger.debug('[DailyWorkoutScreen.native] WeekDateSelector props', {
-    isOneOnOne,
-    currentMonthKey,
-    initialDataMonthKey,
-    monthMatch: initialDataMonthKey === currentMonthKey,
-    initialPlannedCount: passInitialPlanned?.length ?? 'undefined',
-    initialEntriesCount: passInitialEntries?.length ?? 'undefined',
-    hasFetchPlanned: !!fetchDatesWithPlanned,
-  });
-
   const renderBeforeContent = (
     <View style={dateRowStyle.dateRow}>
       <WeekDateSelector
@@ -127,9 +99,9 @@ export default function DailyWorkoutScreen({ navigation, route }) {
         onDateChange={setSelectedDate}
         fetchDatesWithEntries={fetchDatesWithEntries}
         fetchDatesWithPlanned={isOneOnOne ? fetchDatesWithPlanned : undefined}
-        initialDatesWithPlanned={passInitialPlanned}
-        initialDatesWithEntries={passInitialEntries}
-        initialMonthKey={initialDataMonthKey}
+        initialDatesWithPlanned={initialPlannedDates}
+        initialDatesWithEntries={initialEntriesDates}
+        initialMonthKey={CURRENT_MONTH_KEY}
       />
     </View>
   );

@@ -1,121 +1,55 @@
-/**
- * Service for creator measure/objective presets.
- * Presets store: name, measures, objectives, customMeasureLabels, customObjectiveLabels.
- * Stored at: creator_libraries/{creatorId}/measure_objective_presets
- */
-import { firestore } from '../config/firebase';
-import {
-  collection,
-  getDocs,
-  doc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
+import apiClient from '../utils/apiClient';
 
-const PRESETS_COLLECTION = 'measure_objective_presets';
+// creatorId args are accepted for call-site compatibility but unused — the API infers identity from the auth token.
 
-/**
- * @param {string} creatorId
- * @returns {Promise<Array<{ id: string, name: string, measures: string[], objectives: string[], customMeasureLabels: Object, customObjectiveLabels: Object, created_at?, updated_at? }>>}
- */
-async function list(creatorId) {
-  if (!creatorId) return [];
-  const ref = collection(firestore, 'creator_libraries', creatorId, PRESETS_COLLECTION);
-  const snapshot = await getDocs(ref);
-  const list = snapshot.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    measures: Array.isArray(d.data().measures) ? d.data().measures : [],
-    objectives: Array.isArray(d.data().objectives) ? d.data().objectives : [],
-    customMeasureLabels: typeof d.data().customMeasureLabels === 'object' && d.data().customMeasureLabels
-      ? d.data().customMeasureLabels
-      : {},
-    customObjectiveLabels: typeof d.data().customObjectiveLabels === 'object' && d.data().customObjectiveLabels
-      ? d.data().customObjectiveLabels
-      : {},
-  }));
-  list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
-  return list;
+async function list(_creatorId) {
+  const res = await apiClient.get('/creator/library/objective-presets');
+  return res.data ?? [];
 }
 
-/**
- * @param {string} creatorId
- * @param {string} presetId
- * @returns {Promise<{ id: string, name: string, measures: string[], objectives: string[], customMeasureLabels: Object, customObjectiveLabels: Object } | null>}
- */
-async function get(creatorId, presetId) {
-  if (!creatorId || !presetId) return null;
-  const ref = doc(firestore, 'creator_libraries', creatorId, PRESETS_COLLECTION, presetId);
-  const snap = await ref.get();
-  if (!snap.exists()) return null;
-  const data = snap.data();
-  return {
-    id: snap.id,
-    name: data.name || '',
-    measures: Array.isArray(data.measures) ? data.measures : [],
-    objectives: Array.isArray(data.objectives) ? data.objectives : [],
-    customMeasureLabels: typeof data.customMeasureLabels === 'object' && data.customMeasureLabels ? data.customMeasureLabels : {},
-    customObjectiveLabels: typeof data.customObjectiveLabels === 'object' && data.customObjectiveLabels ? data.customObjectiveLabels : {},
-  };
-}
-
-/**
- * @param {string} creatorId
- * @param {{ name: string, measures: string[], objectives: string[], customMeasureLabels?: Object, customObjectiveLabels?: Object }} data
- * @returns {Promise<{ id: string }>}
- */
-async function create(creatorId, data) {
-  if (!creatorId || !data || !data.name?.trim()) {
-    throw new Error('Creator ID and preset name are required');
+async function get(_creatorId, presetId) {
+  if (!presetId) return null;
+  try {
+    const res = await apiClient.get('/creator/library/objective-presets');
+    const all = res.data ?? [];
+    return all.find((p) => p.id === presetId) ?? null;
+  } catch (err) {
+    console.error('[measureObjectivePresetsService] get:', err);
+    return null;
   }
-  const ref = collection(firestore, 'creator_libraries', creatorId, PRESETS_COLLECTION);
-  const docRef = await addDoc(ref, {
-    name: (data.name || '').trim(),
+}
+
+async function create(_creatorId, data) {
+  if (!data?.name?.trim()) throw new Error('Preset name is required');
+  const res = await apiClient.post('/creator/library/objective-presets', {
+    name: data.name.trim(),
     measures: Array.isArray(data.measures) ? data.measures : [],
     objectives: Array.isArray(data.objectives) ? data.objectives : [],
-    customMeasureLabels: data.customMeasureLabels && typeof data.customMeasureLabels === 'object' ? data.customMeasureLabels : {},
-    customObjectiveLabels: data.customObjectiveLabels && typeof data.customObjectiveLabels === 'object' ? data.customObjectiveLabels : {},
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
+    customMeasureLabels: (data.customMeasureLabels && typeof data.customMeasureLabels === 'object') ? data.customMeasureLabels : {},
+    customObjectiveLabels: (data.customObjectiveLabels && typeof data.customObjectiveLabels === 'object') ? data.customObjectiveLabels : {},
   });
-  return { id: docRef.id };
+  return { id: res.data?.id };
 }
 
-/**
- * @param {string} creatorId
- * @param {string} presetId
- * @param {{ name?: string, measures?: string[], objectives?: string[], customMeasureLabels?: Object, customObjectiveLabels?: Object }} data
- */
-async function update(creatorId, presetId, data) {
-  if (!creatorId || !presetId) throw new Error('Creator ID and preset ID are required');
-  const ref = doc(firestore, 'creator_libraries', creatorId, PRESETS_COLLECTION, presetId);
-  const updateData = { updated_at: serverTimestamp() };
-  if (data.name !== undefined) updateData.name = (data.name || '').trim();
-  if (data.measures !== undefined) updateData.measures = Array.isArray(data.measures) ? data.measures : [];
-  if (data.objectives !== undefined) updateData.objectives = Array.isArray(data.objectives) ? data.objectives : [];
-  if (data.customMeasureLabels !== undefined) updateData.customMeasureLabels = data.customMeasureLabels && typeof data.customMeasureLabels === 'object' ? data.customMeasureLabels : {};
-  if (data.customObjectiveLabels !== undefined) updateData.customObjectiveLabels = data.customObjectiveLabels && typeof data.customObjectiveLabels === 'object' ? data.customObjectiveLabels : {};
-  await updateDoc(ref, updateData);
+async function update(_creatorId, presetId, data) {
+  if (!presetId) throw new Error('Preset ID is required');
+  const payload = {};
+  if (data.name !== undefined) payload.name = data.name.trim();
+  if (data.measures !== undefined) payload.measures = Array.isArray(data.measures) ? data.measures : [];
+  if (data.objectives !== undefined) payload.objectives = Array.isArray(data.objectives) ? data.objectives : [];
+  if (data.customMeasureLabels !== undefined) {
+    payload.customMeasureLabels = (data.customMeasureLabels && typeof data.customMeasureLabels === 'object') ? data.customMeasureLabels : {};
+  }
+  if (data.customObjectiveLabels !== undefined) {
+    payload.customObjectiveLabels = (data.customObjectiveLabels && typeof data.customObjectiveLabels === 'object') ? data.customObjectiveLabels : {};
+  }
+  await apiClient.patch(`/creator/library/objective-presets/${presetId}`, payload);
 }
 
-/**
- * @param {string} creatorId
- * @param {string} presetId
- */
-async function remove(creatorId, presetId) {
-  if (!creatorId || !presetId) throw new Error('Creator ID and preset ID are required');
-  const ref = doc(firestore, 'creator_libraries', creatorId, PRESETS_COLLECTION, presetId);
-  await deleteDoc(ref);
+async function remove(_creatorId, presetId) {
+  if (!presetId) throw new Error('Preset ID is required');
+  await apiClient.delete(`/creator/library/objective-presets/${presetId}`);
 }
 
-const measureObjectivePresetsService = {
-  list,
-  get,
-  create,
-  update,
-  remove,
-};
-
+const measureObjectivePresetsService = { list, get, create, update, remove };
 export default measureObjectivePresetsService;

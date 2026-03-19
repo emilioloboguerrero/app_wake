@@ -7,12 +7,14 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ProgramDetailScreen.css';
 
 const CreateLibrarySessionScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [sessionName, setSessionName] = useState('');
@@ -31,13 +33,13 @@ const CreateLibrarySessionScreen = () => {
     }
 
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -93,7 +95,7 @@ const CreateLibrarySessionScreen = () => {
           });
         } catch (uploadErr) {
           logger.error('Error uploading session image:', uploadErr);
-          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
         } finally {
           setIsUploadingSessionImage(false);
         }
@@ -102,7 +104,7 @@ const CreateLibrarySessionScreen = () => {
       navigate(backPath, { state: backState });
     } catch (err) {
       logger.error('Error creating library session:', err);
-      alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingSession(false);
     }

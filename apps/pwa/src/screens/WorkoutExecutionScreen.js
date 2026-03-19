@@ -47,7 +47,6 @@ import WakeLoader from '../components/WakeLoader';
 
 // Firebase - keep as direct imports (lightweight)
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
 
 // ============================================================================
 // LAZY LOADERS - Services (loaded only when needed)
@@ -2711,13 +2710,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       let creatorName = '';
       if (firstLibraryId) {
         try {
-          // Get the library document to extract creator_name
-          const libraryData = await firestoreService.getExerciseLibraryItem(firstLibraryId);
-          if (libraryData) {
-            creatorName = libraryData.creator_name || firstLibraryId;
-          } else {
-            creatorName = firstLibraryId;
-          }
+          const libraryData = await exerciseLibraryService.getLibraryDocument(firstLibraryId);
+          creatorName = libraryData?.creator_name || firstLibraryId;
         } catch (error) {
           logger.error('❌ Error fetching creator name:', error);
           creatorName = firstLibraryId;
@@ -3659,16 +3653,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
 
       // Load exercises from all available libraries
-      const exercisePromises = [];
-      
+      const exerciseEntries = [];
+
       for (const libraryId of availableLibraries) {
         try {
-          const libraryData = await firestoreService.getExerciseLibraryItem(libraryId);
-
+          const libraryData = await exerciseLibraryService.getLibraryDocument(libraryId);
           if (libraryData) {
             Object.entries(libraryData).forEach(([exerciseName, exerciseData]) => {
               if (exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id') {
-                exercisePromises.push({
+                exerciseEntries.push({
                   name: exerciseName,
                   description: exerciseData.description || '',
                   video_url: exerciseData.video_url || '',
@@ -3684,7 +3677,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       }
 
-      const availableExercises = await Promise.all(exercisePromises);
+      const availableExercises = exerciseEntries;
       
       // Log first exercise to debug
       if (availableExercises.length > 0) {
@@ -3988,23 +3981,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      }
                      logger.log('✅ All exercise data saved');
                      
-                     // Calculate and update 1RM estimates
-                     logger.log('🔢 Calculating 1RM estimates after session...');
-                     let personalRecords = [];
-                     try {
-                       personalRecords = await oneRepMaxService.updateEstimatesAfterSession(
-                         currentUser.uid,
-                         workout.exercises,
-                         setData
-                       );
-                       logger.log('✅ 1RM estimates updated successfully');
-                       logger.log('Personal records achieved:', personalRecords.length);
-                     } catch (error) {
-                       logger.error('❌ Error updating 1RM estimates (continuing anyway):', error);
-                       // Don't block session completion on 1RM error
-                     }
-                     
-                    // Complete the session using new session manager
+                     // Complete the session using new session manager
                     // Update workout with actual set data for muscle volume calculation
                     
                     // 🔍 VOLUME DEBUG: Log complete setData before creating workoutWithSetData
@@ -4061,7 +4038,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      });
                      
                      if (result) {
-                       const { sessionData, stats, sessionMuscleVolumes } = result;
+                       const { sessionData, stats, sessionMuscleVolumes, personalRecords = [] } = result;
                        
                        logger.log('✅ Workout completed successfully!');
                        logger.log('💪 Session muscle volumes:', sessionMuscleVolumes);

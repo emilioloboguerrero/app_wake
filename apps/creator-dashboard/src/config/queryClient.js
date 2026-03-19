@@ -84,6 +84,12 @@ export const cacheConfig = {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
+  userProfile: {
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
 };
 
 // Query keys factory

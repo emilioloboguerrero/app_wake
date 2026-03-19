@@ -16,7 +16,7 @@ import { updateProfile } from 'firebase/auth';
 import firestoreService from '../../services/firestoreService';
 import { auth } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import hybridDataService from '../../services/hybridDataService';
+import apiClient from '../../utils/apiClient';
 import profilePictureService from '../../services/profilePictureService';
 import webStorageService from '../../services/webStorageService';
 import logger from '../../utils/logger';
@@ -332,6 +332,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
     usernameTimerRef.current = setTimeout(async () => {
       try {
         const uid = getEffectiveUid();
+        // TODO: no endpoint for isUsernameTaken — no REST endpoint for username availability check
         const taken = await firestoreService.isUsernameTaken(username, uid);
         setField('usernameStatus', taken ? 'taken' : 'available');
       } catch {
@@ -391,33 +392,22 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
     setSavingProfile(true);
     setSaveError(null);
     try {
-      const age = calculateAge(formData.birthDateStr);
-      const userData = {
+      const authUser = user || auth.currentUser;
+      if (authUser && authUser.displayName !== formData.displayName.trim()) {
+        await updateProfile(authUser, { displayName: formData.displayName.trim() });
+      }
+      await apiClient.patch('/users/me', {
         displayName: formData.displayName.trim(),
         username: formData.username.toLowerCase().trim(),
-        email: formData.email.trim().toLowerCase(),
         birthDate: formData.birthDateStr,
-        age,
         gender: formData.gender,
         country: formData.country,
         city: formData.city,
-        bodyweight: parseFloat(formData.bodyweight) || null,
+        weight: parseFloat(formData.bodyweight) || null,
         height: parseFloat(formData.height) || null,
         profileCompleted: true,
         onboardingCompleted: false,
-        role: 'user',
-        generalTutorials: { mainScreen: false, library: false, profile: false, community: false },
-      };
-      if (formData.photoURL && formData.photoURL.startsWith('https://')) {
-        userData.profilePictureUrl = formData.photoURL;
-      }
-      if (formData.photoPath) userData.profilePicturePath = formData.photoPath;
-
-      const authUser = user || auth.currentUser;
-      if (authUser && authUser.displayName !== userData.displayName) {
-        await updateProfile(authUser, { displayName: userData.displayName });
-      }
-      await hybridDataService.updateUserProfile(uid, userData);
+      });
 
       const statusCache = JSON.stringify({ onboardingCompleted: false, profileCompleted: true, cachedAt: Date.now() });
       try { await AsyncStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
@@ -438,7 +428,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
     const uid = getEffectiveUid();
     if (!uid) return;
     try {
-      const userData = {
+      await apiClient.patch('/users/me', {
         onboardingData: {
           primaryGoal: answers.primaryGoal,
           trainingExperience: answers.trainingExperience,
@@ -453,8 +443,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
         },
         onboardingCompleted: true,
         profileCompleted: true,
-      };
-      await hybridDataService.updateUserProfile(uid, userData);
+      });
       const statusCache = JSON.stringify({ onboardingCompleted: true, profileCompleted: true, cachedAt: Date.now() });
       try { await AsyncStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
       try { await webStorageService.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}

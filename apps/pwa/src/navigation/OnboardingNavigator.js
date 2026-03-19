@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import OnboardingQuestion1 from '../screens/onboarding/OnboardingQuestion1';
 import OnboardingQuestion2 from '../screens/onboarding/OnboardingQuestion2';
@@ -95,7 +95,7 @@ const OnboardingNavigator = ({ onComplete }) => {
         }
       }
 
-      await hybridDataService.updateUserProfile(uid, userData);
+      await apiClient.patch('/users/me', userData);
       logger.debug('✅ Onboarding completed successfully. uid:', uid);
 
       if (onComplete) onComplete();

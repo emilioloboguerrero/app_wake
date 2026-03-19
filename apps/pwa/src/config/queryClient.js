@@ -66,6 +66,14 @@ export const cacheConfig = {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
+
+  // Session history: 10 minutes (append-only, historical)
+  sessionHistory: {
+    staleTime: 10 * 60 * 1000,
+    gcTime: 20 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
 };
 
 export const queryKeys = {

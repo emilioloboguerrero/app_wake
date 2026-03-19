@@ -17,11 +17,13 @@ import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plan
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './PlanDetailScreen.css';
 
 const PlanDetailScreen = () => {
   const { planId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [planTitle, setPlanTitle] = useState('');
@@ -100,7 +102,7 @@ const PlanDetailScreen = () => {
       await queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
       setHasMadeChanges(true);
     } catch (err) {
-      alert(err.message || 'Error al añadir semana');
+      showToast(err.message || 'Error al añadir semana', 'error');
     } finally {
       setIsAddingWeek(false);
     }
@@ -117,7 +119,7 @@ const PlanDetailScreen = () => {
       });
       navigate(`/plans/${p.id}`, { replace: true });
     } catch (err) {
-      alert(err.message || 'Error al crear el plan');
+      showToast(err.message || 'Error al crear el plan', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -136,7 +138,7 @@ const PlanDetailScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plans', planId] });
       setHasMadeChanges(true);
     } catch (err) {
-      alert(err.message || 'Error al guardar');
+      showToast(err.message || 'Error al guardar', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -249,7 +251,7 @@ const PlanDetailScreen = () => {
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.error('Error finding affected users:', err);
-      alert('Error al comprobar usuarios afectados.');
+      showToast('Error al comprobar usuarios afectados.', 'error');
     }
   };
 
@@ -260,14 +262,14 @@ const PlanDetailScreen = () => {
       const { propagated, errors } = await propagationService.propagatePlan(planId);
       if (errors.length > 0) {
         logger.warn('Propagation had some errors:', errors);
-        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+        showToast(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`, 'error');
       } else if (propagated > 0) {
-        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+        showToast(`Cambios propagados correctamente a ${propagated} usuario(s).`, 'success');
       }
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+      showToast(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }

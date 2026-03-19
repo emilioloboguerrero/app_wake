@@ -1,3 +1,111 @@
+/* ─── Client Profile Card ────────────────────────────────────── */
+.cp-profile {
+  padding: 24px 32px 0;
+}
+
+.cp-profile-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: var(--radius-lg, 16px);
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: cp-enter 0.4s var(--spring, cubic-bezier(0.22,1,0.36,1)) both;
+}
+
+@keyframes cp-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cp-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  flex-shrink: 0;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+.cp-profile-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cp-profile-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary, #fff);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-profile-email {
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-profile-stats {
+  display: flex;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.cp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.cp-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text-primary, #fff);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  line-height: 1;
+}
+
+.cp-stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+  .cp-profile { padding: 16px 16px 0; }
+  .cp-profile-inner { padding: 14px 16px; gap: 12px; }
+  .cp-avatar { width: 40px; height: 40px; font-size: 14px; }
+  .cp-profile-name { font-size: 15px; }
+  .cp-stat-value { font-size: 17px; }
+  .cp-profile-stats { gap: 16px; }
+}
+
+/* ─────────────────────────────────────────────────────────────── */
 /* No image header: main-content padding (32px) + StickyHeader (120px) = 152px. Mobile: 0 + 64px = 64px. */
 .client-program-container {
   width: 100%;
@@ -12,7 +120,7 @@ body.header-scrolled .client-program-container {
 
 /* Tab Bar - sticky relative to viewport; align flush under header (152px / 120px when scrolled / 64px mobile) */
 .client-program-tab-bar {
-  background-color: #1a1a1a;
+  background-color: var(--canvas, #1a1a1a);
   padding: 16px 32px;
   position: sticky;
   top: 152px;
@@ -57,13 +165,11 @@ body.header-scrolled .client-program-tab-bar {
   top: 2px;
   bottom: 2px;
   left: 0;
-  width: 20%; /* 5 tabs: Lab, Planificación, Historial, Nutrición, Info */
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-2, rgba(255,255,255,0.05));
+  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
   pointer-events: none;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.22s var(--spring, cubic-bezier(0.22,1,0.36,1));
   box-sizing: border-box;
   will-change: transform;
 }
@@ -76,33 +182,33 @@ body.header-scrolled .client-program-tab-bar {
   padding: 6px 20px;
   height: 32px;
   min-width: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill, 999px);
   background: none;
   border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  transition: background var(--duration-fast, 120ms) ease;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   position: relative;
   z-index: 1;
 }
 
 .client-program-tab-button:hover:not(.client-program-tab-button-active) {
-  background-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.04);
 }
 
 .client-program-tab-button-active {
-  background-color: transparent;
+  background: transparent;
 }
 
 .client-program-tab-title-text {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
-  transition: all 0.2s ease;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  transition: color var(--duration-fast, 120ms) ease, font-weight var(--duration-fast, 120ms) ease;
 }
 
 .client-program-tab-button-active .client-program-tab-title-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary, #fff);
   font-weight: 600;
 }
 

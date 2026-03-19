@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
+import { ASSET_BASE } from '../config/assets';
+import './AuthContext.css';
 
 const AuthContext = createContext({});
 
@@ -21,23 +23,18 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async (firebaseUser) => {
       if (firebaseUser) {
-      // Fetch user role and onboarding status from Firestore
         try {
-          const userData = await getUser(firebaseUser.uid);
-          setUserRole(userData?.role || 'user');
-        // If field doesn't exist, treat as not completed (false)
-        // This ensures all users go through onboarding at least once
-        setWebOnboardingCompleted(userData?.webOnboardingCompleted ?? false);
-        // Track user onboarding status (same as mobile app)
-        setProfileCompleted(userData?.profileCompleted ?? false);
-        setOnboardingCompleted(userData?.onboardingCompleted ?? false);
+          const { data } = await apiClient.get('/users/me');
+          setUserRole(data.role || 'user');
+          setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
+          setProfileCompleted(data.profileCompleted ?? false);
+          setOnboardingCompleted(data.onboardingCompleted ?? false);
         } catch (error) {
-        console.error('Error fetching user data:', error);
-          setUserRole('user'); // Default to 'user' if error
-        // On error, default to false to ensure onboarding is shown
-        setWebOnboardingCompleted(false);
-        setProfileCompleted(false);
-        setOnboardingCompleted(false);
+          console.error('Error fetching user data:', error);
+          setUserRole('user');
+          setWebOnboardingCompleted(false);
+          setProfileCompleted(false);
+          setOnboardingCompleted(false);
         }
       } else {
         setUserRole(null);
@@ -78,30 +75,16 @@ export const AuthProvider = ({ children }) => {
     refreshUserData
   };
 
-  console.log('🔍 AuthContext: Rendering', { 
-    loading, 
-    hasUser: !!user, 
-    userRole, 
-    isCreator: isCreatorValue,
-    isAdmin: isAdminValue,
-    webOnboardingCompleted,
-    profileCompleted,
-    onboardingCompleted
-  });
-  
   return (
     <AuthContext.Provider value={value}>
       {loading ? (
-        <div style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#1a1a1a',
-          color: '#ffffff',
-          fontFamily: 'system-ui, sans-serif',
-        }}>
-          Cargando...
+        <div className="auth-loading">
+          <img
+            className="auth-loading__logo"
+            src={`${ASSET_BASE}wake-logo-new.png`}
+            alt="Wake"
+          />
+          <div className="auth-loading__spinner" />
         </div>
       ) : (
         children

@@ -1,6 +1,4 @@
-import { firestore } from '../config/firebase';
-import { doc, getDoc } from 'firebase/firestore';
-
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 class ExerciseLibraryService {
   constructor() {
@@ -35,29 +33,18 @@ class ExerciseLibraryService {
 
     try {
       logger.log(`📚 Fetching exercise: ${exerciseName} from library: ${libraryId}`);
-      
-      const libraryDocRef = doc(firestore, 'exercises_library', libraryId);
-      const libraryDoc = await getDoc(libraryDocRef);
-      
-      if (!libraryDoc.exists()) {
-        throw new Error(`Library ${libraryId} not found`);
-      }
-      
-      const libraryData = libraryDoc.data();
-      const exerciseData = libraryData[exerciseName];
-      
+
+      const apiResult = await apiClient.get(`/exercises/${libraryId}/${encodeURIComponent(exerciseName)}`);
+      const exerciseData = apiResult?.data;
+
       if (!exerciseData) {
         throw new Error(`Exercise ${exerciseName} not found in library ${libraryId}`);
       }
-      
-      // Debug: log implements from Firestore
-      logger.log('🔧 exerciseLibraryService.getExerciseData Firestore payload:', {
+
+      logger.log('🔧 exerciseLibraryService.getExerciseData payload:', {
         exerciseName,
         hasImplements: Array.isArray(exerciseData.implements),
         implementsLength: Array.isArray(exerciseData.implements) ? exerciseData.implements.length : 'n/a',
-        implementsSample: Array.isArray(exerciseData.implements)
-          ? exerciseData.implements.slice(0, 5)
-          : exerciseData.implements ?? null,
       });
 
       const result = {
@@ -148,6 +135,30 @@ class ExerciseLibraryService {
     };
   }
 
+
+  /**
+   * Get the full library document by ID.
+   * Returns the raw document data with creator_name and all exercises, or null if not found.
+   */
+  async getLibraryDocument(libraryId) {
+    const cacheKey = `library_${libraryId}`;
+    if (this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey);
+      if (Date.now() - cached.timestamp < this.cacheTTL) {
+        return cached.data;
+      }
+      this.cache.delete(cacheKey);
+    }
+    try {
+      const result = await apiClient.get(`/exercises/${libraryId}`);
+      const data = result?.data ?? null;
+      if (data) this.cache.set(cacheKey, { data, timestamp: Date.now() });
+      return data;
+    } catch (error) {
+      logger.error(`❌ Error fetching library document ${libraryId}:`, error);
+      return null;
+    }
+  }
 
   /**
    * Clear cache (useful for testing or when data changes)

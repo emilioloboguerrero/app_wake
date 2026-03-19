@@ -2,7 +2,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import programService from '../services/programService';
-import { getUser } from '../services/firestoreService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // Hook to get all programs for the current creator

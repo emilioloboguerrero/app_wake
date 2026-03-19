@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -24,7 +25,6 @@ import BottomSpacer from '../components/BottomSpacer';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import completionPhrases from '../../assets/data/completionPhrases.json';
-import hybridDataService from '../services/hybridDataService';
 import logger from '../utils/logger.js';
 import SvgChampion from '../components/icons/SvgChampion';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
@@ -33,19 +33,50 @@ import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import { cacheConfig } from '../config/queryClient';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/ShareIOsExport';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
-import exerciseHistoryService from '../services/exerciseHistoryService';
+import apiClient from '../utils/apiClient';
 import WakeLoader from '../components/WakeLoader';
 
 const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
+  const userId = (user || auth.currentUser)?.uid;
+
+  const { data: userData } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
+    enabled: !!userId,
+    staleTime: cacheConfig.userProfile.staleTime,
+    gcTime: cacheConfig.userProfile.gcTime,
+  });
+
+  const userDisplayName = userData?.displayName || '';
+  const username = userData?.username || userData?.displayName || '';
+
+  const weeklyMuscleVolumes = useMemo(() => {
+    if (!userData?.weeklyMuscleVolume) return null;
+    const currentWeek = getMondayWeek();
+    return userData.weeklyMuscleVolume[currentWeek] || null;
+  }, [userData]);
+
+  const lastWeekMuscleVolumes = useMemo(() => {
+    if (!userData?.weeklyMuscleVolume) return null;
+    const allWeeks = Object.keys(userData.weeklyMuscleVolume);
+    if (allWeeks.length === 0) return null;
+    const currentWeek = getMondayWeek();
+    const sorted = allWeeks.slice().sort();
+    const currentIndex = sorted.indexOf(currentWeek);
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : (currentIndex === -1 && sorted.length >= 2 ? sorted.length - 2 : -1);
+    if (prevIndex < 0) return null;
+    return userData.weeklyMuscleVolume[sorted[prevIndex]] || null;
+  }, [userData]);
+
   const [loading, setLoading] = useState(true);
   const [completionNotes, setCompletionNotes] = useState(route.params?.sessionData?.userNotes ?? '');
   const [initialNotes, setInitialNotes] = useState(null);
@@ -55,25 +86,23 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const hasNotesChanges = initialNotes !== null && (completionNotes || '') !== (initialNotes || '');
   const [completionStats, setCompletionStats] = useState(null);
   const [randomPhrase, setRandomPhrase] = useState('');
-  const [weeklyMuscleVolumes, setWeeklyMuscleVolumes] = useState(null);
-  const [lastWeekMuscleVolumes, setLastWeekMuscleVolumes] = useState(null);
-  
+
   // Muscle volume info modal state
   const [isMuscleVolumeInfoModalVisible, setIsMuscleVolumeInfoModalVisible] = useState(false);
   const [selectedMuscleVolumeInfo, setSelectedMuscleVolumeInfo] = useState(null);
-  
+
   // Scroll tracking for pagination indicator
   const scrollX = useRef(new Animated.Value(0)).current;
-  
+
   logger.log('WorkoutCompletionScreen: Received', personalRecords?.length || 0, 'personal records');
   logger.log('Personal records data:', personalRecords);
   logger.log('WorkoutCompletionScreen: Received session muscle volumes:', sessionMuscleVolumes);
-  
+
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
-  
+
   // Share modal state
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
   const shareScrollX = useRef(new Animated.Value(0)).current;
@@ -82,8 +111,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [currentShareCardIndex, setCurrentShareCardIndex] = useState(0);
   const [fullscreenCardIndex, setFullscreenCardIndex] = useState(null);
-  const [userDisplayName, setUserDisplayName] = useState('');
-  const [username, setUsername] = useState('');
   
   const prEntranceAnim = useRef(new Animated.Value(0)).current;
   const prGlowAnim = useRef(new Animated.Value(0)).current;
@@ -247,106 +274,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   }, [completionStats]);
 
   useEffect(() => {
-    // Set random phrase when component mounts
     setRandomPhrase(getRandomPhrase());
     initializeCompletionScreen();
-    
-    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
-    const currentUser = user || auth.currentUser;
-    
-    logger.log('🔍 WorkoutCompletionScreen useEffect - User check:', {
-      userFromHook: !!user,
-      userUidFromHook: user?.uid,
-      firebaseCurrentUser: !!auth.currentUser,
-      firebaseCurrentUserUid: auth.currentUser?.uid,
-      currentUserToUse: !!currentUser,
-      currentUserUid: currentUser?.uid,
-      courseDiscipline: course?.discipline,
-      shouldTrackVolume: shouldTrackMuscleVolume(course?.discipline),
-      hasSessionMuscleVolumes: !!sessionMuscleVolumes,
-      sessionMuscleVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : []
-    });
-    
-    // Fetch weekly muscle volumes if discipline supports it
-    if (shouldTrackMuscleVolume(course?.discipline) && currentUser?.uid) {
-      logger.log('📊 Fetching weekly muscle volumes...');
-      fetchWeeklyMuscleVolumes();
-    } else {
-      logger.log('⚠️ Skipping weekly muscle volumes fetch:', {
-        shouldTrack: shouldTrackMuscleVolume(course?.discipline),
-        hasUser: !!currentUser?.uid
-      });
-    }
-    
-    // Fetch user display name
-    const uid = (user || auth.currentUser)?.uid;
-    if (uid) {
-      fetchUserDisplayName();
-    }
   }, []);
-  
-  const fetchUserDisplayName = async () => {
-    try {
-      const currentUser = user || auth.currentUser;
-      if (!currentUser?.uid) return;
-      const data = await firestoreService.getUser(currentUser.uid);
-      if (data) {
-        setUserDisplayName(data.displayName || '');
-        setUsername(data.username || data.displayName || '');
-      }
-    } catch (error) {
-      logger.error('Error fetching user display name:', error);
-    }
-  };
-  
-  const fetchWeeklyMuscleVolumes = async () => {
-    try {
-      // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
-      const currentUser = user || auth.currentUser;
-      if (!currentUser?.uid) {
-        logger.error('❌ Cannot fetch weekly muscle volumes - no user available');
-        setWeeklyMuscleVolumes({});
-        setLastWeekMuscleVolumes({});
-        return;
-      }
-      
-      const currentWeek = getMondayWeek();
-      logger.log('📊 Fetching weekly muscle volumes for user:', currentUser.uid, 'week:', currentWeek);
-      const data = await firestoreService.getUser(currentUser.uid);
-
-      if (data) {
-        const weekData = data.weeklyMuscleVolume?.[currentWeek] || {};
-        setWeeklyMuscleVolumes(weekData);
-        logger.log('✅ Weekly muscle volumes fetched for completion screen:', weekData);
-
-        // Derive last week volumes by inspecting all weeks and picking the entry prior to current
-        const allWeeks = data.weeklyMuscleVolume ? Object.keys(data.weeklyMuscleVolume) : [];
-        if (allWeeks.length > 0) {
-          // Sort keys consistently; keys are date-like strings, string sort works for YYYY-MM-DD formats
-          const sorted = allWeeks.slice().sort();
-          const currentIndex = sorted.indexOf(currentWeek);
-          const prevIndex = currentIndex > 0 ? currentIndex - 1 : (currentIndex === -1 && sorted.length >= 2 ? sorted.length - 2 : -1);
-          if (prevIndex >= 0) {
-            const prevKey = sorted[prevIndex];
-            const prevWeekData = data.weeklyMuscleVolume?.[prevKey] || {};
-            setLastWeekMuscleVolumes(prevWeekData);
-            logger.log('📆 Last week muscle volumes fetched for comparison:', prevKey, prevWeekData);
-          } else {
-            setLastWeekMuscleVolumes({});
-          }
-        } else {
-          setLastWeekMuscleVolumes({});
-        }
-      } else {
-        setWeeklyMuscleVolumes({});
-        setLastWeekMuscleVolumes({});
-      }
-    } catch (error) {
-      logger.error('❌ Error fetching weekly muscle volumes:', error);
-      setWeeklyMuscleVolumes({});
-      setLastWeekMuscleVolumes({});
-    }
-  };
 
   // Check for tutorials to show
   const checkForTutorials = async () => {
@@ -415,20 +345,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         logger.log('📊 Using passed session data:', sessionData.sessionId);
         logger.log('📊 Using passed local stats:', localStats);
         
-        // SIMPLE: Just use course.discipline directly
         let discipline = course?.discipline;
-        
-        // If discipline is not in course object, try to get it from course metadata
-        if (!discipline && course?.courseId) {
-          try {
-            const courses = await hybridDataService.loadCourses();
-            const courseMeta = courses.find(c => c.id === course.courseId);
-            discipline = courseMeta?.discipline;
-            logger.log('📊 Discipline from metadata:', discipline);
-          } catch (error) {
-            logger.log('❌ Error loading course metadata:', error);
-          }
-        }
         
         logger.log('📊 Final discipline:', discipline);
         
@@ -692,7 +609,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     setNotesSaving(true);
     setNotesSaved(false);
     try {
-      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionData.sessionId, completionNotes);
+      await apiClient.patch(`/workout/sessions/${sessionData.sessionId}/notes`, { userNotes: completionNotes });
       setNotesSaved(true);
       setInitialNotes(completionNotes);
       setTimeout(() => setNotesSaved(false), 2500);

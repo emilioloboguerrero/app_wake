@@ -283,6 +283,10 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                                 : `${assignedCount} programa${assignedCount !== 1 ? 's' : ''}`}
                           </span>
                         </div>
+                        <span className="one-on-one-client-status-pill">Activo</span>
+                        <svg className="one-on-one-client-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
                       </button>
                     </li>
                   );

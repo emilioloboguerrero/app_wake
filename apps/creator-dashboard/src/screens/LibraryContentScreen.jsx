@@ -5,6 +5,7 @@ import { queryClient, queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
@@ -265,6 +266,7 @@ const LibraryContentScreen = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   
   // Get the tab from URL params, default to 'modules' if viewing a module, 'sessions' if viewing a session
   const getTabFromContext = () => {
@@ -492,7 +494,7 @@ const LibraryContentScreen = () => {
       handleCloseModuleModal();
     } catch (err) {
       logger.error('Error creating module:', err);
-      alert('Error al crear la semana. Por favor, intenta de nuevo.');
+      showToast('Error al crear la semana. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingModule(false);
     }
@@ -532,7 +534,7 @@ const LibraryContentScreen = () => {
       if (originalModulesOrder.length > 0) {
         setLibraryModules([...originalModulesOrder]);
       }
-      alert('Error al actualizar el orden de las semanas. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de las semanas. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingModuleOrder(false);
     }
@@ -564,11 +566,7 @@ const LibraryContentScreen = () => {
       const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, module.id);
       
       if (usageCheck.inUse) {
-        alert(
-          `⚠️ No se puede eliminar esta semana de la biblioteca.\n\n` +
-          `Está siendo usada en ${usageCheck.count} programa(s).\n\n` +
-          `Primero debes eliminar o reemplazar todas las referencias en los programas.`
-        );
+        showToast(`No se puede eliminar esta semana. Está siendo usada en ${usageCheck.count} programa(s). Primero debes eliminar o reemplazar todas las referencias.`, 'error');
         return;
       }
       
@@ -623,7 +621,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting module:', err);
-      alert('Error al eliminar la semana. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la semana. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsDeletingModule(false);
     }
@@ -681,14 +679,14 @@ const LibraryContentScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     // Validate file size (e.g., max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -715,7 +713,7 @@ const LibraryContentScreen = () => {
         setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
       } catch (err) {
         logger.error('Error updating session image:', err);
-        alert('Error al actualizar la imagen.');
+        showToast('Error al actualizar la imagen.', 'error');
       }
       setIsMediaPickerOpen(false);
       return;
@@ -748,7 +746,7 @@ const LibraryContentScreen = () => {
           );
         } catch (uploadError) {
           logger.error('Error uploading session image:', uploadError);
-          alert(`Error al subir la imagen: ${uploadError.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`Error al subir la imagen: ${uploadError.message || 'Por favor, intenta de nuevo.'}`, 'error');
           setIsUpdatingSession(false);
           setIsUploadingSessionImage(false);
           return;
@@ -781,7 +779,7 @@ const LibraryContentScreen = () => {
       handleCloseSessionModal();
     } catch (err) {
       logger.error('Error updating session:', err);
-      alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsUpdatingSession(false);
       setIsUploadingSessionImage(false);
@@ -811,7 +809,7 @@ const LibraryContentScreen = () => {
       setAvailableLibrarySessions(availableSessions);
     } catch (err) {
       logger.error('Error loading library sessions:', err);
-      alert('Error al cargar las sesiones de la biblioteca');
+      showToast('Error al cargar las sesiones de la biblioteca', 'error');
     } finally {
       setIsLoadingLibrarySessions(false);
     }
@@ -829,7 +827,7 @@ const LibraryContentScreen = () => {
       handleCloseCopySessionModal();
     } catch (err) {
       logger.error('Error adding session to module:', err);
-      alert('Error al agregar la sesión. Por favor, intenta de nuevo.');
+      showToast('Error al agregar la sesión. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -866,7 +864,7 @@ const LibraryContentScreen = () => {
       if (originalSessionsOrder.length > 0) {
         setLibrarySessions([...originalSessionsOrder]);
       }
-      alert('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingSessionOrder(false);
     }
@@ -938,7 +936,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting session:', err);
-      alert('Error al eliminar la sesión. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la sesión. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -1375,7 +1373,7 @@ const LibraryContentScreen = () => {
       setExpandedSeries({});
     } catch (error) {
       logger.error('Error opening exercise modal:', error);
-      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al abrir el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1425,7 +1423,7 @@ const LibraryContentScreen = () => {
       setSelectedExercise(prev => prev ? { ...prev, measures: updatedMeasures, customMeasureLabels: updatedCustomMeasureLabels } : null);
     } catch (err) {
       logger.error('Error adding custom measure:', err);
-      alert('Error al agregar la medida. Por favor, intenta de nuevo.');
+      showToast('Error al agregar la medida. Por favor, intenta de nuevo.', 'error');
     }
   };
   
@@ -1448,7 +1446,7 @@ const LibraryContentScreen = () => {
       setSelectedExercise(prev => prev ? { ...prev, objectives: updatedObjectives, customObjectiveLabels: updatedCustomObjectiveLabels } : null);
     } catch (err) {
       logger.error('Error adding custom objective:', err);
-      alert('Error al agregar el objetivo. Por favor, intenta de nuevo.');
+      showToast('Error al agregar el objetivo. Por favor, intenta de nuevo.', 'error');
     }
   };
   
@@ -1522,7 +1520,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1547,7 +1545,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error loading exercises from library:', err);
-      alert('Error al cargar los ejercicios');
+      showToast('Error al cargar los ejercicios', 'error');
     } finally {
       setIsLoadingExercisesFromLibrary(false);
     }
@@ -1621,7 +1619,7 @@ const LibraryContentScreen = () => {
         }
         
         if (exerciseExists) {
-          alert('Esta alternativa ya está agregada.');
+          showToast('Esta alternativa ya está agregada.', 'error');
           handleCloseLibraryExerciseModal();
           return;
         }
@@ -1688,7 +1686,7 @@ const LibraryContentScreen = () => {
           }
           
           if (exerciseExists) {
-            alert('Esta alternativa ya está agregada.');
+            showToast('Esta alternativa ya está agregada.', 'error');
             handleCloseLibraryExerciseModal();
             return;
           }
@@ -1729,7 +1727,7 @@ const LibraryContentScreen = () => {
       handleCloseLibraryExerciseModal();
     } catch (err) {
       logger.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1757,7 +1755,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1803,7 +1801,7 @@ const LibraryContentScreen = () => {
           }));
         } catch (err) {
           logger.error('Error deleting alternative:', err);
-          alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+          showToast('Error al eliminar la alternativa. Por favor, intenta de nuevo.', 'error');
         }
       }
     }
@@ -1824,7 +1822,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1860,7 +1858,7 @@ const LibraryContentScreen = () => {
       setIsPresetSelectorOpen(false);
     } catch (err) {
       logger.error('Error applying preset:', err);
-      alert('Error al aplicar la plantilla. Por favor, intenta de nuevo.');
+      showToast('Error al aplicar la plantilla. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1879,7 +1877,7 @@ const LibraryContentScreen = () => {
         applyPresetToExercise({ id, name: data.name, ...updates });
       } catch (err) {
         logger.error('Error creating preset:', err);
-        alert('Error al crear la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al crear la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'edit_preset' && presetBeingEditedId && data.name) {
@@ -1895,7 +1893,7 @@ const LibraryContentScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating preset:', err);
-        alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al guardar la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'exercise') {
@@ -1913,7 +1911,7 @@ const LibraryContentScreen = () => {
           }
         } catch (err) {
           logger.error('Error updating exercise:', err);
-          alert('Error al guardar. Por favor, intenta de nuevo.');
+          showToast('Error al guardar. Por favor, intenta de nuevo.', 'error');
           return;
         }
       }
@@ -1983,7 +1981,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error creating set:', err);
-      alert('Error al crear la serie. Por favor, intenta de nuevo.');
+      showToast('Error al crear la serie. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSet(false);
     }
@@ -2179,7 +2177,7 @@ const LibraryContentScreen = () => {
           setExerciseSets(exerciseSets);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(originalExerciseSets)));
           setUnsavedSetChanges(unsavedSetChanges);
-          alert('Error al añadir series. Por favor, intenta de nuevo.');
+          showToast('Error al añadir series. Por favor, intenta de nuevo.', 'error');
         } finally {
           setOptimisticSetsCount(null);
         }
@@ -2204,7 +2202,7 @@ const LibraryContentScreen = () => {
           setExerciseSets(refetched);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(refetched)));
           setUnsavedSetChanges({});
-          alert('Error al eliminar series. Por favor, intenta de nuevo.');
+          showToast('Error al eliminar series. Por favor, intenta de nuevo.', 'error');
         }
       })();
     }
@@ -2336,7 +2334,7 @@ const LibraryContentScreen = () => {
       }));
     } catch (err) {
       logger.error('Error saving set changes:', err);
-      alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
+      showToast('Error al guardar los cambios. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingSetChanges(false);
     }
@@ -2370,7 +2368,7 @@ const LibraryContentScreen = () => {
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
-      alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2435,7 +2433,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error duplicating set:', err);
-      alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al duplicar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2646,7 +2644,7 @@ const LibraryContentScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating set order:', err);
-        alert('Error al actualizar el orden. Por favor, intenta de nuevo.');
+        showToast('Error al actualizar el orden. Por favor, intenta de nuevo.', 'error');
         // Revert on error
         setExerciseSets(originalSeriesOrder);
       } finally {
@@ -2760,7 +2758,7 @@ const LibraryContentScreen = () => {
       handleCloseExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingNewExercise(false);
     }

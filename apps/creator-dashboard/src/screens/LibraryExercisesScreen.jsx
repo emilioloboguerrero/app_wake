@@ -13,6 +13,7 @@ import libraryService from '../services/libraryService';
 import { queryClient } from '../config/queryClient';
 
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './LibraryExercisesScreen.css';
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
@@ -194,6 +195,7 @@ const LibraryExercisesScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [allExercises, setAllExercises] = useState([]); // Store all exercises
@@ -272,7 +274,7 @@ const LibraryExercisesScreen = () => {
     );
 
     if (exerciseExists) {
-      alert('Ya existe un ejercicio con ese nombre. Por favor, elige otro nombre.');
+      showToast('Ya existe un ejercicio con ese nombre. Por favor, elige otro nombre.', 'error');
       return;
     }
 
@@ -287,7 +289,7 @@ const LibraryExercisesScreen = () => {
       handleCloseAddExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingExercise(false);
     }
@@ -371,7 +373,7 @@ const LibraryExercisesScreen = () => {
       handleCloseDeleteModal();
     } catch (err) {
       logger.error('Error deleting exercise:', err);
-      alert('Error al eliminar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -422,20 +424,20 @@ const LibraryExercisesScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('video/')) {
-      alert('Por favor, selecciona un archivo de video válido');
+      showToast('Por favor, selecciona un archivo de video válido', 'error');
       return;
     }
 
     // Validate file size (e.g., max 100MB)
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 100MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 100MB', 'error');
       return;
     }
 
     // Verify user is the creator of the library
     if (!library || !user || library.creator_id !== user.uid) {
-      alert('Solo el creador de la biblioteca puede subir videos.');
+      showToast('Solo el creador de la biblioteca puede subir videos.', 'error');
       return;
     }
 
@@ -512,7 +514,7 @@ const LibraryExercisesScreen = () => {
         errorMessage = `Error: ${err.message}`;
       }
       
-      alert(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setIsUploadingVideo(false);
       // Reset file input
@@ -561,7 +563,7 @@ const LibraryExercisesScreen = () => {
       await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
     } catch (err) {
       logger.error('Error deleting video:', err);
-      alert('Error al eliminar el video. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar el video. Por favor, intenta de nuevo.', 'error');
       try {
         await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
       } catch (refetchError) {
@@ -742,7 +744,7 @@ const LibraryExercisesScreen = () => {
       setIsMuscleEditMode(false);
     } catch (err) {
       logger.error('Error saving muscles:', err);
-      alert('Error al guardar los músculos. Por favor, intenta de nuevo.');
+      showToast('Error al guardar los músculos. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingMuscles(false);
     }
@@ -766,7 +768,7 @@ const LibraryExercisesScreen = () => {
       setIsImplementsEditMode(false);
     } catch (err) {
       logger.error('Error saving implements:', err);
-      alert('Error al guardar los implementos. Por favor, intenta de nuevo.');
+      showToast('Error al guardar los implementos. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingImplements(false);
     }
@@ -846,7 +848,7 @@ const LibraryExercisesScreen = () => {
 
   const handleIconSelect = async (iconId) => {
     if (!libraryId || !user || !library || library.creator_id !== user.uid) {
-      alert('Solo el creador de la biblioteca puede cambiar el ícono.');
+      showToast('Solo el creador de la biblioteca puede cambiar el ícono.', 'error');
       return;
     }
 
@@ -856,7 +858,7 @@ const LibraryExercisesScreen = () => {
       setIsIconSelectorModalOpen(false);
     } catch (err) {
       logger.error('Error updating icon:', err);
-      alert('Error al actualizar el ícono. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el ícono. Por favor, intenta de nuevo.', 'error');
     }
   };
 

@@ -17,16 +17,11 @@ import {
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 import { Image as ExpoImage } from 'expo-image';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import workoutProgressService from '../data-management/workoutProgressService';
 import sessionManager from '../services/sessionManager';
-import localCourseCache from '../data-management/localCourseCache';
-import hybridDataService from '../services/hybridDataService';
-import exerciseLibraryService from '../services/exerciseLibraryService';
 import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
-import firestoreService from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -130,8 +125,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   }, [defaultSessionData]);
 
-  // UI state
-  const [courseMetadata, setCourseMetadata] = useState(null);
+  // React Query: user profile for course metadata (creator name)
+  const { data: userMeData } = useQuery({
+    queryKey: ['user', 'me', user?.uid],
+    queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
+
+  const courseMetadata = userMeData?.courses?.[course?.courseId] ?? null;
+
   const [previewSessionId, setPreviewSessionId] = useState(null);
   const [isChangingSession, setIsChangingSession] = useState(false);
   const [isRevealDelayed, setIsRevealDelayed] = useState(false);
@@ -146,13 +149,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const pendingStartAfterLoadRef = useRef(false);
   const pendingStartForDateRef = useRef(null);
   const lastLoadedForDateRef = useRef(null);
-
-  // Cache for service calls to prevent redundant requests
-  const serviceCache = useRef({
-    courses: null,
-    courseData: null,
-    lastFetch: 0
-  });
   
   // Scroll tracking for pagination indicator
   const scrollX = new Animated.Value(0);
@@ -249,8 +245,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   };
 
   useEffect(() => {
-    loadCourseMetadata();
-    
     // Only load normal session state if no session is pre-selected
     // Skip if user is not yet available
     if (!route.params?.selectedSessionId) {
@@ -430,51 +424,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   };
 
-  // Load course metadata using hybrid system with caching
-  const loadCourseMetadata = async () => {
-    try {
-      logger.log('🔄 Loading course metadata using hybrid system...');
-      
-      // Check cache first (5 minute TTL)
-      const now = Date.now();
-      const cacheAge = now - serviceCache.current.lastFetch;
-      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-      
-      let courses = serviceCache.current.courses;
-      
-      if (!courses || cacheAge > CACHE_TTL) {
-        logger.log('📥 Fetching fresh course data from hybrid system...');
-        courses = await hybridDataService.loadCourses(user?.uid ?? null);
-        serviceCache.current.courses = courses;
-        serviceCache.current.lastFetch = now;
-      } else {
-        logger.log('✅ Using cached course data');
-      }
-      
-      let courseMeta = courses.find(c => c.id === course.courseId);
-      if (courseMeta) {
-        setCourseMetadata(courseMeta);
-        logger.log('✅ Course metadata loaded:', courseMeta.title);
-      } else {
-        logger.log('⚠️ Course metadata not found in hybrid cache (one-on-one may be in users.courses). Trying Firestore...');
-        try {
-          const firestoreCourse = await firestoreService.getCourse(course.courseId);
-          if (firestoreCourse) {
-            courseMeta = { id: firestoreCourse.id, ...firestoreCourse };
-            setCourseMetadata(courseMeta);
-            logger.log('✅ Course metadata loaded from Firestore:', courseMeta.title);
-          }
-        } catch (e) {
-          logger.debug('Could not load course metadata from Firestore:', e?.message);
-        }
-      }
-      
-    } catch (error) {
-      logger.error('❌ Error loading course metadata:', error);
-    }
-  };
-
-  // Preload images for better performance (optimized)
+// Preload images for better performance (optimized)
   const preloadImages = async (workoutData) => {
     try {
       const imageUrls = [];
@@ -540,43 +490,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   };
 
-  // Debug function to check course storage
-  const debugCourseStorage = async () => {
-    try {
-      logger.log('🔍 DEBUG: Checking course storage...');
-      
-      // Check if course exists in AsyncStorage
-      const storageKey = `course_${course.courseId}`;
-      const storedData = await AsyncStorage.getItem(storageKey);
-      
-      if (storedData) {
-        const courseData = JSON.parse(storedData);
-        logger.log('✅ Course found in AsyncStorage:', {
-          courseId: courseData.courseId,
-          downloadedAt: courseData.downloadedAt,
-          expiresAt: courseData.expiresAt,
-          modulesCount: courseData.courseData?.modules?.length || 0,
-          size_mb: courseData.size_mb
-        });
-      } else {
-        logger.log('❌ Course NOT found in AsyncStorage');
-      }
-      
-      // Check hybrid cache
-      const courses = await hybridDataService.loadCourses();
-      const courseMeta = courses.find(c => c.id === course.courseId);
-      if (courseMeta) {
-        logger.log('✅ Course found in hybrid cache:', courseMeta.title);
-      } else {
-        logger.log('❌ Course NOT found in hybrid cache');
-      }
-      
-    } catch (error) {
-      logger.error('❌ Debug error:', error);
-    }
-  };
-
-  // Handle session selection
+// Handle session selection
   const handleSelectSession = async (session, sessionIndex) => {
     try {
       logger.log('🔄 Starting session selection for:', session.title);

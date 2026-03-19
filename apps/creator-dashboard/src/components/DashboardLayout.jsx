@@ -9,12 +9,135 @@ import './DashboardLayout.css';
 const TYPE_BUG = 'bug';
 const TYPE_SUGGESTION = 'suggestion';
 
-const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, onHeaderEditClick = null, onBack = null, showBackButton = false, backPath = null, backState = null, headerIcon = null, headerImageIcon = null }) => {
+// Nav items that can be hidden by the creator
+const HIDEABLE_KEYS = ['events', 'availability'];
+
+const NAV_ITEMS = [
+  {
+    key: 'inicio',
+    label: 'Inicio',
+    path: '/lab',
+    match: (p) => p === '/lab',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+        <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+        <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+      </svg>
+    ),
+  },
+  {
+    key: 'clientes',
+    label: 'Clientes y programas',
+    path: '/products',
+    match: (p) =>
+      p === '/products' ||
+      p.startsWith('/programs/') ||
+      p.startsWith('/clients') ||
+      p.startsWith('/one-on-one'),
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M17 20c0-1.657-2.239-3-5-3s-5 1.343-5 3M21 17c0-1.23-1.234-2.287-3-2.75M3 17c0-1.23 1.234-2.287 3-2.75M18 10.236A3 3 0 1016 5.764M6 10.236A3 3 0 108 5.764M12 14a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    key: 'biblioteca',
+    label: 'Biblioteca',
+    path: '/content',
+    match: (p) =>
+      p === '/content' ||
+      p.startsWith('/plans/') ||
+      p.startsWith('/libraries') ||
+      p.startsWith('/content/') ||
+      p === '/library/sessions/new' ||
+      p === '/library/modules/new',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M2 20h20M4 20V8l8-5 8 5v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    key: 'nutricion',
+    label: 'Nutrición',
+    path: '/nutrition',
+    match: (p) => p === '/nutrition' || p.startsWith('/nutrition'),
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10M12 2c2.5 0 5 5 5 10s-2.5 10-5 10M12 2C9.5 2 7 7 7 12s2.5 10 5 10M2 12h20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    key: 'events',
+    label: 'Eventos',
+    path: '/events',
+    match: (p) => p === '/events' || p.startsWith('/events/'),
+    hideable: true,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v13a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M9 15l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    key: 'availability',
+    label: 'Disponibilidad',
+    path: '/availability',
+    match: (p) => p === '/availability',
+    hideable: true,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+];
+
+const NAV_HIDDEN_KEY = 'wake_creator_nav_hidden';
+
+const getHiddenNav = () => {
+  try {
+    return JSON.parse(localStorage.getItem(NAV_HIDDEN_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const setHiddenNav = (keys) => {
+  localStorage.setItem(NAV_HIDDEN_KEY, JSON.stringify(keys));
+};
+
+const DashboardLayout = ({
+  children,
+  screenName,
+  headerBackgroundImage = null,
+  onHeaderEditClick = null,
+  onBack = null,
+  showBackButton = false,
+  backPath = null,
+  backState = null,
+  headerIcon = null,
+  headerImageIcon = null,
+}) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ── Layout state ──────────────────────────────────────────────
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // ── Nav visibility settings ───────────────────────────────────
+  const [hiddenNav, setHiddenNavState] = useState(getHiddenNav);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef(null);
+
+  // ── Feedback panel state ──────────────────────────────────────
   const [feedbackPanelOpen, setFeedbackPanelOpen] = useState(false);
   const [feedbackPanelClosing, setFeedbackPanelClosing] = useState(false);
   const [feedbackButtonClosing, setFeedbackButtonClosing] = useState(false);
@@ -28,32 +151,54 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
   const [feedbackImageProgress, setFeedbackImageProgress] = useState(null);
   const feedbackImageInputRef = useRef(null);
 
-  // Detect mobile screen size
+  // ── Mobile detection ──────────────────────────────────────────
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 640);
-      // On mobile, sidebar should be closed by default
-      if (window.innerWidth <= 640) {
-        setIsSidebarVisible(false);
-      }
+    const check = () => {
+      const mobile = window.innerWidth <= 640;
+      setIsMobile(mobile);
+      if (mobile) setIsSidebarVisible(false);
     };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Close sidebar when navigating on mobile
   useEffect(() => {
-    if (isMobile) {
-      setIsSidebarVisible(false);
-    }
+    if (isMobile) setIsSidebarVisible(false);
   }, [location.pathname, isMobile]);
 
-  const toggleSidebar = () => {
-    setIsSidebarVisible(!isSidebarVisible);
+  // ── Close settings panel on outside click ─────────────────────
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handle = (e) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [settingsOpen]);
+
+  // ── Nav visibility helpers ────────────────────────────────────
+  const toggleNavItem = (key) => {
+    const next = hiddenNav.includes(key)
+      ? hiddenNav.filter(k => k !== key)
+      : [...hiddenNav, key];
+    setHiddenNavState(next);
+    setHiddenNav(next);
   };
 
+  const isNavVisible = (key) => !hiddenNav.includes(key);
+
+  // ── Sidebar toggle ────────────────────────────────────────────
+  const toggleSidebar = () => setIsSidebarVisible(v => !v);
+
+  const navTo = (path) => {
+    navigate(path);
+    if (isMobile) setIsSidebarVisible(false);
+  };
+
+  // ── Feedback helpers ──────────────────────────────────────────
   const closeFeedbackPanel = () => {
     if (feedbackPanelClosing) return;
     setFeedbackPanelClosing(true);
@@ -74,14 +219,8 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
   const handleFeedbackImageChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setFeedbackError('Solo se permiten imágenes.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setFeedbackError('La imagen no puede superar 5MB.');
-      return;
-    }
+    if (!file.type.startsWith('image/')) { setFeedbackError('Solo se permiten imágenes.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setFeedbackError('La imagen no puede superar 5MB.'); return; }
     setFeedbackError(null);
     setFeedbackImageFile(file);
     const reader = new FileReader();
@@ -121,151 +260,106 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
     }
   };
 
-  const feedbackSidebarWidth = isMobile ? 0 : 200;
+  const visibleNavItems = NAV_ITEMS.filter(
+    item => !item.hideable || isNavVisible(item.key)
+  );
+
+  const feedbackSidebarWidth = isMobile ? 0 : 220;
 
   return (
-    <div className="dashboard-layout" style={{ '--feedback-sidebar-width': `${feedbackSidebarWidth}px` }}>
-      {/* Sidebar Overlay for Mobile */}
+    <div className="dl-layout" style={{ '--feedback-sidebar-width': `${feedbackSidebarWidth}px` }}>
+
+      {/* Mobile overlay */}
       {isMobile && isSidebarVisible && (
-        <div 
-          className="sidebar-overlay"
-          onClick={() => setIsSidebarVisible(false)}
-        />
+        <div className="dl-overlay" onClick={() => setIsSidebarVisible(false)} />
       )}
 
-      {/* Left Sidebar */}
-      <aside className={`sidebar sidebar-expanded ${isMobile ? (isSidebarVisible ? 'sidebar-open' : '') : ''}`}>
-        <div className="sidebar-header">
-          <img 
-            src={`${ASSET_BASE}wake-logo-new.png`}
-            alt="Wake Logo" 
-            className="sidebar-logo-image"
-          />
-          <p className="sidebar-subtitle">Creadores</p>
+      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      <aside className={`dl-sidebar ${isMobile ? (isSidebarVisible ? 'dl-sidebar--open' : 'dl-sidebar--hidden') : ''}`}>
+
+        {/* Logo */}
+        <div className="dl-sidebar__logo">
+          <img src={`${ASSET_BASE}wake-logo-new.png`} alt="Wake" className="dl-sidebar__logo-img" />
+          <span className="dl-sidebar__logo-label">Creadores</span>
         </div>
 
-        <nav className="sidebar-nav">
-          <button
-            className={`menu-item ${location.pathname === '/lab' ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/lab');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12M12 3C16.9706 3 21 7.02944 21 12M12 3V12M21 12H12M18 18.5L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="menu-label">Dashboard</span>
-          </button>
-          <button
-            className={`menu-item ${location.pathname === '/availability' ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/availability');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="menu-label">Disponibilidad</span>
-          </button>
-          <button
-            className={`menu-item ${location.pathname === '/products' || location.pathname.startsWith('/programs/') || location.pathname.startsWith('/clients') || location.pathname.startsWith('/one-on-one') ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/products');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 20C17 18.3431 14.7614 17 12 17C9.23858 17 7 18.3431 7 20M21 17.0004C21 15.7702 19.7659 14.7129 18 14.25M3 17.0004C3 15.7702 4.2341 14.7129 6 14.25M18 10.2361C18.6137 9.68679 19 8.8885 19 8C19 6.34315 17.6569 5 16 5C15.2316 5 14.5308 5.28885 14 5.76389M6 10.2361C5.38625 9.68679 5 8.8885 5 8C5 6.34315 6.34315 5 8 5C8.76835 5 9.46924 5.28885 10 5.76389M12 14C10.3431 14 9 12.6569 9 11C9 9.34315 10.3431 8 12 8C13.6569 8 15 9.34315 15 11C15 12.6569 13.6569 14 12 14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="menu-label">Programas y clientes</span>
-          </button>
-          <button
-            className={`menu-item ${location.pathname === '/content' || location.pathname.startsWith('/plans/') || location.pathname.startsWith('/libraries') || location.pathname.startsWith('/content/') || location.pathname === '/library/sessions/new' || location.pathname === '/library/modules/new' ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/content');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2.01792 20.3051C3.14656 21.9196 8.05942 23.1871 10.3797 20.1645C12.8894 21.3649 17.0289 20.9928 20.3991 19.1134C20.8678 18.8521 21.3112 18.5222 21.5827 18.0593C22.1957 17.0143 22.2102 15.5644 21.0919 13.4251C19.2274 8.77072 15.874 4.68513 14.5201 3.04212C14.2421 2.78865 12.4687 2.42868 11.3872 2.08279C10.9095 1.93477 10.02 1.83664 8.95612 3.23862C8.45176 3.90329 6.16059 5.5357 9.06767 6.63346C9.51805 6.74806 9.84912 6.95939 11.9038 6.58404C12.1714 6.53761 12.8395 6.58404 13.3103 7.41041L14.2936 8.81662C14.3851 8.94752 14.4445 9.09813 14.4627 9.25682C14.635 10.7557 14.6294 12.6323 15.4651 13.5826C14.1743 12.6492 10.8011 11.5406 8.2595 14.6951M2.00189 12.94C3.21009 11.791 6.71197 9.97592 10.4179 12.5216" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="menu-label">Entrenamiento</span>
-          </button>
-          <button
-            className={`menu-item ${location.pathname === '/events' || location.pathname.startsWith('/events/') ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/events');
-              if (isMobile) setIsSidebarVisible(false);
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 3v2M7 3v2M3 8h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M9 14l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="menu-label">Eventos</span>
-          </button>
-          <button
-            className={`menu-item ${location.pathname === '/nutrition' || location.pathname.startsWith('/nutrition') ? 'active' : ''}`}
-            onClick={() => {
-              navigate('/nutrition');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-          >
-            <svg className="menu-icon" width="24" height="24" viewBox="62 98 258 190" fill="currentColor" stroke="currentColor" strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round" xmlns="http://www.w3.org/2000/svg">
-              <path d="M219.985489,279.211578 C176.028000,287.907776 133.130386,285.344025 91.079231,271.211945 C79.096054,267.184784 69.006714,260.217865 64.324257,247.503906 C63.149464,244.314072 62.688599,241.093765 62.708195,237.721436 C62.770184,227.056458 63.299770,216.355667 62.623966,205.733917 C61.606403,189.740799 69.851913,180.422180 83.421516,174.554245 C98.242065,168.145355 114.038109,165.667007 129.912552,163.704208 C136.997604,162.828156 144.134964,162.384155 151.236603,161.630966 C162.345871,160.452774 169.792465,154.373138 173.173096,143.891983 C180.861237,120.055984 197.615860,106.965149 221.579086,102.156792 C244.841232,97.489128 267.451843,99.174706 288.474518,110.777664 C308.673065,121.925789 320.228516,138.631607 319.357727,162.657944 C319.001831,172.477142 319.081390,182.325790 319.342804,192.150925 C319.923798,213.987778 310.417694,231.032135 294.400757,244.871689 C273.715698,262.744781 249.122208,272.481720 222.806671,278.454895 C221.996140,278.638855 221.202408,278.896729 219.985489,279.211578 M292.783722,126.712547 C289.776398,124.634132 286.928253,122.263405 283.735718,120.525169 C264.426666,110.012070 243.994797,108.513618 222.753143,112.952316 C207.613068,116.116005 195.514633,123.512939 187.844589,137.170853 C185.499863,141.346085 184.097412,146.044327 182.180176,150.466980 C177.290573,161.746185 169.212112,169.105255 156.850723,171.549133 C144.097672,174.070480 131.009720,173.653641 118.276077,176.271027 C106.071342,178.779694 93.659027,180.567001 82.728836,187.200089 C71.810577,193.825928 70.575661,203.552139 79.434441,212.819519 C85.664276,219.336685 93.706108,222.485504 102.087868,224.855331 C130.001724,232.747559 158.364578,236.055374 187.417542,233.997742 C209.357727,232.443848 230.541046,228.033020 250.838547,219.659912 C267.277344,212.878601 282.602692,204.259872 294.648834,190.747406 C302.395477,182.057724 307.691437,172.053284 308.459930,160.402756 C309.352783,146.866257 303.540497,135.899002 292.783722,126.712547 M73.355034,228.911560 C73.297150,248.153763 78.216728,255.120392 96.553635,261.753693 C97.491920,262.093079 98.433258,262.429443 99.388779,262.715057 C134.483780,273.205200 170.127457,276.344543 206.415741,270.619385 C229.650436,266.953644 251.764099,259.991974 271.998657,247.753494 C286.210876,239.157486 298.505493,228.642883 305.021210,212.776169 C307.769287,206.084137 309.340973,199.157516 308.279083,191.159821 C302.213379,199.078079 295.941589,205.735992 288.460480,211.123505 C256.855072,233.884064 220.823517,243.137604 182.598618,245.240616 C164.949539,246.211609 147.316071,245.149353 129.870407,242.174118 C115.603714,239.741058 101.444969,236.811722 87.914383,231.392700 C83.017487,229.431519 78.877876,226.104172 74.152512,223.867477 C73.812904,224.498459 73.556923,224.770874 73.527451,225.065918 C73.428253,226.058517 73.409698,227.059174 73.355034,228.911560 z" />
-              <path d="M130.700989,184.878433 C137.798447,185.701859 144.294434,186.857178 150.138977,190.475021 C159.452011,196.239899 159.881363,206.622971 150.961182,212.919830 C139.102188,221.291229 114.396217,221.213867 102.425842,212.767838 C94.125458,206.911270 94.049118,196.988190 102.513443,191.199112 C110.857239,185.492447 120.437271,184.522919 130.700989,184.878433 M133.420425,196.204498 C125.852028,194.318771 118.633568,195.909622 111.553162,198.514694 C109.883415,199.129044 107.792862,199.887039 107.842422,202.033752 C107.891502,204.159485 110.032196,204.848877 111.680878,205.453690 C121.510811,209.059708 131.427780,209.089111 141.308655,205.684464 C143.271851,205.008011 145.411530,204.218796 146.124619,201.534149 C143.003311,197.942642 138.630234,197.122589 133.420425,196.204498 z" />
-            </svg>
-            <span className="menu-label">Nutrición</span>
-          </button>
+        {/* Navigation */}
+        <nav className="dl-sidebar__nav">
+          {visibleNavItems.map(item => (
+            <button
+              key={item.key}
+              className={`dl-nav-item ${item.match(location.pathname) ? 'dl-nav-item--active' : ''}`}
+              onClick={() => navTo(item.path)}
+              aria-current={item.match(location.pathname) ? 'page' : undefined}
+            >
+              <span className="dl-nav-item__icon">{item.icon}</span>
+              <span className="dl-nav-item__label">{item.label}</span>
+            </button>
+          ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <div 
-            className="user-info user-info-clickable"
-            onClick={() => {
-              navigate('/profile');
-              if (isMobile) {
-                setIsSidebarVisible(false);
-              }
-            }}
-            style={{ cursor: 'pointer' }}
+        {/* Footer */}
+        <div className="dl-sidebar__footer">
+          {/* Nav visibility settings */}
+          <div className="dl-nav-settings" ref={settingsRef}>
+            <button
+              className="dl-nav-settings__trigger"
+              onClick={() => setSettingsOpen(v => !v)}
+              aria-label="Personalizar navegación"
+              title="Personalizar menú"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8"/>
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.8"/>
+              </svg>
+              <span>Personalizar</span>
+            </button>
+
+            {settingsOpen && (
+              <div className="dl-nav-settings__panel">
+                <p className="dl-nav-settings__title">Secciones visibles</p>
+                {NAV_ITEMS.filter(i => i.hideable).map(item => (
+                  <label key={item.key} className="dl-nav-settings__option">
+                    <input
+                      type="checkbox"
+                      checked={isNavVisible(item.key)}
+                      onChange={() => toggleNavItem(item.key)}
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* User profile */}
+          <button
+            className="dl-user"
+            onClick={() => navTo('/profile')}
             title="Perfil"
-            aria-label="Ir a Perfil"
+            aria-label="Ir a perfil"
           >
             {user?.photoURL ? (
-              <img 
-                src={user.photoURL} 
-                alt={user?.displayName || 'Usuario'} 
-                className="user-avatar-image"
-              />
+              <img src={user.photoURL} alt={user?.displayName || 'Usuario'} className="dl-user__avatar-img" />
             ) : (
-              <div className="user-avatar">
+              <div className="dl-user__avatar">
                 {user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
               </div>
             )}
-            <div className="user-details">
-              <p className="user-name">{user?.displayName || 'Usuario'}</p>
-              <p className="user-email">{user?.email}</p>
+            <div className="dl-user__info">
+              <p className="dl-user__name">{user?.displayName || 'Tu perfil'}</p>
+              <p className="dl-user__email">{user?.email}</p>
             </div>
-          </div>
+            <svg className="dl-user__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className={`main-content ${isMobile ? 'main-content-mobile' : 'main-content-sidebar-expanded'}`}>
-        <StickyHeader 
+      {/* ── Main content ──────────────────────────────────────────── */}
+      <main className={`dl-main ${isMobile ? 'dl-main--mobile' : 'dl-main--sidebar'}`}>
+        <StickyHeader
           screenName={screenName}
           showBackButton={showBackButton}
           backPath={backPath}
@@ -281,18 +375,23 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
         {children}
       </main>
 
-      {/* Feedback: icon button (hover shows "Feedback"), click animates out then opens panel */}
+      {/* ── Feedback button ───────────────────────────────────────── */}
       {!feedbackPanelOpen ? (
         <button
           type="button"
           className={`feedback-cta-fixed ${feedbackButtonClosing ? 'feedback-cta-fixed-closing' : ''}`}
           onClick={() => { if (!feedbackButtonClosing) setFeedbackButtonClosing(true); }}
-          onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'feedback-cta-exit') { setFeedbackButtonClosing(false); setFeedbackPanelOpen(true); } }}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget && e.animationName === 'feedback-cta-exit') {
+              setFeedbackButtonClosing(false);
+              setFeedbackPanelOpen(true);
+            }
+          }}
           aria-label="Feedback: sugerencias o reportar un bug"
         >
           <span className="feedback-cta-fixed-inner">
-            <svg className="feedback-cta-fixed-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <svg className="feedback-cta-fixed-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             <span className="feedback-cta-fixed-text">Feedback</span>
           </span>
@@ -300,12 +399,14 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
       ) : (
         <div
           className={`feedback-panel ${feedbackPanelClosing ? 'feedback-panel-closing' : 'feedback-panel-open'}`}
-          onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'feedback-panel-exit') finishCloseFeedbackPanel(); }}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget && e.animationName === 'feedback-panel-exit') finishCloseFeedbackPanel();
+          }}
         >
           <button type="button" className="feedback-panel-close" onClick={closeFeedbackPanel} aria-label="Cerrar">×</button>
           {feedbackSuccess ? (
             <div className="feedback-panel-success">
-              <p>Gracias. Tu feedback fue enviado correctamente.</p>
+              <p>Gracias. Tu feedback fue enviado.</p>
               <button type="button" className="feedback-panel-btn-enviar" onClick={closeFeedbackPanel}>Cerrar</button>
             </div>
           ) : !feedbackType ? (
@@ -374,23 +475,21 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
                       disabled={feedbackLoading}
                       aria-label="Añadir imagen"
                     >
-                      <svg className="feedback-panel-image-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
                         <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
-                        <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </button>
                   )}
                 </div>
-                {feedbackImageProgress != null && <span className="feedback-panel-image-progress">Subiendo… {Math.round(feedbackImageProgress)}%</span>}
+                {feedbackImageProgress != null && (
+                  <span className="feedback-panel-image-progress">Subiendo… {Math.round(feedbackImageProgress)}%</span>
+                )}
               </div>
               {feedbackError && <p className="feedback-panel-error">{feedbackError}</p>}
               <div className="feedback-panel-actions">
-                <button
-                  type="submit"
-                  className="feedback-panel-btn-enviar"
-                  disabled={feedbackLoading}
-                >
+                <button type="submit" className="feedback-panel-btn-enviar" disabled={feedbackLoading}>
                   {feedbackLoading ? 'Enviando…' : 'Enviar'}
                 </button>
               </div>
@@ -403,4 +502,3 @@ const DashboardLayout = ({ children, screenName, headerBackgroundImage = null, o
 };
 
 export default DashboardLayout;
-

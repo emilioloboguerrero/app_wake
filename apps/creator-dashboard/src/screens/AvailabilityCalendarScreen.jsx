@@ -6,7 +6,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import availabilityService from '../services/availabilityService';
 import { getBookingsForCreator, updateBookingCallLink } from '../services/callBookingService';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import '../components/CalendarView.css';
 import './AvailabilityCalendarScreen.css';
 import '../components/PropagateChangesModal.css';
@@ -133,7 +133,10 @@ export default function AvailabilityCalendarScreen() {
   const slotDetailBookingUserId = slotDetailModal?.booking?.userId;
   const { data: clientUserData, error: clientUserDataError } = useQuery({
     queryKey: ['user', slotDetailBookingUserId],
-    queryFn: () => getUser(slotDetailBookingUserId),
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/creator/clients/${slotDetailBookingUserId}`);
+      return data;
+    },
     enabled: !!slotDetailBookingUserId,
     select: (userDoc) => {
       if (!userDoc) return null;
@@ -386,6 +389,10 @@ export default function AvailabilityCalendarScreen() {
   return (
     <DashboardLayout screenName="Disponibilidad para llamadas">
       <div className="availability-container">
+        <div className="availability-page-header">
+          <h1 className="availability-page-title">Disponibilidad</h1>
+          <p className="availability-page-subtitle">Gestiona tus horarios de llamadas</p>
+        </div>
         <div className="availability-body">
           <div className="availability-sidebar-left">
             <div className="availability-sidebar-header">
@@ -393,7 +400,7 @@ export default function AvailabilityCalendarScreen() {
             </div>
             {!selectedDateStr ? (
               <div className="availability-sidebar-content">
-                <p className="availability-empty-hint propagate-option-desc">
+                <p className="availability-empty-hint">
                   Selecciona un día en el calendario para añadir franjas horarias y gestionar las reservas.
                 </p>
               </div>
@@ -594,13 +601,17 @@ export default function AvailabilityCalendarScreen() {
               )}
               {selectedDateStr && !bookingsError && bookings.length > 0 && (
                 <p className="availability-bookings-hint">
-                  {bookings.length} reserva{bookings.length !== 1 ? 's' : ''} cargada{bookings.length !== 1 ? 's' : ''}. Doradas: con enlace. Rojas: falta enlace.
+                  {bookings.length} reserva{bookings.length !== 1 ? 's' : ''} cargada{bookings.length !== 1 ? 's' : ''}. Verde: enlace listo. Rojo: falta enlace.
                 </p>
               )}
             </div>
             <div className="availability-day-panel-content">
               {!selectedDateStr ? (
                 <p className="availability-empty-hint">Selecciona un día en el calendario para ver las franjas.</p>
+              ) : loading ? (
+                <p className="availability-empty-hint">Cargando…</p>
+              ) : slots.length === 0 ? (
+                <p className="availability-empty-hint">Sin horarios — arrastra una franja desde la izquierda.</p>
               ) : (
                 <div
                   ref={timelineWrapRef}

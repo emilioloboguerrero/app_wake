@@ -11,14 +11,16 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ContentHubScreen.css';
 import '../components/PropagateChangesModal.css';
 
 const ContentHubScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const location = useLocation();
   const queryClient = useQueryClient();
   const CONTENT_TAB_IDS = ['libraries', 'sessions', 'contenido'];
@@ -70,20 +72,21 @@ const ContentHubScreen = () => {
     enabled: !!user,
   });
 
+  const { data: creatorProfile } = useQuery({
+    queryKey: ['creator', 'profile'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/creator/profile');
+      return data;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
   useEffect(() => {
-    const loadCreatorName = async () => {
-      if (!user) return;
-      try {
-        const userDoc = await getUser(user.uid);
-        if (userDoc) {
-          setCreatorName(userDoc.displayName || userDoc.name || user.email || '');
-        }
-      } catch (error) {
-        logger.error('Error loading creator name:', error);
-      }
-    };
-    loadCreatorName();
-  }, [user]);
+    if (creatorProfile) {
+      setCreatorName(creatorProfile.displayName || creatorProfile.name || user?.email || '');
+    }
+  }, [creatorProfile, user?.email]);
 
   // Delete library mutation
   const deleteLibraryMutation = useMutation({
@@ -196,7 +199,7 @@ const ContentHubScreen = () => {
       navigate(`/libraries/${newLibrary.id}`);
     } catch (err) {
       logger.error('Error creating library:', err);
-      alert('Error al crear la biblioteca. Por favor, intenta de nuevo.');
+      showToast('Error al crear la biblioteca. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingLibrary(false);
     }
@@ -236,7 +239,7 @@ const ContentHubScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting library:', err);
-      alert('Error al eliminar la biblioteca. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la biblioteca. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -270,13 +273,13 @@ const ContentHubScreen = () => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -314,7 +317,7 @@ const ContentHubScreen = () => {
           });
         } catch (uploadErr) {
           logger.error('Error uploading session image:', uploadErr);
-          alert('La sesión se creó, pero hubo un error al subir la imagen.');
+          showToast('La sesión se creó, pero hubo un error al subir la imagen.', 'error');
         } finally {
           setIsUploadingSessionImage(false);
         }
@@ -329,7 +332,7 @@ const ContentHubScreen = () => {
       handleCloseSessionModal();
     } catch (err) {
       logger.error('Error creating session:', err);
-      alert('Error al crear la sesión. Por favor, intenta de nuevo.');
+      showToast('Error al crear la sesión. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
       setIsUploadingSessionImage(false);
@@ -358,9 +361,7 @@ const ContentHubScreen = () => {
       const usageCheck = await libraryService.checkLibrarySessionUsage(user.uid, sessionToDelete.id);
       
       if (usageCheck.inUse) {
-        alert(
-          `No se puede eliminar esta sesión.\n\nEstá siendo usada en ${usageCheck.count} programa(s).\n\nPrimero debes eliminar o reemplazar todas las referencias en los programas.`
-        );
+        showToast(`No se puede eliminar esta sesión. Está siendo usada en ${usageCheck.count} programa(s). Primero debes eliminar o reemplazar todas las referencias.`, 'error');
         handleCloseSessionDeleteModal();
         return;
       }
@@ -374,7 +375,7 @@ const ContentHubScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting session:', err);
-      alert(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`Error al eliminar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
     } finally {
       setIsDeletingSession(false);
     }

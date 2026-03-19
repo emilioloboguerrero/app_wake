@@ -1,8 +1,7 @@
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { getFirestore, doc, updateDoc, deleteField, serverTimestamp, getDoc } from 'firebase/firestore';
 import { isWeb } from '../utils/platform';
 import webStorageService from './webStorageService';
 import logger from '../utils/logger';
+import apiClient from '../utils/apiClient';
 
 class ProfilePictureService {
   constructor() {
@@ -155,34 +154,37 @@ class ProfilePictureService {
     }
   }
 
-  // Upload profile picture to Firebase Storage
+  // Upload profile picture via signed URL flow
   async uploadProfilePicture(userId, imageUri) {
     try {
       // Compress image first
       const compressedUri = await this.compressImage(imageUri);
-      
-      // Create storage reference
-      const storage = getStorage();
-      const storageRef = ref(storage, `profiles/${userId}/profile.jpg`);
-      
+
+      // Get a signed upload URL from the API
+      const { data } = await apiClient.post('/users/me/profile-picture/upload-url', {
+        contentType: 'image/jpeg',
+      });
+
       // Convert URI to blob for upload
       const response = await fetch(compressedUri);
       const blob = await response.blob();
-      
-      // Upload file (explicit contentType for Storage rules: image/.*)
-      await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
-      
-      // Get download URL
-      const downloadUrl = await getDownloadURL(storageRef);
-      
-      // Update user document in Firestore
-      const firestore = getFirestore();
-      const userRef = doc(firestore, 'users', userId);
-      await updateDoc(userRef, {
-        profilePictureUrl: downloadUrl,
-        profilePicturePath: `profiles/${userId}/profile.jpg`,
-        profilePictureUpdatedAt: serverTimestamp()
+
+      // Upload directly to Firebase Storage via signed URL
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob,
       });
+      if (!uploadResponse.ok) {
+        throw new Error(`Storage upload failed: ${uploadResponse.status}`);
+      }
+
+      // Confirm the upload and persist the URL
+      const confirmResult = await apiClient.post('/users/me/profile-picture/confirm', {
+        storagePath: data.storagePath,
+      });
+
+      const downloadUrl = confirmResult.data.profilePictureUrl;
 
       // Cache the URL
       this.cache.set(userId, downloadUrl);
@@ -221,11 +223,9 @@ class ProfilePictureService {
         return cached;
       }
 
-      // Fetch from Firestore
-      const firestore = getFirestore();
-      const userRef = doc(firestore, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      const profilePictureUrl = userDoc.data()?.profilePictureUrl;
+      // Fetch from API
+      const { data } = await apiClient.get('/profile');
+      const profilePictureUrl = data?.profilePictureUrl ?? null;
 
       if (profilePictureUrl) {
         // Cache the result
@@ -238,7 +238,7 @@ class ProfilePictureService {
         }
       }
 
-      return profilePictureUrl || null;
+      return profilePictureUrl;
     } catch (error) {
       logger.error('Error getting profile picture URL:', error);
       return null;
@@ -248,43 +248,13 @@ class ProfilePictureService {
   // Delete profile picture
   async deleteProfilePicture(userId) {
     try {
-      // Delete from Firebase Storage first
-      const storage = getStorage();
-      const storageRef = ref(storage, `profiles/${userId}/profile.jpg`);
-      
-      try {
-        await deleteObject(storageRef);
-      } catch (storageError) {
-        // If file doesn't exist, that's okay - just continue
-        if (storageError.code === 'storage/object-not-found') {
-          logger.debug('Profile picture does not exist in Storage, skipping deletion');
-        } else {
-          // Re-throw other storage errors
-          throw storageError;
-        }
-      }
+      await apiClient.patch('/profile', {
+        profilePictureUrl: null,
+        profilePicturePath: null,
+        profilePictureUpdatedAt: null,
+      });
 
-      // Try to update Firestore document if it still exists
-      // (It might already be deleted if this is called during account deletion)
-      try {
-        const firestore = getFirestore();
-        const userRef = doc(firestore, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-          await updateDoc(userRef, {
-            profilePictureUrl: deleteField(),
-            profilePicturePath: deleteField(),
-            profilePictureUpdatedAt: deleteField()
-          });
-        }
-      } catch (firestoreError) {
-        // If document doesn't exist or can't update, that's okay
-        // This can happen during account deletion
-        logger.debug('Could not update Firestore document (may already be deleted)');
-      }
-
-      // Clear cache (this should always work)
+      // Clear cache
       this.cache.delete(userId);
       try {
         if (isWeb) {
@@ -294,7 +264,6 @@ class ProfilePictureService {
           await AsyncStorage.removeItem(`profile_${userId}`);
         }
       } catch (cacheError) {
-        // Ignore cache errors
         logger.debug('Could not clear cache');
       }
 

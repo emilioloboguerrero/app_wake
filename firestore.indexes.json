@@ -1,11 +1,43 @@
 {
   "indexes": [
     {
+      "collectionGroup": "plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "creator_id", "order": "ASCENDING"},
         {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "registrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "email", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "waitlist",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "email", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "ASCENDING"}
       ]
     },
     {
@@ -105,6 +137,83 @@
       "fields": [
         {"fieldPath": "date", "order": "ASCENDING"},
         {"fieldPath": "meal", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "one_on_one_clients",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "courses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_programs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "clientId", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_programs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "clientId", "order": "ASCENDING"},
+        {"fieldPath": "courseId", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_programs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "clientId", "order": "ASCENDING"},
+        {"fieldPath": "assignedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "api_keys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "owner_id", "order": "ASCENDING"},
+        {"fieldPath": "revoked", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "nutrition_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "assignedBy", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "client_id", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "client_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "client_id", "order": "ASCENDING"},
+        {"fieldPath": "program_id", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
       ]
     }
   ],

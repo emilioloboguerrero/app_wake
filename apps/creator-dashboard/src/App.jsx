@@ -6,6 +6,7 @@ const RedirectLibrarySessionEdit = () => {
   return <Navigate to={`/content/sessions/${sessionId}`} replace />;
 };
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
@@ -32,6 +33,7 @@ import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
 import EventEditorScreen from './screens/EventEditorScreen';
 import EventCheckinScreen from './screens/EventCheckinScreen';
+import ApiKeysScreen from './screens/ApiKeysScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -43,253 +45,261 @@ function AppContent() {
         <div className="App">
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
-            <Route 
-              path="/onboarding" 
+            <Route
+              path="/onboarding"
               element={
                 <ProtectedRoute requireOnboarding={false}>
                   <CreatorOnboardingScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/libraries" 
+            <Route
+              path="/libraries"
               element={
                 <ProtectedRoute>
                   <Navigate to="/content" replace />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/libraries/:libraryId" 
+            <Route
+              path="/libraries/:libraryId"
               element={
                 <ProtectedRoute>
                   <LibraryExercisesScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/content/sessions/:sessionId" 
+            <Route
+              path="/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
                   <LibrarySessionDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/content/modules/:moduleId" 
+            <Route
+              path="/content/modules/:moduleId"
               element={
                 <ProtectedRoute>
                   <LibraryModuleDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit" 
+            <Route
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
                   <LibrarySessionDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/plans/:planId/modules/:moduleId/sessions/:sessionId" 
+            <Route
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>
                   <PlanSessionDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/plans/:planId" 
+            <Route
+              path="/plans/:planId"
               element={
                 <ProtectedRoute>
                   <PlanDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/content" 
+            <Route
+              path="/content"
               element={
                 <ProtectedRoute>
                   <ContentHubScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/products" 
+            <Route
+              path="/products"
               element={
                 <ProtectedRoute>
                   <ProgramsAndClientsScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/products/new" 
+            <Route
+              path="/products/new"
               element={
                 <ProtectedRoute>
                   <ProgramsScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/programs" 
+            <Route
+              path="/programs"
               element={
                 <ProtectedRoute>
                   <Navigate to="/products" replace />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/programs/:programId" 
+            <Route
+              path="/programs/:programId"
               element={
                 <ProtectedRoute>
                   <ProgramDetailScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/lab" 
+            <Route
+              path="/lab"
               element={
                 <ProtectedRoute>
                   <LabScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/clients" 
+            <Route
+              path="/clients"
               element={
                 <ProtectedRoute>
                   <Navigate to="/products?tab=clientes" replace />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/one-on-one" 
+            <Route
+              path="/one-on-one"
               element={
                 <ProtectedRoute>
                   <Navigate to="/products?tab=clientes" replace />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/clients/:clientId" 
-              element={
-                <ProtectedRoute>
-                  <ClientProgramScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/one-on-one/:clientId" 
+            <Route
+              path="/clients/:clientId"
               element={
                 <ProtectedRoute>
                   <ClientProgramScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/availability" 
+            <Route
+              path="/one-on-one/:clientId"
+              element={
+                <ProtectedRoute>
+                  <ClientProgramScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/availability"
               element={
                 <ProtectedRoute>
                   <AvailabilityCalendarScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition" 
+            <Route
+              path="/nutrition"
               element={
                 <ProtectedRoute>
                   <NutritionScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/meals/new" 
+            <Route
+              path="/nutrition/meals/new"
               element={
                 <ProtectedRoute>
                   <MealEditorScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/meals/:mealId" 
+            <Route
+              path="/nutrition/meals/:mealId"
               element={
                 <ProtectedRoute>
                   <MealEditorScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/plans/:planId" 
+            <Route
+              path="/nutrition/plans/:planId"
               element={
                 <ProtectedRoute>
                   <PlanEditorScreen />
                 </ProtectedRoute>
               }
             />
-            <Route 
+            <Route
               path="/profile"
               element={
                 <ProtectedRoute>
                   <ProfileScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/sessions/:sessionId/edit" 
+            <Route
+              path="/api-keys"
+              element={
+                <ProtectedRoute>
+                  <ApiKeysScreen />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/library/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
                   <RedirectLibrarySessionEdit />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/library/sessions/new" 
+            <Route
+              path="/library/sessions/new"
               element={
                 <ProtectedRoute>
                   <CreateLibrarySessionScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/modules/new" 
+            <Route
+              path="/library/modules/new"
               element={
                 <ProtectedRoute>
                   <CreateLibraryModuleScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content" 
+            <Route
+              path="/library/content"
               element={
                 <ProtectedRoute>
                   <LibraryContentScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content/sessions/:sessionId" 
+            <Route
+              path="/library/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
                   <LibraryContentScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content/modules/:moduleId" 
+            <Route
+              path="/library/content/modules/:moduleId"
               element={
                 <ProtectedRoute>
                   <LibraryContentScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content/modules/:moduleId/sessions/:sessionId" 
+            <Route
+              path="/library/content/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>
                   <LibraryContentScreen />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route
               path="/events"
@@ -341,10 +351,11 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }
 
 export default App;
-

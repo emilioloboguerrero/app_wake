@@ -1,0 +1,510 @@
+/* ─── ApiKeysScreen ──────────────────────────────────────────────── */
+
+@keyframes api-keys-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.api-keys-screen {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+  animation: api-keys-fade-in var(--duration-base, 200ms) cubic-bezier(0.22,1,0.36,1) both;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+/* ── Header ── */
+.api-keys-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.api-keys-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.api-keys-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin: 0;
+}
+
+/* Primary "Nueva clave" button */
+.api-keys-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--text-primary, #fff);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  color: #111;
+  cursor: pointer;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 10px 20px;
+  white-space: nowrap;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22,1,0.36,1);
+  flex-shrink: 0;
+}
+
+.api-keys-new-btn:hover {
+  background: rgba(255,255,255,0.88);
+}
+
+/* ── Info banner ── */
+.api-keys-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: var(--radius-md, 10px);
+  margin-bottom: 20px;
+}
+
+.api-keys-banner-icon {
+  flex-shrink: 0;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  margin-top: 1px;
+}
+
+.api-keys-banner-text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* ── Loading skeleton ── */
+@keyframes api-keys-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.api-keys-skeleton-row {
+  height: 68px;
+  border-radius: var(--radius-md, 10px);
+  background: linear-gradient(
+    90deg,
+    var(--surface-2, #222) 0%,
+    rgba(255,255,255,0.06) 50%,
+    var(--surface-2, #222) 100%
+  );
+  background-size: 800px 100%;
+  animation: api-keys-shimmer 1.4s ease-in-out infinite;
+  margin-bottom: 10px;
+}
+
+/* ── Error banner ── */
+.api-keys-error {
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 10px);
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.16);
+  color: rgba(239,68,68,0.85);
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+}
+
+/* ── Empty state ── */
+.api-keys-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 72px 24px;
+  text-align: center;
+}
+
+.api-keys-empty-icon {
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  margin-bottom: 8px;
+}
+
+.api-keys-empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin: 0 0 2px;
+}
+
+.api-keys-empty-desc {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  margin: 0 0 20px;
+}
+
+.api-keys-empty-cta {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
+  border-radius: var(--radius-pill, 999px);
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 10px 22px;
+  transition: background var(--duration-fast, 120ms), border-color var(--duration-fast, 120ms);
+}
+
+.api-keys-empty-cta:hover {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.2);
+}
+
+/* ── Key list ── */
+.api-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.api-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 20px;
+  transition: border-color var(--duration-fast, 120ms) cubic-bezier(0.22,1,0.36,1);
+}
+
+.api-key-row:hover {
+  border-color: var(--border-default, rgba(255,255,255,0.1));
+}
+
+.api-key-row:hover .api-key-revoke-btn {
+  opacity: 1;
+}
+
+.api-key-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.api-key-name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.api-key-prefix {
+  font-size: 0.75rem;
+  font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Mono', monospace;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+}
+
+.api-key-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  align-items: center;
+}
+
+/* Scope pills */
+.api-key-scopes {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.api-key-scope-pill {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  padding: 2px 7px;
+  border-radius: var(--radius-pill, 999px);
+}
+
+.api-key-date {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+}
+
+/* Revoke button — hidden by default, revealed on row hover */
+.api-key-revoke-btn {
+  background: none;
+  border: none;
+  color: rgba(239,68,68,0.8);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--duration-fast, 120ms),
+              color var(--duration-fast, 120ms),
+              background var(--duration-fast, 120ms);
+  flex-shrink: 0;
+}
+
+.api-key-revoke-btn:hover {
+  background: rgba(239,68,68,0.1);
+  color: rgba(239,68,68,1);
+}
+
+/* ── Modal form ── */
+.api-keys-modal-container {
+  animation: api-keys-modal-in var(--duration-base, 200ms) cubic-bezier(0.22,1,0.36,1) both;
+}
+
+@keyframes api-keys-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.api-keys-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.api-keys-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.api-keys-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.api-keys-input {
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: var(--radius-md, 10px);
+  padding: 11px 14px;
+  font-size: 0.9375rem;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  color: var(--text-primary, #fff);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--duration-fast, 120ms);
+}
+
+.api-keys-input::placeholder {
+  color: var(--text-tertiary, rgba(255,255,255,0.36));
+}
+
+.api-keys-input:focus {
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* Scope toggle buttons */
+.api-keys-scopes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.api-keys-scope-btn {
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  border-radius: var(--radius-pill, 999px);
+  padding: 8px 18px;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--duration-fast, 120ms),
+              border-color var(--duration-fast, 120ms),
+              color var(--duration-fast, 120ms);
+}
+
+.api-keys-scope-btn:hover {
+  border-color: var(--border-default, rgba(255,255,255,0.1));
+  color: var(--text-primary, #fff);
+}
+
+.api-keys-scope-btn.active {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.25);
+  color: var(--text-primary, #fff);
+}
+
+/* Modal actions */
+.api-keys-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.api-keys-submit-btn {
+  background: var(--text-primary, #fff);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  color: #111;
+  cursor: pointer;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 700;
+  padding: 10px 24px;
+  transition: background var(--duration-fast, 120ms);
+}
+
+.api-keys-submit-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.88);
+}
+
+.api-keys-submit-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.api-keys-submit-btn--danger {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.22);
+  color: rgba(239,68,68,0.9);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.api-keys-submit-btn--danger:hover:not(:disabled) {
+  background: rgba(239,68,68,0.2);
+  border-color: rgba(239,68,68,0.4);
+  color: rgba(239,68,68,1);
+}
+
+.api-keys-cancel-btn {
+  background: none;
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  border-radius: var(--radius-pill, 999px);
+  padding: 10px 20px;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--duration-fast, 120ms), border-color var(--duration-fast, 120ms);
+}
+
+.api-keys-cancel-btn:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--border-default, rgba(255,255,255,0.1));
+}
+
+.api-keys-error-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.14);
+  border-radius: var(--radius-md, 10px);
+  font-size: 0.8125rem;
+  color: rgba(239,68,68,0.9);
+  margin: 0;
+}
+
+.api-keys-revoke-warning {
+  font-size: 0.9rem;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Reveal modal ── */
+.api-keys-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.api-keys-reveal-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(251,191,36,0.06);
+  border: 1px solid rgba(251,191,36,0.16);
+  border-radius: var(--radius-md, 10px);
+  font-size: 0.8125rem;
+  color: rgba(251,191,36,0.9);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.api-keys-reveal-warning-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.api-keys-reveal-key {
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: var(--radius-md, 10px);
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+
+.api-keys-reveal-key code {
+  font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 0.8125rem;
+  color: var(--text-primary, #fff);
+  word-break: break-all;
+}
+
+/* Copy button */
+.api-keys-copy-btn {
+  background: var(--text-primary, #fff);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  color: #111;
+  cursor: pointer;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 700;
+  padding: 11px 24px;
+  transition: background var(--duration-fast, 120ms);
+  align-self: flex-start;
+}
+
+.api-keys-copy-btn:hover {
+  background: rgba(255,255,255,0.88);
+}
+
+.api-keys-copy-btn--copied {
+  background: rgba(52,211,153,0.15);
+  border: 1px solid rgba(52,211,153,0.25);
+  color: rgba(52,211,153,0.95);
+}
+
+.api-keys-copy-btn--copied:hover {
+  background: rgba(52,211,153,0.2);
+}
+
+/* ── Row entrance animation ── */
+.api-keys-fade-in {
+  animation: api-keys-fade-in 0.35s cubic-bezier(0.22,1,0.36,1) both;
+}

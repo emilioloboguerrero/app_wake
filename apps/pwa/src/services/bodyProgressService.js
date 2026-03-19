@@ -1,21 +1,4 @@
-import {
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  collection,
-  query,
-  orderBy,
-  serverTimestamp,
-} from 'firebase/firestore';
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from 'firebase/storage';
-import { firestore, storage } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 
 async function compressProgressPhoto(file) {
@@ -47,67 +30,82 @@ async function compressProgressPhoto(file) {
 }
 
 class BodyProgressService {
-  async saveEntry(userId, dateStr, { weight, note, photos } = {}) {
-    const docRef = doc(firestore, 'users', userId, 'bodyLog', dateStr);
-    const data = { date: dateStr, updatedAt: serverTimestamp() };
-    if (weight !== undefined) data.weight = weight;
-    if (note !== undefined) data.note = note;
-    if (photos !== undefined) data.photos = photos;
-    await setDoc(docRef, data, { merge: true });
+  async saveEntry(userId, dateStr, { weight, note } = {}) {
+    const body = {};
+    if (weight !== undefined) body.weight = weight;
+    if (note !== undefined) body.note = note;
+    await apiClient.put(`/progress/body-log/${dateStr}`, body);
   }
 
   async getEntry(userId, dateStr) {
-    const snap = await getDoc(doc(firestore, 'users', userId, 'bodyLog', dateStr));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    try {
+      const res = await apiClient.get(`/progress/body-log/${dateStr}`);
+      return res?.data ?? null;
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') return null;
+      throw err;
+    }
   }
 
   async getEntries(userId) {
-    const q = query(
-      collection(firestore, 'users', userId, 'bodyLog'),
-      orderBy('date', 'asc'),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const entries = [];
+    let pageToken = undefined;
+    do {
+      const params = { limit: 100 };
+      if (pageToken) params.pageToken = pageToken;
+      const res = await apiClient.get('/progress/body-log', { params });
+      if (res?.data) entries.push(...res.data);
+      pageToken = res?.nextPageToken;
+    } while (pageToken);
+    // legacy contract returned ascending; API returns descending
+    return entries.reverse();
   }
 
   async uploadPhoto(userId, dateStr, file, angle, onProgress) {
-    const blob = await compressProgressPhoto(file);
-    const timestamp = Date.now();
-    const storagePath = `progress_photos/${userId}/${dateStr}/${angle}_${timestamp}.jpg`;
-    const storageRef = ref(storage, storagePath);
-    await new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, blob, { contentType: 'image/jpeg' });
-      task.on(
-        'state_changed',
-        (snap) => onProgress?.(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-        reject,
-        resolve,
-      );
+    // 1. Get signed URL
+    const urlRes = await apiClient.post(`/progress/body-log/${dateStr}/photos/upload-url`, {
+      angle,
+      contentType: 'image/jpeg',
     });
-    const storageUrl = await getDownloadURL(storageRef);
-    return { id: `${angle}_${timestamp}`, angle, storageUrl, storagePath };
+    const { uploadUrl, storagePath, photoId } = urlRes.data;
+
+    // 2. Compress
+    const blob = await compressProgressPhoto(file);
+
+    // 3. Upload directly to Storage via signed URL
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', 'image/jpeg');
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Upload network error'));
+      xhr.send(blob);
+    });
+
+    // 4. Confirm
+    await apiClient.post(`/progress/body-log/${dateStr}/photos/confirm`, { photoId, storagePath, angle });
+    return { id: photoId, angle, storagePath };
   }
 
   async cleanupPhoto(storagePath) {
-    try {
-      await deleteObject(ref(storage, storagePath));
-    } catch (e) {
-      if (e.code !== 'storage/object-not-found') {
-        logger.warn('[bodyProgress] cleanup photo failed', e?.message);
-      }
-    }
+    // no-op: photo cleanup is now handled server-side via DELETE endpoints
+    logger.warn('[bodyProgress] cleanupPhoto is a no-op; use deletePhoto or deleteEntry');
   }
 
   async deleteEntry(userId, dateStr) {
-    const entry = await this.getEntry(userId, dateStr);
-    if (entry?.photos?.length) {
-      await Promise.all(entry.photos.map((p) => this.cleanupPhoto(p.storagePath)));
+    try {
+      await apiClient.delete(`/progress/body-log/${dateStr}`);
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') return;
+      throw err;
     }
-    await deleteDoc(doc(firestore, 'users', userId, 'bodyLog', dateStr));
   }
 
   async setGoalWeight(userId, goalWeightKg) {
-    await setDoc(doc(firestore, 'users', userId), { goalWeight: goalWeightKg }, { merge: true });
+    await apiClient.patch('/users/me', { goalWeight: goalWeightKg });
   }
 }
 

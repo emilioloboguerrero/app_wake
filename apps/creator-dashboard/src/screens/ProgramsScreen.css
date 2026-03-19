@@ -4,6 +4,12 @@
   padding: 32px;
   margin: 0 auto;
   box-sizing: border-box;
+  animation: fadeSlideUp 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .programs-actions {
@@ -18,24 +24,24 @@
 .program-action-pill {
   padding: 6px 20px;
   height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #fff);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
 }
 
 .program-action-pill:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .program-action-icon {
@@ -61,31 +67,31 @@
 .programs-empty {
   padding: 40px 20px;
   text-align: center;
-  color: #cccccc;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
 .programs-error {
-  color: #FF6B6B;
+  color: rgba(255, 107, 107, 0.9);
 }
 
 .programs-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
   margin-top: 24px;
 }
 
 .program-card {
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
   padding: 24px;
   min-height: 150px;
   display: flex;
   flex-direction: column;
-  transition: all 0.2s ease;
+  transition: border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              transform var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   cursor: pointer;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
   position: relative;
   overflow: hidden;
 }
@@ -96,9 +102,8 @@
 }
 
 .program-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .program-card:has(.program-card-image-wrapper):hover {
@@ -108,10 +113,10 @@
 .program-card-image-wrapper {
   width: 100%;
   height: 0;
-  padding-bottom: 150%; /* Aspect ratio ~2:3 (similar to mobile: 0.88 width / 0.6 height ≈ 1.47, but using 2:3 = 150% for simplicity) */
+  padding-bottom: 150%;
   position: relative;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-lg, 16px);
 }
 
 .program-card-image {
@@ -153,7 +158,7 @@
 .program-card-title {
   font-size: 2rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary, #fff);
   margin: 0;
   text-align: center;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
@@ -171,8 +176,33 @@
 
 .program-card-count {
   font-size: 0.875rem;
-  color: #ffffff;
+  color: var(--text-primary, #fff);
   font-weight: 500;
+}
+
+/* Program type pills */
+.program-type-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.program-type-pill-one_on_one {
+  background: rgba(52, 211, 153, 0.1);
+  color: rgba(52, 211, 153, 0.9);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.program-type-pill-low_ticket {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .program-card-edit-mode {
@@ -192,16 +222,15 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-lg, 16px);
   z-index: 1;
   pointer-events: none;
 }
 
 .program-card-edit-mode:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .program-delete-button {
@@ -209,27 +238,25 @@
   top: 16px;
   right: 16px;
   padding: 6px 20px;
-  border-radius: 999px;
-  background-color: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.3);
-  color: rgba(255, 68, 68, 0.9);
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  color: rgba(255, 107, 107, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 10;
   pointer-events: auto;
-  box-shadow: 0 0 2px rgba(255, 68, 68, 0.4);
   font-size: 14px;
   font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .program-delete-button:hover {
-  background-color: rgba(255, 68, 68, 0.3);
-  border-color: rgba(255, 68, 68, 0.5);
-  transform: scale(1.05);
+  background: rgba(255, 68, 68, 0.25);
+  border-color: rgba(255, 68, 68, 0.4);
 }
 
 .program-delete-icon {
@@ -248,7 +275,7 @@
 
 /* Delete Modal Styles */
 .delete-instruction-text {
-  color: #cccccc;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 0.875rem;
   margin-bottom: 16px;
   text-align: left;
@@ -267,7 +294,7 @@
 }
 
 .delete-warning-text {
-  color: rgba(255, 68, 68, 0.9);
+  color: rgba(255, 107, 107, 0.9);
   font-size: 0.9rem;
   font-weight: 500;
   margin-top: 16px;
@@ -277,18 +304,17 @@
 }
 
 .delete-program-button {
-  background-color: rgba(255, 68, 68, 0.2);
-  border: none;
-  border-radius: 12px;
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  border-radius: var(--radius-md, 10px);
   padding: 0 40px;
-  height: 56px;
-  color: rgba(255, 68, 68, 0.8);
-  font-size: 16px;
+  height: 48px;
+  color: rgba(255, 107, 107, 0.9);
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 0 rgba(255, 68, 68, 0.72);
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   min-width: 120px;
   flex-shrink: 0;
   display: flex;
@@ -297,16 +323,14 @@
 }
 
 .delete-program-button:hover:not(.delete-program-button-disabled) {
-  background-color: rgba(255, 68, 68, 0.3);
-  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
-  transform: translateY(-2px);
+  background: rgba(255, 68, 68, 0.25);
 }
 
 .delete-program-button-disabled {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .delete-program-button-disabled:hover {
@@ -317,54 +341,51 @@
 .program-config-dropdown {
   width: 100%;
   padding: 12px 40px 12px 16px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.8);
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-primary, #fff);
   font-size: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19 9L12 16L5 9' stroke='rgba(255,255,255,0.6)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19 9L12 16L5 9' stroke='rgba(255,255,255,0.4)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 16px center;
   background-size: 12px 12px;
 }
 
 .program-config-dropdown:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .program-config-dropdown:focus {
   outline: none;
-  background-color: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
 }
 
 .program-config-dropdown option {
-  background-color: #2a2a2a;
-  color: rgba(255, 255, 255, 0.8);
+  background: var(--surface-3, #2a2a2a);
+  color: var(--text-primary, #fff);
 }
 
 /* Scrollbar styling for modal right content */
 .edit-program-modal-right::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 
 .edit-program-modal-right::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background: transparent;
 }
 
 .edit-program-modal-right::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
 }
 
 .edit-program-modal-right::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Elegant Toggle Switch */
@@ -485,40 +506,42 @@
 
 .program-config-card-placeholder {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md, 10px);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed var(--border-default, rgba(255, 255, 255, 0.1));
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   margin-top: 12px;
 }
 
 .program-config-card-placeholder:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .program-config-card-placeholder span {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 13px;
   font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 /* Program Type Selection Modal Styles */
 .program-type-selection-modal-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   padding: 8px;
 }
 
 .program-type-selection-instruction {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 14px;
   margin: 0;
   text-align: center;
@@ -527,39 +550,40 @@
 .program-type-selection-options {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .program-type-selection-option {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  padding: 18px 20px;
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              transform var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   text-align: left;
   width: 100%;
 }
 
 .program-type-selection-option:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+  transform: translateY(-1px);
 }
 
 .program-type-selection-option-icon {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 1);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-primary, #fff);
   flex-shrink: 0;
 }
 
@@ -571,15 +595,15 @@
 }
 
 .program-type-selection-option-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary, #fff);
   margin: 0;
 }
 
 .program-type-selection-option-description {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0;
   line-height: 1.4;
 }
@@ -617,16 +641,15 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background-color: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
   padding: 24px;
-  transition: all 0.2s ease;
+  transition: border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .one-on-one-modal-section:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
 }
 
 .one-on-one-modal-section-header {
@@ -637,37 +660,37 @@
 }
 
 .one-on-one-modal-section-title {
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 18px;
+  color: var(--text-primary, #fff);
+  font-size: 16px;
   font-weight: 600;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .one-on-one-modal-section-badge {
-  padding: 4px 12px;
-  background-color: rgba(255, 68, 68, 0.15);
-  border: 1px solid rgba(255, 68, 68, 0.3);
-  border-radius: 12px;
-  color: rgba(255, 68, 68, 0.9);
+  padding: 3px 10px;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.2);
+  border-radius: var(--radius-pill, 999px);
+  color: rgba(255, 107, 107, 0.9);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .one-on-one-modal-section-badge-optional {
-  padding: 4px 12px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  padding: 3px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-pill, 999px);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .one-on-one-modal-section-content {
@@ -677,11 +700,11 @@
 }
 
 .one-on-one-field-note {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-size: 12px;
   margin-top: 6px;
   margin-bottom: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   line-height: 1.4;
 }
 
@@ -689,29 +712,28 @@
   display: flex;
   flex-direction: column;
   padding: 16px;
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 10px);
+  transition: border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .one-on-one-config-item:hover {
-  background-color: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
 }
 
 .one-on-one-config-description {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 12px;
   margin: 0;
   line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .one-on-one-libraries-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  gap: 8px;
   max-height: 240px;
   overflow-y: auto;
   padding: 4px;
@@ -719,47 +741,46 @@
 }
 
 .one-on-one-library-item {
-  padding: 12px 16px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-primary, #fff);
   font-size: 14px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              border-color var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .one-on-one-library-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
 }
 
 .one-on-one-library-item-selected {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
 }
 
 .one-on-one-library-item-selected:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .one-on-one-library-check {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary, #fff);
   flex-shrink: 0;
 }
 
@@ -769,10 +790,10 @@
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  background-color: rgba(255, 255, 255, 0.02);
-  border: 2px dashed rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-default, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-size: 14px;
   text-align: center;
 }
@@ -782,53 +803,51 @@
   flex-direction: column;
   gap: 12px;
   padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
   flex-shrink: 0;
 }
 
 .one-on-one-modal-help-text {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-size: 12px;
   text-align: center;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   line-height: 1.5;
 }
 
 /* Scrollbar styling for one-on-one modal */
 .one-on-one-modal-content::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 
 .one-on-one-modal-content::-webkit-scrollbar-track {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+  background: transparent;
 }
 
 .one-on-one-modal-content::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
 }
 
 .one-on-one-modal-content::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .one-on-one-libraries-grid::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .one-on-one-libraries-grid::-webkit-scrollbar-track {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
+  background: transparent;
 }
 
 .one-on-one-libraries-grid::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
 }
 
 .one-on-one-libraries-grid::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.2);
 }
 

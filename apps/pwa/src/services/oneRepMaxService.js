@@ -1,6 +1,5 @@
 // One Rep Max Service - Calculates and manages 1RM estimates for strength training
-import { doc, updateDoc, collection, addDoc, getDoc, serverTimestamp, deleteField, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 
 class OneRepMaxService {
@@ -193,27 +192,23 @@ class OneRepMaxService {
   
   /**
    * Get all 1RM estimates for a user
-   * @param {string} userId - User ID
+   * @param {string} userId - User ID (unused — auth from token)
    * @returns {Object} - Map of exercise keys to estimates
    */
   async getEstimatesForUser(userId) {
     try {
-      logger.log('📖 getEstimatesForUser: Fetching estimates for user:', userId);
-      
-      const userDocRef = doc(firestore, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        logger.log('ℹ️ getEstimatesForUser: User document does not exist - returning empty');
-        return {};
-      }
-      
-      const data = userDoc.data();
-      const estimates = data.oneRepMaxEstimates || {};
-      
-      logger.log('✅ getEstimatesForUser: Found', Object.keys(estimates).length, 'estimates');
-      logger.log('📊 getEstimatesForUser: Estimates:', estimates);
-      
+      logger.log('📖 getEstimatesForUser: Fetching estimates');
+      const res = await apiClient.get('/workout/prs');
+      const prs = res?.data ?? [];
+      const estimates = {};
+      prs.forEach(pr => {
+        estimates[pr.exerciseKey] = {
+          current: pr.estimate1RM,
+          lastUpdated: pr.lastUpdated,
+          achievedWith: pr.achievedWith,
+        };
+      });
+      logger.log('✅ getEstimatesForUser: Found', prs.length, 'estimates');
       return estimates;
     } catch (error) {
       logger.error('❌ getEstimatesForUser: Error fetching estimates:', error);
@@ -221,252 +216,10 @@ class OneRepMaxService {
     }
   }
   
-  /**
-   * Update 1RM estimates after a session
-   * @param {string} userId - User ID
-   * @param {Array} exercises - Exercise array from workout
-   * @param {Object} setData - User input data (weight, reps)
-   * @returns {Array} - Array of personal records achieved (improvements only)
-   */
-  async updateEstimatesAfterSession(userId, exercises, setData) {
-    try {
-      logger.log('🔄 updateEstimatesAfterSession: Starting update for user:', userId);
-      logger.log('🔄 updateEstimatesAfterSession: Processing', exercises.length, 'exercises');
-      
-      // Get current estimates from DB
-      const currentEstimates = await this.getEstimatesForUser(userId);
-      logger.log('📊 updateEstimatesAfterSession: Current estimates:', currentEstimates);
-      
-      const updates = {};
-      const historyUpdates = [];
-      const personalRecords = []; // NEW: Track PRs for display
-      
-      // Process each exercise
-      for (let exerciseIndex = 0; exerciseIndex < exercises.length; exerciseIndex++) {
-        const exercise = exercises[exerciseIndex];
-        
-        logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        logger.log(`🏋️ Processing Exercise ${exerciseIndex + 1}/${exercises.length}:`, exercise.name);
-        
-        // Get exercise identifier
-        if (!exercise.primary || Object.keys(exercise.primary).length === 0) {
-          logger.log('⚠️ Exercise has no primary field - skipping:', exercise.name);
-          continue;
-        }
-        
-        const libraryId = Object.keys(exercise.primary)[0];
-        const exerciseName = exercise.primary[libraryId];
-        const exerciseKey = `${libraryId}_${exerciseName}`;
-        
-        logger.log('🔑 Exercise Key:', exerciseKey);
-        logger.log('📚 Library ID:', libraryId);
-        logger.log('📝 Exercise Name:', exerciseName);
-        
-        // Calculate 1RM for each set
-        const set1RMs = [];
-        const setDetails = []; // Track which set achieved each 1RM
-        
-        for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
-          const set = exercise.sets[setIndex];
-          const setKey = `${exerciseIndex}_${setIndex}`;
-          const actualData = setData[setKey];
-          
-          logger.log(`  📋 Set ${setIndex + 1}/${exercise.sets.length}:`);
-          logger.log(`    🔑 Set Key:`, setKey);
-          logger.log(`    📥 Actual Data:`, actualData);
-          logger.log(`    🎯 Objective Data:`, { reps: set.reps, intensity: set.intensity });
-          
-          // Validate actual data
-          if (!actualData || !actualData.weight || !actualData.reps) {
-            logger.log(`    ⏭️ Skipping set - missing actual data`);
-            continue;
-          }
-          
-          const actualWeight = parseFloat(actualData.weight);
-          const actualReps = parseInt(actualData.reps);
-          
-          if (actualWeight <= 0 || actualReps <= 0) {
-            logger.log(`    ⏭️ Skipping set - invalid values (weight:${actualWeight}, reps:${actualReps})`);
-            continue;
-          }
-          
-          // Validate objective intensity
-          if (!set.intensity) {
-            logger.log(`    ⏭️ Skipping set - missing objective intensity`);
-            continue;
-          }
-          
-          const objectiveIntensity = this.parseIntensity(set.intensity);
-          
-          if (!objectiveIntensity) {
-            logger.log(`    ⏭️ Skipping set - invalid intensity format:`, set.intensity);
-            continue;
-          }
-          
-          // Calculate 1RM
-          logger.log(`    🔢 Valid set data - calculating 1RM...`);
-          const estimate1RM = this.calculate1RM(actualWeight, actualReps, objectiveIntensity);
-          set1RMs.push(estimate1RM);
-          
-          // Track set details
-          setDetails.push({
-            setNumber: setIndex + 1,
-            weight: actualWeight,
-            reps: actualReps,
-            estimate1RM: estimate1RM
-          });
-          
-          logger.log(`    ✅ Set 1RM estimate:`, estimate1RM);
-        }
-        
-        // Check if we have any valid estimates
-        if (set1RMs.length === 0) {
-          logger.log('  ⚠️ No valid sets found for this exercise - skipping');
-          continue;
-        }
-        
-        // Find highest 1RM
-        const highest1RM = Math.max(...set1RMs);
-        const bestSetIndex = set1RMs.indexOf(highest1RM);
-        const bestSet = setDetails[bestSetIndex];
-        
-        logger.log('  📊 All 1RM estimates:', set1RMs);
-        logger.log('  🏆 Highest 1RM:', highest1RM);
-        logger.log('  🥇 Achieved by set:', bestSet.setNumber, `(${bestSet.weight}kg × ${bestSet.reps} reps)`);
-        
-        // Compare with current DB value
-        const currentValue = currentEstimates[exerciseKey]?.current;
-        logger.log('  💾 Current DB value:', currentValue || 'None');
-        
-        if (!currentValue || highest1RM > currentValue) {
-          logger.log('  ✅ New 1RM is higher - updating!');
-          
-          // Prepare update (store achievedWith for display e.g. "80kg × 5 reps")
-          updates[`oneRepMaxEstimates.${exerciseKey}`] = {
-            current: highest1RM,
-            lastUpdated: new Date().toISOString(),
-            achievedWith: {
-              weight: bestSet.weight,
-              reps: bestSet.reps
-            }
-          };
-          
-          // Prepare history entry
-          historyUpdates.push({
-            libraryId,
-            exerciseName,
-            estimate: highest1RM
-          });
-          
-          // Track personal record (ONLY if not first time)
-          if (currentValue) {
-            logger.log('  🏆 Personal Record achieved! (improvement over previous)');
-            personalRecords.push({
-              exerciseName: exerciseName,
-              achievedWith: {
-                weight: bestSet.weight,
-                reps: bestSet.reps,
-                setNumber: bestSet.setNumber
-              }
-            });
-          } else {
-            logger.log('  🎉 First time 1RM recorded (not counted as PR)');
-          }
-          
-          logger.log('  📝 Scheduled for update:', highest1RM);
-        } else {
-          logger.log('  ⏭️ New 1RM not higher - no update needed');
-        }
-      }
-      
-      logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      logger.log('📊 Update Summary:');
-      logger.log('  - Exercises processed:', exercises.length);
-      logger.log('  - Estimates to update:', Object.keys(updates).length);
-      logger.log('  - History entries to add:', historyUpdates.length);
-      logger.log('  - Personal records achieved:', personalRecords.length);
-      
-      // Apply updates if any
-      if (Object.keys(updates).length > 0) {
-        logger.log('💾 Updating main document...');
-        const userDocRef = doc(firestore, 'users', userId);
-        await updateDoc(userDocRef, updates);
-        logger.log('✅ Main document updated');
-        
-        // Add history entries
-        logger.log('📚 Adding history entries...');
-        for (const historyEntry of historyUpdates) {
-          await this.addToHistory(
-            userId,
-            historyEntry.libraryId,
-            historyEntry.exerciseName,
-            historyEntry.estimate
-          );
-        }
-        logger.log('✅ History entries added');
-      } else {
-        logger.log('ℹ️ No updates needed');
-      }
-      
-      logger.log('🎉 updateEstimatesAfterSession: Complete!');
-      logger.log('🏆 Returning', personalRecords.length, 'personal records');
-      
-      return personalRecords; // Return PRs for display
-      
-    } catch (error) {
-      logger.error('❌ updateEstimatesAfterSession: Error:', error);
-      // Don't throw - we don't want to block session completion
-      return []; // Return empty array on error
-    }
-  }
-  
-  /**
-   * Add a 1RM estimate to history
-   * @param {string} userId - User ID
-   * @param {string} libraryId - Exercise library ID
-   * @param {string} exerciseName - Exercise name
-   * @param {number} estimate - 1RM estimate
-   */
-  async addToHistory(userId, libraryId, exerciseName, estimate) {
-    try {
-      const exerciseKey = `${libraryId}_${exerciseName}`;
-      logger.log('📚 addToHistory: Adding entry for', exerciseKey);
-      
-      const historyRef = collection(
-        firestore,
-        'users',
-        userId,
-        'oneRepMaxHistory',
-        exerciseKey,
-        'records'
-      );
-      
-      await addDoc(historyRef, {
-        estimate: estimate,
-        date: serverTimestamp()
-      });
-      
-      logger.log('✅ addToHistory: Entry added:', estimate);
-    } catch (error) {
-      logger.error('❌ addToHistory: Error:', error);
-    }
-  }
-  
-  /**
-   * Reset (delete) a 1RM estimate for an exercise
-   * @param {string} userId - User ID
-   * @param {string} exerciseKey - Exercise key (libraryId_exerciseName)
-   */
   async resetEstimate(userId, exerciseKey) {
     try {
       logger.log('🔄 resetEstimate: Resetting estimate for', exerciseKey);
-      
-      const userDocRef = doc(firestore, 'users', userId);
-      
-      await updateDoc(userDocRef, {
-        [`oneRepMaxEstimates.${exerciseKey}`]: deleteField()
-      });
-      
+      await apiClient.delete(`/workout/prs/${encodeURIComponent(exerciseKey)}`);
       logger.log('✅ resetEstimate: Estimate deleted successfully');
     } catch (error) {
       logger.error('❌ resetEstimate: Error:', error);
@@ -483,14 +236,9 @@ class OneRepMaxService {
    */
   async getHistoryByKey(userId, exerciseKey) {
     try {
-      const historyRef = collection(firestore, 'users', userId, 'oneRepMaxHistory', exerciseKey, 'records');
-      const snap = await getDocs(query(historyRef, orderBy('date', 'asc')));
-      return snap.docs.map(d => {
-        const data = d.data();
-        let dateVal = data.date;
-        if (dateVal && typeof dateVal.toDate === 'function') dateVal = dateVal.toDate().toISOString();
-        return { date: dateVal, value: data.estimate };
-      });
+      const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
+      const records = res?.data ?? [];
+      return records.map(r => ({ date: r.date, value: r.estimate1RM }));
     } catch (err) {
       logger.error('[1RM] getHistoryByKey error', exerciseKey, err?.message);
       return [];
@@ -501,26 +249,15 @@ class OneRepMaxService {
     try {
       const exerciseKey = `${libraryId}_${exerciseName}`;
       logger.log('📖 getHistoryForExercise: Fetching history for', exerciseKey);
-      
-      const historyRef = collection(
-        firestore,
-        'users',
-        userId,
-        'oneRepMaxHistory',
-        exerciseKey,
-        'records'
-      );
-      
-      const q = query(historyRef, orderBy('date', 'asc'), limit(20));
-      const snapshot = await getDocs(q);
-      
-      const history = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
+      const records = res?.data ?? [];
+      logger.log('✅ getHistoryForExercise: Found', records.length, 'entries');
+      // PRHistoryChart expects { estimate, date: { seconds } }
+      return records.map(r => ({
+        id: r.date,
+        estimate: r.estimate1RM,
+        date: { seconds: new Date(r.date).getTime() / 1000 },
       }));
-      
-      logger.log('✅ getHistoryForExercise: Found', history.length, 'entries');
-      return history;
     } catch (error) {
       logger.error('❌ getHistoryForExercise: Error:', error);
       return [];

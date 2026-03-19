@@ -15,7 +15,8 @@ import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import exerciseHistoryService from '../services/exerciseHistoryService';
+import apiClient from '../utils/apiClient';
+import { cacheConfig } from '../config/queryClient';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
@@ -51,17 +52,15 @@ const SessionsScreen = ({ navigation }) => {
   } = useInfiniteQuery({
     queryKey: ['sessions', userId],
     queryFn: ({ pageParam = null }) =>
-      exerciseHistoryService.getSessionHistoryPaginated(userId, PAGE_SIZE, pageParam),
-    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastDoc : undefined,
+      apiClient.get('/workout/sessions', { params: { limit: PAGE_SIZE, ...(pageParam ? { pageToken: pageParam } : {}) } }),
+    getNextPageParam: (lastPage) => lastPage?.nextPageToken ?? undefined,
     enabled: !!userId,
-    staleTime: 10 * 60 * 1000,
+    staleTime: cacheConfig.sessionHistory.staleTime,
   });
 
   const sessions = useMemo(() => {
     if (!data) return [];
-    return data.pages
-      .flatMap(page => Object.values(page.sessions || {}))
-      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    return data.pages.flatMap(page => page?.data ?? []);
   }, [data]);
 
   const loadingMore = isFetchingNextPage;

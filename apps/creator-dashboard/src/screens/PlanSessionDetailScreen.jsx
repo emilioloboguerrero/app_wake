@@ -7,6 +7,7 @@ import Modal from '../components/Modal';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import '../components/PropagateChangesModal.css';
 import './LibrarySessionDetailScreen.css';
 
@@ -14,6 +15,7 @@ const PlanSessionDetailScreen = () => {
   const { planId, moduleId, sessionId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [showScopeModal, setShowScopeModal] = useState(false);
   const [scopeModalLibraryId, setScopeModalLibraryId] = useState(null);
   const [applyingScope, setApplyingScope] = useState(false);
@@ -134,7 +136,7 @@ const PlanSessionDetailScreen = () => {
       navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`, { replace: true });
     } catch (err) {
       logger.error('Error detaching session for this week:', err);
-      alert(err?.message || 'Error al aplicar solo a esta semana');
+      showToast(err?.message || 'Error al aplicar solo a esta semana', 'error');
     } finally {
       setApplyingScope(false);
     }

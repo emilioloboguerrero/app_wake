@@ -18,21 +18,19 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { getStorage, isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import courseDownloadService from '../data-management/courseDownloadService';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import purchaseEventManager from '../services/purchaseEventManager';
 import updateEventManager from '../services/updateEventManager';
 import tutorialManager from '../services/tutorialManager';
-import consolidatedDataService from '../services/consolidatedDataService';
+import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
 import assetBundleService from '../services/assetBundleService';
-import { getUpcomingBookingsForUser } from '../services/callBookingService';
 
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
@@ -409,11 +407,28 @@ const MainScreen = ({ navigation, route }) => {
   const queryClientHook = useQueryClient();
 
   // React Query: primary course data load
-  const { data: coursesQueryData, isLoading: coursesQueryLoading, isError: coursesQueryError } = useQuery({
+  const { data: coursesQueryData, isLoading: coursesQueryLoading, isError: coursesQueryError, refetch: refetchCourses } = useQuery({
     queryKey: queryKeys.user.courses(user?.uid),
-    queryFn: () => consolidatedDataService.getUserCoursesWithDetails(user.uid),
+    queryFn: () => purchaseService.getUserPurchasedCourses(user.uid),
     enabled: !!user?.uid,
     ...cacheConfig.programStructure,
+  });
+
+  // React Query: user profile
+  const { data: profileQueryData } = useQuery({
+    queryKey: queryKeys.user.detail(user?.uid),
+    queryFn: () => apiClient.get('/users/me').then(res => res.data),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
+
+  // React Query: upcoming call bookings
+  const { data: upcomingBookingsData } = useQuery({
+    queryKey: ['bookings', 'upcoming', user?.uid],
+    queryFn: () => getUpcomingBookingsForUser(user.uid),
+    enabled: !!user?.uid,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
   // Log auth state on mount for diagnostics
@@ -431,16 +446,12 @@ const MainScreen = ({ navigation, route }) => {
   }, []);
 
   // Screen state
-  const [userProfile, setUserProfile] = useState({
-    displayName: '',
-    username: '',
-    email: '',
-    phoneNumber: '',
-    gender: '',
-  });
-  const [purchasedCourses, setPurchasedCourses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const purchasedCourses = useMemo(
+    () => (Array.isArray(coursesQueryData) ? coursesQueryData : []),
+    [coursesQueryData]
+  );
+  const loading = coursesQueryLoading;
+  const error = coursesQueryError ? 'Error al cargar tus cursos. Inténtalo de nuevo.' : null;
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
@@ -449,7 +460,6 @@ const MainScreen = ({ navigation, route }) => {
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
   const [libraryImageUri, setLibraryImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [upcomingCallCards, setUpcomingCallCards] = useState([]);
   // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
   const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
 
@@ -493,7 +503,28 @@ const MainScreen = ({ navigation, route }) => {
     return () => clearTimeout(id);
   }, [cardImageLoadedIds, isWeb]);
 
-  // First name derived from auth state — stable across renders
+  // Derive user profile from React Query data, falling back to auth state
+  const userProfile = useMemo(() => {
+    const currentUser = auth.currentUser;
+    if (profileQueryData) {
+      return {
+        displayName: profileQueryData.displayName || currentUser?.displayName || user?.displayName || '',
+        username: profileQueryData.username || '',
+        email: profileQueryData.email || currentUser?.email || user?.email || '',
+        phoneNumber: profileQueryData.phoneNumber || '',
+        gender: profileQueryData.gender || '',
+      };
+    }
+    return {
+      displayName: currentUser?.displayName || user?.displayName || '',
+      username: '',
+      email: currentUser?.email || user?.email || '',
+      phoneNumber: '',
+      gender: '',
+    };
+  }, [profileQueryData, user?.uid]);
+
+  // First name derived from profile data — stable across renders
   const firstName = useMemo(() => {
     const currentUser = auth.currentUser;
     const displayName = currentUser?.displayName || userProfile?.displayName || user?.displayName;
@@ -557,60 +588,17 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
-  // Fetch upcoming call bookings and resolve course/creator for cards
-  useEffect(() => {
-    if (!user?.uid) {
-      setUpcomingCallCards([]);
-      return;
-    }
-    let cancelled = false;
-    getUpcomingBookingsForUser(user.uid)
-      .then((bookings) => {
-        if (cancelled || !bookings.length) return bookings;
-        return Promise.all(
-          bookings.map(async (booking) => {
-            let course = purchasedCourses.find(
-              (c) => (c.courseId || c.id) === booking.courseId
-            );
-            if (!course && booking.courseId) {
-              try {
-                course = await firestoreService.getCourse(booking.courseId);
-              } catch {
-                course = null;
-              }
-            }
-            const creatorName =
-              course?.creatorName || course?.creator_name || null;
-            return { booking, course: course || null, creatorName };
-          })
-        );
-      })
-      .then((list) => {
-        if (!cancelled && Array.isArray(list)) setUpcomingCallCards(list);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          logger.error('Error loading upcoming call bookings:', err);
-          setUpcomingCallCards([]);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [user?.uid]);
-
-  // Sync React Query result into local state
-  useEffect(() => {
-    if (coursesQueryData) {
-      setPurchasedCourses(coursesQueryData.courses || []);
-      setDownloadedCourses(prev => ({ ...prev, ...(coursesQueryData.downloadedData || {}) }));
-      setLoading(false);
-      setError(null);
-    } else if (coursesQueryError) {
-      setError('Error al cargar tus cursos. Inténtalo de nuevo.');
-      setLoading(false);
-    } else if (coursesQueryLoading) {
-      setLoading(true);
-    }
-  }, [coursesQueryData, coursesQueryLoading, coursesQueryError]);
+  // Derive upcoming call cards from React Query data
+  const upcomingCallCards = useMemo(() => {
+    if (!upcomingBookingsData || !Array.isArray(upcomingBookingsData)) return [];
+    return upcomingBookingsData.map((booking) => {
+      const course = purchasedCourses.find(
+        (c) => (c.courseId || c.id) === booking.courseId
+      ) || null;
+      const creatorName = course?.creatorName || course?.creator_name || null;
+      return { booking, course, creatorName };
+    });
+  }, [upcomingBookingsData, purchasedCourses]);
 
   // Track screen view on mount
   useEffect(() => {
@@ -656,7 +644,6 @@ const MainScreen = ({ navigation, route }) => {
     const unsubscribe = purchaseEventManager.subscribe((courseId) => {
       logger.log('🛒 Purchase event received for course:', courseId);
       if (user?.uid) {
-        consolidatedDataService.clearUserCache(user.uid);
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
       }
@@ -668,7 +655,6 @@ const MainScreen = ({ navigation, route }) => {
     const unsubscribe = purchaseEventManager.subscribeReady((courseId) => {
       logger.log('🎉 Purchase ready event received for course:', courseId);
       if (user?.uid) {
-        consolidatedDataService.clearUserCache(user.uid);
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
       }
@@ -685,123 +671,6 @@ const MainScreen = ({ navigation, route }) => {
 
     return unsubscribe; // Cleanup on unmount
   }, []);
-
-  // User profile loading — two effects: one for immediate auth data, one for Firestore data
-  const previousUserIdRef = useRef(null);
-
-  // Immediately populate profile from auth when user ID changes
-  useEffect(() => {
-    // Get current user from auth.currentUser as source of truth
-    const currentUser = auth.currentUser;
-    const currentUserId = currentUser?.uid || user?.uid;
-    
-    // If user ID has changed, clear profile data immediately to prevent stale data
-    if (previousUserIdRef.current !== null && previousUserIdRef.current !== currentUserId) {
-      logger.log('🔄 User ID changed - clearing stale user profile data:', {
-        previousUserId: previousUserIdRef.current,
-        currentUserId: currentUserId
-      });
-      setUserProfile({
-        displayName: '',
-        username: '',
-        email: '',
-        phoneNumber: '',
-        gender: '',
-      });
-    }
-    
-    if (currentUserId) {
-      // Always use auth.currentUser as source of truth, fallback to user from context
-      setUserProfile(prev => ({
-        ...prev,
-        displayName: currentUser?.displayName || user?.displayName || prev.displayName || '',
-        email: currentUser?.email || user?.email || prev.email || '',
-      }));
-      previousUserIdRef.current = currentUserId;
-    } else {
-      // No user, clear profile
-      setUserProfile({
-        displayName: '',
-        username: '',
-        email: '',
-        phoneNumber: '',
-        gender: '',
-      });
-      previousUserIdRef.current = null;
-    }
-  }, [user?.uid]);
-
-  // Fetch full profile from Firestore in the background
-  useEffect(() => {
-    const loadUserProfile = async () => {
-      // Always use auth.currentUser as source of truth
-      const currentUser = auth.currentUser;
-      const currentUserId = currentUser?.uid || user?.uid;
-      
-      // Verify we're loading for the correct user - prevent loading stale data
-      if (!currentUserId) {
-        logger.log('⚠️ No user ID available - skipping profile load');
-        return;
-      }
-      
-      // Double-check that user ID hasn't changed during async operation
-      if (previousUserIdRef.current && previousUserIdRef.current !== currentUserId) {
-        logger.log('⚠️ User ID changed during profile load - aborting to prevent stale data');
-        return;
-      }
-      
-      logger.log('📊 Loading user profile for:', currentUserId);
-      try {
-        const userData = await hybridDataService.loadUserProfile(currentUserId);
-        
-        // Final check: verify user hasn't changed during async load
-        const finalCurrentUser = auth.currentUser;
-        const finalUserId = finalCurrentUser?.uid || user?.uid;
-        if (finalUserId !== currentUserId) {
-          logger.log('⚠️ User ID changed during profile load - discarding results');
-          return;
-        }
-        
-        if (userData) {
-          logger.log('✅ User profile loaded successfully:', {
-            displayName: userData?.displayName,
-            username: userData?.username,
-            email: userData?.email
-          });
-          setUserProfile({
-            displayName: userData?.displayName || finalCurrentUser?.displayName || user?.displayName || '',
-            username: userData?.username || '',
-            email: userData?.email || finalCurrentUser?.email || user?.email || '',
-            phoneNumber: userData?.phoneNumber || '',
-            gender: userData?.gender || '',
-          });
-        } else {
-          // If no Firestore data yet, use Firebase Auth data as fallback
-          logger.log('ℹ️ No Firestore data - using Firebase Auth data');
-          setUserProfile({
-            displayName: finalCurrentUser?.displayName || user?.displayName || '',
-            username: '',
-            email: finalCurrentUser?.email || user?.email || '',
-            phoneNumber: '',
-            gender: '',
-          });
-        }
-      } catch (error) {
-        logger.error('❌ Error loading user profile:', error);
-        // On error, still set Firebase Auth data as fallback
-        const fallbackUser = auth.currentUser || user;
-        setUserProfile({
-          displayName: fallbackUser?.displayName || '',
-          username: '',
-          email: fallbackUser?.email || '',
-          phoneNumber: '',
-          gender: '',
-        });
-      }
-    };
-
-    loadUserProfile();
-  }, [user?.uid]);
 
   // Card list — must be declared before any useEffect that uses it in a dep array
   const swipeableCards = useMemo(() => {
@@ -910,12 +779,7 @@ const MainScreen = ({ navigation, route }) => {
   const focusEffectCallback = React.useCallback(() => {
     if (user?.uid && hasPendingUpdates) {
       logger.log('🔄 MainScreen focused - refreshing due to completed updates...');
-      // Clear consolidated cache to ensure fresh data
-      consolidatedDataService.clearUserCache(user.uid);
-      // Refresh courses from database
       refreshCoursesFromDatabase();
-      
-      // Clear the pending updates flag
       updateEventManager.clearPendingUpdates();
       setHasPendingUpdates(false);
     } else {
@@ -933,105 +797,14 @@ const MainScreen = ({ navigation, route }) => {
     }
   }, [focusEffectCallback]);
 
-  // Primary course load — uses consolidatedDataService with direct Firestore fallback
+  // Trigger a forced re-fetch — used after purchases and updates
   const loadCoursesFromCache = async () => {
+    if (!user?.uid) return;
     try {
-      setLoading(true);
-      setError(null);
-      
-      logger.log('🔄 Loading courses using consolidated service...');
-      logger.log('🔄 User ID:', user?.uid);
-      
-      if (!user?.uid) {
-        logger.error('❌ No user ID available, cannot load courses');
-        setLoading(false);
-        return;
-      }
-      
-      // Try consolidated service first
-      let courses = [];
-      let downloadedData = {};
-      
-      try {
-        logger.log('🔄 Calling consolidatedDataService.getUserCoursesWithDetails...');
-        const result = await consolidatedDataService.getUserCoursesWithDetails(user.uid);
-        courses = result.courses || [];
-        downloadedData = result.downloadedData || {};
-        logger.log(`✅ Loaded ${courses.length} courses with consolidated service`);
-      } catch (consolidatedError) {
-        logger.error('⚠️ Consolidated service failed:', consolidatedError);
-        logger.warn('⚠️ Consolidated service failed, trying direct loading...', consolidatedError.message);
-        logger.error('⚠️ Error stack:', consolidatedError.stack);
-        
-        // Fallback: Direct Firestore loading
-        try {
-          logger.log('🔄 Trying direct Firestore loading...');
-          const purchasedCourses = await purchaseService.getUserPurchasedCourses(user.uid);
-          logger.log('📚 Direct loading: Found', purchasedCourses.length, 'purchased courses');
-          
-          // Get course details directly from Firestore
-          courses = [];
-          for (const purchased of purchasedCourses) {
-            try {
-              const courseId = purchased.courseId || purchased.id;
-              if (!courseId) {
-                logger.warn('⚠️ Purchased course missing courseId:', purchased);
-                continue;
-              }
-              const courseDetails = await firestoreService.getCourse(courseId);
-              if (courseDetails) {
-                courses.push({
-                  ...courseDetails,
-                  courseId: courseDetails.id,
-                  purchasedAt: purchased.purchasedAt
-                });
-              }
-            } catch (courseError) {
-              logger.warn('⚠️ Failed to load course details for:', purchased.courseId, courseError);
-            }
-          }
-          
-          // Set downloaded data to empty (will be loaded on demand)
-          downloadedData = {};
-          logger.log(`✅ Fallback loaded ${courses.length} courses directly`);
-        } catch (fallbackError) {
-          logger.error('❌ Fallback loading also failed:', fallbackError);
-          throw fallbackError;
-        }
-      }
-      
-      logger.log('📚 Final courses count:', courses.length);
-      
-      if (courses.length > 0) {
-        setPurchasedCourses(courses);
-        setDownloadedCourses(downloadedData);
-        setError(null);
-        logger.log('✅ Courses set in state, loading should complete');
-      } else {
-        // No active courses, but still show the library card
-        logger.log('ℹ️ No courses found, showing empty state');
-        setPurchasedCourses([]);
-        setDownloadedCourses({});
-        setError(null);
-      }
-      
-    } catch (error) {
-      logger.error('❌ Error loading courses:', error);
-      logger.error('❌ Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      setError('Error al cargar tus cursos. Inténtalo de nuevo.');
-    } finally {
-      logger.log('🔄 Setting loading to false...');
-      setLoading(false);
-      // Check for tutorials after loading is complete
-      try {
-        await checkForTutorials();
-      } catch (tutorialError) {
-        logger.warn('⚠️ Error checking tutorials:', tutorialError);
-      }
+      await refetchCourses();
+      await checkForTutorials();
+    } catch (err) {
+      logger.error('❌ Error loading courses:', err);
     }
   };
 
@@ -1079,42 +852,22 @@ const MainScreen = ({ navigation, route }) => {
   const onRefresh = async () => {
     if (!user?.uid) return;
     setRefreshing(true);
-    setError(null);
     try {
-      // Clear in-memory cache so pull-to-refresh always fetches fresh data
-      consolidatedDataService.clearUserCache(user.uid);
-      await hybridDataService.syncCourses(user.uid);
-      // Invalidate React Query cache — the useQuery will re-fetch and sync to state
       await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
-    } catch (error) {
-      logger.error('❌ Error refreshing courses (pull-to-refresh):', error);
-      if (error.message.includes('offline') || error.message.includes('unavailable')) {
-        setError('Sin conexión. Mostrando cursos guardados...');
-      } else {
-        setError('Error de conexión. Verifica tu internet e inténtalo de nuevo.');
-      }
+      await queryClientHook.invalidateQueries({ queryKey: ['bookings', 'upcoming', user.uid] });
+    } catch (err) {
+      logger.error('❌ Error refreshing courses (pull-to-refresh):', err);
     } finally {
       setRefreshing(false);
     }
   };
 
-  // Force refresh from Firestore — used after purchases, updates, and manual retry
+  // Force refresh — used after purchases, updates, and manual retry
   const refreshCoursesFromDatabase = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      await hybridDataService.syncCourses(user.uid);
-      // Invalidate React Query cache so next render re-fetches fresh data
       await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
-    } catch (error) {
-      logger.error('❌ Error refreshing courses:', error);
-      if (error.message.includes('offline') || error.message.includes('unavailable')) {
-        setError('Sin conexión. Mostrando cursos guardados...');
-      } else {
-        setError('Error de conexión. Verifica tu internet e inténtalo de nuevo.');
-      }
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      logger.error('❌ Error refreshing courses:', err);
     }
   };
 
@@ -1194,14 +947,7 @@ const MainScreen = ({ navigation, route }) => {
   
   const retryUpdate = async (courseId) => {
     try {
-      // Clear failed status and retry
-      await firestoreService.updateUserCourseVersionStatus(user.uid, courseId, {
-        update_status: 'updating'
-      });
-      
-      // Reload courses to trigger update
       await loadCoursesFromCache();
-      
     } catch (error) {
       logger.error('❌ Error retrying update:', error);
     }

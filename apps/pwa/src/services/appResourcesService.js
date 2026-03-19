@@ -1,6 +1,4 @@
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
-import { auth, firestore } from '../config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 
 /**
@@ -32,115 +30,25 @@ class AppResourcesService {
 
     this._loadingPromise = (async () => {
       try {
-        // Check authentication state
-        const checkAuthState = () => {
-          return new Promise((resolve) => {
-            const unsubscribe = onAuthStateChanged(auth, (user) => {
-              unsubscribe();
-              resolve(user);
-            });
-            // Timeout after 2 seconds if auth state doesn't resolve quickly
-            setTimeout(() => {
-              unsubscribe();
-              resolve(auth.currentUser);
-            }, 2000);
-          });
-        };
-
-        const currentUser = await checkAuthState();
-        const isAuthenticated = !!currentUser;
-        const userId = currentUser?.uid || null;
-        
-        logger.log('📦 Loading app resources from Firestore...');
-        logger.log('🔐 Authentication state:', {
-          isAuthenticated,
-          userId: userId || 'not authenticated',
-          email: currentUser?.email || 'no email'
-        });
-
-        logger.log('🔍 Firestore configuration:', {
-          projectId: firestore.app.options.projectId,
-          collection: 'app_resources',
-          query: 'title == "assets"'
-        });
-
-        const q = query(
-          collection(firestore, 'app_resources'),
-          where('title', '==', 'assets'),
-          limit(1)
-        );
-
-        logger.log('📡 Executing Firestore query...');
-        const snapshot = await getDocs(q);
-
-        logger.log('📊 Query result:', {
-          empty: snapshot.empty,
-          size: snapshot.size,
-          hasDocs: snapshot.docs.length > 0
-        });
-
-        if (snapshot.empty) {
-          logger.error('❌ No app_resources document with title == "assets" found');
-          logger.log('💡 Debug info: Collection may be empty or query may not match any documents');
+        logger.log('📦 Loading app resources...');
+        const result = await apiClient.get('/app-resources', { includeAuth: false });
+        const a = result?.data?.assets;
+        if (!a) {
+          logger.error('❌ No assets found in app-resources response');
           this._cache = null;
           return null;
         }
-
-        const doc = snapshot.docs[0];
-        const docId = doc.id;
-        const data = doc.data() || {};
-
-        logger.log('📄 Document retrieved:', {
-          docId,
-          hasData: Object.keys(data).length > 0,
-          fields: Object.keys(data)
-        });
-
-        const libraryImageUrl = data.library || null;
-        const warmupMap = data.warmup || {};
-        const intensityMap = data.intensity || {};
-        const version = data.version || null;
-
         const resources = {
-          version,
-          libraryImageUrl,
-          warmupVideos: warmupMap,
-          intensityVideos: intensityMap,
+          version: a.version ?? null,
+          libraryImageUrl: a.library ?? null,
+          warmupVideos: a.warmup ?? {},
+          intensityVideos: a.intensity ?? {},
         };
-
-        logger.log('✅ App resources loaded:', {
-          version,
-          hasLibraryImage: !!libraryImageUrl,
-          warmupKeys: Object.keys(warmupMap || {}),
-          intensityKeys: Object.keys(intensityMap || {}),
-        });
-
+        logger.log('✅ App resources loaded:', { version: resources.version, hasLibraryImage: !!resources.libraryImageUrl });
         this._cache = resources;
         return resources;
       } catch (error) {
-        logger.error('❌ Error loading app resources from Firestore');
-        logger.error('Error details:', {
-          code: error.code,
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-        
-        // Log specific error types
-        if (error.code === 'permission-denied') {
-          logger.error('🚫 Permission denied - Possible causes:');
-          logger.error('   1. Firestore rules not deployed or updated');
-          logger.error('   2. Rules still require authentication');
-          logger.error('   3. User not authenticated when rules require it');
-          logger.error('   4. Collection or document structure mismatch');
-        }
-        
-        if (error.code === 'unavailable') {
-          logger.error('🌐 Service unavailable - Check network connection');
-        }
-
-        logger.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-        
+        logger.error('❌ Error loading app resources:', error);
         this._cache = null;
         throw error;
       } finally {

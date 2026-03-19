@@ -9,9 +9,11 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
 import oneRepMaxService from '../services/oneRepMaxService';
+import apiClient from '../utils/apiClient';
+import { cacheConfig } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -793,16 +795,10 @@ function GoalWeightModal({ visible, onClose, currentGoal, unit, userId, onSaved 
 const LabScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
-  const [fallbackUser, setFallbackUser] = useState(null);
-  const user = contextUser || fallbackUser || auth.currentUser;
+  const user = contextUser || auth.currentUser;
+  const uid = user?.uid;
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
-  const [userData, setUserData] = useState(null);
-  const [sessions, setSessions] = useState({});
-  const [diaryEntries, setDiaryEntries] = useState([]);
-  const [plan, setPlan] = useState(null);
-  const [readinessEntries, setReadinessEntries] = useState([]);
-  const [oneRepMaxHistories, setOneRepMaxHistories] = useState([]);
   const [activeTab, setActiveTab] = useState('fuerza');
   const [selectedExerciseKey, setSelectedExerciseKey] = useState(null);
   const [rangeWeeks, setRangeWeeks] = useState(8);
@@ -811,86 +807,119 @@ const LabScreen = ({ navigation }) => {
   const navigate = useNavigate();
 
   // ─── Cuerpo tab state ──────────────────────────────────────────────────────
-  const [bodyLogEntries, setBodyLogEntries] = useState([]);
-  const [weightUnit, setWeightUnit] = useState('kg');
-  const [goalWeight, setGoalWeight] = useState(null);
   const [weightRange, setWeightRange] = useState(30);
-  const [cuerpoLoaded, setCuerpoLoaded] = useState(false);
   const [entryModalVisible, setEntryModalVisible] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
   const currentWeek = useMemo(() => getMondayWeek(), []);
   const previousWeek = useMemo(() => getPreviousWeekKey(currentWeek), [currentWeek]);
 
-  const loadData = useCallback(async () => {
-    const uid = user?.uid || auth.currentUser?.uid;
-    if (!uid) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      const end = toYYYYMMDD(new Date());
-      const startD = new Date(); startD.setDate(startD.getDate() - 56);
-      const start = toYYYYMMDD(startD);
+  // Date range for analytics queries (56 days = 8 weeks)
+  const dateRange = useMemo(() => {
+    const end = toYYYYMMDD(new Date());
+    const startD = new Date(); startD.setDate(startD.getDate() - 56);
+    return { start: toYYYYMMDD(startD), end };
+  }, []);
 
-      const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        firestoreService.getUser(uid),
-        exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
-        getDiaryEntriesInRange(uid, start, end),
-        getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
-        getReadinessInRange(uid, start, end),
-      ]);
+  // ─── React Query: user profile (weeklyMuscleVolume, goalWeight, weightUnit)
+  const { data: userData } = useQuery({
+    queryKey: ['lab', 'userDoc', uid],
+    queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
+    enabled: !!uid,
+    ...cacheConfig.userProfile,
+  });
 
-      if (uData) setUserData(uData);
-      if (sessionResult?.sessions) setSessions(sessionResult.sessions);
-      setDiaryEntries(entries || []);
-      setPlan(planResult?.plan || null);
-      setReadinessEntries(readinessData || []);
+  // ─── React Query: PRs (oneRepMaxEstimates shape)
+  const { data: prsData } = useQuery({
+    queryKey: ['lab', 'prs', uid],
+    queryFn: () => apiClient.get('/workout/prs').then(r => {
+      const estimates = {};
+      (r?.data ?? []).forEach(pr => {
+        estimates[pr.exerciseKey] = { current: pr.estimate1RM, lastUpdated: pr.lastUpdated, achievedWith: pr.achievedWith };
+      });
+      return estimates;
+    }),
+    enabled: !!uid,
+    ...cacheConfig.analytics,
+  });
 
-      // Fetch 1RM histories for top 5 exercises
-      if (uData?.oneRepMaxEstimates) {
-        const topKeys = Object.entries(uData.oneRepMaxEstimates)
-          .filter(([, v]) => v?.current && v?.lastUpdated)
-          .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
-          .slice(0, 5)
-          .map(([k]) => k);
+  // ─── React Query: session history
+  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+    queryKey: ['lab', 'sessions', uid],
+    queryFn: () => exerciseHistoryService.getSessionHistoryPaginated(uid, 100).then(r => r?.sessions ?? {}),
+    enabled: !!uid,
+    ...cacheConfig.analytics,
+  });
 
-        const histories = await Promise.all(
-          topKeys.map(async (key) => {
-            const records = await oneRepMaxService.getHistoryByKey(uid, key);
-            return { exerciseKey: key, records };
-          })
-        );
-        setOneRepMaxHistories(histories);
-      }
-    } catch (err) {
-      logger.error('[Lab] loadData error', err?.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
+  // ─── React Query: diary entries
+  const { data: diaryEntriesData } = useQuery({
+    queryKey: ['lab', 'diary', uid, dateRange.start, dateRange.end],
+    queryFn: () => getDiaryEntriesInRange(uid, dateRange.start, dateRange.end),
+    enabled: !!uid,
+    ...cacheConfig.nutrition,
+  });
 
-  const loadCuerpoData = useCallback(async () => {
-    const uid = user?.uid || auth.currentUser?.uid;
-    if (!uid) return;
-    try {
-      const entries = await bodyProgressService.getEntries(uid);
-      setBodyLogEntries(entries);
-      setCuerpoLoaded(true);
-    } catch (err) {
-      logger.error('[Lab] loadCuerpoData error', err?.message);
-    }
-  }, [user?.uid]);
+  // ─── React Query: nutrition plan
+  const { data: planData } = useQuery({
+    queryKey: ['lab', 'plan', uid],
+    queryFn: () => getEffectivePlanForUser(uid).then(r => r?.plan ?? null).catch(() => null),
+    enabled: !!uid,
+    ...cacheConfig.nutrition,
+  });
 
-  useEffect(() => {
-    if (!contextUser && Platform.OS === 'web' && auth.currentUser) setFallbackUser(auth.currentUser);
-  }, [contextUser]);
+  // ─── React Query: readiness entries
+  const { data: readinessEntriesData } = useQuery({
+    queryKey: ['lab', 'readiness', uid, dateRange.start, dateRange.end],
+    queryFn: () => getReadinessInRange(uid, dateRange.start, dateRange.end),
+    enabled: !!uid,
+    ...cacheConfig.analytics,
+  });
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // ─── React Query: body log (load lazily on cuerpo tab)
+  const { data: bodyLogEntriesData, refetch: refetchBodyLog } = useQuery({
+    queryKey: ['lab', 'bodyLog', uid],
+    queryFn: () => bodyProgressService.getEntries(uid),
+    enabled: !!uid && activeTab === 'cuerpo',
+    ...cacheConfig.userProfile,
+  });
 
-  useEffect(() => {
-    if (activeTab === 'cuerpo' && !cuerpoLoaded) {
-      loadCuerpoData();
-    }
-  }, [activeTab, cuerpoLoaded, loadCuerpoData]);
+  // ─── React Query: 1RM histories for top 5 exercises
+  const topPrKeys = useMemo(() => {
+    if (!prsData) return [];
+    return Object.entries(prsData)
+      .filter(([, v]) => v?.current && v?.lastUpdated)
+      .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
+      .slice(0, 5)
+      .map(([k]) => k);
+  }, [prsData]);
+
+  const { data: oneRepMaxHistoriesData } = useQuery({
+    queryKey: ['lab', '1rmHistories', uid, topPrKeys.join(',')],
+    queryFn: async () => {
+      const histories = await Promise.all(
+        topPrKeys.map(async (key) => {
+          const records = await oneRepMaxService.getHistoryByKey(uid, key);
+          return { exerciseKey: key, records };
+        })
+      );
+      return histories;
+    },
+    enabled: !!uid && topPrKeys.length > 0,
+    ...cacheConfig.analytics,
+  });
+
+  // Derived: normalise to component-expected shapes
+  const sessions = sessionsData ?? {};
+  const diaryEntries = diaryEntriesData ?? [];
+  const plan = planData ?? null;
+  const readinessEntries = readinessEntriesData ?? [];
+  const bodyLogEntries = bodyLogEntriesData ?? [];
+  const oneRepMaxHistories = oneRepMaxHistoriesData ?? [];
+  const loading = sessionsLoading;
+
+  // goalWeight and weightUnit come from user doc
+  const goalWeight = userData?.goalWeight ?? null;
+  const weightUnit = userData?.weightUnit ?? 'kg';
 
   const openBodyEntryModal = useCallback(() => {
     setActiveTab('cuerpo');
@@ -911,12 +940,6 @@ const LabScreen = ({ navigation }) => {
     window.addEventListener('wakeOpenBodyEntry', handler);
     return () => window.removeEventListener('wakeOpenBodyEntry', handler);
   }, [openBodyEntryModal]);
-
-  // Sync goalWeight and weightUnit from user profile doc
-  useEffect(() => {
-    if (userData?.goalWeight != null) setGoalWeight(userData.goalWeight);
-    if (userData?.weightUnit) setWeightUnit(userData.weightUnit);
-  }, [userData]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof IntersectionObserver === 'undefined') return;
@@ -948,9 +971,8 @@ const LabScreen = ({ navigation }) => {
   );
 
   const topExercises = useMemo(() => {
-    const est = userData?.oneRepMaxEstimates;
-    if (!est) return [];
-    return Object.entries(est)
+    if (!prsData) return [];
+    return Object.entries(prsData)
       .filter(([, v]) => v?.current && v?.lastUpdated)
       .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
       .slice(0, 5)
@@ -961,7 +983,7 @@ const LabScreen = ({ navigation }) => {
         lastUpdated: v.lastUpdated,
         achievedWith: v.achievedWith,
       }));
-  }, [userData?.oneRepMaxEstimates]);
+  }, [prsData]);
 
   useEffect(() => {
     if (!selectedExerciseKey && topExercises.length > 0) {
@@ -976,8 +998,8 @@ const LabScreen = ({ navigation }) => {
   }, [selectedExerciseKey, oneRepMaxHistories]);
 
   const current1RM = useMemo(() => {
-    if (!selectedExerciseKey || !userData?.oneRepMaxEstimates) return null;
-    const est = userData.oneRepMaxEstimates[selectedExerciseKey];
+    if (!selectedExerciseKey || !prsData) return null;
+    const est = prsData[selectedExerciseKey];
     if (!est?.current) return null;
     const fourWeeksAgo = new Date(); fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const hist = oneRepMaxHistories.find((h) => h.exerciseKey === selectedExerciseKey);
@@ -987,7 +1009,7 @@ const LabScreen = ({ navigation }) => {
       if (old.length > 0) delta = est.current - old[old.length - 1].value;
     }
     return { current: est.current, delta, achievedWith: est.achievedWith };
-  }, [selectedExerciseKey, userData?.oneRepMaxEstimates, oneRepMaxHistories]);
+  }, [selectedExerciseKey, prsData, oneRepMaxHistories]);
 
   const volumeByWeekGrouped = useMemo(() => {
     const wv = userData?.weeklyMuscleVolume || {};
@@ -2258,15 +2280,13 @@ const LabScreen = ({ navigation }) => {
   };
 
   const handleEntrySaved = () => {
-    setCuerpoLoaded(false);
-    loadCuerpoData();
+    queryClient.invalidateQueries({ queryKey: ['lab', 'bodyLog', uid] });
   };
 
   const handleWeightUnitChange = (u) => {
-    setWeightUnit(u);
-    const uid = user?.uid || auth.currentUser?.uid;
+    queryClient.setQueryData(['lab', 'userDoc', uid], (prev) => prev ? { ...prev, weightUnit: u } : prev);
     if (uid) {
-      firestoreService.updateUser(uid, { weightUnit: u }).catch(() => {});
+      apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
     }
   };
 
@@ -2278,7 +2298,6 @@ const LabScreen = ({ navigation }) => {
   };
 
   const renderCuerpoTab = () => {
-    const uid = user?.uid || auth.currentUser?.uid;
     const allDates = [...bodyLogEntries].reverse();
     const cardPad = Math.max(16, screenWidth * 0.04);
     const cardMx = CARD_MARGIN;
@@ -2536,7 +2555,7 @@ const LabScreen = ({ navigation }) => {
           currentGoal={goalWeight}
           unit={weightUnit}
           userId={uid}
-          onSaved={(kg) => setGoalWeight(kg)}
+          onSaved={(kg) => queryClient.setQueryData(['lab', 'userDoc', uid], (prev) => prev ? { ...prev, goalWeight: kg } : prev)}
         />
       </>
     );

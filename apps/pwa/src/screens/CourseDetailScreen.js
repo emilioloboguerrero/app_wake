@@ -28,10 +28,9 @@ import SvgArrowReload from '../components/icons/SvgArrowReload';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
-import hybridDataService from '../services/hybridDataService';
+import { queryClient } from '../config/queryClient';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
-import consolidatedDataService from '../services/consolidatedDataService';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -104,6 +103,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
     queryKey: ['user', effectiveUserUid],
+    // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
     queryFn: () => firestoreService.getUser(effectiveUserUid),
     enabled: !!effectiveUserUid,
     staleTime: 5 * 60 * 1000,
@@ -184,6 +184,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
     if (!effectiveUser?.uid) return;
 
     try {
+      // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
       const userDoc = await firestoreService.getUser(effectiveUser.uid);
       if (userDoc?.role) {
         setUserRole(userDoc.role);
@@ -200,6 +201,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       
       logger.debug('🔍 Fetching modules for course:', course.id);
       // Fix: Modules can be fetched even without user (for public course details)
+      // TODO: no endpoint for getCourseModules — no matching REST endpoint
       const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
       
       logger.debug('✅ Modules fetched:', coursesModules.length);
@@ -249,16 +251,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
 
       pendingPostPurchaseRef.current = false;
       
-      // FIX: Clear ALL caches before syncing to ensure fresh data
-      consolidatedDataService.clearUserCache(effectiveUser.uid);
-      consolidatedDataService.clearAllCache();
-      
-      // Sync courses to update cache with new purchase
-      logger.log('📦 Force syncing courses...');
-      await hybridDataService.syncCourses(effectiveUser.uid);
-      
-      // FIX: Also clear consolidated cache again after sync
-      consolidatedDataService.clearUserCache(effectiveUser.uid);
+      // Invalidate courses cache so React Query refetches fresh data
+      logger.log('📦 Invalidating courses cache...');
+      queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
       
       // FIX: Wait a moment for cache to update, then download
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -516,6 +511,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       try {
+        // TODO: no endpoint for creator profile lookup — no REST endpoint for arbitrary user lookup by userId
         const creatorDoc = await firestoreService.getUser(creatorId);
         if (!isMounted) {
           return;
@@ -825,8 +821,8 @@ useEffect(() => {
           // Do the same operations as the old purchase system
           logger.debug('✅ Processing free access, syncing data...');
           
-          // Sync courses to update cache with new purchase
-          await hybridDataService.syncCourses(effectiveUser.uid);
+          // Invalidate courses cache so React Query refetches fresh data
+          queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
           
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
@@ -1063,7 +1059,7 @@ useEffect(() => {
         return;
       }
 
-      await hybridDataService.syncCourses(user.uid);
+      queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {

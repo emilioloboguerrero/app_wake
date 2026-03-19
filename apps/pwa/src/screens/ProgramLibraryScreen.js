@@ -23,7 +23,6 @@ import firestoreService from '../services/firestoreService';
 import profilePictureService from '../services/profilePictureService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { auth } from '../config/firebase';
-import hybridDataService from '../services/hybridDataService';
 import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
@@ -85,6 +84,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   const { data: userDoc } = useQuery({
     queryKey: ['user', userId],
+    // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
     queryFn: () => firestoreService.getUser(userId),
     enabled: !!userId,
     ...cacheConfig.userProfile,
@@ -251,6 +251,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const { data: fetchedCourses, isLoading: coursesLoading, isError: coursesError } = useQuery({
     queryKey: ['programs', 'library', userId, userRole],
     queryFn: async () => {
+      // TODO: no endpoint for getCourses — no REST endpoint; courses are in the users/me courses map
       const allCourses = await firestoreService.getCourses(userId);
       let filtered;
       if (isAdmin(userRole)) {
@@ -343,6 +344,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     
     try {
       logger.log('🔄 Fetching modules for course:', courseId);
+      // TODO: no endpoint for getCourseModules — no matching REST endpoint
       const modules = await firestoreService.getCourseModules(courseId, user?.uid);
       
       // Cache the modules

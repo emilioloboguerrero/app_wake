@@ -1,4 +1,5 @@
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryClient, queryKeys } from '../config/queryClient';
@@ -256,6 +257,7 @@ const LibrarySessionDetailScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const isPlanInstanceEdit = Boolean(planInstancePlanId && planInstanceModuleId && sessionId && location.pathname.includes('/plans/') && location.pathname.includes('/edit'));
   const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/content');
   const backState = location.state?.returnState ?? {};
@@ -408,7 +410,7 @@ const LibrarySessionDetailScreen = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
     } catch (err) {
       logger.error('Error updating session image:', err);
-      alert('Error al actualizar la imagen.');
+      showToast('Error al actualizar la imagen.', 'error');
     }
     setIsMediaPickerOpen(false);
   };
@@ -890,7 +892,7 @@ const LibrarySessionDetailScreen = () => {
       await loadExercisesFromLibrary(selectedLibraryId);
     } catch (err) {
       logger.error('Error adding exercise:', err);
-      alert('Error al agregar el ejercicio');
+      showToast('Error al agregar el ejercicio', 'error');
     }
   };
 
@@ -939,7 +941,7 @@ const LibrarySessionDetailScreen = () => {
     } catch (err) {
       // Revert optimistic update on error: reload current list from server
       logger.error('Error deleting exercise:', err);
-      alert('Error al eliminar el ejercicio');
+      showToast('Error al eliminar el ejercicio', 'error');
       try {
         const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
         if (sessionData != null) {
@@ -1210,7 +1212,7 @@ const LibrarySessionDetailScreen = () => {
       setExpandedSeries({}); // Reset expanded state
     } catch (error) {
       logger.error('Error opening exercise modal:', error);
-      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al abrir el ejercicio. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1479,7 +1481,7 @@ const LibrarySessionDetailScreen = () => {
           setExerciseSets(exerciseSets);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(originalExerciseSets)));
           setUnsavedSetChanges(unsavedSetChanges);
-          alert('Error al añadir series. Por favor, intenta de nuevo.');
+          showToast('Error al añadir series. Por favor, intenta de nuevo.', 'error');
         } finally {
           setOptimisticSetsCount(null);
         }
@@ -1507,7 +1509,7 @@ const LibrarySessionDetailScreen = () => {
           setExerciseSets(refetched);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(refetched)));
           setUnsavedSetChanges({});
-          alert('Error al eliminar series. Por favor, intenta de nuevo.');
+          showToast('Error al eliminar series. Por favor, intenta de nuevo.', 'error');
         }
       })();
     }
@@ -1622,7 +1624,7 @@ const LibrarySessionDetailScreen = () => {
     } catch (err) {
       logger.error('Error saving set changes:', err);
       setUnsavedSetChanges(prev => ({ ...prev, [setId]: true }));
-      alert('Los cambios no se pudieron guardar. Puedes volver a editar para reintentar.');
+      showToast('Los cambios no se pudieron guardar. Puedes volver a editar para reintentar.', 'error');
     } finally {
       setIsSavingSetChanges(false);
     }
@@ -1674,7 +1676,7 @@ const LibrarySessionDetailScreen = () => {
       return newSet;
     } catch (err) {
       logger.error('Error creating set:', err);
-      alert('Error al crear la serie. Por favor, intenta de nuevo.');
+      showToast('Error al crear la serie. Por favor, intenta de nuevo.', 'error');
       throw err;
     } finally {
       setIsCreatingSet(false);
@@ -1701,7 +1703,7 @@ const LibrarySessionDetailScreen = () => {
       setUnsavedSetChanges({});
     } catch (err) {
       logger.error('Error duplicando serie:', err);
-      alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al duplicar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1741,7 +1743,7 @@ const LibrarySessionDetailScreen = () => {
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
-      alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la serie. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -1777,7 +1779,7 @@ const LibrarySessionDetailScreen = () => {
       setIsSeriesEditMode(false);
     } catch (err) {
       logger.error('Error saving series order:', err);
-      alert('Error al guardar el orden de las series');
+      showToast('Error al guardar el orden de las series', 'error');
       setExerciseSets(originalSeriesOrder);
     } finally {
       setIsUpdatingSeriesOrder(false);
@@ -1814,7 +1816,7 @@ const LibrarySessionDetailScreen = () => {
     try {
       const primaryValues = Object.values(exerciseDraft.primary || {});
       if (primaryValues.length === 0 || !primaryValues[0]) {
-        alert('Debes seleccionar un ejercicio principal');
+        showToast('Debes seleccionar un ejercicio principal', 'error');
         return;
       }
 
@@ -1894,7 +1896,7 @@ const LibrarySessionDetailScreen = () => {
       setUnsavedSetChanges({});
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingNewExercise(false);
     }
@@ -1917,7 +1919,7 @@ const LibrarySessionDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1938,7 +1940,7 @@ const LibrarySessionDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error loading exercises from library:', err);
-      alert('Error al cargar los ejercicios de la biblioteca');
+      showToast('Error al cargar los ejercicios de la biblioteca', 'error');
     } finally {
       setIsLoadingExercisesFromLibrary(false);
     }
@@ -2015,7 +2017,7 @@ const LibrarySessionDetailScreen = () => {
       handleCloseLibraryExerciseModal();
     } catch (err) {
       logger.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('Error al actualizar el ejercicio. Por favor, intenta de nuevo.', 'error');
     } finally {
       setIsSavingLibraryExerciseChoice(false);
     }
@@ -2043,7 +2045,7 @@ const LibrarySessionDetailScreen = () => {
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.error('Error finding affected users:', err);
-      alert('Error al comprobar usuarios afectados.');
+      showToast('Error al comprobar usuarios afectados.', 'error');
     }
   };
 
@@ -2111,14 +2113,14 @@ const LibrarySessionDetailScreen = () => {
       const { propagated, errors } = await propagationService.propagateLibrarySession(user.uid, sessionId);
       if (errors.length > 0) {
         logger.warn('Propagation had some errors:', errors);
-        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+        showToast(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`, 'error');
       } else if (propagated > 0) {
-        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+        showToast(`Cambios propagados correctamente a ${propagated} usuario(s).`, 'success');
       }
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+      showToast(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }
@@ -2140,7 +2142,7 @@ const LibrarySessionDetailScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('Error al cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -2185,7 +2187,7 @@ const LibrarySessionDetailScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting alternative:', err);
-      alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+      showToast('Error al eliminar la alternativa. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2219,7 +2221,7 @@ const LibrarySessionDetailScreen = () => {
       setIsPresetSelectorOpen(false);
     } catch (err) {
       logger.error('Error applying preset:', err);
-      alert('Error al aplicar la plantilla. Por favor, intenta de nuevo.');
+      showToast('Error al aplicar la plantilla. Por favor, intenta de nuevo.', 'error');
     }
   };
 
@@ -2238,7 +2240,7 @@ const LibrarySessionDetailScreen = () => {
         applyPresetToExercise({ id, name: data.name, ...updates });
       } catch (err) {
         logger.error('Error creating preset:', err);
-        alert('Error al crear la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al crear la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'edit_preset' && presetBeingEditedId && data.name) {
@@ -2254,7 +2256,7 @@ const LibrarySessionDetailScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating preset:', err);
-        alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+        showToast('Error al guardar la plantilla. Por favor, intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'exercise') {
@@ -2272,7 +2274,7 @@ const LibrarySessionDetailScreen = () => {
           }
         } catch (err) {
           logger.error('Error updating exercise:', err);
-          alert('Error al guardar. Por favor, intenta de nuevo.');
+          showToast('Error al guardar. Por favor, intenta de nuevo.', 'error');
           return;
         }
       }
@@ -2778,7 +2780,7 @@ const LibrarySessionDetailScreen = () => {
                       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
                     } catch (err) {
                       logger.error('Error reverting to library:', err);
-                      alert('Error al restablecer. Intenta de nuevo.');
+                      showToast('Error al restablecer. Intenta de nuevo.', 'error');
                     }
                   }}
                 >

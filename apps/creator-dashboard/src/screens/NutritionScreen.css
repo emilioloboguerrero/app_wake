@@ -1,77 +1,172 @@
-/* Nutrition Screen - Creator nutrition library, assignments, client comparison */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+/* ─── Screen wrapper ──────────────────────────────────────── */
 .nutrition-screen {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 32px;
   box-sizing: border-box;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
-.nutrition-tabs {
+/* ─── Page header ─────────────────────────────────────────── */
+.nutrition-page-header {
   display: flex;
-  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
   margin-bottom: 32px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0;
+  flex-wrap: wrap;
+  animation: fade-up var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.nutrition-page-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nutrition-page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.nutrition-page-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  margin: 0;
+}
+
+/* ─── Primary action button ───────────────────────────────── */
+.nutrition-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  height: 40px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--text-primary, #fff);
+  color: var(--canvas, #1a1a1a);
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
+              transform var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nutrition-primary-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.nutrition-primary-btn:active {
+  opacity: 0.75;
+  transform: translateY(0);
+}
+
+/* ─── Inline error banner ─────────────────────────────────── */
+.nutrition-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  border-radius: var(--radius-md, 10px);
+  color: #ff6b6b;
+  font-size: 13px;
+  margin-bottom: 16px;
+  animation: fade-up var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.nutrition-error-banner-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.nutrition-error-banner-close:hover {
+  opacity: 1;
+}
+
+/* ─── Tab navigation ──────────────────────────────────────── */
+.nutrition-tabs {
+  display: inline-flex;
+  flex-direction: row;
+  position: relative;
+  align-items: center;
+  gap: 0;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-pill, 999px);
+  padding: 3px;
+  margin-bottom: 32px;
 }
 
 .nutrition-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 24px;
+  height: 32px;
+  border-radius: var(--radius-pill, 999px);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  padding: 12px 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  margin-bottom: -1px;
-  font-size: 14px;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  transition: color var(--duration-fast, 120ms) ease,
+              background var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  z-index: 1;
 }
 
-.nutrition-tab:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background-color: rgba(255, 255, 255, 0.03);
+.nutrition-tab:hover:not(.active) {
+  color: var(--text-primary, #fff);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .nutrition-tab.active {
-  border-bottom-color: rgba(255, 255, 255, 1);
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary, #fff);
   font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* ─── Tab content ─────────────────────────────────────────── */
 .nutrition-tab-content {
   width: 100%;
+  animation: fade-up var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.nutrition-sub-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-
-.nutrition-sub-tabs button {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 16px;
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.nutrition-sub-tabs button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.nutrition-sub-tabs button.active {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-
+/* ─── Section ─────────────────────────────────────────────── */
 .nutrition-section {
   width: 100%;
 }
@@ -80,96 +175,94 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   gap: 20px;
   flex-wrap: wrap;
 }
 
-/* Pill buttons (same style and order as library session/exercise actions: + then Editar) */
+.nutrition-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0;
+}
+
 .nutrition-header-actions {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
+/* ─── Pill buttons ────────────────────────────────────────── */
 .nutrition-pill {
   padding: 6px 20px;
   height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  border-radius: var(--radius-pill, 999px);
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  transition: background var(--duration-fast, 120ms) ease,
+              border-color var(--duration-fast, 120ms) ease,
+              color var(--duration-fast, 120ms) ease;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  gap: 6px;
 }
 
 .nutrition-pill:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #fff);
 }
 
 .nutrition-pill-icon {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 500;
   line-height: 1;
 }
 
 .nutrition-pill-text {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-}
-
-.nutrition-section-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0;
 }
 
 .nutrition-section-desc {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin-bottom: 24px;
   max-width: 640px;
 }
 
-.nutrition-loading {
-  color: rgba(255, 255, 255, 0.5);
-  padding: 24px;
-}
-
-/* Search — same style as library exercises (border, focus ring, icon) */
+/* ─── Search ──────────────────────────────────────────────── */
 .nutrition-search-container {
-  padding: 16px 0;
-  margin-bottom: 8px;
+  padding: 12px 0 8px;
 }
 
 .nutrition-search-input-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  gap: 10px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 10px);
   padding: 10px 14px;
-  transition: all 0.2s ease;
+  transition: border-color var(--duration-fast, 120ms) ease,
+              box-shadow var(--duration-fast, 120ms) ease;
 }
 
 .nutrition-search-input-container:focus-within {
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 .nutrition-search-icon {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   flex-shrink: 0;
 }
 
@@ -178,71 +271,171 @@
   background: transparent;
   border: none;
   outline: none;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary, #fff);
   font-size: 14px;
-  font-family: inherit;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .nutrition-search-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
 }
 
-/* Grid and cards — same style as library exercises list / exercise-card */
-.nutrition-grid {
+/* ─── Loading shimmer ─────────────────────────────────────── */
+.nutrition-loading {
+  display: none;
+}
+
+.nutrition-skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
   margin-top: 24px;
 }
 
+.nutrition-skeleton-card {
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100px;
+}
+
+.nutrition-skeleton-line {
+  border-radius: var(--radius-pill, 999px);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.09) 40%,
+    rgba(255, 255, 255, 0.04) 80%
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.nutrition-skeleton-line-title {
+  height: 16px;
+  width: 65%;
+}
+
+.nutrition-skeleton-line-meta {
+  height: 11px;
+  width: 45%;
+}
+
+/* ─── Empty state ─────────────────────────────────────────── */
+.nutrition-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  gap: 10px;
+  animation: fade-up var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.nutrition-empty-icon {
+  font-size: 40px;
+  margin-bottom: 4px;
+  opacity: 0.4;
+}
+
+.nutrition-empty-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0;
+}
+
+.nutrition-empty-sub {
+  font-size: 14px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  margin: 0;
+  max-width: 340px;
+}
+
+.nutrition-empty-cta {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--text-primary, #fff);
+  color: var(--canvas, #1a1a1a);
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  cursor: pointer;
+  transition: opacity var(--duration-fast, 120ms) ease,
+              transform var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nutrition-empty-cta:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+/* ─── Grid ────────────────────────────────────────────────── */
+.nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+/* ─── Cards ───────────────────────────────────────────────── */
 .nutrition-card {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
+  padding: 20px;
   min-height: 100px;
   display: flex;
   flex-direction: column;
-  transition: all 0.2s ease;
+  transition: background var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1),
+              border-color var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1),
+              transform var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow var(--duration-base, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
   cursor: default;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
 }
 
 .nutrition-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--surface-3, #2a2a2a);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
   transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .nutrition-card-clickable {
   cursor: pointer;
 }
 
-.nutrition-card-clickable:focus,
-.nutrition-card-clickable:active {
+.nutrition-card-clickable:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: none;
-  box-shadow: none;
 }
 
 .nutrition-card-title {
-  font-size: 1.25rem;
+  font-size: 15px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary, #fff);
   margin: 0 0 8px 0;
   line-height: 1.4;
 }
 
 .nutrition-card-meta {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0;
 }
 
 .nutrition-card-desc {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 8px 0 0 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -250,6 +443,53 @@
   overflow: hidden;
 }
 
+/* ─── Card macro pills ────────────────────────────────────── */
+.nutrition-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.nutrition-macro-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.nutrition-kcal-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.nutrition-client-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+/* ─── List view (kept) ────────────────────────────────────── */
 .nutrition-list {
   list-style: none;
   padding: 0;
@@ -264,29 +504,29 @@
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 10px);
   flex-wrap: wrap;
 }
 
 .nutrition-list-client {
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary, #fff);
   min-width: 140px;
 }
 
 .nutrition-list-plan {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   flex: 1;
 }
 
 .nutrition-list-date {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
-/* Compare section */
+/* ─── Compare section ─────────────────────────────────────── */
 .nutrition-compare-section {
   max-width: 720px;
 }
@@ -307,16 +547,16 @@
 
 .nutrition-compare-field label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
 .nutrition-compare-field select,
 .nutrition-compare-field input {
   padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 14px;
   min-width: 160px;
 }
@@ -330,23 +570,23 @@
 .nutrition-compare-plan,
 .nutrition-compare-actual {
   padding: 20px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: var(--surface-2, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 16px);
 }
 
 .nutrition-compare-plan h3,
 .nutrition-compare-actual h3 {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0 0 12px 0;
 }
 
 .nutrition-compare-plan p,
 .nutrition-compare-actual p {
   margin: 0 0 12px 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary, #fff);
 }
 
 .nutrition-macros-row {
@@ -354,10 +594,10 @@
   gap: 16px;
   flex-wrap: wrap;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
-/* Program form */
+/* ─── Program form ────────────────────────────────────────── */
 .nutrition-program-form {
   display: flex;
   flex-direction: column;
@@ -374,31 +614,31 @@
 .nutrition-form-field label {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
 .nutrition-form-field select {
   padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 14px;
 }
 
 .nutrition-textarea {
   padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 13px;
   font-family: 'Monaco', 'Menlo', monospace;
   resize: vertical;
   min-height: 120px;
 }
 
-/* Modal content */
+/* ─── Modal content ───────────────────────────────────────── */
 .nutrition-modal-content {
   display: flex;
   flex-direction: column;
@@ -410,21 +650,21 @@
   justify-content: flex-end;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
-/* Meal form */
+/* ─── Meal form ───────────────────────────────────────────── */
 .nutrition-meal-add-section {
   padding: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-3, #2a2a2a);
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .nutrition-meal-add-section h4 {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0 0 16px 0;
 }
 
@@ -449,10 +689,10 @@
 
 .nutrition-food-picker select {
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 13px;
   min-width: 180px;
 }
@@ -460,17 +700,17 @@
 .nutrition-units-input {
   width: 70px;
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 13px;
 }
 
 .nutrition-manual-toggle {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary, #fff);
   font-size: 13px;
   cursor: pointer;
   padding: 4px 0;
@@ -487,7 +727,7 @@
   align-items: flex-end;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .nutrition-manual-form .input-container {
@@ -501,7 +741,7 @@
 .nutrition-meal-items h4 {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0 0 12px 0;
 }
 
@@ -516,20 +756,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md, 10px);
   margin-bottom: 6px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary, #fff);
 }
 
 .nutrition-remove-item {
-  background: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.4);
-  color: #ff4444;
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ff6b6b;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 10px);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
@@ -539,10 +779,10 @@
 }
 
 .nutrition-remove-item:hover {
-  background: rgba(255, 68, 68, 0.3);
+  background: rgba(255, 68, 68, 0.25);
 }
 
-/* Plan slots */
+/* ─── Plan slots ──────────────────────────────────────────── */
 .nutrition-macros-inputs {
   display: flex;
   gap: 12px;
@@ -552,33 +792,33 @@
 .nutrition-macros-inputs input {
   width: 90px;
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 14px;
 }
 
 .nutrition-plan-slots {
   padding: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-3, #2a2a2a);
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .nutrition-plan-slots h4 {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0 0 16px 0;
 }
 
 .nutrition-slot-block {
   padding: 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md, 10px);
   margin-bottom: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 }
 
 .nutrition-slot-header {
@@ -590,19 +830,19 @@
 
 .nutrition-slot-header select {
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 14px;
 }
 
 .nutrition-remove-slot {
-  background: rgba(255, 68, 68, 0.15);
-  border: 1px solid rgba(255, 68, 68, 0.3);
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.25);
   color: #ff6b6b;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 10px);
   font-size: 12px;
   cursor: pointer;
 }
@@ -616,10 +856,10 @@
 
 .nutrition-slot-option select {
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--surface-2, #222);
+  color: var(--text-primary, #fff);
   font-size: 13px;
   min-width: 180px;
 }
@@ -629,9 +869,45 @@
   max-width: 200px;
 }
 
+/* ─── Sub-tabs ────────────────────────────────────────────── */
+.nutrition-sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.nutrition-sub-tabs button {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  padding: 8px 16px;
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--duration-fast, 120ms) ease;
+}
+
+.nutrition-sub-tabs button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+}
+
+.nutrition-sub-tabs button.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #fff);
+}
+
+/* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 640px) {
   .nutrition-screen {
     padding: 16px;
+  }
+
+  .nutrition-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
   }
 
   .nutrition-compare-results {
@@ -649,7 +925,7 @@
   }
 }
 
-/* New meal name modal: full-width input, no inner card */
+/* ─── New meal modal ──────────────────────────────────────── */
 .new-meal-modal-content .propagate-modal-layout-single.new-meal-modal-layout {
   width: 100%;
   box-sizing: border-box;

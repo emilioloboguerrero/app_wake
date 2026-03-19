@@ -1,6 +1,9 @@
 # .gitignore for Wake - React Native/Expo Project
 # Created: January 2025
 
+# Claude Code
+.claude/
+
 # ============================================
 # Dependencies
 # ============================================
@@ -180,6 +183,11 @@ eas-build-*.json
 *.tar.gz
 *.rar
 *.7z
+
+# ============================================
+# MCP config (contains API keys)
+# ============================================
+.mcp.json
 
 # ============================================
 # Keep these files (explicitly NOT ignored)

@@ -4,8 +4,7 @@
  * When user doesn't log for 4+ calendar days, streak dies (show 0). On next log, streak restarts at 1.
  */
 import React from 'react';
-import { doc, getDoc, getDocFromServer, updateDoc, onSnapshot } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 
 const DAYS_WITHOUT_ACTIVITY_TO_DIE = 4;
@@ -81,34 +80,6 @@ function computeStreakStateFromDates(streakStartDate, lastActivityDate, today = 
   return { streakNumber, flameLevel };
 }
 
-const streakUpdateListeners = new Set();
-
-function notifyStreakUpdated(newState) {
-  streakUpdateListeners.forEach((cb) => {
-    try {
-      cb(newState);
-    } catch (e) {
-      logger.warn('Streak update listener error:', e);
-    }
-  });
-}
-
-/** Build streak state from user doc data (no Firestore read). */
-function buildStreakResultFromUserData(data) {
-  const today = getTodayLocal();
-  const as = data?.activityStreak || {};
-  const lastActivityDate = toYYYYMMDD(as.lastActivityDate) || null;
-  const streakStartDate = toYYYYMMDD(as.streakStartDate) || null;
-  const current = computeStreakStateFromDates(streakStartDate, lastActivityDate, today);
-  const result = { ...current, streakStartDate, lastActivityDate };
-  if (as.longestStreak != null) result.longestStreak = as.longestStreak;
-  const longestStart = toYYYYMMDD(as.longestStreakStartDate);
-  const longestEnd = toYYYYMMDD(as.longestStreakEndDate);
-  if (longestStart != null) result.longestStreakStartDate = longestStart;
-  if (longestEnd != null) result.longestStreakEndDate = longestEnd;
-  return result;
-}
-
 /**
  * Get current activity streak state (computed from stored dates).
  * Tries server first; on failure (e.g. unavailable), falls back to cache so we never show 0 due to cold start.
@@ -121,34 +92,17 @@ async function getActivityStreakState(userId) {
   }
 
   const today = getTodayLocal();
-  const userDocRef = doc(firestore, 'users', userId);
 
   try {
-    let userDoc = null;
-    let fromServer = false;
-    try {
-      userDoc = await getDocFromServer(userDocRef);
-      fromServer = true;
-    } catch (serverError) {
-      const isUnavailable = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
-      if (isUnavailable) {
-        logger.debug?.('🔥 [streak] Server unavailable, using cache for user', userId);
-        userDoc = await getDoc(userDocRef);
-      } else {
-        throw serverError;
-      }
-    }
-
-    if (!userDoc || !userDoc.exists()) {
-      return { streakNumber: 0, flameLevel: 0 };
-    }
-    const result = buildStreakResultFromUserData(userDoc.data());
-    if (fromServer) {
-      streakCache.set(userId, {
-        state: result,
-        computedForDate: today
-      });
-    }
+    const res = await apiClient.get('/workout/streak');
+    const d = res?.data ?? {};
+    const result = {
+      streakNumber: d.currentStreak ?? 0,
+      flameLevel: d.flameLevel ?? 0,
+      longestStreak: d.longestStreak ?? 0,
+      lastActivityDate: d.lastActivityDate ?? null,
+    };
+    streakCache.set(userId, { state: result, computedForDate: today });
     return result;
   } catch (error) {
     logger.error('❌ getActivityStreakState:', error);
@@ -156,94 +110,10 @@ async function getActivityStreakState(userId) {
   }
 }
 
-/**
- * Call when user logs a workout or a meal. activityDate = YYYY-MM-DD for the day being logged.
- * @param {string} userId
- * @param {string} activityDate - YYYY-MM-DD (local date of the log)
- */
-async function updateActivityStreak(userId, activityDate) {
-  try {
-    const userDocRef = doc(firestore, 'users', userId);
-    // Read from server so we don't overwrite server state with state computed from stale cache.
-    let userDoc;
-    try {
-      userDoc = await getDocFromServer(userDocRef);
-    } catch (serverError) {
-      const isOffline = serverError?.code === 'unavailable' || serverError?.message?.includes('offline');
-      if (isOffline) {
-        logger.debug?.('🔥 [streak] Server unavailable on update, using cache for user', userId);
-        userDoc = await getDoc(userDocRef);
-      } else {
-        throw serverError;
-      }
-    }
-    if (!userDoc.exists()) {
-      return;
-    }
-    const data = userDoc.data();
-    const existing = data?.activityStreak || {};
-    const lastActivityDate = toYYYYMMDD(existing.lastActivityDate) || null;
-    const streakStartDate = toYYYYMMDD(existing.streakStartDate) || null;
-
-    if (lastActivityDate && activityDate < lastActivityDate) {
-      return;
-    }
-
-    const daysSinceLast = lastActivityDate ? calendarDaysBetween(lastActivityDate, activityDate) : null;
-    const isDead = lastActivityDate && daysSinceLast >= DAYS_WITHOUT_ACTIVITY_TO_DIE;
-    const isNewStreak = !streakStartDate || isDead;
-
-    const nextStart = isNewStreak ? activityDate : streakStartDate;
-    const currentLongest = existing.longestStreak ?? 0;
-    let candidateLength = 0;
-    let candidateStart = null;
-    let candidateEnd = null;
-    if (isDead && streakStartDate && lastActivityDate) {
-      candidateLength = calendarDaysBetween(streakStartDate, lastActivityDate) + 1;
-      candidateStart = streakStartDate;
-      candidateEnd = lastActivityDate;
-    } else {
-      candidateLength = calendarDaysBetween(nextStart, activityDate) + 1;
-      candidateStart = nextStart;
-      candidateEnd = activityDate;
-    }
-    const activityStreakPayload = {
-      streakStartDate: nextStart,
-      lastActivityDate: activityDate
-    };
-    if (candidateLength > currentLongest) {
-      activityStreakPayload.longestStreak = candidateLength;
-      activityStreakPayload.longestStreakStartDate = candidateStart;
-      activityStreakPayload.longestStreakEndDate = candidateEnd;
-    } else if (existing.longestStreak != null) {
-      activityStreakPayload.longestStreak = existing.longestStreak;
-      const existingLongestStart = toYYYYMMDD(existing.longestStreakStartDate);
-      const existingLongestEnd = toYYYYMMDD(existing.longestStreakEndDate);
-      if (existingLongestStart != null) activityStreakPayload.longestStreakStartDate = existingLongestStart;
-      if (existingLongestEnd != null) activityStreakPayload.longestStreakEndDate = existingLongestEnd;
-    }
-    await updateDoc(userDocRef, { activityStreak: activityStreakPayload });
-    logger.log('🔥 Activity streak updated:', { userId, activityDate, streakStartDate: nextStart });
-    const newState = computeStreakStateFromDates(nextStart, activityDate, getTodayLocal());
-    newState.streakStartDate = activityStreakPayload.streakStartDate;
-    newState.lastActivityDate = activityStreakPayload.lastActivityDate;
-    if (activityStreakPayload.longestStreak != null) {
-      newState.longestStreak = activityStreakPayload.longestStreak;
-      newState.longestStreakStartDate = activityStreakPayload.longestStreakStartDate;
-      newState.longestStreakEndDate = activityStreakPayload.longestStreakEndDate;
-    }
-
-    // Keep cache in sync for the current local day
-    const today = getTodayLocal();
-    streakCache.set(userId, {
-      state: newState,
-      computedForDate: today
-    });
-
-    notifyStreakUpdated(newState);
-  } catch (error) {
-    logger.error('❌ updateActivityStreak:', error);
-  }
+// Streak is now updated server-side atomically by POST /workout/complete.
+// Nutrition calls this but it is intentionally a no-op — streak no longer tracks meal logs.
+async function updateActivityStreak(_userId, _activityDate) {
+  return;
 }
 
 function getInitialStreakState(userId) {
@@ -262,8 +132,7 @@ function getInitialStreakState(userId) {
 }
 
 /**
- * useActivityStreak: initial state from cache when available, then onSnapshot for live updates
- * and one getActivityStreakState() to confirm/backfill (server or cache fallback).
+ * useActivityStreak: initial state from cache when available, then GET /workout/streak on mount.
  * Loading is derived from _loaded so it cannot get stuck true.
  */
 export function useActivityStreak(userId) {
@@ -273,105 +142,58 @@ export function useActivityStreak(userId) {
   const out = { ...state };
   delete out._loaded;
   out.isLoading = state._loaded === false && !!userId;
-  if (typeof logger.debug === 'function') {
-    logger.debug('[STREAK] useActivityStreak render', { userId: userId ? userId.slice(0, 8) : null, _loaded: state._loaded, isLoading: out.isLoading });
-  }
 
   React.useEffect(() => {
     if (!userId) {
-      logger.log('[STREAK] effect: no userId, setting _loaded:true and returning');
       setState({ streakNumber: 0, flameLevel: 0, isLoading: false, _loaded: true });
       return;
     }
 
     const runId = ++effectRunIdRef.current;
-    logger.log('[STREAK] effect: started', { runId, userId: userId.slice(0, 8) });
-
-    let midnightTimeoutId;
-    let loadingFallbackId;
-    let earlyClearId;
 
     setState((prev) => {
       const cached = streakCache.get(userId);
       const today = getTodayLocal();
       if (cached && cached.computedForDate === today && cached.state) {
-        logger.log('[STREAK] effect setState: cache HIT, setting _loaded:true');
         return { ...cached.state, isLoading: false, _loaded: true };
       }
-      logger.log('[STREAK] effect setState: no cache, setting _loaded:false (loading true)');
       return { ...prev, isLoading: true, _loaded: false };
     });
 
     const applyLoaded = (nextState) => {
-      if (effectRunIdRef.current !== runId) {
-        logger.log('[STREAK] applyLoaded: SKIP (stale runId)', { current: effectRunIdRef.current, runId });
-        return;
-      }
-      logger.log('[STREAK] applyLoaded: applying _loaded:true');
+      if (effectRunIdRef.current !== runId) return;
       setState((prev) => {
         const merged = typeof nextState === 'function' ? nextState(prev) : { ...prev, ...nextState };
         return { ...merged, isLoading: false, _loaded: true };
       });
     };
 
-    const userDocRef = doc(firestore, 'users', userId);
-    const unsubFirestore = onSnapshot(
-      userDocRef,
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        const ok = effectRunIdRef.current === runId;
-        logger.log('[STREAK] onSnapshot callback', { runId, currentRunId: effectRunIdRef.current, ok, exists: snapshot?.exists?.() });
-        if (!ok) return;
-        if (!snapshot.exists()) {
-          applyLoaded({ streakNumber: 0, flameLevel: 0 });
-          return;
-        }
-        const result = buildStreakResultFromUserData(snapshot.data());
-        applyLoaded(result);
-      },
-      (err) => {
-        logger.log('[STREAK] onSnapshot error callback', { runId, currentRunId: effectRunIdRef.current, skip: effectRunIdRef.current !== runId });
-        if (effectRunIdRef.current !== runId) return;
-        logger.warn?.('🔥 [streak] Listener error:', err);
-        applyLoaded({ streakNumber: 0, flameLevel: 0 });
-      }
-    );
-
     getActivityStreakState(userId).then((result) => {
-      const ok = effectRunIdRef.current === runId;
-      logger.log('[STREAK] getActivityStreakState then', { runId, currentRunId: effectRunIdRef.current, ok });
-      if (!ok) return;
+      if (effectRunIdRef.current !== runId) return;
       applyLoaded(result);
     }).catch((e) => {
-      const ok = effectRunIdRef.current === runId;
-      logger.log('[STREAK] getActivityStreakState catch', { runId, currentRunId: effectRunIdRef.current, ok, err: String(e?.message || e) });
-      if (!ok) return;
+      if (effectRunIdRef.current !== runId) return;
       logger.warn?.('🔥 [streak] Initial fetch failed:', e);
       applyLoaded({});
     });
 
-    earlyClearId = setTimeout(() => {
-      const ok = effectRunIdRef.current === runId;
-      logger.log('[STREAK] earlyClear 400ms', { runId, currentRunId: effectRunIdRef.current, ok });
-      if (!ok) return;
+    const earlyClearId = setTimeout(() => {
+      if (effectRunIdRef.current !== runId) return;
       setState((prev) => {
         if (prev._loaded) return prev;
-        logger.log('[STREAK] earlyClear: setting _loaded:true');
         return { ...prev, isLoading: false, _loaded: true };
       });
     }, 400);
 
-    loadingFallbackId = setTimeout(() => {
-      const ok = effectRunIdRef.current === runId;
-      logger.log('[STREAK] loadingFallback 2s', { runId, currentRunId: effectRunIdRef.current, ok });
-      if (!ok) return;
+    const loadingFallbackId = setTimeout(() => {
+      if (effectRunIdRef.current !== runId) return;
       setState((prev) => {
         if (prev._loaded) return prev;
-        logger.log('[STREAK] loadingFallback: setting _loaded:true');
         return { ...prev, isLoading: false, _loaded: true };
       });
     }, 2000);
 
+    let midnightTimeoutId;
     try {
       const now = new Date();
       const nextMidnight = new Date(now);
@@ -388,19 +210,10 @@ export function useActivityStreak(userId) {
       logger.warn?.('🔥 [streak] Failed to schedule midnight refresh:', e);
     }
 
-    const unsubscribe = (newState) => {
-      if (effectRunIdRef.current !== runId) return;
-      applyLoaded(newState);
-    };
-    streakUpdateListeners.add(unsubscribe);
-
     return () => {
-      logger.log('[STREAK] effect cleanup', { runId });
       clearTimeout(earlyClearId);
       clearTimeout(loadingFallbackId);
-      unsubFirestore();
       if (midnightTimeoutId) clearTimeout(midnightTimeoutId);
-      streakUpdateListeners.delete(unsubscribe);
     };
   }, [userId]);
 

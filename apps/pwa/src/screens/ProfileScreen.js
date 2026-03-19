@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
   View,
@@ -22,17 +22,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
-import { CommonActions } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { auth } from '../config/firebase';
-import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { updateProfile, EmailAuthProvider, GoogleAuthProvider } from 'firebase/auth';
 import googleAuthService from '../services/googleAuthService';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import tutorialManager from '../services/tutorialManager';
 import profilePictureService from '../services/profilePictureService';
 import TutorialOverlay from '../components/TutorialOverlay';
@@ -49,7 +47,6 @@ import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
-import { calculateExpirationDate } from '../utils/durationHelper';
 import { getAverageColorFromImageUrl } from '../utils/imageColorUtils';
 
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
@@ -61,6 +58,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true); // Start with true for initial profile load
   const [profileLoading, setProfileLoading] = useState(true); // Separate state for profile data loading
   
@@ -154,9 +152,16 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
   const { data: profileQueryData, isLoading: profileQueryLoading } = useQuery({
     queryKey: queryKeys.user.detail(user?.uid),
-    queryFn: () => hybridDataService.loadUserProfile(user.uid),
+    queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!user?.uid,
     ...cacheConfig.userProfile,
+  });
+
+  const profileUpdateMutation = useMutation({
+    mutationFn: (updates) => apiClient.patch('/users/me', updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+    },
   });
 
   // Sync query data into form state and derived state
@@ -172,18 +177,14 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
     const userData = profileQueryData;
     logger.log('✅ Profile loaded successfully');
-    if (userData.role) {
-      setUserRole(userData.role);
-    } else {
-      firestoreService.getUser(user.uid).then(doc => setUserRole(doc?.role || 'user')).catch(() => setUserRole('user'));
-    }
+    setUserRole(userData.role || 'user');
     setUserProfile({
       displayName: userData.displayName || '',
       username: userData.username || '',
       email: currentUser?.email || '',
       phoneNumber: userData.phoneNumber || '',
       gender: userData.gender || '',
-      bodyweight: userData.bodyweight || null,
+      bodyweight: userData.weight || null,
       height: userData.height || null,
     });
     if (userData.profilePictureUrl) {
@@ -239,38 +240,21 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     return user?.email?.split('@')[0] || 'usuario';
   };
 
-  // Load user's current interests and profile from hybrid system - ONLY when modals are opened
-  const loadUserData = async () => {
-    if (user?.uid) {
-      try {
-        const userData = await hybridDataService.loadUserProfile(user.uid);
-        
-        // Load profile data - normalize types for consistent comparison
-        const profileData = {
-          displayName: (userData?.displayName || '').trim(),
-          username: (userData?.username || user?.email?.split('@')[0] || '').trim(),
-          email: (user?.email || '').trim(),
-          phoneNumber: (userData?.phoneNumber || '').trim(),
-          gender: (userData?.gender || '').trim(),
-          // Normalize bodyweight and height - convert to numbers or null
-          bodyweight: userData?.bodyweight ? (typeof userData.bodyweight === 'string' ? parseFloat(userData.bodyweight) : userData.bodyweight) : null,
-          height: userData?.height ? (typeof userData.height === 'string' ? parseFloat(userData.height) : userData.height) : null,
-        };
-        setUserProfile(profileData);
-        // Set originalProfile to match exactly - this is the baseline for change detection
-        setOriginalProfile({
-          displayName: profileData.displayName,
-          username: profileData.username,
-          email: profileData.email,
-          phoneNumber: profileData.phoneNumber,
-          gender: profileData.gender,
-          bodyweight: profileData.bodyweight,
-          height: profileData.height,
-        });
-      } catch (error) {
-        logger.error('Error loading user data:', error);
-      }
-    }
+  // Sync profile form with cached query data — called when settings modal opens
+  const syncProfileFromQueryData = () => {
+    if (!profileQueryData) return;
+    const userData = profileQueryData;
+    const profileData = {
+      displayName: (userData?.displayName || '').trim(),
+      username: (userData?.username || user?.email?.split('@')[0] || '').trim(),
+      email: (user?.email || '').trim(),
+      phoneNumber: (userData?.phoneNumber || '').trim(),
+      gender: (userData?.gender || '').trim(),
+      bodyweight: userData?.weight ? (typeof userData.weight === 'number' ? userData.weight : parseFloat(userData.weight)) : null,
+      height: userData?.height ? (typeof userData.height === 'number' ? userData.height : parseFloat(userData.height)) : null,
+    };
+    setUserProfile(profileData);
+    setOriginalProfile({ ...profileData });
   };
 
 
@@ -329,30 +313,14 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   };
 
-  // Check if username is available
-  const checkUsernameAvailability = async (username) => {
+  // Check if username is available (server validates on save — client only checks length)
+  const checkUsernameAvailability = (username) => {
     if (!username || username.length < 3) {
       setUsernameError('El usuario debe tener al menos 3 caracteres');
       return;
     }
-    
-    setIsCheckingUsername(true);
     setUsernameError('');
-    
-    try {
-      const currentUserId = auth.currentUser?.uid || user?.uid;
-      const taken = await firestoreService.isUsernameTaken(username, currentUserId);
-      if (!taken) {
-        setUsernameError(''); // Username is available
-      } else {
-        setUsernameError('Este usuario ya está en uso');
-      }
-    } catch (error) {
-      logger.error('Error checking username:', error);
-      setUsernameError('Error al verificar disponibilidad');
-    } finally {
-      setIsCheckingUsername(false);
-    }
+    setIsCheckingUsername(false);
   };
 
   // Debounced username validation
@@ -388,7 +356,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       if (newPictureUrl) {
         setProfilePictureUrl(newPictureUrl);
-        hybridDataService.patchUserProfileCache(user.uid, { profilePictureUrl: newPictureUrl });
         Alert.alert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
       }
     } catch (error) {
@@ -409,23 +376,8 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
 
   // Show settings modal
-  const showSettingsModal = async () => {
-    // Load data when modal opens
-    await loadUserData();
-    // After loading, ensure originalProfile matches current userProfile exactly
-    // This prevents false positives when comparing for changes
-    setOriginalProfile(prev => {
-      const normalized = {
-        displayName: (userProfile.displayName || '').trim(),
-        username: (userProfile.username || '').trim(),
-        email: (userProfile.email || '').trim(),
-        phoneNumber: (userProfile.phoneNumber || '').trim(),
-        gender: (userProfile.gender || '').trim(),
-        bodyweight: userProfile.bodyweight ? (typeof userProfile.bodyweight === 'string' ? parseFloat(userProfile.bodyweight) : userProfile.bodyweight) : null,
-        height: userProfile.height ? (typeof userProfile.height === 'string' ? parseFloat(userProfile.height) : userProfile.height) : null,
-      };
-      return normalized;
-    });
+  const showSettingsModal = () => {
+    syncProfileFromQueryData();
     setIsSettingsModalVisible(true);
   };
 
@@ -434,22 +386,15 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     setIsSettingsModalVisible(false);
   };
 
-  // Load pinned default program ids when settings modal opens
+  // Load pinned default program ids when settings modal opens (read from cached profile query data)
   useEffect(() => {
-    if (!isSettingsModalVisible || !user?.uid) return;
-    let cancelled = false;
-    setLoadingPinned(true);
-    Promise.all([
-      firestoreService.getPinnedTrainingCourseId(user.uid),
-      firestoreService.getPinnedNutritionAssignmentId(user.uid),
-    ]).then(([trainingId, nutritionId]) => {
-      if (!cancelled) {
-        setPinnedTrainingCourseId(trainingId || null);
-        setPinnedNutritionAssignmentId(nutritionId || null);
-      }
-    }).finally(() => { if (!cancelled) setLoadingPinned(false); });
-    return () => { cancelled = true; };
-  }, [isSettingsModalVisible, user?.uid]);
+    if (!isSettingsModalVisible) return;
+    if (profileQueryData) {
+      setPinnedTrainingCourseId(profileQueryData.pinnedTrainingCourseId || null);
+      setPinnedNutritionAssignmentId(profileQueryData.pinnedNutritionAssignmentId || null);
+    }
+    setLoadingPinned(false);
+  }, [isSettingsModalVisible, profileQueryData]);
 
   const openDefaultTrainingPicker = async () => {
     if (!user?.uid) return;
@@ -503,11 +448,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     const id = item?.courseId ?? item?.id ?? null;
     const title = id ? (item?.title ?? '') : '';
     try {
-      await firestoreService.setPinnedTrainingCourseId(user.uid, id);
+      await apiClient.patch('/users/me', { pinnedTrainingCourseId: id });
       setPinnedTrainingCourseId(id);
       setPinnedTrainingTitle(title);
     } catch (e) {
-      logger.error('[Profile] setPinnedTrainingCourseId failed', e);
+      logger.error('[Profile] pinnedTrainingCourseId update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
     }
   };
@@ -518,39 +463,37 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     const id = item?.assignmentId ?? item?.id ?? null;
     const title = id ? (item?.title ?? '') : '';
     try {
-      await firestoreService.setPinnedNutritionAssignmentId(user.uid, id);
+      await apiClient.patch('/users/me', { pinnedNutritionAssignmentId: id });
       setPinnedNutritionAssignmentId(id);
       setPinnedNutritionTitle(title);
     } catch (e) {
-      logger.error('[Profile] setPinnedNutritionAssignmentId failed', e);
+      logger.error('[Profile] pinnedNutritionAssignmentId update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
     }
   };
 
-  // Save profile using hybrid system
+  // Save profile
   const saveProfile = async () => {
+    // Validate inputs before saving
     try {
-      setSettingsLoading(true);
-      
-      // Validate inputs before saving
-      try {
-        validateDisplayName(userProfile.displayName);
-        validateUsernameFormat(userProfile.username);
-        if (userProfile.phoneNumber?.trim()) {
-          validatePhoneNumber(userProfile.phoneNumber);
-        }
-      } catch (validationError) {
-        Alert.alert('Error de Validación', validationError.message);
-        setSettingsLoading(false);
-        return;
+      validateDisplayName(userProfile.displayName);
+      validateUsernameFormat(userProfile.username);
+      if (userProfile.phoneNumber?.trim()) {
+        validatePhoneNumber(userProfile.phoneNumber);
       }
-      
-      await hybridDataService.updateUserProfile(user.uid, {
+    } catch (validationError) {
+      Alert.alert('Error de Validación', validationError.message);
+      return;
+    }
+
+    setSettingsLoading(true);
+    try {
+      await profileUpdateMutation.mutateAsync({
         displayName: userProfile.displayName,
         username: userProfile.username,
         phoneNumber: userProfile.phoneNumber,
         gender: userProfile.gender,
-        bodyweight: userProfile.bodyweight ? parseFloat(userProfile.bodyweight) : null,
+        weight: userProfile.bodyweight ? parseFloat(userProfile.bodyweight) : null,
         height: userProfile.height ? parseFloat(userProfile.height) : null,
       });
 
@@ -567,18 +510,21 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         }
       }
 
-      setOriginalProfile({...userProfile}); // Update original to match current
+      setOriginalProfile({...userProfile});
       if (Platform.OS !== 'web') Alert.alert('Éxito', 'Tu perfil ha sido actualizado');
       hideSettingsModal();
-      
-      // Navigate back to Main tab to refresh profile data
+
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main' }],
       });
     } catch (error) {
       logger.error('Error saving profile:', error);
-      Alert.alert('Error', 'No se pudo guardar el perfil');
+      if (error?.code === 'CONFLICT' || error?.response?.status === 409) {
+        Alert.alert('Error', 'Ese nombre de usuario ya está en uso.');
+      } else {
+        Alert.alert('Error', 'No se pudo guardar el perfil');
+      }
     } finally {
       setSettingsLoading(false);
     }
@@ -687,7 +633,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     try {
       setDeleteAccountLoading(true);
       
-      // Save feedback to Firestore before deletion
+      // TODO: no endpoint for saveAccountDeletionFeedback — no REST endpoint for account deletion feedback
       await firestoreService.saveAccountDeletionFeedback(
         auth.currentUser.uid,
         feedbackToSave

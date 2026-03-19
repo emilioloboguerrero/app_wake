@@ -21,13 +21,14 @@ import programService from '../services/programService';
 import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ClientProgramScreen.css';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -88,6 +89,7 @@ const TAB_CONFIG = [
 const ClientProgramScreen = () => {
   const { clientId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
@@ -199,7 +201,10 @@ const ClientProgramScreen = () => {
   const isInfoTab = TAB_CONFIG[currentTabIndex]?.key === 'info';
   const { data: clientUserDoc } = useQuery({
     queryKey: queryKeys.user.detail(client?.clientUserId),
-    queryFn: () => getUser(client.clientUserId),
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/creator/clients/${client.clientUserId}`);
+      return data;
+    },
     enabled: isInfoTab && !!client?.clientUserId,
   });
   const loadingClientUser = !isInfoTab ? false : !client?.clientUserId ? false : clientUserDoc === undefined;
@@ -384,7 +389,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
-      alert(e?.message || 'Error al asignar plan');
+      showToast(e?.message || 'Error al asignar plan', 'error');
     } finally {
       setIsAssigningNutrition(false);
     }
@@ -403,7 +408,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
-      alert(e?.message || 'Error al quitar asignación');
+      showToast(e?.message || 'Error al quitar asignación', 'error');
     } finally {
       setIsEndingNutrition(false);
     }
@@ -742,7 +747,7 @@ const ClientProgramScreen = () => {
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       logger.error('Error assigning session:', error);
-      alert('Error al asignar la sesión');
+      showToast('Error al asignar la sesión', 'error');
     }
   };
 
@@ -771,7 +776,7 @@ const ClientProgramScreen = () => {
 
   const handlePlanAssignment = async (planId, weekKey, day) => {
     if (!client?.clientUserId || !selectedProgramId || !planId || !weekKey) {
-      alert('Por favor, selecciona un programa primero');
+      showToast('Por favor, selecciona un programa primero', 'error');
       return;
     }
     setIsAssigningPlan(true);
@@ -827,7 +832,7 @@ const ClientProgramScreen = () => {
       logger.log('✅ Plan assigned to consecutive weeks:', { programId: selectedProgramId, planId, weekKey, count: assignedWeekKeys.length });
     } catch (error) {
       logger.error('Error assigning plan:', error);
-      alert(error?.message === 'Este plan no tiene semanas.' ? error.message : `Error al asignar el plan: ${error.message || 'Error desconocido'}`);
+      showToast(error?.message === 'Este plan no tiene semanas.' ? error.message : `Error al asignar el plan: ${error.message || 'Error desconocido'}`, 'error');
     } finally {
       setIsAssigningPlan(false);
       setAssigningPlanWeekKey(null);
@@ -851,7 +856,7 @@ const ClientProgramScreen = () => {
       });
     } catch (error) {
       logger.error('Error removing plan:', error);
-      alert(`Error al quitar el plan: ${error.message || 'Error desconocido'}`);
+      showToast(`Error al quitar el plan: ${error.message || 'Error desconocido'}`, 'error');
     } finally {
       setIsRemovingPlanFromWeek(false);
       setRemovingPlanWeekKey(null);
@@ -865,7 +870,7 @@ const ClientProgramScreen = () => {
   const handleSessionAssignment = async (sessionData) => {
     logger.log('[ClientProgramScreen] handleSessionAssignment', { clientUserId: client?.clientUserId, selectedProgramId, sessionData });
     if (!client?.clientUserId || !selectedProgramId) {
-      alert('Por favor, selecciona un programa primero');
+      showToast('Por favor, selecciona un programa primero', 'error');
       return;
     }
     setIsAssigningSession(true);
@@ -883,7 +888,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
-      alert('Error al asignar la sesión');
+      showToast('Error al asignar la sesión', 'error');
     } finally {
       setIsAssigningSession(false);
     }
@@ -910,7 +915,7 @@ const ClientProgramScreen = () => {
         }
       } catch (error) {
         logger.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
-        alert('Error al preparar la sesión para editar');
+        showToast('Error al preparar la sesión para editar', 'error');
         return;
       }
       navigate(`/content/sessions/${session.session_id}`, {
@@ -951,7 +956,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
-      alert('Error al eliminar la sesión');
+      showToast('Error al eliminar la sesión', 'error');
     } finally {
       setIsDeletingSessionAssignment(false);
     }
@@ -997,7 +1002,7 @@ const ClientProgramScreen = () => {
       const modules = await plansService.getModulesByPlan(assignment.planId);
       const module = resolveModule(modules, assignment);
       if (!module) {
-        alert('Módulo del plan no encontrado');
+        showToast('Módulo del plan no encontrado', 'error');
         return;
       }
       await clientPlanContentService.copyFromPlan(
@@ -1011,7 +1016,7 @@ const ClientProgramScreen = () => {
       setHasClientPlanCopy(true);
     } catch (error) {
       logger.error('Error personalizando plan:', error);
-      alert(error.message || 'Error al personalizar la semana');
+      showToast(error.message || 'Error al personalizar la semana', 'error');
     } finally {
       setIsPersonalizingPlanWeek(false);
     }
@@ -1032,7 +1037,7 @@ const ClientProgramScreen = () => {
       }
     } catch (error) {
       logger.error('Error restableciendo plan:', error);
-      alert(error.message || 'Error al restablecer');
+      showToast(error.message || 'Error al restablecer', 'error');
     } finally {
       setIsResettingPlanWeek(false);
     }
@@ -1082,7 +1087,7 @@ const ClientProgramScreen = () => {
       });
     } catch (error) {
       logger.error('Error opening plan session for edit:', error);
-      alert(error.message || 'Error al abrir la sesión');
+      showToast(error.message || 'Error al abrir la sesión', 'error');
     }
   };
 
@@ -1117,7 +1122,7 @@ const ClientProgramScreen = () => {
       }
     } catch (error) {
       logger.error('Error deleting plan session:', error);
-      alert(error.message || 'Error al quitar la sesión');
+      showToast(error.message || 'Error al quitar la sesión', 'error');
     } finally {
       setIsDeletingPlanSession(false);
     }
@@ -1163,7 +1168,7 @@ const ClientProgramScreen = () => {
         ...prev,
         ...(prevContent != null && { [weekKey]: prevContent })
       }));
-      alert(error.message || 'Error al mover');
+      showToast(error.message || 'Error al mover', 'error');
     }
   };
 
@@ -1216,7 +1221,7 @@ const ClientProgramScreen = () => {
       }));
     } catch (error) {
       logger.error('Error moving plan session to week:', error);
-      alert(error.message || 'Error al mover la sesión');
+      showToast(error.message || 'Error al mover la sesión', 'error');
     } finally {
       setIsMovingPlanSession(false);
     }
@@ -1243,7 +1248,7 @@ const ClientProgramScreen = () => {
     }
     const libSession = await libraryService.getLibrarySessionById(user.uid, librarySessionId);
     if (!libSession) {
-      alert('Sesión de biblioteca no encontrada');
+      showToast('Sesión de biblioteca no encontrada', 'error');
       return;
     }
     const payload = {
@@ -1284,7 +1289,7 @@ const ClientProgramScreen = () => {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
       logger.error('Error adding library session to plan day:', error);
-      alert(error.message || 'Error al añadir la sesión');
+      showToast(error.message || 'Error al añadir la sesión', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingToWeekKey(null);
@@ -1312,7 +1317,7 @@ const ClientProgramScreen = () => {
       setAddPlanSessionTarget(null);
     } catch (error) {
       logger.error('Error adding session:', error);
-      alert(error.message || 'Error al añadir');
+      showToast(error.message || 'Error al añadir', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingSessionIdInModal(null);
@@ -1328,7 +1333,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['clientProgram', selectedProgramId, client?.clientUserId] });
     } catch (error) {
       logger.error('Error setting content plan:', error);
-      alert('Error al guardar el contenido del programa');
+      showToast('Error al guardar el contenido del programa', 'error');
     } finally {
     }
   };
@@ -2168,17 +2173,45 @@ const ClientProgramScreen = () => {
     );
   }
 
-  const containerWidth = 100 / TAB_CONFIG.length; // Updated to 4 tabs (removed programas)
+  const containerWidth = 100 / TAB_CONFIG.length;
   const clientName = client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`;
+  const clientInitials = clientName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const activePrograms = assignedPrograms.filter((p) => p.isAssigned);
+  const totalSessions = sessionHistory?.length ?? 0;
 
   return (
     <ErrorBoundary>
     <DashboardLayout
-      screenName={clientName}
+      screenName="Cliente"
       showBackButton={true}
       backPath={location.state?.returnTo || '/products?tab=clientes'}
     >
       <div className="client-program-container">
+        {/* Client profile card */}
+        <div className="cp-profile">
+          <div className="cp-profile-inner">
+            <div className="cp-avatar">
+              {clientInitials}
+            </div>
+            <div className="cp-profile-info">
+              <h1 className="cp-profile-name">{clientName}</h1>
+              {client.clientEmail && (
+                <p className="cp-profile-email">{client.clientEmail}</p>
+              )}
+            </div>
+            <div className="cp-profile-stats">
+              <div className="cp-stat">
+                <span className="cp-stat-value">{totalSessions}</span>
+                <span className="cp-stat-label">Sesiones</span>
+              </div>
+              <div className="cp-stat">
+                <span className="cp-stat-value">{activePrograms.length}</span>
+                <span className="cp-stat-label">Programas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Tab Bar */}
         <div className="client-program-tab-bar">
           <div className="client-program-tab-header-container">
@@ -2192,7 +2225,7 @@ const ClientProgramScreen = () => {
                   <span className="client-program-tab-title-text">{tab.title}</span>
                 </button>
               ))}
-              <div 
+              <div
                 className="client-program-tab-indicator"
                 style={{
                   width: `${containerWidth}%`,
