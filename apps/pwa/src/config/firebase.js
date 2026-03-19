@@ -2,6 +2,7 @@
 // Using Firebase SDK for Expo
 
 import { initializeApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, initializeAuth, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -21,6 +22,18 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// App Check — must run immediately after initializeApp(), before any other service.
+// Key sourced from env; guard lets local dev / emulator run without crashing.
+const RECAPTCHA_SITE_KEY = process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY ?? '';
+
+let appCheck = null;
+if (RECAPTCHA_SITE_KEY) {
+  appCheck = initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 
 // Request persistent storage as early as possible (web). Reduces risk of IndexedDB
 // eviction when user closes the PWA. Must run before auth so storage may be granted
@@ -45,7 +58,7 @@ try {
       popupRedirectResolver: browserPopupRedirectResolver,
     });
     logger.debug('[FIREBASE] ✅ Auth initialized (IndexedDB + popup sign-in ready)');
-    
+
     // Check if there's a current user immediately after initialization
     setTimeout(() => {
       const currentUser = auth.currentUser;
@@ -74,5 +87,5 @@ const firestore = getFirestore(app);
 const storage = getStorage(app);
 
 // Export Firebase services
-export { auth, firestore, storage };
+export { auth, firestore, storage, appCheck };
 export default app;

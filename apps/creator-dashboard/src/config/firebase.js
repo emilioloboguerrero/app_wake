@@ -6,6 +6,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 // Firebase configuration (same as mobile app)
 const firebaseConfig = {
@@ -20,6 +21,15 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+// Initialize App Check immediately after app, before any other service is used
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY ?? '';
+const appCheck = RECAPTCHA_SITE_KEY
+  ? initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    })
+  : null;
+
 // Initialize Firebase services (web version - no AsyncStorage needed)
 const auth = getAuth(app);
 const firestore = getFirestore(app);
@@ -29,7 +39,7 @@ const storage = getStorage(app);
 const functions = getFunctions(app, 'us-central1');
 
 // Export Firebase services
-export { auth, firestore, storage, functions };
+export { auth, firestore, storage, functions, appCheck };
 export { httpsCallable } from 'firebase/functions';
 export default app;
 

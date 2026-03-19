@@ -1,4 +1,5 @@
-import { auth } from '../config/firebase';
+import { getToken } from 'firebase/app-check';
+import { auth, appCheck } from '../config/firebase';
 
 const BASE_URL = '/api/v1';
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -61,6 +62,14 @@ class ApiClient {
 
     if (includeAuth) {
       headers['Authorization'] = `Bearer ${await this.#getToken()}`;
+      if (appCheck) {
+        try {
+          const { token } = await getToken(appCheck, /* forceRefresh */ false);
+          headers['X-Firebase-AppCheck'] = token;
+        } catch {
+          // App Check unavailable in emulator — silently skip
+        }
+      }
     }
 
     const controller = new AbortController();
