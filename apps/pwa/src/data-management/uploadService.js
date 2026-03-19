@@ -1,8 +1,5 @@
 // Upload Service - Handles batch uploading of workout sessions
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
-
 import logger from '../utils/logger.js';
 class UploadService {
   /**
@@ -42,68 +39,6 @@ class UploadService {
       await this.markUploadFailed(sessionData.sessionId, error.message);
       throw error;
     }
-  }
-  
-  /**
-   * Create cloud document from session data using new flat structure
-   */
-  async createSessionDocument(sessionData) {
-    // Group sets by exercise for better organization
-    const exercisesMap = {};
-    (sessionData.sets || []).forEach(set => {
-      const exerciseId = set.exercise_id || 'unknown';
-      if (!exercisesMap[exerciseId]) {
-        exercisesMap[exerciseId] = {
-          exercise_id: exerciseId,
-          exercise_name: set.exercise_name || 'Unknown Exercise',
-          sets: []
-        };
-      }
-      
-      exercisesMap[exerciseId].sets.push({
-        set_number: set.set_number || 1,
-        completed_at: set.completed_at || new Date().toISOString(),
-        performance: {
-          // Include all user-entered data (weight, reps, RIR, etc.) - only if they exist
-          ...(set.weight !== undefined && { weight: set.weight }),
-          ...(set.reps !== undefined && { reps: set.reps }),
-          ...(set.rir !== undefined && { rir: set.rir }),
-          ...(set.time !== undefined && { time: set.time }),
-          ...(set.distance !== undefined && { distance: set.distance }),
-          ...(set.pace !== undefined && { pace: set.pace }),
-          ...(set.heart_rate !== undefined && { heart_rate: set.heart_rate }),
-          ...(set.calories !== undefined && { calories: set.calories }),
-          ...(set.rest_time !== undefined && { rest_time: set.rest_time }),
-          ...(set.duration !== undefined && { duration: set.duration }),
-          // Include any other fields that might be present (only if not undefined)
-          ...Object.keys(set).reduce((acc, key) => {
-            if (!['exercise_id', 'exercise_name', 'set_number', 'completed_at', 'module_id', 'session_id', 'course_id'].includes(key) && set[key] !== undefined) {
-              acc[key] = set[key];
-            }
-            return acc;
-          }, {})
-        }
-      });
-    });
-    
-    return {
-      // Session identification
-      user_id: sessionData.userId || 'unknown',
-      course_id: sessionData.courseId || 'unknown',
-      session_id: sessionData.sessionId || 'unknown',
-      status: 'completed',
-      completed_at: sessionData.completedAt || new Date().toISOString(),
-      duration_minutes: sessionData.duration_minutes || 0,
-      exercises: Object.values(exercisesMap),
-      summary: {
-        total_sets: sessionData.sets?.length || 0,
-        total_exercises: Object.keys(exercisesMap).length,
-        total_reps: (sessionData.sets || []).reduce((sum, set) => sum + (set.reps || 0), 0),
-        total_volume: (sessionData.sets || []).reduce((sum, set) => sum + ((set.reps || 0) * (set.weight || 0)), 0)
-      },
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    };
   }
   
   /**

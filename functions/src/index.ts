@@ -9795,6 +9795,593 @@ app.delete("/api/v1/workout/sessions/current", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── Library: PWA read-only endpoints ────────────────────────────────────────
+
+app.get("/api/v1/library/modules/:moduleId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { moduleId } = req.params;
+    const { creatorId } = req.query as Record<string, string | undefined>;
+    if (!creatorId) throw apiError("VALIDATION_ERROR", "creatorId es requerido", 400);
+    const moduleRef = db.collection("creator_libraries").doc(creatorId)
+      .collection("modules").doc(moduleId);
+    const moduleDoc = await moduleRef.get();
+    if (!moduleDoc.exists) { res.json({ data: null }); return; }
+    const moduleData = moduleDoc.data()!;
+    const sessionRefs: string[] = Array.isArray(moduleData.sessionRefs) ? moduleData.sessionRefs : [];
+    const sessions = (await Promise.all(sessionRefs.map(async (sessionId, index) => {
+      try {
+        const sessionRef = db.collection("creator_libraries").doc(creatorId)
+          .collection("sessions").doc(sessionId);
+        const sessionDoc = await sessionRef.get();
+        if (!sessionDoc.exists) return null;
+        const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
+        const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+          const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+          return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+        }));
+        return { id: sessionId, ...sessionDoc.data(), order: index, exercises };
+      } catch { return null; }
+    }))).filter(Boolean);
+    res.json({ data: { id: moduleDoc.id, ...moduleData, sessions } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/library/sessions/:sessionId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { sessionId } = req.params;
+    const { creatorId } = req.query as Record<string, string | undefined>;
+    if (!creatorId) throw apiError("VALIDATION_ERROR", "creatorId es requerido", 400);
+    const sessionRef = db.collection("creator_libraries").doc(creatorId)
+      .collection("sessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) { res.json({ data: null }); return; }
+    const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
+    const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+      const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+    }));
+    res.json({ data: { id: sessionDoc.id, ...sessionDoc.data(), exercises } });
+  } catch (err) { next(err); }
+});
+
+// ─── Events: check-in by token ───────────────────────────────────────────────
+
+app.post("/api/v1/events/:eventId/check-in-by-token", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { eventId } = req.params;
+    const { token } = req.body as { token?: string };
+    if (!token) throw apiError("VALIDATION_ERROR", "token es requerido", 400);
+    const snap = await db.collection("event_signups").doc(eventId)
+      .collection("registrations").where("check_in_token", "==", token).limit(1).get();
+    if (snap.empty) throw apiError("NOT_FOUND", "Token no encontrado", 404);
+    const regDoc = snap.docs[0];
+    await regDoc.ref.update({
+      checked_in: true,
+      checked_in_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { registrationId: regDoc.id, checkedIn: true } });
+  } catch (err) { next(err); }
+});
+
+// ─── Workout: client programs + planned session ───────────────────────────────
+
+app.get("/api/v1/workout/client-programs/:programId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { programId } = req.params;
+    const docId = `${auth.userId}_${programId}`;
+    const snap = await db.collection("client_programs").doc(docId).get();
+    if (!snap.exists) {
+      res.json({ data: null });
+      return;
+    }
+    res.json({ data: { id: snap.id, ...snap.data() } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/planned-session", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId, date } = req.query as Record<string, string | undefined>;
+    if (!courseId || !date) throw apiError("VALIDATION_ERROR", "courseId y date son requeridos", 400);
+    const d = new Date(date);
+    const start = new Date(d); start.setHours(0, 0, 0, 0);
+    const end = new Date(d); end.setHours(23, 59, 59, 999);
+    const snap = await db.collection("client_sessions")
+      .where("client_id", "==", auth.userId)
+      .where("program_id", "==", courseId)
+      .where("date_timestamp", ">=", start)
+      .where("date_timestamp", "<=", end)
+      .orderBy("date_timestamp", "asc")
+      .limit(1)
+      .get();
+    if (snap.empty) {
+      res.json({ data: null });
+      return;
+    }
+    const docSnap = snap.docs[0];
+    res.json({ data: { id: docSnap.id, ...docSnap.data() } });
+  } catch (err) { next(err); }
+});
+
+// ─── User full document endpoints ────────────────────────────────────────────
+
+app.get("/api/v1/users/me/full", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const snap = await db.collection("users").doc(auth.userId).get();
+    if (!snap.exists) {
+      res.json({ data: null });
+      return;
+    }
+    res.json({ data: { id: auth.userId, ...snap.data() } });
+  } catch (err) { next(err); }
+});
+
+app.patch("/api/v1/users/me/full", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const body = { ...req.body };
+    const BLOCKED = ["courses", "subscriptions", "role", "created_at"];
+    for (const key of BLOCKED) delete body[key];
+    await db.collection("users").doc(auth.userId).set(body, { merge: true });
+    res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
+// ── Workout Programs (new /programs path) ─────────────────────────────────────
+
+app.get("/api/v1/workout/programs/:courseId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { courseId } = req.params;
+    const snap = await db.collection("courses").doc(courseId).get();
+    if (!snap.exists) {
+      res.json({ data: null });
+      return;
+    }
+    res.json({ data: { id: snap.id, ...snap.data() } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/programs/:courseId/modules", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { courseId } = req.params;
+    const snap = await db.collection("courses").doc(courseId)
+      .collection("modules").orderBy("order", "asc").get();
+    res.json({ data: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/overrides", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { courseId, moduleId, sessionId } = req.params;
+    const docRef = db.collection("courses").doc(courseId)
+      .collection("modules").doc(moduleId)
+      .collection("sessions").doc(sessionId)
+      .collection("overrides").doc("data");
+    const snap = await docRef.get();
+    res.json({ data: snap.exists ? snap.data() : null });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/overrides", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { courseId, moduleId, sessionId, exerciseId } = req.params;
+    const docRef = db.collection("courses").doc(courseId)
+      .collection("modules").doc(moduleId)
+      .collection("sessions").doc(sessionId)
+      .collection("exercises").doc(exerciseId)
+      .collection("overrides").doc("data");
+    const snap = await docRef.get();
+    res.json({ data: snap.exists ? snap.data() : null });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId/overrides", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { courseId, moduleId, sessionId, exerciseId, setId } = req.params;
+    const docRef = db.collection("courses").doc(courseId)
+      .collection("modules").doc(moduleId)
+      .collection("sessions").doc(sessionId)
+      .collection("exercises").doc(exerciseId)
+      .collection("sets").doc(setId)
+      .collection("overrides").doc("data");
+    const snap = await docRef.get();
+    res.json({ data: snap.exists ? snap.data() : null });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/workout/client-programs/:programId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { programId } = req.params;
+    const body = req.body ?? {};
+    const docId = `${auth.userId}_${programId}`;
+    await db.collection("client_programs").doc(docId).set(
+      { program_id: programId, user_id: auth.userId, ...body, updated_at: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    res.json({ data: { id: docId } });
+  } catch (err) { next(err); }
+});
+
+app.patch("/api/v1/workout/client-programs/:programId/overrides", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { programId } = req.params;
+    const { path, value } = req.body ?? {};
+    if (!path) throw apiError("VALIDATION_ERROR", "path is required", 400);
+    const docId = `${auth.userId}_${programId}`;
+    await db.collection("client_programs").doc(docId).update({
+      [path]: value,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/v1/workout/client-programs/:programId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { programId } = req.params;
+    const docId = `${auth.userId}_${programId}`;
+    await db.collection("client_programs").doc(docId).delete();
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { planId, moduleId, sessionId } = req.params;
+    const sessionRef = db.collection("plans").doc(planId)
+      .collection("modules").doc(moduleId)
+      .collection("sessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) { res.json({ data: null }); return; }
+    const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
+    const exercises = await Promise.all(exercisesSnap.docs.map(async (exDoc) => {
+      const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return { id: exDoc.id, ...exDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+    }));
+    res.json({ data: { id: sessionDoc.id, ...sessionDoc.data(), exercises } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/workout/client-programs", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { orphaned } = req.query as Record<string, string | undefined>;
+    const snap = await db.collection("client_programs").where("user_id", "==", auth.userId).get();
+    if (!orphaned) {
+      res.json({ data: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      return;
+    }
+    const userSnap = await db.collection("users").doc(auth.userId).get();
+    const activeCourseIds = new Set(Object.keys((userSnap.data()?.courses ?? {}) as Record<string, unknown>));
+    const courseChecks = await Promise.all(
+      snap.docs.map(d => {
+        const programId = (d.data() as Record<string, unknown>).program_id as string | undefined;
+        if (!programId || activeCourseIds.has(programId)) return Promise.resolve(null);
+        return db.collection("courses").doc(programId).get().then(courseSnap => ({ programId, courseSnap }));
+      })
+    );
+    const farFuture = new Date();
+    farFuture.setFullYear(farFuture.getFullYear() + 10);
+    const result = courseChecks
+      .filter((item): item is { programId: string; courseSnap: FirebaseFirestore.DocumentSnapshot } =>
+        item !== null && item.courseSnap.exists && (item.courseSnap.data() as Record<string, unknown>).deliveryType === "one_on_one"
+      )
+      .map(({ programId, courseSnap }) => {
+        const courseData = courseSnap.data() as Record<string, unknown>;
+        return {
+          id: `${auth.userId}-${programId}`,
+          courseId: programId,
+          courseData: {
+            access_duration: "one_on_one",
+            expires_at: farFuture.toISOString(),
+            status: "active",
+            purchased_at: new Date().toISOString(),
+            deliveryType: "one_on_one",
+            title: courseData.title || "Untitled Program",
+            image_url: courseData.image_url || null,
+            discipline: courseData.discipline || "General",
+            creatorName: courseData.creatorName || courseData.creator_name || "Unknown Creator",
+          },
+          courseDetails: {
+            id: programId,
+            title: courseData.title || "Curso sin título",
+            image_url: courseData.image_url || "",
+            discipline: courseData.discipline || "General",
+            creatorName: courseData.creatorName || courseData.creator_name || null,
+          },
+          isActive: true,
+          isExpired: false,
+          isCompleted: false,
+          status: "active",
+          expires_at: farFuture.toISOString(),
+        };
+      });
+    res.json({ data: result });
+  } catch (err) { next(err); }
+});
+
+// ── User init ─────────────────────────────────────────────────────────────────
+
+app.post("/api/v1/users/me/init", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const userRef = db.collection("users").doc(auth.userId);
+    const existing = await userRef.get();
+    if (existing.exists) {
+      res.json({ data: { created: false } });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    await userRef.set({ ...body, role: "user", created_at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    res.json({ data: { created: true } });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/progress", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ref = await db.collection("progress").add({
+      ...body,
+      user_id: auth.userId,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { id: ref.id } });
+  } catch (err) { next(err); }
+});
+
+app.patch("/api/v1/progress/:progressId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { progressId } = req.params;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    await db.collection("progress").doc(progressId).update({
+      ...body,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/progress/user-sessions", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId, limitParam } = req.query as { courseId?: string; limitParam?: string };
+    const limitVal = limitParam ? parseInt(limitParam, 10) : 50;
+    let ref: FirebaseFirestore.Query = db.collection("progress")
+      .where("user_id", "==", auth.userId);
+    if (courseId) ref = ref.where("course_id", "==", courseId);
+    ref = ref.orderBy("completed_at", "desc").limit(limitVal);
+    const snap = await ref.get();
+    res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (err) { next(err); }
+});
+
+app.get("/api/v1/progress/session/:sessionId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { sessionId } = req.params;
+    const docSnap = await db.collection("progress").doc(sessionId).get();
+    if (!docSnap.exists) {
+      res.json({ data: null });
+      return;
+    }
+    res.json({ data: { id: docSnap.id, ...docSnap.data() } });
+  } catch (err) { next(err); }
+});
+
+// ── Exercise library ───────────────────────────────────────────────────────────
+
+app.get("/api/v1/library/exercises/:exerciseId", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const { exerciseId } = req.params;
+    const docSnap = await db.collection("exercises_library").doc(exerciseId).get();
+    if (!docSnap.exists) {
+      res.json({ data: null });
+      return;
+    }
+    res.json({ data: { id: docSnap.id, ...docSnap.data() } });
+  } catch (err) { next(err); }
+});
+
+// ─── Purchases ────────────────────────────────────────────────────────────────
+
+app.post("/api/v1/purchases", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const ref = await db.collection("purchases").add({
+      ...req.body,
+      user_id: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { id: ref.id } });
+  } catch (err) { next(err); }
+});
+
+// ─── Community ────────────────────────────────────────────────────────────────
+
+app.get("/api/v1/community/posts", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const snap = await db.collection("community").orderBy("created_at", "desc").limit(50).get();
+    res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/community/posts", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const ref = await db.collection("community").add({
+      ...req.body,
+      user_id: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { id: ref.id } });
+  } catch (err) { next(err); }
+});
+
+// ─── Account deletion ─────────────────────────────────────────────────────────
+
+app.post("/api/v1/users/me/delete-feedback", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const ref = await db.collection("account_deletion_feedback").add({
+      ...req.body,
+      user_id: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    res.json({ data: { id: ref.id } });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/v1/users/me", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const userId = auth.userId;
+    const userRef = db.collection("users").doc(userId);
+
+    const deleteSubcollection = async (subcollection: string) => {
+      const snap = await userRef.collection(subcollection).get();
+      if (snap.empty) return;
+      const batchSize = 500;
+      for (let i = 0; i < snap.docs.length; i += batchSize) {
+        const b = db.batch();
+        snap.docs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
+        await b.commit();
+      }
+    };
+
+    await deleteSubcollection("exerciseHistory");
+    await deleteSubcollection("sessionHistory");
+
+    const progressSnap = await db.collection("progress").get();
+    const userProgressDocs = progressSnap.docs.filter((d) => d.id.startsWith(userId + "_"));
+    if (userProgressDocs.length > 0) {
+      const batchSize = 500;
+      for (let i = 0; i < userProgressDocs.length; i += batchSize) {
+        const b = db.batch();
+        userProgressDocs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
+        await b.commit();
+      }
+    }
+
+    const userProgressSnap = await db.collection("user_progress").get();
+    const userProgressUserDocs = userProgressSnap.docs.filter(
+      (d) => d.id.startsWith(userId + "_") || d.id === userId
+    );
+    if (userProgressUserDocs.length > 0) {
+      const batchSize = 500;
+      for (let i = 0; i < userProgressUserDocs.length; i += batchSize) {
+        const b = db.batch();
+        userProgressUserDocs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
+        await b.commit();
+      }
+    }
+
+    await userRef.delete();
+    res.json({ data: { deleted: true } });
+  } catch (err) { next(err); }
+});
+
+// ─── Course management ────────────────────────────────────────────────────────
+
+app.post("/api/v1/users/me/move-course", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId, expirationDate, accessDuration, courseDetails } = req.body as {
+      courseId?: string;
+      expirationDate?: string;
+      accessDuration?: string;
+      courseDetails?: Record<string, unknown>;
+    };
+    if (!courseId) throw apiError("VALIDATION_ERROR", "courseId is required", 400, "courseId");
+
+    const courseDoc = await db.collection("courses").doc(courseId).get();
+    if (!courseDoc.exists) throw apiError("NOT_FOUND", "Course not found", 404);
+
+    const courseData = courseDoc.data() ?? {};
+    const courseEntry: Record<string, unknown> = {
+      access_duration: accessDuration ?? courseData.access_duration ?? "monthly",
+      expires_at: expirationDate ?? null,
+      status: "active",
+      purchased_at: new Date().toISOString(),
+      deliveryType: courseDetails?.deliveryType ?? courseData.deliveryType ?? "low_ticket",
+      title: courseDetails?.title ?? courseData.title ?? "Untitled Course",
+      image_url: courseDetails?.image_url ?? courseData.image_url ?? null,
+      discipline: courseDetails?.discipline ?? courseData.discipline ?? "General",
+      creatorName: courseDetails?.creatorName ?? courseDetails?.creator_name ?? courseData.creatorName ?? courseData.creator_name ?? "Unknown Creator",
+      completedTutorials: {
+        dailyWorkout: [],
+        warmup: [],
+        workoutExecution: [],
+        workoutCompletion: [],
+      },
+    };
+
+    const userRef = db.collection("users").doc(auth.userId);
+    const userDoc = await userRef.get();
+    const userData = userDoc.data() ?? {};
+    const purchasedCourses: string[] = Array.isArray(userData.purchased_courses)
+      ? [...new Set([...userData.purchased_courses, courseId])]
+      : [courseId];
+
+    await userRef.update({
+      [`courses.${courseId}`]: courseEntry,
+      purchased_courses: purchasedCourses,
+    });
+
+    res.json({ data: { added: true } });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/v1/users/me/courses/:courseId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId } = req.params;
+    await db.collection("users").doc(auth.userId).update({
+      [`courses.${courseId}`]: FieldValue.delete(),
+    });
+    res.json({ data: { removed: true } });
+  } catch (err) { next(err); }
+});
+
+app.patch("/api/v1/users/me/courses/:courseId/status", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { courseId } = req.params;
+    const body = validateBody<{ status: string; expiresAt?: string }>({
+      status: "string",
+      expiresAt: "optional_string",
+    }, req.body);
+
+    const update: Record<string, unknown> = {
+      [`courses.${courseId}.status`]: body.status,
+      [`courses.${courseId}.status_updated_at`]: new Date().toISOString(),
+    };
+    if (body.expiresAt !== undefined) {
+      update[`courses.${courseId}.expires_at`] = body.expiresAt;
+    }
+
+    await db.collection("users").doc(auth.userId).update(update);
+    res.json({ data: { updated: true } });
+  } catch (err) { next(err); }
+});
+
 // ─── Global error handler (must be last) ─────────────────────────────────────
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

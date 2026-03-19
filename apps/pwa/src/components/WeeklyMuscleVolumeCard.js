@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, ScrollView } from 'react-native';
 import WakeLoader from './WakeLoader';
-import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 import { getMuscleDisplayName } from '../constants/muscles';
-import { getMondayWeek } from '../utils/weekCalculation';
+import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { getMuscleColorForText } from '../utils/muscleColorUtils';
 import SvgInfo from '../components/icons/SvgInfo';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
@@ -38,7 +37,7 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
   const loadWeeklyVolumes = async () => {
     try {
       setLoading(true);
-      const targetWeek = selectedWeek || getMondayWeek(); // Use selectedWeek if provided, otherwise current week
+      const targetWeek = selectedWeek || getMondayWeek();
       logger.log('[WeeklyMuscleVolumeCard] loadWeeklyVolumes called with userId:', userId ?? 'null/undefined', 'targetWeek:', targetWeek);
       if (!userId) {
         logger.warn('[WeeklyMuscleVolumeCard] No userId – cannot load weekly volumes');
@@ -46,21 +45,16 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
         setLoading(false);
         return;
       }
-      const userDocRef = doc(firestore, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        const weekData = data.weeklyMuscleVolume?.[targetWeek] || {};
-        
-        // For history view, always use the fetched weekData from DB
-        // For current week, it already includes the current session's volume
-        setWeeklyVolumes(weekData);
-        logger.log('✅ Weekly muscle volumes loaded from DB for week:', targetWeek, weekData);
-      } else {
-        // If no user document, use empty object for history
-        setWeeklyVolumes({});
-      }
+      const { start, end } = getWeekDates(targetWeek);
+      const toYMD = (d) => d.toISOString().split('T')[0];
+      const response = await apiClient.get('/analytics/weekly-volume', {
+        params: { startDate: toYMD(start), endDate: toYMD(end) },
+      });
+      const weeks = response?.data || [];
+      const weekEntry = weeks.find((w) => w.weekKey === targetWeek);
+      const weekData = weekEntry?.muscleVolumes || {};
+      setWeeklyVolumes(weekData);
+      logger.log('✅ Weekly muscle volumes loaded for week:', targetWeek, weekData);
     } catch (error) {
       logger.error('❌ Error loading weekly muscle volumes:', error);
       setWeeklyVolumes({});

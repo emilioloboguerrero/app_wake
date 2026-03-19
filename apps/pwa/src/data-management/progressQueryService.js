@@ -1,7 +1,5 @@
 // Progress Query Service - Updated to use new data structure
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
 import firestoreService from '../services/firestoreService';
 import userProgressService from '../services/userProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';

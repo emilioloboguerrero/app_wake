@@ -5,14 +5,14 @@ const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import apiClient from '../utils/apiClient';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRounded';
 import SvgChartLine from './icons/SvgChartLine';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 import { useUserRole } from '../contexts/UserRoleContext';
 import { useAuth } from '../contexts/AuthContext';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
 import firestoreService from '../services/firestoreService';
@@ -330,26 +330,20 @@ const BottomTabBar = () => {
 
     setMenuActionLoading(true);
     try {
-      const snap = await getDocs(
-        query(
-          collection(firestore, 'events'),
-          where('creator_id', '==', userId),
-          orderBy('created_at', 'desc')
-        )
-      );
+      const response = await apiClient.get('/creator/events');
+      const events = response?.data || [];
 
-      if (snap.empty) {
+      if (events.length === 0) {
         closeMenu();
         navigate('/creator/events');
         return;
       }
 
-      const events = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const active = events.filter((ev) => ev.status === 'active');
       const target = active[0] || events[0];
 
       closeMenu();
-      navigate(`/creator/events/${target.id}/checkin`);
+      navigate(`/creator/events/${target.eventId}/checkin`);
     } catch (_err) {
       closeMenu();
       navigate('/creator/events');
