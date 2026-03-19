@@ -3,6 +3,19 @@
   position: relative;
 }
 
+.er-skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.er-skeleton-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
 /* ── Ambient orbs ── */
 .er-orbs {
   position: fixed;
@@ -65,7 +78,7 @@
 }
 
 .event-results-count {
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 0.875rem;
 }
 
@@ -94,7 +107,7 @@
 .er-waitlist-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #888;
+  color: var(--text-secondary);
   margin: 0 0 12px;
   display: flex;
   align-items: center;
@@ -106,14 +119,14 @@
   border-radius: 20px;
   padding: 2px 8px;
   font-size: 0.75rem;
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 .event-results-export-btn {
   background: transparent;
   border: 1px solid var(--border-default);
   border-radius: 7px;
-  color: #a0a0a0;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.85rem;
   font-family: inherit;
@@ -129,7 +142,7 @@
 }
 
 .event-results-empty {
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 0.95rem;
   padding: 32px 0;
   position: relative;
@@ -151,7 +164,7 @@
 }
 
 .event-results-table th {
-  color: #666;
+  color: var(--text-tertiary);
   font-weight: 600;
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -165,7 +178,7 @@
 .event-results-table td {
   color: var(--text-secondary);
   padding: 12px 14px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
 }
 
@@ -177,7 +190,7 @@
   background: transparent;
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  color: #a0a0a0;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
   font-family: inherit;
@@ -192,7 +205,7 @@
 }
 
 .event-results-checkin {
-  color: #555;
+  color: var(--text-tertiary);
   font-size: 0.8rem;
 }
 
@@ -279,7 +292,7 @@
   border-radius: 5px;
   transition: color 0.15s, background 0.15s;
 }
-.er-detail-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
+.er-detail-btn:hover { color: var(--text-secondary); background: rgba(255,255,255,0.06); }
 
 .er-table-row:hover td { background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.04); }
 
@@ -338,7 +351,7 @@
 
 .er-modal-checkin-badge {
   background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--border-default);
   border-radius: 20px;
   color: rgba(255,255,255,0.4);
   font-size: 0.72rem;
@@ -396,7 +409,7 @@
 .er-modal-confirm-no {
   padding: 6px 14px;
   background: rgba(255,255,255,0.08); border: none; border-radius: 7px;
-  color: rgba(255,255,255,0.6); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; cursor: pointer;
   font-family: inherit;
 }
 
@@ -603,7 +616,7 @@
 
 /* Tooltip */
 .er-tooltip {
-  background: #1e1e1e;
+  background: var(--surface-2);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 8px;
   padding: 8px 12px;

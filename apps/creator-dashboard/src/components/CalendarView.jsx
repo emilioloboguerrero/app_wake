@@ -86,7 +86,6 @@ const CalendarView = ({
   const currentMonth = currentDate.getMonth();
 
   useEffect(() => {
-    console.log('[CalendarView] plannedSessions prop changed', { length: plannedSessions?.length ?? 0, sample: plannedSessions?.slice(0, 2)?.map(s => ({ id: s.id, date: s.date, client_id: s.client_id })) });
   }, [plannedSessions]);
 
   // Close session card menu when clicking outside (not on trigger or portal menu)
@@ -246,7 +245,6 @@ const CalendarView = ({
   const sessionsByDate = useMemo(() => {
     const map = {};
     if (!plannedSessions || plannedSessions.length === 0) {
-      console.log('[CalendarView] sessionsByDate: no plannedSessions', { length: plannedSessions?.length ?? 0 });
       return map;
     }
     plannedSessions.forEach(session => {
@@ -265,21 +263,11 @@ const CalendarView = ({
         if (!map[dateStr]) map[dateStr] = [];
         map[dateStr].push(session);
       } else {
-        console.log('[CalendarView] sessionsByDate: session has no date', { id: session.id, keys: Object.keys(session) });
       }
     });
-    console.log('[CalendarView] sessionsByDate: built map', { plannedCount: plannedSessions.length, dateKeys: Object.keys(map), sample: Object.keys(map).slice(0, 5) });
     return map;
   }, [plannedSessions]);
 
-  // Debug: log completed slot ids (slot-based matching)
-  useEffect(() => {
-    const size = completedSessionIds?.size ?? 0;
-    const completedArr = size ? [...completedSessionIds].slice(0, 15) : [];
-    if (size > 0) {
-      console.log('[CalendarView] completedSessionIds (slot ids)', { size, sample: completedArr });
-    }
-  }, [completedSessionIds]);
 
   // Get sessions for a specific cell
   const getSessionsForCell = (cell) => {
@@ -438,10 +426,8 @@ const CalendarView = ({
     try {
       rawData = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
     } catch (err) {
-      console.log('[CalendarView] handleDrop getData failed', err);
       return;
     }
-    console.log('[CalendarView] handleDrop rawData', rawData ? rawData.substring(0, 120) : '(empty)');
     if (!rawData) return;
     // Prevent double drop while a previous action is in progress
     if (isAddingSessionToPlanDay || isMovingPlanSession || isAssigningPlan || isAssigningSession) return;
@@ -498,7 +484,6 @@ const CalendarView = ({
           });
         }
       } else {
-        console.log('[CalendarView] handleDrop: type not handled', { type, hasLibraryRef: !!dragData.librarySessionRef, hasPlanId: !!dragData.planId });
       }
     } catch (error) {
       console.error('[CalendarView] handleDrop:', error);

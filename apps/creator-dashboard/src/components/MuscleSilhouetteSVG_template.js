@@ -3,9 +3,6 @@ import { Svg, G, Path } from 'react-native-svg';
 import { getMuscleColor, getMuscleColorEnhanced } from '../utils/muscleColorUtils';
 
 const MuscleSilhouetteSVG = ({ muscleVolumes = {}, enhanced = false }) => {
-  // Debug logging
-  console.log('🎨 MuscleSilhouetteSVG rendering with volumes:', muscleVolumes);
-  console.log('🎨 Number of muscles with volume:', Object.keys(muscleVolumes).length);
 
   const renderMuscleGroup = (muscleId, paths) => {
     const volume = muscleVolumes[muscleId] || 0;
@@ -13,7 +10,6 @@ const MuscleSilhouetteSVG = ({ muscleVolumes = {}, enhanced = false }) => {
       ? getMuscleColorEnhanced(volume)
       : getMuscleColor(volume);
     
-    console.log(`🎨 Rendering ${muscleId}: volume=${volume}, color=${fillColor}, opacity=${opacity}`);
     
     return (
       <G key={muscleId} id={muscleId}>

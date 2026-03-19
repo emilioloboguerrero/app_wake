@@ -56,7 +56,6 @@ const SessionCreationModal = ({
     if (isExerciseEditMode) return;
     // TODO: Open exercise modal (same as ProgramDetailScreen)
     setSelectedExercise(exercise);
-    console.log('Exercise clicked:', exercise);
   };
 
   const handleDeleteExercise = (exerciseId) => {

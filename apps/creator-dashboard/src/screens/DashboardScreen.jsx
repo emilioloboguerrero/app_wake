@@ -1,40 +1,381 @@
-import React from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { LayoutGrid, Columns3 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
+import {
+  BentoGrid,
+  BentoCard,
+  GlowingEffect,
+  NumberTicker,
+  ProgressRing,
+  AnimatedList,
+  SkeletonCard,
+  SpotlightTutorial,
+} from '../components/ui';
+import { cacheConfig } from '../config/queryClient';
+import apiClient from '../utils/apiClient';
 import './DashboardScreen.css';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const LAYOUT_KEY = 'wake_dashboard_layout';
+
+const TUTORIAL_STEPS = [
+  {
+    selector: '.widget-adherence',
+    title: 'Tasa de adherencia',
+    body: 'Aquí ves cuántos de tus clientes están siguiendo su plan al pie de la letra. Un número alto = programa que funciona.',
+  },
+  {
+    selector: '.widget-calls',
+    title: 'Llamadas esta semana',
+    body: 'Tus próximas sesiones en un vistazo. Nunca más te sorprenda una llamada sin preparación.',
+  },
+  {
+    selector: '.ds-layout-toggle',
+    title: 'Cambia la vista',
+    body: 'Alterna entre vista Compacta (2 columnas) y Amplia (3 columnas) según cuánta información quieras ver de un vistazo.',
+  },
+];
+
+function getStoredLayout() {
+  try {
+    const v = localStorage.getItem(LAYOUT_KEY);
+    return v === 'wide' ? 'wide' : 'compact';
+  } catch {
+    return 'compact';
+  }
+}
+
+function formatTime(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
+  } catch {
+    return '';
+  }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function WidgetLabel({ children }) {
+  return <p className="ds-widget-label">{children}</p>;
+}
+
+function WidgetTitle({ children }) {
+  return <p className="ds-widget-title">{children}</p>;
+}
+
+function WidgetEmpty({ message }) {
+  return <p className="ds-widget-empty">{message}</p>;
+}
+
+function CallItem({ booking }) {
+  const clientName = booking?.clientName ?? booking?.userName ?? 'Cliente';
+  const startAt = booking?.startAt ?? booking?.scheduledAt ?? null;
+  return (
+    <div className="ds-call-item">
+      <div className="ds-call-item__avatar">{clientName.charAt(0).toUpperCase()}</div>
+      <div className="ds-call-item__info">
+        <span className="ds-call-item__name">{clientName}</span>
+        <span className="ds-call-item__time">
+          {startAt ? `${formatDate(startAt)} · ${formatTime(startAt)}` : 'Sin horario'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 const DashboardScreen = () => {
   const { user } = useAuth();
+  const [layout, setLayout] = useState(getStoredLayout);
+
+  const toggleLayout = useCallback(() => {
+    setLayout(prev => {
+      const next = prev === 'compact' ? 'wide' : 'compact';
+      try { localStorage.setItem(LAYOUT_KEY, next); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
+
+  // ── Queries ──────────────────────────────────────────────────────────────
+
+  const clientsQuery = useQuery({
+    queryKey: ['clients', 'creator', user?.uid],
+    queryFn: () => apiClient.get('/clients'),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
+
+  const bookingsQuery = useQuery({
+    queryKey: ['bookings', 'creator', user?.uid],
+    queryFn: () => apiClient.get('/bookings'),
+    enabled: !!user?.uid,
+    ...cacheConfig.events,
+  });
+
+  const revenueQuery = useQuery({
+    queryKey: ['analytics', 'revenue', user?.uid],
+    queryFn: () => apiClient.get('/analytics/revenue'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  const adherenceQuery = useQuery({
+    queryKey: ['analytics', 'adherence', user?.uid],
+    queryFn: () => apiClient.get('/analytics/adherence'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  // ── Derived values ────────────────────────────────────────────────────────
+
+  const clientCount = useMemo(
+    () => clientsQuery.data?.data?.length ?? clientsQuery.data?.length ?? 0,
+    [clientsQuery.data]
+  );
+
+  const upcomingBookings = useMemo(() => {
+    const raw = bookingsQuery.data?.data ?? bookingsQuery.data ?? [];
+    if (!Array.isArray(raw)) return [];
+    const now = Date.now();
+    return raw
+      .filter(b => {
+        const t = b.startAt ?? b.scheduledAt;
+        return t ? new Date(t).getTime() >= now : true;
+      })
+      .sort((a, b) => {
+        const ta = new Date(a.startAt ?? a.scheduledAt ?? 0).getTime();
+        const tb = new Date(b.startAt ?? b.scheduledAt ?? 0).getTime();
+        return ta - tb;
+      });
+  }, [bookingsQuery.data]);
+
+  const callCountThisWeek = useMemo(() => {
+    const raw = bookingsQuery.data?.data ?? bookingsQuery.data ?? [];
+    if (!Array.isArray(raw)) return 0;
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    return raw.filter(b => {
+      const t = b.startAt ?? b.scheduledAt;
+      if (!t) return false;
+      const d = new Date(t);
+      return d >= weekStart && d < weekEnd;
+    }).length;
+  }, [bookingsQuery.data]);
+
+  const nextCallTime = useMemo(() => {
+    if (!upcomingBookings.length) return null;
+    const next = upcomingBookings[0];
+    const t = next.startAt ?? next.scheduledAt;
+    return t ? `${formatDate(t)} · ${formatTime(t)}` : null;
+  }, [upcomingBookings]);
+
+  const totalRevenue = useMemo(
+    () => revenueQuery.data?.data?.totalRevenue ?? revenueQuery.data?.totalRevenue ?? 0,
+    [revenueQuery.data]
+  );
+
+  const adherenceRate = useMemo(
+    () => adherenceQuery.data?.data?.adherenceRate ?? adherenceQuery.data?.adherenceRate ?? 0,
+    [adherenceQuery.data]
+  );
+
+  const sessionsCompleted = useMemo(
+    () => adherenceQuery.data?.data?.sessionsCompleted ?? adherenceQuery.data?.sessionsCompleted ?? 0,
+    [adherenceQuery.data]
+  );
+
+  const isWide = layout === 'wide';
 
   return (
     <ErrorBoundary>
-    <DashboardLayout screenName="Dashboard">
-      <div className="dashboard-content">
-        <div className="dashboard-welcome">
-          <p className="welcome-text">Bienvenido, {user?.displayName || 'Usuario'}</p>
-          <p className="welcome-subtext">Gestiona tus programas y contenido desde aquí</p>
+      <DashboardLayout screenName="Inicio">
+        <div className={`ds-canvas ds-canvas--${layout}`}>
+
+          {/* ── Layout toggle ─────────────────────────────────────── */}
+          <div className="ds-toolbar">
+            <button
+              className="ds-layout-toggle"
+              onClick={toggleLayout}
+              aria-label={isWide ? 'Vista compacta' : 'Vista amplia'}
+              title={isWide ? 'Vista compacta' : 'Vista amplia'}
+            >
+              {isWide
+                ? <LayoutGrid size={14} />
+                : <Columns3 size={14} />
+              }
+              <span>{isWide ? 'Compacto' : 'Amplio'}</span>
+            </button>
+          </div>
+
+          {/* ── Widget grid ───────────────────────────────────────── */}
+          <BentoGrid className={`ds-bento--${layout}`}>
+
+            {/* 1 — Clientes activos */}
+            <BentoCard span="1x1" className="widget-clients">
+              <GlowingEffect />
+              <div className="ds-widget-inner">
+                <WidgetTitle>Clientes activos</WidgetTitle>
+                {clientsQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : (
+                  <>
+                    <p className="ds-widget-number">
+                      <NumberTicker value={clientCount} />
+                    </p>
+                    {clientCount === 0
+                      ? <WidgetEmpty message="Aún no tienes clientes. ¡A conseguir el primero!" />
+                      : <WidgetLabel>{clientCount === 1 ? 'cliente activo' : 'clientes activos'}</WidgetLabel>
+                    }
+                  </>
+                )}
+              </div>
+            </BentoCard>
+
+            {/* 2 — Llamadas esta semana */}
+            <BentoCard span="1x1" className="widget-calls">
+              <GlowingEffect />
+              <div className="ds-widget-inner">
+                <WidgetTitle>Llamadas esta semana</WidgetTitle>
+                {bookingsQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : (
+                  <>
+                    <p className="ds-widget-number">
+                      <NumberTicker value={callCountThisWeek} />
+                    </p>
+                    {callCountThisWeek === 0
+                      ? <WidgetEmpty message="Sin llamadas programadas esta semana." />
+                      : (
+                        <>
+                          <WidgetLabel>{callCountThisWeek === 1 ? 'llamada' : 'llamadas'}</WidgetLabel>
+                          {nextCallTime && (
+                            <p className="ds-widget-next-call">Próxima: {nextCallTime}</p>
+                          )}
+                        </>
+                      )
+                    }
+                  </>
+                )}
+              </div>
+            </BentoCard>
+
+            {/* 3 — Ingresos recientes */}
+            <BentoCard span={isWide ? '1x1' : '2x1'} className="widget-revenue">
+              <GlowingEffect />
+              <div className="ds-widget-inner">
+                <WidgetTitle>Ingresos recientes</WidgetTitle>
+                {revenueQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : (
+                  <>
+                    <p className="ds-widget-number ds-widget-number--revenue">
+                      <NumberTicker value={totalRevenue} prefix="$" />
+                    </p>
+                    {totalRevenue === 0
+                      ? <WidgetEmpty message="Aquí verás tus ingresos cuando empiecen a llegar." />
+                      : <WidgetLabel>COP este período</WidgetLabel>
+                    }
+                  </>
+                )}
+              </div>
+            </BentoCard>
+
+            {/* 4 — Tasa de adherencia */}
+            <BentoCard span={isWide ? '1x2' : '2x1'} className="widget-adherence">
+              <GlowingEffect />
+              <div className="ds-widget-inner ds-widget-inner--adherence">
+                <WidgetTitle>Tasa de adherencia</WidgetTitle>
+                {adherenceQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : (
+                  <>
+                    <div className="ds-adherence-ring">
+                      <ProgressRing
+                        percent={adherenceRate}
+                        size={96}
+                        strokeWidth={6}
+                        color="rgba(255,255,255,0.85)"
+                        label={`${Math.round(adherenceRate)}%`}
+                      />
+                    </div>
+                    {adherenceRate === 0
+                      ? <WidgetEmpty message="Sin datos de adherencia aún. Los verás cuando tus clientes completen sesiones." />
+                      : <WidgetLabel>de adherencia promedio</WidgetLabel>
+                    }
+                  </>
+                )}
+              </div>
+            </BentoCard>
+
+            {/* 5 — Sesiones completadas */}
+            <BentoCard span="1x1" className="widget-sessions">
+              <GlowingEffect />
+              <div className="ds-widget-inner">
+                <WidgetTitle>Sesiones completadas</WidgetTitle>
+                {adherenceQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : (
+                  <>
+                    <p className="ds-widget-number">
+                      <NumberTicker value={sessionsCompleted} />
+                    </p>
+                    {sessionsCompleted === 0
+                      ? <WidgetEmpty message="Las sesiones completadas por tus clientes aparecerán aquí." />
+                      : <WidgetLabel>{sessionsCompleted === 1 ? 'sesión completada' : 'sesiones completadas'}</WidgetLabel>
+                    }
+                  </>
+                )}
+              </div>
+            </BentoCard>
+
+            {/* 6 — Próximas llamadas */}
+            <BentoCard span="2x1" className="widget-upcoming-calls">
+              <GlowingEffect />
+              <div className="ds-widget-inner">
+                <WidgetTitle>Próximas llamadas</WidgetTitle>
+                {bookingsQuery.isLoading ? (
+                  <SkeletonCard />
+                ) : upcomingBookings.length === 0 ? (
+                  <WidgetEmpty message="No hay llamadas agendadas. Comparte tu link de disponibilidad con tus clientes." />
+                ) : (
+                  <div className="ds-upcoming-list">
+                    <AnimatedList stagger={70}>
+                      {upcomingBookings.slice(0, 3).map((booking, i) => (
+                        <CallItem key={booking.id ?? i} booking={booking} />
+                      ))}
+                    </AnimatedList>
+                  </div>
+                )}
+              </div>
+            </BentoCard>
+
+          </BentoGrid>
+
+          {/* ── Tutorial ──────────────────────────────────────────── */}
+          <SpotlightTutorial screenKey="dashboard" steps={TUTORIAL_STEPS} />
         </div>
-        
-        <div className="dashboard-stats">
-          <div className="stat-card">
-            <h3 className="stat-number">0</h3>
-            <p className="stat-label">Programas</p>
-          </div>
-          <div className="stat-card">
-            <h3 className="stat-number">0</h3>
-            <p className="stat-label">Estudiantes</p>
-          </div>
-          <div className="stat-card">
-            <h3 className="stat-number">0</h3>
-            <p className="stat-label">Vistas</p>
-          </div>
-        </div>
-      </div>
-    </DashboardLayout>
+      </DashboardLayout>
     </ErrorBoundary>
   );
 };
 
 export default DashboardScreen;
-

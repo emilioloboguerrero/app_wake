@@ -239,22 +239,11 @@ const ProgramWeeksGrid = ({
   };
 
   const handleEditSession = (moduleId, sessionId) => {
-    console.log('[ProgramWeeksGrid] handleEditSession called', { moduleId, sessionId, modulesCount: modules?.length, hasOnSessionClick: !!onSessionClick });
     setOpenMenuSession(null);
     setMenuAnchorEl(null);
     const mod = modules.find((m) => m.id === moduleId);
     const session = mod?.sessions?.find((s) => s.id === sessionId);
-    console.log('[ProgramWeeksGrid] handleEditSession resolved', {
-      foundMod: !!mod,
-      modId: mod?.id,
-      sessionsInMod: mod?.sessions?.length ?? 0,
-      foundSession: !!session,
-      sessionId: session?.id,
-      sessionTitle: session?.title || session?.name,
-      sessionLibraryRef: session?.librarySessionRef,
-    });
     if (onSessionClick && mod && session) {
-      console.log('[ProgramWeeksGrid] handleEditSession: calling onSessionClick(mod, session)');
       onSessionClick(mod, session);
     } else {
       console.warn('[ProgramWeeksGrid] handleEditSession: NOT calling onSessionClick', {

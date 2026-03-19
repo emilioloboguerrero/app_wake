@@ -1,315 +1,528 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
-import ErrorBoundary from '../components/ErrorBoundary';
+import { GlowingEffect, SkeletonCard, TubelightNavBar, AnimatedList, SpotlightTutorial } from '../components/ui';
 import libraryService from '../services/libraryService';
-import { queryKeys } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import './LibraryManagementScreen.css';
 
-const TAB_CONFIG = [
-  { key: 'exercises', title: 'Ejercicios' },
-  { key: 'sessions', title: 'Sesiones' },
-  { key: 'modules', title: 'Módulos' }
+// ─── Static config ──────────────────────────────────────────────────────────
+
+const TAB_ITEMS = [
+  { id: 'ejercicios', label: 'Ejercicios' },
+  { id: 'sesiones',   label: 'Sesiones'   },
+  { id: 'modulos',    label: 'Módulos'    },
 ];
 
+const MUSCLE_DISPLAY = {
+  pecs: 'Pectorales',
+  front_delts: 'Deltoides Frontales',
+  side_delts: 'Deltoides Laterales',
+  rear_delts: 'Deltoides Post.',
+  triceps: 'Tríceps',
+  traps: 'Trapecios',
+  abs: 'Abdominales',
+  lats: 'Dorsales',
+  rhomboids: 'Romboides',
+  biceps: 'Bíceps',
+  forearms: 'Antebrazos',
+  quads: 'Cuádriceps',
+  glutes: 'Glúteos',
+  hamstrings: 'Isquiotibiales',
+  calves: 'Gemelos',
+  hip_flexors: 'Flexores de Cadera',
+  obliques: 'Oblicuos',
+  lower_back: 'Lumbar',
+  neck: 'Cuello',
+};
+
+function getExerciseMissing(ex) {
+  const missing = [];
+  if (!ex.video_url && !ex.video) missing.push('Video demostrativo');
+  if (!ex.muscle_activation || Object.keys(ex.muscle_activation).length === 0) missing.push('Activación muscular');
+  if (!ex.implements || (Array.isArray(ex.implements) && ex.implements.length === 0)) missing.push('Implementos');
+  return missing;
+}
+
+function getPrimaryMuscle(ex) {
+  if (ex.primaryMuscles?.length) return ex.primaryMuscles[0];
+  if (ex.muscle_activation) {
+    const entries = Object.entries(ex.muscle_activation);
+    if (entries.length) {
+      const top = entries.sort((a, b) => b[1] - a[1])[0];
+      return top[0];
+    }
+  }
+  return null;
+}
+
+// ─── Icons ───────────────────────────────────────────────────────────────────
+
 const SearchIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="library-search-icon">
-    <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    />
   </svg>
 );
 
-const MenuDotsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
-    <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-    <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+const GripIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="9"  cy="5"  r="1.5" fill="currentColor" />
+    <circle cx="15" cy="5"  r="1.5" fill="currentColor" />
+    <circle cx="9"  cy="12" r="1.5" fill="currentColor" />
+    <circle cx="15" cy="12" r="1.5" fill="currentColor" />
+    <circle cx="9"  cy="19" r="1.5" fill="currentColor" />
+    <circle cx="15" cy="19" r="1.5" fill="currentColor" />
   </svg>
 );
 
-const SkeletonGrid = () => (
-  <div className="library-skeleton-grid">
-    {[...Array(6)].map((_, i) => (
-      <div key={i} className="library-skeleton-card">
-        <div className="library-skeleton-line library-skeleton-line-title" />
-        <div className="library-skeleton-line library-skeleton-line-meta" />
+// ─── Skeleton grid ───────────────────────────────────────────────────────────
+
+function SkeletonGrid({ count = 6, cols = 2 }) {
+  return (
+    <div
+      className="lib-skeleton-grid"
+      style={{ '--lib-grid-cols': cols }}
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+function SkeletonRows({ count = 5 }) {
+  return (
+    <div className="lib-skeleton-rows">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Exercise row ────────────────────────────────────────────────────────────
+
+function ExerciseRow({ exercise }) {
+  const [calloutOpen, setCalloutOpen] = useState(false);
+  const missing = useMemo(() => getExerciseMissing(exercise), [exercise]);
+  const isComplete = missing.length === 0;
+  const muscle = getPrimaryMuscle(exercise);
+  const muscleLabel = muscle ? (MUSCLE_DISPLAY[muscle] || muscle) : null;
+
+  const handleDotClick = useCallback((e) => {
+    e.stopPropagation();
+    if (!isComplete) setCalloutOpen((v) => !v);
+  }, [isComplete]);
+
+  return (
+    <div className={`lib-exercise-row ${calloutOpen ? 'lib-exercise-row--open' : ''}`}>
+      <GlowingEffect disabled={!calloutOpen} spread={28} borderWidth={1} />
+
+      <div className="lib-exercise-row-inner">
+        <button
+          className="lib-completeness-dot"
+          style={{
+            background: isComplete
+              ? 'rgba(74,222,128,0.6)'
+              : 'rgba(251,191,36,0.8)',
+          }}
+          onClick={handleDotClick}
+          aria-label={isComplete ? 'Ejercicio completo' : 'Ver campos faltantes'}
+          title={isComplete ? 'Completo' : 'Incompleto — click para detalles'}
+        />
+
+        <span className="lib-exercise-name">{exercise.name || 'Sin nombre'}</span>
+
+        {muscleLabel && (
+          <span className="lib-muscle-pill">{muscleLabel}</span>
+        )}
       </div>
-    ))}
-  </div>
-);
+
+      {!isComplete && (
+        <div
+          className={`lib-exercise-callout ${calloutOpen ? 'lib-exercise-callout--visible' : ''}`}
+          aria-hidden={!calloutOpen}
+        >
+          <p className="lib-callout-title">Campos pendientes:</p>
+          <ul className="lib-callout-list">
+            {missing.map((m) => (
+              <li key={m} className="lib-callout-item">{m}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sortable session card ───────────────────────────────────────────────────
+
+function SortableSessionCard({ session, onNavigate }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: session.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+
+  const exerciseCount = session.exercises?.length ?? 0;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="lib-session-card"
+      onClick={() => onNavigate(session.id)}
+    >
+      <GlowingEffect spread={24} borderWidth={1} />
+
+      <div className="lib-session-card-top">
+        <button
+          className="lib-drag-handle"
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Arrastrar sesión"
+        >
+          <GripIcon />
+        </button>
+
+        <h3 className="lib-session-title">
+          {session.title || `Sesión ${session.id?.slice(0, 6)}`}
+        </h3>
+
+        <span className="lib-count-badge">
+          {exerciseCount} {exerciseCount === 1 ? 'ejercicio' : 'ejercicios'}
+        </span>
+      </div>
+
+      {session.muscleGroups?.length > 0 && (
+        <div className="lib-session-muscles">
+          {session.muscleGroups.slice(0, 3).map((mg) => (
+            <span key={mg} className="lib-muscle-pill lib-muscle-pill--dim">{mg}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Module card ─────────────────────────────────────────────────────────────
+
+function ModuleCard({ mod, onNavigate }) {
+  const sessionCount = mod.sessionRefs?.length ?? 0;
+
+  return (
+    <div
+      className="lib-module-card"
+      onClick={() => onNavigate(mod.id)}
+    >
+      <GlowingEffect spread={24} borderWidth={1} />
+
+      <h3 className="lib-module-title">
+        {mod.title || `Módulo ${mod.id?.slice(0, 6)}`}
+      </h3>
+
+      <span className="lib-count-badge">
+        {sessionCount} {sessionCount === 1 ? 'sesión' : 'sesiones'}
+      </span>
+    </div>
+  );
+}
+
+// ─── Empty state ─────────────────────────────────────────────────────────────
+
+function EmptyState({ title, subtitle, ctaLabel, onCta }) {
+  return (
+    <div className="lib-empty">
+      <p className="lib-empty-title">{title}</p>
+      <p className="lib-empty-sub">{subtitle}</p>
+      {ctaLabel && (
+        <button className="lib-empty-cta" onClick={onCta}>
+          + {ctaLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 const LibraryManagementScreen = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [currentTabIndex, setCurrentTabIndex] = useState(0);
+
+  const [activeTab, setActiveTab] = useState('ejercicios');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sessionOrder, setSessionOrder] = useState(null);
 
-  const { data: exerciseLibraries = [], isLoading: isLoadingExercises } = useQuery({
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // ── Data fetching ────────────────────────────────────────────────────────
+
+  const { data: exercises = [], isLoading: loadingEx } = useQuery({
     queryKey: queryKeys.library.exercises(user?.uid),
-    queryFn: () => libraryService.getLibrariesByCreator(user.uid),
-    enabled: !!user?.uid && currentTabIndex === 0,
+    queryFn: () => libraryService.getExercises(),
+    enabled: !!user?.uid && activeTab === 'ejercicios',
+    ...cacheConfig.programStructure,
   });
 
-  const { data: librarySessions = [], isLoading: isLoadingSessions } = useQuery({
+  const { data: rawSessions = [], isLoading: loadingSess } = useQuery({
     queryKey: queryKeys.library.sessions(user?.uid),
-    queryFn: () => libraryService.getSessionLibrary(user.uid),
-    enabled: !!user?.uid && currentTabIndex === 1,
+    queryFn: () => libraryService.getSessionLibrary(),
+    enabled: !!user?.uid && activeTab === 'sesiones',
+    ...cacheConfig.programStructure,
   });
 
-  const { data: libraryModules = [], isLoading: isLoadingModules } = useQuery({
+  const { data: modules = [], isLoading: loadingMod } = useQuery({
     queryKey: queryKeys.library.modules(user?.uid),
-    queryFn: () => libraryService.getModuleLibrary(user.uid),
-    enabled: !!user?.uid && currentTabIndex === 2,
+    queryFn: () => libraryService.getModuleLibrary(),
+    enabled: !!user?.uid && activeTab === 'modulos',
+    ...cacheConfig.programStructure,
   });
 
-  const handleTabClick = (index) => {
-    setCurrentTabIndex(index);
-    setSearchQuery('');
-  };
+  // Keep local session order for drag-and-drop; sync from server when rawSessions changes.
+  const sessions = useMemo(() => {
+    if (sessionOrder && sessionOrder.length === rawSessions.length) {
+      const byId = Object.fromEntries(rawSessions.map((s) => [s.id, s]));
+      return sessionOrder.map((id) => byId[id]).filter(Boolean);
+    }
+    return rawSessions;
+  }, [rawSessions, sessionOrder]);
 
-  const currentTab = TAB_CONFIG[currentTabIndex];
+  // ── Filtering ────────────────────────────────────────────────────────────
+
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredExercises = useMemo(
+    () => (q ? exercises.filter((e) => e.name?.toLowerCase().includes(q)) : exercises),
+    [exercises, q]
+  );
+
+  const filteredSessions = useMemo(
+    () => (q ? sessions.filter((s) => s.title?.toLowerCase().includes(q)) : sessions),
+    [sessions, q]
+  );
+
+  const filteredModules = useMemo(
+    () => (q ? modules.filter((m) => m.title?.toLowerCase().includes(q)) : modules),
+    [modules, q]
+  );
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleTabChange = useCallback((id) => {
+    setActiveTab(id);
+    setSearchQuery('');
+  }, []);
+
+  const handleDragEnd = useCallback((event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = sessions.map((s) => s.id);
+    const from = ids.indexOf(active.id);
+    const to = ids.indexOf(over.id);
+    setSessionOrder(arrayMove(ids, from, to));
+  }, [sessions]);
+
+  // ── Primary action per tab ───────────────────────────────────────────────
 
   const primaryActions = {
-    exercises: { label: 'Nueva biblioteca', path: '/libraries' },
-    sessions:  { label: 'Nueva sesión',    path: '/library/sessions/new' },
-    modules:   { label: 'Nuevo módulo',    path: '/library/modules/new' },
+    ejercicios: { label: 'Nueva biblioteca', path: '/libraries' },
+    sesiones:   { label: 'Nueva sesión',     path: '/library/sessions/new' },
+    modulos:    { label: 'Nuevo módulo',      path: '/library/modules/new' },
   };
-  const primaryAction = primaryActions[currentTab.key];
+  const primary = primaryActions[activeTab];
 
-  const filterByQuery = (items, key = 'title') =>
-    searchQuery.trim()
-      ? items.filter((item) => (item[key] || '').toLowerCase().includes(searchQuery.toLowerCase()))
-      : items;
+  // ── Render tab content ───────────────────────────────────────────────────
 
-  const renderTabContent = () => {
-    switch (currentTab.key) {
-      case 'exercises': {
-        if (isLoadingExercises) return <SkeletonGrid />;
-        const filtered = filterByQuery(exerciseLibraries);
-        if (filtered.length === 0) {
-          return (
-            <div className="library-empty">
-              <div className="library-empty-icon">📚</div>
-              <h3 className="library-empty-title">Tu biblioteca está vacía</h3>
-              <p className="library-empty-sub">Crea tu primera biblioteca de ejercicios para empezar</p>
-              <button className="library-empty-cta" onClick={() => navigate('/libraries')}>
-                <span>+</span> Nueva biblioteca
-              </button>
-            </div>
-          );
-        }
+  const renderContent = () => {
+    if (activeTab === 'ejercicios') {
+      if (loadingEx) return <SkeletonRows count={6} />;
+      if (!filteredExercises.length) {
         return (
-          <div className="library-list">
-            {filtered.map((library) => {
-              const exerciseCount = libraryService.getExerciseCount(library);
-              return (
-                <div
-                  key={library.id}
-                  className="library-item-card"
-                  onClick={() => navigate(`/libraries/${library.id}`)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="library-item-header">
-                    <h3 className="library-item-title">
-                      {library.title || `Biblioteca ${library.id.slice(0, 8)}`}
-                    </h3>
-                    <button
-                      className="library-card-menu"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Opciones"
-                    >
-                      <MenuDotsIcon />
-                    </button>
-                  </div>
-                  <div className="library-card-badges">
-                    <span className="library-badge library-badge-count">
-                      {exerciseCount} {exerciseCount === 1 ? 'ejercicio' : 'ejercicios'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <EmptyState
+            title="Tu biblioteca de ejercicios está vacía"
+            subtitle="Crea tu primera biblioteca para empezar a catalogar ejercicios con video y detalles musculares."
+            ctaLabel="Nueva biblioteca"
+            onCta={() => navigate('/libraries')}
+          />
         );
       }
-
-      case 'sessions': {
-        if (isLoadingSessions) return <SkeletonGrid />;
-        const filtered = filterByQuery(librarySessions);
-        if (filtered.length === 0) {
-          return (
-            <div className="library-empty">
-              <div className="library-empty-icon">🏋️</div>
-              <h3 className="library-empty-title">Tu biblioteca está vacía</h3>
-              <p className="library-empty-sub">Crea tu primera sesión para empezar</p>
-              <button className="library-empty-cta" onClick={() => navigate('/library/sessions/new')}>
-                <span>+</span> Nueva sesión
-              </button>
-            </div>
-          );
-        }
-        return (
-          <div className="library-list">
-            {filtered.map((session) => (
-              <div
-                key={session.id}
-                className="library-item-card"
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate(`/content/sessions/${session.id}`)}
-              >
-                <div className="library-item-header">
-                  <h3 className="library-item-title">
-                    {session.title || `Sesión ${session.id?.slice(0, 8)}`}
-                  </h3>
-                  <button
-                    className="library-card-menu"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="Opciones"
-                  >
-                    <MenuDotsIcon />
-                  </button>
-                </div>
-                <div className="library-card-badges">
-                  {session.exercises?.length > 0 && (
-                    <span className="library-badge library-badge-count">
-                      {session.exercises.length} {session.exercises.length === 1 ? 'ejercicio' : 'ejercicios'}
-                    </span>
-                  )}
-                  {(session.muscleGroups || []).slice(0, 3).map((mg) => (
-                    <span key={mg} className="library-badge library-badge-muscle">{mg}</span>
-                  ))}
-                </div>
-                {session.image_url && (
-                  <div className="library-card-image">
-                    <img src={session.image_url} alt={session.title} />
-                  </div>
-                )}
-              </div>
+      return (
+        <div className="lib-exercise-list">
+          <AnimatedList stagger={40}>
+            {filteredExercises.map((ex) => (
+              <ExerciseRow key={ex.id || ex.name} exercise={ex} />
             ))}
-          </div>
-        );
-      }
-
-      case 'modules': {
-        if (isLoadingModules) return <SkeletonGrid />;
-        const filtered = filterByQuery(libraryModules);
-        if (filtered.length === 0) {
-          return (
-            <div className="library-empty">
-              <div className="library-empty-icon">📦</div>
-              <h3 className="library-empty-title">Tu biblioteca está vacía</h3>
-              <p className="library-empty-sub">Crea tu primer módulo para empezar</p>
-              <button className="library-empty-cta" onClick={() => navigate('/library/modules/new')}>
-                <span>+</span> Nuevo módulo
-              </button>
-            </div>
-          );
-        }
-        return (
-          <div className="library-list">
-            {filtered.map((module) => {
-              const sessionCount = (module.sessionRefs || []).length;
-              return (
-                <div
-                  key={module.id}
-                  className="library-item-card"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/library/modules/${module.id}/edit`)}
-                >
-                  <div className="library-item-header">
-                    <h3 className="library-item-title">
-                      {module.title || `Módulo ${module.id?.slice(0, 8)}`}
-                    </h3>
-                    <button
-                      className="library-card-menu"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Opciones"
-                    >
-                      <MenuDotsIcon />
-                    </button>
-                  </div>
-                  <div className="library-card-badges">
-                    <span className="library-badge library-badge-count">
-                      {sessionCount} {sessionCount === 1 ? 'sesión' : 'sesiones'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      }
-
-      default:
-        return null;
+          </AnimatedList>
+        </div>
+      );
     }
+
+    if (activeTab === 'sesiones') {
+      if (loadingSess) return <SkeletonGrid count={6} cols={2} />;
+      if (!filteredSessions.length) {
+        return (
+          <EmptyState
+            title="Aún no tienes sesiones guardadas"
+            subtitle="Guarda tus mejores rutinas aquí y reutilízalas en cualquier programa que crees."
+            ctaLabel="Nueva sesión"
+            onCta={() => navigate('/library/sessions/new')}
+          />
+        );
+      }
+      return (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={filteredSessions.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="lib-sessions-grid">
+              {filteredSessions.map((session) => (
+                <SortableSessionCard
+                  key={session.id}
+                  session={session}
+                  onNavigate={(id) => navigate(`/content/sessions/${id}`)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      );
+    }
+
+    if (activeTab === 'modulos') {
+      if (loadingMod) return <SkeletonRows count={5} />;
+      if (!filteredModules.length) {
+        return (
+          <EmptyState
+            title="Todavía no hay módulos en tu biblioteca"
+            subtitle="Los módulos te permiten agrupar sesiones por semana o bloque de entrenamiento."
+            ctaLabel="Nuevo módulo"
+            onCta={() => navigate('/library/modules/new')}
+          />
+        );
+      }
+      return (
+        <div className="lib-modules-list">
+          <AnimatedList stagger={50}>
+            {filteredModules.map((mod) => (
+              <ModuleCard
+                key={mod.id}
+                mod={mod}
+                onNavigate={(id) => navigate(`/library/modules/${id}/edit`)}
+              />
+            ))}
+          </AnimatedList>
+        </div>
+      );
+    }
+
+    return null;
   };
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <ErrorBoundary>
-      <DashboardLayout screenName="Entrenamiento">
-        <div className="library-management-container">
+    <DashboardLayout screenName="Biblioteca">
+      <div className="lib-container">
 
-          {/* Page header */}
-          <div className="library-page-header">
-            <div className="library-page-header-text">
-              <h1 className="library-page-title">Biblioteca</h1>
-              <p className="library-page-subtitle">Tus sesiones y módulos listos para reutilizar</p>
-            </div>
-            <button
-              className="library-primary-btn"
-              onClick={() => navigate(primaryAction.path)}
-            >
-              <span className="library-primary-btn-icon">+</span>
-              {primaryAction.label}
-            </button>
+        {/* Header */}
+        <div className="lib-header">
+          <div className="lib-header-text">
+            <h1 className="lib-title">Biblioteca</h1>
+            <p className="lib-subtitle">Tu contenido reutilizable en un solo lugar</p>
           </div>
-
-          {/* Tab navigation + search */}
-          <div className="library-tab-navigation">
-            <div className="library-tab-header-container">
-              <div className="library-tab-indicator-wrapper">
-                {TAB_CONFIG.map((tab, index) => (
-                  <button
-                    key={tab.key}
-                    className={`library-tab-button ${currentTabIndex === index ? 'library-tab-button-active' : ''}`}
-                    onClick={() => handleTabClick(index)}
-                  >
-                    <span className="library-tab-title-text">{tab.title}</span>
-                  </button>
-                ))}
-                <div
-                  className="library-tab-indicator"
-                  style={{ transform: `translateX(${currentTabIndex * 100}%)` }}
-                />
-              </div>
-
-              <div className="library-search-wrapper">
-                <div className="library-search-field">
-                  <SearchIcon />
-                  <input
-                    type="text"
-                    className="library-search-input"
-                    placeholder={`Buscar ${currentTab.title.toLowerCase()}…`}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="library-tab-content-wrapper">
-            <div className="library-tab-content">
-              {renderTabContent()}
-            </div>
-          </div>
-
+          <button
+            className="lib-primary-btn"
+            onClick={() => navigate(primary.path)}
+          >
+            <span className="lib-primary-btn-plus">+</span>
+            {primary.label}
+          </button>
         </div>
-      </DashboardLayout>
-    </ErrorBoundary>
+
+        {/* TubelightNavBar + search row */}
+        <div className="lib-nav-bar">
+          <TubelightNavBar
+            items={TAB_ITEMS}
+            activeId={activeTab}
+            onSelect={handleTabChange}
+          />
+
+          <div className="lib-search-field">
+            <SearchIcon />
+            <input
+              type="text"
+              className="lib-search-input"
+              placeholder={`Buscar ${TAB_ITEMS.find((t) => t.id === activeTab)?.label.toLowerCase()}…`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="lib-content" key={activeTab}>
+          {renderContent()}
+        </div>
+
+      </div>
+
+      <SpotlightTutorial
+        screenKey="library"
+        steps={[
+          {
+            selector: '.lib-tabs',
+            title: 'Tu biblioteca',
+            body: 'Aquí guardas ejercicios, sesiones y módulos reutilizables para construir tus programas rápidamente.',
+          },
+          {
+            selector: '.lib-tab--ejercicios',
+            title: 'Completitud de ejercicios',
+            body: 'El punto de color indica si un ejercicio tiene toda la información necesaria. Haz clic en el punto ámbar para ver qué falta.',
+          },
+          {
+            selector: '.lib-tab--sesiones',
+            title: 'Sesiones arrastrables',
+            body: 'Arrastra las sesiones desde aquí directamente al calendario de un cliente para asignarlas.',
+          },
+        ]}
+      />
+    </DashboardLayout>
   );
 };
 

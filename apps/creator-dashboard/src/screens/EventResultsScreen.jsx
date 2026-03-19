@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import ScreenSkeleton from '../components/ScreenSkeleton';
+import { GlowingEffect, TubelightNavBar, SkeletonCard } from '../components/ui';
 import ErrorBoundary from '../components/ErrorBoundary';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
@@ -376,7 +376,8 @@ function ChartTooltip({ active, payload, label }) {
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="er-stat-card er-fade-in">
+    <div className="er-stat-card er-fade-in" style={{ position: 'relative' }}>
+      <GlowingEffect />
       <span className="er-stat-label">{label}</span>
       <span className="er-stat-value">{value}</span>
       {sub && <span className="er-stat-sub">{sub}</span>}
@@ -882,7 +883,18 @@ export default function EventResultsScreen() {
         </div>
 
         {isLoading ? (
-          <ScreenSkeleton />
+          <div className="er-skeleton-wrap">
+            <div className="er-skeleton-stats">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
         ) : (
           <>
             {/* Header */}
@@ -946,29 +958,15 @@ export default function EventResultsScreen() {
             </div>
 
             {/* Tabs */}
-            <div className="er-tabs">
-              <button
-                className={`er-tab${activeTab === 'registros' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('registros')}
-              >
-                Registros
-                {registrations.length > 0 && (
-                  <span className="er-tab-count">{registrations.length}</span>
-                )}
-              </button>
-              <button
-                className={`er-tab${activeTab === 'analytics' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('analytics')}
-              >
-                Analytics
-              </button>
-              <button
-                className={`er-tab${activeTab === 'editar' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('editar')}
-              >
-                Editar
-              </button>
-            </div>
+            <TubelightNavBar
+              tabs={[
+                { id: 'registros', label: 'Registros' },
+                { id: 'analytics', label: 'Analytics' },
+                { id: 'editar', label: 'Editar' },
+              ]}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
 
             {/* ── Registros tab ── */}
             {activeTab === 'registros' && (
@@ -1237,7 +1235,8 @@ export default function EventResultsScreen() {
                 {/* Two-panel layout */}
                 <div className="ee-panels">
                   {/* ── Left: Metadata ── */}
-                  <div className="ee-panel ee-panel--meta">
+                  <div className="ee-panel ee-panel--meta" style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     <h2 className="ee-panel-title">Detalles del evento</h2>
 
                     <div className="ee-field-group">
@@ -1406,7 +1405,8 @@ export default function EventResultsScreen() {
                   </div>
 
                   {/* ── Right: Field Builder ── */}
-                  <div className="ee-panel ee-panel--builder">
+                  <div className="ee-panel ee-panel--builder" style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     <div className="ee-panel-title-row">
                       <h2 className="ee-panel-title">Campos del formulario</h2>
                       {(() => {

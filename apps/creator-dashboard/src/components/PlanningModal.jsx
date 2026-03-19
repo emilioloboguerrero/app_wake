@@ -23,7 +23,6 @@ const PlanningModal = ({ isOpen, onClose, selectedDate, onWorkoutClick }) => {
   const handleWorkoutClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('PlanningModal: handleWorkoutClick called', { selectedDate, onWorkoutClick: !!onWorkoutClick });
     if (onWorkoutClick) {
       onWorkoutClick(selectedDate);
     } else {

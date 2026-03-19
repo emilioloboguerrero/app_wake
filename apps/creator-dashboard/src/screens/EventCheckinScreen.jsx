@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useAuth } from '../contexts/AuthContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
+import { GlowingEffect } from '../components/ui';
 import logger from '../utils/logger';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import './EventCheckinScreen.css';
@@ -217,7 +218,8 @@ export default function EventCheckinScreen() {
             </div>
           </div>
 
-          <div className="ec-scanner-card ec-fade-in">
+          <div className="ec-scanner-card ec-fade-in" style={{ position: 'relative' }}>
+                    <GlowingEffect />
             <video
               ref={videoRef}
               muted
@@ -229,7 +231,8 @@ export default function EventCheckinScreen() {
               <div className="ec-scanner-overlay">
                 {result ? (
                   /* ── Result display ── */
-                  <div className={`ec-result ec-result--${result.type} ec-fade-in`}>
+                  <div className={`ec-result ec-result--${result.type} ec-fade-in`} style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     {result.type === 'success' && (
                       <>
                         <div className="ec-result-icon ec-result-icon--success">

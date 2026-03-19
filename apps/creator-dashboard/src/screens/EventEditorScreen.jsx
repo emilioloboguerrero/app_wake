@@ -15,7 +15,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import ScreenSkeleton from '../components/ScreenSkeleton';
+import { GlowingEffect, SkeletonCard } from '../components/ui';
 import ErrorBoundary from '../components/ErrorBoundary';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
@@ -577,7 +577,7 @@ export default function EventEditorScreen() {
   if (isEdit && eventLoading) {
     return (
       <DashboardLayout screenName="Evento" showBackButton backPath="/events">
-        <ScreenSkeleton />
+        <SkeletonCard style={{ height: '80vh' }} />
       </DashboardLayout>
     );
   }
@@ -648,7 +648,8 @@ export default function EventEditorScreen() {
         {/* Two-panel layout */}
         <div className="ee-panels">
           {/* ── Left: Metadata ── */}
-          <div className="ee-panel ee-panel--meta">
+          <div className="ee-panel ee-panel--meta" style={{ position: 'relative' }}>
+            <GlowingEffect />
             <h2 className="ee-panel-title">Detalles del evento</h2>
 
             {/* Cover image */}
@@ -826,7 +827,8 @@ export default function EventEditorScreen() {
           </div>
 
           {/* ── Right: Field Builder ── */}
-          <div className="ee-panel ee-panel--builder">
+          <div className="ee-panel ee-panel--builder" style={{ position: 'relative' }}>
+            <GlowingEffect />
             <div className="ee-panel-title-row">
               <h2 className="ee-panel-title">Campos del formulario</h2>
               {(() => {

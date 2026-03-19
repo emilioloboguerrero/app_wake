@@ -89,7 +89,6 @@ const PlanningLibrarySidebar = ({
 
   const handleSessionDragStart = (e, session) => {
     const payload = { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesión' };
-    console.log('[PlanningLibrarySidebar] dragStart SESSION', { sessionId: session.id, payload });
     e.dataTransfer.effectAllowed = 'all';
     e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.setData('text/plain', JSON.stringify(payload));
@@ -98,7 +97,6 @@ const PlanningLibrarySidebar = ({
 
   const handlePlanDragStart = (e, plan) => {
     const payload = { type: DRAG_TYPE_PLAN, planId: plan.id, planTitle: plan.title };
-    console.log('[PlanningLibrarySidebar] dragStart PLAN', { planId: plan.id, payload });
     e.dataTransfer.effectAllowed = 'all';
     e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.setData('text/plain', JSON.stringify(payload));

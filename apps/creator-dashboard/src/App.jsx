@@ -34,6 +34,7 @@ import EventResultsScreen from './screens/EventResultsScreen';
 import EventEditorScreen from './screens/EventEditorScreen';
 import EventCheckinScreen from './screens/EventCheckinScreen';
 import ApiKeysScreen from './screens/ApiKeysScreen';
+import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -45,6 +46,14 @@ function AppContent() {
         <div className="App">
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardScreen />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/onboarding"
               element={
@@ -137,7 +146,7 @@ function AppContent() {
               path="/programs"
               element={
                 <ProtectedRoute>
-                  <Navigate to="/products" replace />
+                  <ProgramsScreen />
                 </ProtectedRoute>
               }
             />
@@ -341,7 +350,7 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
       </Router>

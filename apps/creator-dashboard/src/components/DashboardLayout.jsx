@@ -4,45 +4,53 @@ import { ASSET_BASE } from '../config/assets';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import { submitCreatorFeedback } from '../services/creatorFeedbackService';
+import userPreferencesService from '../services/userPreferencesService';
 import Tooltip from './ui/Tooltip';
 import './DashboardLayout.css';
 import CommandPalette from './CommandPalette';
+import {
+  LayoutDashboard,
+  Users,
+  Dumbbell,
+  BookOpen,
+  Utensils,
+  CalendarCheck,
+  Clock,
+} from 'lucide-react';
 
 const TYPE_BUG = 'bug';
 const TYPE_SUGGESTION = 'suggestion';
 
-// Nav items that can be hidden by the creator
-const HIDEABLE_KEYS = ['events', 'availability'];
+const ICON_SIZE = 14;
 
+// Nav items — Eventos + Disponibilidad are hideable via creatorNavPreferences
 const NAV_ITEMS = [
   {
     key: 'inicio',
     label: 'Inicio',
-    path: '/lab',
-    match: (p) => p === '/lab',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-        <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-        <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-        <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-      </svg>
-    ),
+    path: '/dashboard',
+    match: (p) => p === '/dashboard' || p === '/lab',
+    icon: <LayoutDashboard size={ICON_SIZE} />,
   },
   {
     key: 'clientes',
-    label: 'Clientes y programas',
+    label: 'Clientes',
     path: '/products',
     match: (p) =>
       p === '/products' ||
-      p.startsWith('/programs/') ||
       p.startsWith('/clients') ||
       p.startsWith('/one-on-one'),
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M17 20c0-1.657-2.239-3-5-3s-5 1.343-5 3M21 17c0-1.23-1.234-2.287-3-2.75M3 17c0-1.23 1.234-2.287 3-2.75M18 10.236A3 3 0 1016 5.764M6 10.236A3 3 0 108 5.764M12 14a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
+    icon: <Users size={ICON_SIZE} />,
+  },
+  {
+    key: 'programas',
+    label: 'Programas',
+    path: '/programs',
+    match: (p) =>
+      p === '/programs' ||
+      p.startsWith('/programs/') ||
+      p === '/products/new',
+    icon: <Dumbbell size={ICON_SIZE} />,
   },
   {
     key: 'biblioteca',
@@ -55,22 +63,14 @@ const NAV_ITEMS = [
       p.startsWith('/content/') ||
       p === '/library/sessions/new' ||
       p === '/library/modules/new',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M2 20h20M4 20V8l8-5 8 5v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
+    icon: <BookOpen size={ICON_SIZE} />,
   },
   {
     key: 'nutricion',
     label: 'Nutrición',
     path: '/nutrition',
     match: (p) => p === '/nutrition' || p.startsWith('/nutrition'),
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10M12 2c2.5 0 5 5 5 10s-2.5 10-5 10M12 2C9.5 2 7 7 7 12s2.5 10 5 10M2 12h20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
+    icon: <Utensils size={ICON_SIZE} />,
   },
   {
     key: 'events',
@@ -78,12 +78,8 @@ const NAV_ITEMS = [
     path: '/events',
     match: (p) => p === '/events' || p.startsWith('/events/'),
     hideable: true,
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v13a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M9 15l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
+    firestoreKey: 'eventos',
+    icon: <CalendarCheck size={ICON_SIZE} />,
   },
   {
     key: 'availability',
@@ -91,12 +87,8 @@ const NAV_ITEMS = [
     path: '/availability',
     match: (p) => p === '/availability',
     hideable: true,
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
+    firestoreKey: 'disponibilidad',
+    icon: <Clock size={ICON_SIZE} />,
   },
 ];
 
@@ -110,7 +102,7 @@ const getHiddenNav = () => {
   }
 };
 
-const setHiddenNav = (keys) => {
+const setHiddenNavLocal = (keys) => {
   localStorage.setItem(NAV_HIDDEN_KEY, JSON.stringify(keys));
 };
 
@@ -133,6 +125,11 @@ const DashboardLayout = ({
   // ── Layout state ──────────────────────────────────────────────
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Sidebar entrance animation — plays once per session
+  const [sidebarAnimating] = useState(
+    () => !sessionStorage.getItem('wake_sidebar_entered')
+  );
 
   // ── Nav visibility settings ───────────────────────────────────
   const [hiddenNav, setHiddenNavState] = useState(getHiddenNav);
@@ -169,6 +166,28 @@ const DashboardLayout = ({
     if (isMobile) setIsSidebarVisible(false);
   }, [location.pathname, isMobile]);
 
+  // ── Mark sidebar animation as played after first mount ────────
+  useEffect(() => {
+    if (sidebarAnimating) {
+      sessionStorage.setItem('wake_sidebar_entered', '1');
+    }
+  }, [sidebarAnimating]);
+
+  // ── Load nav preferences from Firestore on mount ──────────────
+  useEffect(() => {
+    if (!user?.uid) return;
+    userPreferencesService.getNavPreferences(user.uid).then((prefs) => {
+      if (!prefs) return;
+      const hidden = [];
+      if (prefs.eventos === false) hidden.push('events');
+      if (prefs.disponibilidad === false) hidden.push('availability');
+      setHiddenNavState(hidden);
+      setHiddenNavLocal(hidden);
+    }).catch(() => {
+      // silently fall back to localStorage state
+    });
+  }, [user?.uid]);
+
   // ── Close settings panel on outside click ─────────────────────
   useEffect(() => {
     if (!settingsOpen) return;
@@ -182,12 +201,20 @@ const DashboardLayout = ({
   }, [settingsOpen]);
 
   // ── Nav visibility helpers ────────────────────────────────────
-  const toggleNavItem = (key) => {
+  const toggleNavItem = async (key) => {
     const next = hiddenNav.includes(key)
       ? hiddenNav.filter(k => k !== key)
       : [...hiddenNav, key];
     setHiddenNavState(next);
-    setHiddenNav(next);
+    setHiddenNavLocal(next);
+
+    if (user?.uid) {
+      const prefs = {
+        eventos: !next.includes('events'),
+        disponibilidad: !next.includes('availability'),
+      };
+      userPreferencesService.setNavPreferences(user.uid, prefs).catch(() => {});
+    }
   };
 
   const isNavVisible = (key) => !hiddenNav.includes(key);
@@ -268,6 +295,12 @@ const DashboardLayout = ({
 
   const feedbackSidebarWidth = isMobile ? 0 : 220;
 
+  const sidebarClasses = [
+    'dl-sidebar',
+    sidebarAnimating ? 'dl-sidebar--entering' : '',
+    isMobile ? (isSidebarVisible ? 'dl-sidebar--open' : 'dl-sidebar--hidden') : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <div className="dl-layout" style={{ '--feedback-sidebar-width': `${feedbackSidebarWidth}px` }}>
 
@@ -277,7 +310,7 @@ const DashboardLayout = ({
       )}
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
-      <aside className={`dl-sidebar ${isMobile ? (isSidebarVisible ? 'dl-sidebar--open' : 'dl-sidebar--hidden') : ''}`}>
+      <aside className={sidebarClasses}>
 
         {/* Logo */}
         <div className="dl-sidebar__logo">
@@ -311,7 +344,7 @@ const DashboardLayout = ({
                 aria-label="Personalizar navegación"
                 title="Personalizar menú"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8"/>
                   <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.8"/>
                 </svg>
@@ -353,11 +386,8 @@ const DashboardLayout = ({
               )}
               <div className="dl-user__info">
                 <p className="dl-user__name">{user?.displayName || 'Tu perfil'}</p>
-                <p className="dl-user__email">{user?.email}</p>
+                <p className="dl-user__sub">Perfil →</p>
               </div>
-              <svg className="dl-user__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none">
-                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
             </button>
           </Tooltip>
         </div>

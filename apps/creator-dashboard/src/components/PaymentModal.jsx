@@ -17,14 +17,11 @@ const PaymentModal = ({ visible, onClose, checkoutURL, onPaymentSuccess, onPayme
     const handleMessage = (event) => {
       // Only process messages from Mercado Pago domains
       if (event.origin.includes('mercadopago') || event.origin.includes('mercadolibre')) {
-        console.log('📍 Payment Modal Message:', event.data);
         
         if (event.data?.type === 'payment_success' || event.data?.status === 'approved') {
-          console.log('✅ Payment success detected via message');
           onPaymentSuccess?.({ url: checkoutURL, message: event.data });
           onClose?.();
         } else if (event.data?.type === 'payment_error' || event.data?.status === 'rejected') {
-          console.log('❌ Payment error detected via message');
           onPaymentError?.({ url: checkoutURL, message: event.data });
           onClose?.();
         }
@@ -61,7 +58,6 @@ const PaymentModal = ({ visible, onClose, checkoutURL, onPaymentSuccess, onPayme
   }, [visible, checkoutURL]);
 
   const handleLoad = () => {
-    console.log('✅ Payment checkout loaded');
     setLoading(false);
     setError(null);
   };

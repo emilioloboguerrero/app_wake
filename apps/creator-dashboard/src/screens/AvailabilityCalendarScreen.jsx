@@ -7,6 +7,7 @@ import Modal from '../components/Modal';
 import availabilityService from '../services/availabilityService';
 import { getBookingsForCreator, updateBookingCallLink } from '../services/callBookingService';
 import apiClient from '../utils/apiClient';
+import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
 import '../components/CalendarView.css';
 import './AvailabilityCalendarScreen.css';
 import '../components/PropagateChangesModal.css';
@@ -100,6 +101,22 @@ function bookingOverlapsSlot(booking, slot) {
   return bStart < sEnd && bEnd > sStart;
 }
 
+/** Get the 7 dates of the ISO week containing a given date (Mon–Sun) */
+function getWeekDates(date) {
+  const d = new Date(date);
+  const day = (d.getDay() + 6) % 7; // 0=Mon … 6=Sun
+  d.setDate(d.getDate() - day);
+  return Array.from({ length: 7 }, (_, i) => {
+    const wd = new Date(d);
+    wd.setDate(d.getDate() + i);
+    return wd;
+  });
+}
+
+function dateToStr(d) {
+  return d.toISOString().slice(0, 10);
+}
+
 export default function AvailabilityCalendarScreen() {
   const { user } = useAuth();
   const today = useMemo(() => new Date(), []);
@@ -111,6 +128,10 @@ export default function AvailabilityCalendarScreen() {
   const [slotDetailModal, setSlotDetailModal] = useState(null); // { slot, booking? }
   const [callLinkInput, setCallLinkInput] = useState('');
   const [savingCallLink, setSavingCallLink] = useState(false);
+
+  // Week navigation for the slot grid
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date());
+  const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
 
   const { data: availability = { timezone: '', days: {} } } = useQuery({
     queryKey: ['availability', user?.uid],
@@ -386,6 +407,17 @@ export default function AvailabilityCalendarScreen() {
     (callLinkInput.trim() || '') !== (slotDetailModal.booking.callLink?.trim() || '')
   );
 
+  // Week label for the slot grid header
+  const weekLabel = useMemo(() => {
+    const first = weekDates[0];
+    const last = weekDates[6];
+    const sameMonth = first.getMonth() === last.getMonth();
+    if (sameMonth) {
+      return `${first.getDate()}–${last.getDate()} ${MONTHS[first.getMonth()]} ${first.getFullYear()}`;
+    }
+    return `${first.getDate()} ${MONTHS[first.getMonth()]} – ${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`;
+  }, [weekDates]);
+
   return (
     <DashboardLayout screenName="Disponibilidad para llamadas">
       <div className="availability-container">
@@ -394,7 +426,10 @@ export default function AvailabilityCalendarScreen() {
           <p className="availability-page-subtitle">Gestiona tus horarios de llamadas</p>
         </div>
         <div className="availability-body">
+
+          {/* ── Left panel: controls ── */}
           <div className="availability-sidebar-left">
+            <GlowingEffect spread={28} borderWidth={1} />
             <div className="availability-sidebar-header">
               <h3 className="availability-sidebar-title">Gestionar disponibilidad</h3>
             </div>
@@ -589,85 +624,183 @@ export default function AvailabilityCalendarScreen() {
             )}
           </div>
 
-          <div className="availability-day-panel">
-            <div className="availability-day-panel-header">
-              <h3 className="availability-day-panel-title">
-                {selectedDateStr ? `Horario – ${selectedDateLabel}` : 'Horario del día'}
-              </h3>
+          {/* ── Week slot grid ── */}
+          <div className="availability-week-panel">
+            <GlowingEffect spread={32} borderWidth={1} />
+            <div className="availability-week-panel-header">
+              <div className="availability-week-nav">
+                <button
+                  type="button"
+                  className="availability-week-nav-btn"
+                  aria-label="Semana anterior"
+                  onClick={() => setWeekAnchor((d) => { const nd = new Date(d); nd.setDate(nd.getDate() - 7); return nd; })}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <span className="availability-week-label">{weekLabel}</span>
+                <button
+                  type="button"
+                  className="availability-week-nav-btn"
+                  aria-label="Semana siguiente"
+                  onClick={() => setWeekAnchor((d) => { const nd = new Date(d); nd.setDate(nd.getDate() + 7); return nd; })}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
               {bookingsError && (
                 <p className="availability-bookings-error" title={bookingsError?.message}>
-                  No se pudieron cargar las reservas. Las franjas reservadas podrían no mostrarse.
-                </p>
-              )}
-              {selectedDateStr && !bookingsError && bookings.length > 0 && (
-                <p className="availability-bookings-hint">
-                  {bookings.length} reserva{bookings.length !== 1 ? 's' : ''} cargada{bookings.length !== 1 ? 's' : ''}. Verde: enlace listo. Rojo: falta enlace.
+                  No se pudieron cargar las reservas.
                 </p>
               )}
             </div>
-            <div className="availability-day-panel-content">
-              {!selectedDateStr ? (
-                <p className="availability-empty-hint">Selecciona un día en el calendario para ver las franjas.</p>
-              ) : loading ? (
-                <p className="availability-empty-hint">Cargando…</p>
-              ) : slots.length === 0 ? (
-                <p className="availability-empty-hint">Sin horarios — arrastra una franja desde la izquierda.</p>
-              ) : (
-                <div
-                  ref={timelineWrapRef}
-                  className={`availability-timeline-wrap ${timelineDragOver ? 'availability-timeline-drag-over' : ''}`}
-                  onDragOver={handleTimelineDragOver}
-                  onDragLeave={handleTimelineDragLeave}
-                  onDrop={handleTimelineDrop}
-                >
+
+            <div className="availability-week-grid">
+              {weekDates.map((wd, colIndex) => {
+                const wdStr = dateToStr(wd);
+                const isWdToday = dateToStr(wd) === dateToStr(today);
+                const isSelected = wdStr === selectedDateStr;
+                const daySlots = availability.days[wdStr]?.slots || [];
+                const isLoadingCol = loading && wdStr === selectedDateStr;
+
+                return (
                   <div
-                    className="availability-timeline"
-                    style={{ height: dayTimelineHeight }}
+                    key={wdStr}
+                    className={`availability-week-col${isSelected ? ' availability-week-col--selected' : ''}`}
+                    style={{ '--col-index': colIndex }}
                   >
-                    {Array.from({ length: 24 }, (_, i) => (
-                      <div
-                        key={i}
-                        className="availability-timeline-hour"
-                        style={{ height: HOUR_HEIGHT }}
-                      >
-                        <span className="availability-timeline-hour-label">
-                          {String(i).padStart(2, '0')}:00
-                        </span>
-                      </div>
-                    ))}
-                    <div className="availability-timeline-slots">
-                      {slots.map((slot, index) => {
-                        const { top, height } = slotToPosition(slot);
-                        const isReserved = isSlotReserved(slot);
-                        const reservedClass = isReserved ? getSlotReservedClass(slot) : null;
-                        return (
-                          <div
-                            key={index}
-                            role="button"
-                            tabIndex={0}
-                            className={`availability-timeline-slot-block availability-timeline-slot-clickable ${reservedClass || 'availability-timeline-slot-available'}`}
-                            style={{
-                              top: `${top}%`,
-                              height: `${height}%`,
-                            }}
-                            title={`${formatSlotTime(slot.startUtc)} – ${formatSlotTime(slot.endUtc)}${isReserved ? ' (Reservado)' : ''} – Clic para ver detalles`}
-                            onClick={(e) => handleSlotClick(slot, e)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSlotClick(slot, e); } }}
-                          >
-                            <span className="availability-timeline-slot-label">
-                              {formatSlotTime(slot.startUtc)} – {formatSlotTime(slot.endUtc)}
-                            </span>
-                          </div>
-                        );
-                      })}
+                    {/* Day header */}
+                    <button
+                      type="button"
+                      className={`availability-week-day-header${isWdToday ? ' availability-week-day-header--today' : ''}${isSelected ? ' availability-week-day-header--selected' : ''}`}
+                      onClick={() => handleDayClick({ dateStr: wdStr })}
+                      aria-pressed={isSelected}
+                    >
+                      <span className="availability-week-day-name">{DAYS_OF_WEEK[colIndex]}</span>
+                      <span className="availability-week-day-num">{wd.getDate()}</span>
+                    </button>
+
+                    {/* Slot pills */}
+                    <div className="availability-week-slots">
+                      {isLoadingCol ? (
+                        <>
+                          <ShimmerSkeleton height="28px" borderRadius="8px" />
+                          <ShimmerSkeleton height="28px" borderRadius="8px" />
+                          <ShimmerSkeleton height="28px" width="75%" borderRadius="8px" />
+                        </>
+                      ) : daySlots.length === 0 ? (
+                        <span className="availability-week-empty">—</span>
+                      ) : (
+                        daySlots.map((slot, si) => {
+                          const reservedClass = isSlotReserved(slot)
+                            ? getSlotReservedClass(slot)
+                            : null;
+                          const pillClass = reservedClass || 'availability-week-slot-available';
+                          return (
+                            <div
+                              key={si}
+                              className={`availability-week-slot-pill ${pillClass}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => handleSlotClick(slot, e)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSlotClick(slot, e); } }}
+                              title={`${formatSlotTime(slot.startUtc)} – ${formatSlotTime(slot.endUtc)}${isSlotReserved(slot) ? ' (Reservado)' : ''}`}
+                              style={{ '--pill-index': si }}
+                            >
+                              <GlowingEffect spread={14} borderWidth={1} />
+                              <span className="availability-week-slot-pill-time">
+                                {formatSlotTime(slot.startUtc)}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
+
+            {/* Day timeline drop zone — shown when a date is selected */}
+            {selectedDateStr && (
+              <div className="availability-timeline-section">
+                <div className="availability-day-panel-header">
+                  <h3 className="availability-day-panel-title">
+                    Horario – {selectedDateLabel}
+                  </h3>
+                </div>
+                <div className="availability-day-panel-content">
+                  {loading ? (
+                    <div className="availability-timeline-skeleton">
+                      {Array.from({ length: 6 }, (_, i) => (
+                        <ShimmerSkeleton key={i} height="32px" borderRadius="8px" />
+                      ))}
+                    </div>
+                  ) : slots.length === 0 ? (
+                    <p className="availability-empty-hint">Sin horarios — arrastra una franja desde la izquierda.</p>
+                  ) : (
+                    <div
+                      ref={timelineWrapRef}
+                      className={`availability-timeline-wrap${timelineDragOver ? ' availability-timeline-drag-over' : ''}`}
+                      onDragOver={handleTimelineDragOver}
+                      onDragLeave={handleTimelineDragLeave}
+                      onDrop={handleTimelineDrop}
+                    >
+                      <div
+                        className="availability-timeline"
+                        style={{ height: dayTimelineHeight }}
+                      >
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <div
+                            key={i}
+                            className="availability-timeline-hour"
+                            style={{ height: HOUR_HEIGHT }}
+                          >
+                            <span className="availability-timeline-hour-label">
+                              {String(i).padStart(2, '0')}:00
+                            </span>
+                          </div>
+                        ))}
+                        <div className="availability-timeline-slots">
+                          {slots.map((slot, index) => {
+                            const { top, height } = slotToPosition(slot);
+                            const isReserved = isSlotReserved(slot);
+                            const reservedClass = isReserved ? getSlotReservedClass(slot) : null;
+                            return (
+                              <div
+                                key={index}
+                                role="button"
+                                tabIndex={0}
+                                className={`availability-timeline-slot-block availability-timeline-slot-clickable ${reservedClass || 'availability-timeline-slot-available'}`}
+                                style={{
+                                  top: `${top}%`,
+                                  height: `${height}%`,
+                                }}
+                                title={`${formatSlotTime(slot.startUtc)} – ${formatSlotTime(slot.endUtc)}${isReserved ? ' (Reservado)' : ''} – Clic para ver detalles`}
+                                onClick={(e) => handleSlotClick(slot, e)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSlotClick(slot, e); } }}
+                              >
+                                <span className="availability-timeline-slot-label">
+                                  {formatSlotTime(slot.startUtc)} – {formatSlotTime(slot.endUtc)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* ── Right panel: calendar ── */}
           <div className="availability-calendar-panel">
+            <GlowingEffect spread={24} borderWidth={1} />
             <div className="availability-calendar-panel-header">
               <h3 className="availability-calendar-panel-title">Calendario</h3>
             </div>

@@ -555,11 +555,11 @@
   transition: color 0.15s, background 0.15s;
 }
 
-.ee-field-expand-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
+.ee-field-expand-btn:hover { color: var(--text-secondary); background: rgba(255,255,255,0.06); }
 .ee-field-remove-btn:hover { color: rgba(224,84,84,0.8); background: rgba(224,84,84,0.08); }
 
 .ee-field-card-body {
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--border-subtle);
   padding: 14px 14px 16px;
   display: flex;
   flex-direction: column;
@@ -747,7 +747,7 @@
 }
 
 .ee-picker-panel {
-  background: #1e1e1e;
+  background: var(--surface-2);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 16px;
   box-shadow: 0 32px 80px rgba(0,0,0,0.7);
@@ -876,7 +876,7 @@
 
 /* ── Locked (base) field card ── */
 .ee-field-card--locked {
-  border-color: rgba(255,255,255,0.06) !important;
+  border-color: var(--border-subtle) !important;
   background: rgba(255,255,255,0.02) !important;
 }
 

@@ -1,20 +1,26 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
+import {
+  GlowingEffect,
+  TubelightNavBar,
+  ProgressRing,
+  SkeletonCard,
+  AnimatedList,
+} from '../components/ui';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import './EventsScreen.css';
 
-const STATUS_FILTERS = [
-  { key: 'all', label: 'Todos' },
-  { key: 'active', label: 'Activos' },
-  { key: 'draft', label: 'Borradores' },
-  { key: 'closed', label: 'Completados' },
+const NAV_TABS = [
+  { id: 'active', label: 'Activos' },
+  { id: 'draft', label: 'Borradores' },
+  { id: 'closed', label: 'Pasados' },
 ];
 
 function statusConfig(status) {
@@ -30,25 +36,13 @@ function formatEventDate(ts) {
   return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function SkeletonCard() {
-  return (
-    <div className="es-card es-card--skeleton" aria-hidden="true">
-      <div className="es-card-cover es-skeleton-cover" />
-      <div className="es-card-body">
-        <div className="es-skeleton-line es-skeleton-line--title" />
-        <div className="es-skeleton-line es-skeleton-line--meta" />
-        <div className="es-skeleton-line es-skeleton-line--meta" style={{ width: '50%' }} />
-      </div>
-    </div>
-  );
-}
 
 export default function EventsScreen() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeFilter, setActiveFilter] = useState('active');
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -109,9 +103,7 @@ export default function EventsScreen() {
     }
   }
 
-  const filtered = activeFilter === 'all'
-    ? events
-    : events.filter((ev) => ev.status === activeFilter);
+  const filtered = events.filter((ev) => ev.status === activeFilter);
 
   return (
     <ErrorBoundary>
@@ -122,13 +114,6 @@ export default function EventsScreen() {
           <div className="es-header">
             <div className="es-header-text">
               <h1 className="es-title">Eventos</h1>
-              {!isLoading && (
-                <p className="es-subtitle">
-                  {events.length === 0
-                    ? 'Sin eventos aún'
-                    : `${events.length} evento${events.length !== 1 ? 's' : ''}`}
-                </p>
-              )}
             </div>
             <button className="es-primary-btn" onClick={() => navigate('/events/new')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -139,20 +124,13 @@ export default function EventsScreen() {
             </button>
           </div>
 
-          {/* ── Filter tabs ── */}
-          <div className="es-filters" role="tablist">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.key}
-                role="tab"
-                aria-selected={activeFilter === f.key}
-                className={`es-filter-tab${activeFilter === f.key ? ' es-filter-tab--active' : ''}`}
-                onClick={() => setActiveFilter(f.key)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          {/* ── Nav tabs ── */}
+          <TubelightNavBar
+            tabs={NAV_TABS}
+            activeTab={activeFilter}
+            onTabChange={setActiveFilter}
+            className="es-nav"
+          />
 
           {/* ── Content ── */}
           {isLoading ? (
@@ -180,8 +158,8 @@ export default function EventsScreen() {
               )}
             </div>
           ) : (
-            <div className="es-grid">
-              {filtered.map((ev, idx) => {
+            <AnimatedList className="es-grid" stagger={60}>
+              {filtered.map((ev) => {
                 const { label, cls } = statusConfig(ev.status);
                 const count = ev.registration_count ?? 0;
                 const max = ev.max_registrations;
@@ -196,10 +174,11 @@ export default function EventsScreen() {
                 return (
                   <div
                     key={ev.id}
-                    className="es-card es-card--fade"
-                    style={{ animationDelay: `${idx * 40}ms` }}
+                    className="es-card"
+                    style={{ position: 'relative' }}
                     onClick={() => { if (isMenuOpen) setMenuOpenId(null); }}
                   >
+                    <GlowingEffect />
                     {/* Cover */}
                     <div className="es-card-cover">
                       {ev.image_url
@@ -251,8 +230,15 @@ export default function EventsScreen() {
                       </div>
 
                       {pct !== null && (
-                        <div className="es-capacity-track">
-                          <div className="es-capacity-fill" style={{ width: `${pct}%` }} />
+                        <div className="es-capacity-row">
+                          <ProgressRing
+                            percent={pct}
+                            size={36}
+                            strokeWidth={3}
+                            color="rgba(255,255,255,0.7)"
+                            label={`${Math.round(pct)}%`}
+                          />
+                          <span className="es-capacity-label">{count}{max ? ` / ${max}` : ''} cupos</span>
                         </div>
                       )}
 
@@ -363,7 +349,7 @@ export default function EventsScreen() {
                   </div>
                 );
               })}
-            </div>
+            </AnimatedList>
           )}
         </div>
       </DashboardLayout>
