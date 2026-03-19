@@ -16,7 +16,7 @@ import Text from '../components/Text';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
-import { getStorage, isWeb } from '../utils/platform';
+import { isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
 import courseDownloadService from '../data-management/courseDownloadService';
 import apiClient from '../utils/apiClient';
@@ -556,14 +556,16 @@ const MainScreen = ({ navigation, route }) => {
     };
   }, []);
 
-  // Get platform-specific storage
-  const storage = getStorage();
-
   // Save selected card index to storage
   // Scroll position persistence — saves and restores the active card index across navigations
   const saveSelectedCardIndex = async (index) => {
     try {
-      await storage.setItem('selectedCardIndex', index.toString());
+      if (isWeb) {
+        localStorage.setItem('selectedCardIndex', index.toString());
+      } else {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.setItem('selectedCardIndex', index.toString());
+      }
     } catch (error) {
       // Handle error silently
     }
@@ -572,8 +574,14 @@ const MainScreen = ({ navigation, route }) => {
   // Load selected card index from storage
   const loadSelectedCardIndex = async () => {
     try {
-      const savedIndex = await storage.getItem('selectedCardIndex');
-      return savedIndex ? parseInt(savedIndex, 10) : 0;
+      if (isWeb) {
+        const savedIndex = localStorage.getItem('selectedCardIndex');
+        return savedIndex ? parseInt(savedIndex, 10) : 0;
+      } else {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const savedIndex = await AsyncStorage.getItem('selectedCardIndex');
+        return savedIndex ? parseInt(savedIndex, 10) : 0;
+      }
     } catch (error) {
       return 0;
     }

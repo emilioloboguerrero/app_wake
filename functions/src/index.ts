@@ -10768,6 +10768,30 @@ app.get("/api/v1/sessions/:sessionId/content", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── Storage ──────────────────────────────────────────────────────────────────
+
+app.get("/api/v1/storage/download-url", async (req, res, next) => {
+  try {
+    await validateAuth(req);
+    const path = req.query.path as string | undefined;
+    if (!path) throw apiError("VALIDATION_ERROR", "path is required", 400, "path");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    let url: string;
+    try {
+      [url] = await admin.storage().bucket().file(path).getSignedUrl({
+        version: "v4",
+        action: "read",
+        expires: expiresAt,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      functions.logger.error("getSignedUrl failed", { error: msg });
+      throw apiError("INTERNAL_ERROR", "Storage signing failed", 500);
+    }
+    res.json({ data: { url } });
+  } catch (err) { next(err); }
+});
+
 // ─── Global error handler (must be last) ─────────────────────────────────────
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

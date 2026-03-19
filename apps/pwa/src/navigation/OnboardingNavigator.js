@@ -84,8 +84,7 @@ const OnboardingNavigator = ({ onComplete }) => {
 
       if (Platform.OS === 'web') {
         try {
-          const webStorageService = require('../services/webStorageService').default;
-          await webStorageService.setItem(`onboarding_status_${uid}`, JSON.stringify({
+          localStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
             onboardingCompleted: true,
             profileCompleted: true,
             cachedAt: Date.now(),

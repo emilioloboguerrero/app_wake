@@ -74,18 +74,6 @@ export const shouldShowAppFlow = () => {
   return false;
 };
 
-// Get platform-specific storage
-export const getStorage = () => {
-  if (isWeb) {
-    // Use web storage service for web
-    return require('../services/webStorageService').default;
-  } else {
-    // Use AsyncStorage for native
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    return AsyncStorage;
-  }
-};
-
 // Get platform-specific dimensions
 // NOTE: For React components, prefer using useWindowDimensions() hook instead
 // This utility is for non-React contexts only (e.g., utility functions, module-level code)

@@ -18,7 +18,6 @@ import { auth } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/apiClient';
 import profilePictureService from '../../services/profilePictureService';
-import webStorageService from '../../services/webStorageService';
 import logger from '../../utils/logger';
 import { validateUsername as validateUsernameFormat } from '../../utils/inputValidation';
 import _countriesRaw from '../../../assets/data/countries.json';
@@ -411,7 +410,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
 
       const statusCache = JSON.stringify({ onboardingCompleted: false, profileCompleted: true, cachedAt: Date.now() });
       try { await AsyncStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
-      try { await webStorageService.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
+      try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
 
       setSavingProfile(false);
       return true;
@@ -446,7 +445,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
       });
       const statusCache = JSON.stringify({ onboardingCompleted: true, profileCompleted: true, cachedAt: Date.now() });
       try { await AsyncStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
-      try { await webStorageService.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
+      try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
     } catch (err) {
       logger.error('[ONBOARDING_FLOW] doSaveAll error:', err);
     }

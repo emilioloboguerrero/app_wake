@@ -164,7 +164,7 @@ applyViewportHeightOnce();
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
 let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
-let auth, webStorageService;
+let auth;
 
 // Function to load heavy components (called when not on login route)
 // Made async to prevent blocking the main thread
@@ -183,9 +183,8 @@ const loadHeavyComponents = async () => {
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
           logger.debug('[APP] Loading ErrorBoundary...');
           ErrorBoundary = require('./components/ErrorBoundary').default;
-          logger.debug('[APP] Loading auth, webStorageService...');
+          logger.debug('[APP] Loading auth...');
           auth = require('./config/firebase').auth;
-          webStorageService = require('./services/webStorageService').default;
           logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
           logger.error('[APP] ❌ Error loading heavy components:', error);
@@ -458,10 +457,10 @@ export default function App() {
       if (!mounted) return;
       
       // Guard: Only run if components are loaded
-      if (!webStorageService || !auth) {
+      if (!auth) {
         return;
       }
-      
+
       try {
         safeLog('log', '🚀 Starting web app initialization...');
         if (debugMode) {
@@ -473,23 +472,7 @@ export default function App() {
             onLine: navigator.onLine
           });
         }
-        
-        // Initialize web storage service first (critical for web)
-        // Don't await - let it initialize in background with timeout
-        Promise.race([
-          webStorageService.init().then(() => {
-            if (mounted) safeLog('log', '✅ Web storage initialized');
-          }),
-          new Promise(resolve => setTimeout(resolve, 2000)) // 2 second timeout
-        ]).catch((error) => {
-          if (mounted) {
-            safeLog('error', '⚠️ Web storage initialization failed (non-critical):', error);
-            if (debugMode) {
-              logger.error('[DEBUG] Storage error details:', error);
-            }
-          }
-        });
-        
+
         // Check auth state (non-blocking)
         try {
           const currentUser = auth.currentUser;
@@ -742,7 +725,6 @@ export default function App() {
       if (!StatusBar) StatusBar = require('expo-status-bar').StatusBar;
       if (!auth) auth = require('./config/firebase').auth;
       if (!logger) logger = require('./utils/logger').default;
-      if (!webStorageService) webStorageService = require('./services/webStorageService').default;
       logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
       logger.error('[APP] ❌ Synchronous load failed:', syncError);

@@ -47,7 +47,6 @@ import EventCheckinScreen from '../screens/EventCheckinScreen.web';
 import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 
 import firestoreService from '../services/firestoreService';
-import webStorageService from '../services/webStorageService';
 import logger from '../utils/logger';
 import { isSafariWeb } from '../utils/platform';
 import BottomTabBar from '../components/BottomTabBar.web';
@@ -222,7 +221,8 @@ const AuthenticatedLayout = ({ children }) => {
           if (skipCache) skipCacheNextRef.current = false;
 
           if (!skipCache) {
-            const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
+            let cached = null;
+            try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
             if (cached) {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
@@ -252,11 +252,13 @@ const AuthenticatedLayout = ({ children }) => {
             if (profile) {
               logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from Firestore. uid:', effectiveUidForFetch, 'onboardingCompleted:', profile.onboardingCompleted, 'profileCompleted:', profile.profileCompleted);
               setUserProfile(profile);
-              webStorageService.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
-                onboardingCompleted: profile.onboardingCompleted ?? false,
-                profileCompleted: profile.profileCompleted ?? false,
-                cachedAt: Date.now()
-              })).catch(() => {});
+              try {
+                localStorage.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
+                  onboardingCompleted: profile.onboardingCompleted ?? false,
+                  profileCompleted: profile.profileCompleted ?? false,
+                  cachedAt: Date.now(),
+                }));
+              } catch (_) {}
             } else {
               logger.log('[AUTH LAYOUT] BREAKPOINT: No profile (new user). uid:', effectiveUidForFetch, '-> setting onboarding not completed');
               setUserProfile({ profileCompleted: false, onboardingCompleted: false });
@@ -266,7 +268,8 @@ const AuthenticatedLayout = ({ children }) => {
           logger.warn('[AUTH LAYOUT] BREAKPOINT: Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
           if (mounted) {
             try {
-              const cached = await webStorageService.getItem(`onboarding_status_${effectiveUidForFetch}`);
+              let cached = null;
+              try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
               if (cached) {
                 const status = JSON.parse(cached);
                 logger.log('[AUTH LAYOUT] Using cached onboarding status after error. uid:', effectiveUidForFetch, status);

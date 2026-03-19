@@ -1,5 +1,4 @@
 import { isWeb } from '../utils/platform';
-import webStorageService from './webStorageService';
 import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
 
@@ -189,7 +188,7 @@ class ProfilePictureService {
       // Cache the URL
       this.cache.set(userId, downloadUrl);
       if (isWeb) {
-        await webStorageService.setItem(`profile_${userId}`, downloadUrl);
+        try { localStorage.setItem(`profile_${userId}`, downloadUrl); } catch (_) {}
       } else {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.setItem(`profile_${userId}`, downloadUrl);
@@ -213,7 +212,7 @@ class ProfilePictureService {
       // Check storage
       let cached;
       if (isWeb) {
-        cached = await webStorageService.getItem(`profile_${userId}`);
+        try { cached = localStorage.getItem(`profile_${userId}`); } catch (_) { cached = null; }
       } else {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         cached = await AsyncStorage.getItem(`profile_${userId}`);
@@ -231,7 +230,7 @@ class ProfilePictureService {
         // Cache the result
         this.cache.set(userId, profilePictureUrl);
         if (isWeb) {
-          await webStorageService.setItem(`profile_${userId}`, profilePictureUrl);
+          try { localStorage.setItem(`profile_${userId}`, profilePictureUrl); } catch (_) {}
         } else {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           await AsyncStorage.setItem(`profile_${userId}`, profilePictureUrl);
@@ -258,7 +257,7 @@ class ProfilePictureService {
       this.cache.delete(userId);
       try {
         if (isWeb) {
-          await webStorageService.removeItem(`profile_${userId}`);
+          localStorage.removeItem(`profile_${userId}`);
         } else {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           await AsyncStorage.removeItem(`profile_${userId}`);
@@ -295,15 +294,15 @@ class ProfilePictureService {
     try {
       // Clear from memory cache
       this.cache.delete(userId);
-      
+
       // Clear from storage
       if (isWeb) {
-        await webStorageService.removeItem(`profile_${userId}`);
+        localStorage.removeItem(`profile_${userId}`);
       } else {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.removeItem(`profile_${userId}`);
       }
-      
+
       logger.debug(`✅ Cleared profile picture cache for user: ${userId}`);
     } catch (error) {
       logger.error('Error clearing profile picture cache:', error);
