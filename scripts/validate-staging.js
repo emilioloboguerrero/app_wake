@@ -3,7 +3,7 @@
  * validate-staging.js
  *
  * Hits every domain's key endpoints against the local emulator.
- * Base URL: http://127.0.0.1:5001/wolf-20b8b/us-central1/api
+ * Base URL: http://127.0.0.1:5001/wake-staging/us-central1/api
  *
  * Requires env var:
  *   STAGING_ID_TOKEN  — Firebase ID token from the emulator Auth UI
@@ -13,7 +13,7 @@
  *   node scripts/validate-staging.js
  */
 
-const BASE_URL = 'http://127.0.0.1:5001/wolf-20b8b/us-central1/api/v1';
+const BASE_URL = 'http://127.0.0.1:5001/wake-staging/us-central1/api/v1';
 const TOKEN = process.env.STAGING_ID_TOKEN;
 
 if (!TOKEN) {

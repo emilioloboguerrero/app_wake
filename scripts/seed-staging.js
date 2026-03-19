@@ -6,7 +6,7 @@ const admin = require('firebase-admin');
 // Parse --project flag, default to wolf-dev
 const args = process.argv.slice(2);
 const projectFlag = args.indexOf('--project');
-const projectId = projectFlag !== -1 ? args[projectFlag + 1] : 'wolf-dev';
+const projectId = projectFlag !== -1 ? args[projectFlag + 1] : 'wake-staging';
 
 console.log(`Seeding project: ${projectId}`);
 
