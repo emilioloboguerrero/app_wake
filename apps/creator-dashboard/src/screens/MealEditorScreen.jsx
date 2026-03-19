@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -108,10 +109,12 @@ export default function MealEditorScreen() {
   const [mealSortMenuOpen, setMealSortMenuOpen] = useState(false);
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: mealData, isLoading: mealLoading } = useQuery({
-    queryKey: ['nutrition', 'meal', creatorId, mealId],
+    queryKey: queryKeys.nutrition.meal(creatorId, mealId),
     queryFn: () => nutritionDb.getMealById(creatorId, mealId),
     enabled: !!mealId && mealId !== 'new' && !!creatorId,
+    ...cacheConfig.otherPrograms,
   });
   useEffect(() => {
     if (!mealId || mealId === 'new') navigate('/nutrition', { replace: true });

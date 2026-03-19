@@ -1,6 +1,7 @@
 import { auth } from '../config/firebase';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
+import { queryClient } from '../config/queryClient';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -46,6 +47,7 @@ class AuthService {
       logger.warn('Server-side logout failed (non-fatal):', logoutErr?.message);
     }
     await signOut(auth);
+    queryClient.clear();
   }
 
   getCurrentUser() {

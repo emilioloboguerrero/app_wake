@@ -293,7 +293,7 @@ function Home() {
                     <button
                       type="button"
                       className="section-card-back-cta"
-                      onClick={(e) => { e.stopPropagation(); /* TODO: navegar a página de creadores */ }}
+                      onClick={(e) => { e.stopPropagation(); }}
                       aria-label="Ver entrenadores en la plataforma"
                     >
                       Ver entrenadores

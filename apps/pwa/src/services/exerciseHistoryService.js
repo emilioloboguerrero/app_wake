@@ -1,6 +1,7 @@
 // Exercise History Service - Manages exercise and session history subcollections
 import logger from '../utils/logger.js';
-import apiClient from '../utils/apiClient';
+import apiClient, { WakeApiError } from '../utils/apiClient';
+import { enqueue } from '../utils/offlineQueue';
 
 class ExerciseHistoryService {
   /**
@@ -15,7 +16,7 @@ class ExerciseHistoryService {
         throw new Error('Invalid session data structure');
       }
 
-      const res = await apiClient.post('/workout/complete', {
+      const body = {
         sessionId: sessionData.sessionId,
         courseId: sessionData.courseId,
         courseName: sessionData.courseName,
@@ -27,11 +28,28 @@ class ExerciseHistoryService {
         planned: plannedSnapshot ? {
           exercises: plannedSnapshot.exercises,
         } : undefined,
-      });
+      };
+
+      const res = await apiClient.post('/workout/complete', body);
 
       logger.log('✅ Session data added to exercise history');
       return res?.data ?? null;
     } catch (error) {
+      if (error instanceof WakeApiError && error.status === 0) {
+        enqueue({ method: 'POST', path: '/workout/complete', body: {
+          sessionId: sessionData.sessionId,
+          courseId: sessionData.courseId,
+          courseName: sessionData.courseName,
+          sessionName: sessionData.sessionName,
+          completedAt: sessionData.completedAt,
+          duration: sessionData.duration,
+          userNotes: sessionData.userNotes,
+          exercises: sessionData.exercises,
+          planned: plannedSnapshot ? { exercises: plannedSnapshot.exercises } : undefined,
+        }, priority: 'high' });
+        logger.log('[exerciseHistoryService] session queued for offline replay');
+        return { queued: true };
+      }
       logger.error('❌ Error adding session data to exercise history:', error);
       throw error;
     }

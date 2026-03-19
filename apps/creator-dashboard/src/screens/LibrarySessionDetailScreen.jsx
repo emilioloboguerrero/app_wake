@@ -1,8 +1,8 @@
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -261,6 +261,7 @@ const LibrarySessionDetailScreen = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
+  const queryClient = useQueryClient();
   const isPlanInstanceEdit = Boolean(planInstancePlanId && planInstanceModuleId && sessionId && location.pathname.includes('/plans/') && location.pathname.includes('/edit'));
   const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/content');
   const backState = location.state?.returnState ?? {};
@@ -516,10 +517,7 @@ const LibrarySessionDetailScreen = () => {
       return { session: libSession, libraries, editMode: 'library' };
     },
     enabled: !!user && !!sessionId,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    ...cacheConfig.activeProgram,
   });
 
   const session = sessionQueryData?.session ?? null;

@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import availabilityService from '../services/availabilityService';
 import { getBookingsForCreator, updateBookingCallLink } from '../services/callBookingService';
 import apiClient from '../utils/apiClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
 import '../components/CalendarView.css';
 import './AvailabilityCalendarScreen.css';
@@ -134,26 +135,29 @@ export default function AvailabilityCalendarScreen() {
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
 
   const { data: availability = { timezone: '', days: {} } } = useQuery({
-    queryKey: ['availability', user?.uid],
+    queryKey: queryKeys.availability.byCreator(user?.uid),
     queryFn: () => availabilityService.getAvailability(user.uid),
     enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
   });
 
   const { data: bookings = [], error: bookingsError } = useQuery({
-    queryKey: ['bookings', user?.uid],
+    queryKey: queryKeys.bookings.byCreator(user?.uid),
     queryFn: () => getBookingsForCreator(user.uid, { status: 'scheduled' }),
     enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
   });
 
   const { data: slots = [], isLoading: loading, error: slotsError } = useQuery({
-    queryKey: ['availability', user?.uid, selectedDateStr],
+    queryKey: queryKeys.availability.day(user?.uid, selectedDateStr),
     queryFn: () => availabilityService.getDaySlots(user.uid, selectedDateStr),
     enabled: !!user?.uid && !!selectedDateStr,
+    ...cacheConfig.userProfile,
   });
 
   const slotDetailBookingUserId = slotDetailModal?.booking?.userId;
   const { data: clientUserData, error: clientUserDataError } = useQuery({
-    queryKey: ['user', slotDetailBookingUserId],
+    queryKey: queryKeys.user.detail(slotDetailBookingUserId),
     queryFn: async () => {
       const { data } = await apiClient.get(`/creator/clients/${slotDetailBookingUserId}`);
       return data;
@@ -230,8 +234,8 @@ export default function AvailabilityCalendarScreen() {
         (a, b) => new Date(a.startUtc).getTime() - new Date(b.startUtc).getTime()
       );
       await availabilityService.setDaySlots(user.uid, selectedDateStr, merged, tz);
-      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, selectedDateStr] });
-      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.availability.day(user?.uid, selectedDateStr) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.availability.byCreator(user?.uid) });
     } catch (e) {
       setError(e?.message || 'Error al añadir');
     } finally {
@@ -283,8 +287,8 @@ export default function AvailabilityCalendarScreen() {
           (a, b) => new Date(a.startUtc).getTime() - new Date(b.startUtc).getTime()
         );
         await availabilityService.setDaySlots(user.uid, selectedDateStr, merged, tz);
-        await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, selectedDateStr] });
-        await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.availability.day(user?.uid, selectedDateStr) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.availability.byCreator(user?.uid) });
       } catch (err) {
         setError(err?.message || 'Error al añadir');
       } finally {
@@ -391,8 +395,8 @@ export default function AvailabilityCalendarScreen() {
     if (!slotDetailModal?.booking?.id) return;
     setSavingCallLink(true);
     try {
-      await updateBookingCallLink(slotDetailModal.booking.id, callLinkInput);
-      queryClient.invalidateQueries({ queryKey: ['bookings', user?.uid] });
+      await updateBookingCallLink(slotDetailModal.booking.id, callLinkInput.trim());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bookings.byCreator(user?.uid) });
       setSlotDetailModal((prev) =>
         prev?.booking ? { ...prev, booking: { ...prev.booking, callLink: callLinkInput.trim() || null } } : prev
       );
@@ -401,7 +405,7 @@ export default function AvailabilityCalendarScreen() {
     } finally {
       setSavingCallLink(false);
     }
-  }, [slotDetailModal?.booking?.id, callLinkInput]);
+  }, [slotDetailModal?.booking?.id, callLinkInput, queryClient, user?.uid]);
 
   const hasCallLinkChange = slotDetailModal?.booking && (
     (callLinkInput.trim() || '') !== (slotDetailModal.booking.callLink?.trim() || '')

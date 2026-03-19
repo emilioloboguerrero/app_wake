@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -10,7 +10,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import libraryService from '../services/libraryService';
-import { queryClient } from '../config/queryClient';
+import { cacheConfig } from '../config/queryClient';
 
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
@@ -198,6 +198,7 @@ const LibraryExercisesScreen = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [allExercises, setAllExercises] = useState([]); // Store all exercises
@@ -239,6 +240,7 @@ const LibraryExercisesScreen = () => {
     queryKey: ['library', 'detail', libraryId],
     queryFn: () => libraryService.getLibraryById(libraryId),
     enabled: !!user && !!libraryId,
+    ...cacheConfig.programStructure,
   });
   const library = libraryData ?? null;
   const error = loadError?.message ?? (!loading && libraryData === null ? 'Biblioteca no encontrada' : null);

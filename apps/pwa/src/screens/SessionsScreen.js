@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -15,8 +16,7 @@ import WakeLoader from '../components/WakeLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import apiClient from '../utils/apiClient';
-import { cacheConfig } from '../config/queryClient';
+import exerciseHistoryService from '../services/exerciseHistoryService';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
@@ -52,15 +52,17 @@ const SessionsScreen = ({ navigation }) => {
   } = useInfiniteQuery({
     queryKey: ['sessions', userId],
     queryFn: ({ pageParam = null }) =>
-      apiClient.get('/workout/sessions', { params: { limit: PAGE_SIZE, ...(pageParam ? { pageToken: pageParam } : {}) } }),
-    getNextPageParam: (lastPage) => lastPage?.nextPageToken ?? undefined,
+      exerciseHistoryService.getSessionHistoryPaginated(userId, PAGE_SIZE, pageParam),
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastDoc : undefined,
     enabled: !!userId,
-    staleTime: cacheConfig.sessionHistory.staleTime,
+    staleTime: STALE_TIMES.sessionHistory,
   });
 
   const sessions = useMemo(() => {
     if (!data) return [];
-    return data.pages.flatMap(page => page?.data ?? []);
+    return data.pages
+      .flatMap(page => Object.values(page.sessions || {}))
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
   }, [data]);
 
   const loadingMore = isFetchingNextPage;

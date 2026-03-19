@@ -6,7 +6,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import * as nutritionDb from '../services/nutritionFirestoreService';
-import { cacheConfig } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import {
   TubelightNavBar,
   AnimatedList,
@@ -77,38 +77,38 @@ export default function NutritionScreen({ clientId = null }) {
   const [planFormName, setPlanFormName] = useState('');
   const [planFormCreating, setPlanFormCreating] = useState(false);
 
-  const nutritionCache = cacheConfig.programStructure;
+  const nutritionCache = cacheConfig.otherPrograms;
 
   const { data: meals = [], isLoading: mealsLoading } = useQuery({
-    queryKey: ['nutrition', 'meals', creatorId],
+    queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...nutritionCache,
   });
 
   const { data: plans = [], isLoading: plansLoading } = useQuery({
-    queryKey: ['nutrition', 'plans', creatorId],
+    queryKey: queryKeys.nutrition.plans(creatorId),
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     ...nutritionCache,
   });
 
   const selectedMealQuery = useQuery({
-    queryKey: ['nutrition', 'meal', creatorId, selectedId],
+    queryKey: queryKeys.nutrition.meal(creatorId, selectedId),
     queryFn: () => nutritionDb.getMealById(creatorId, selectedId),
     enabled: activeTab === 'recetas' && !!selectedId && !!creatorId,
     ...nutritionCache,
   });
 
   const selectedPlanQuery = useQuery({
-    queryKey: ['nutrition', 'plan', creatorId, selectedId],
+    queryKey: queryKeys.nutrition.plan(creatorId, selectedId),
     queryFn: () => nutritionDb.getPlanById(creatorId, selectedId),
     enabled: activeTab === 'planes' && !!selectedId && !!creatorId,
     ...nutritionCache,
   });
 
   const clientDiaryQuery = useQuery({
-    queryKey: ['nutrition', 'diary', clientId, new Date().toISOString().slice(0, 10)],
+    queryKey: queryKeys.nutrition.diary(clientId, new Date().toISOString().slice(0, 10)),
     queryFn: () => nutritionDb.getDiaryEntries(clientId, new Date().toISOString().slice(0, 10)),
     enabled: !!clientId,
     ...nutritionCache,
@@ -181,7 +181,7 @@ export default function NutritionScreen({ clientId = null }) {
     setNewMealCreating(true);
     try {
       const mealId = await nutritionDb.createMeal(creatorId, { name, items: [] });
-      queryClient.invalidateQueries({ queryKey: ['nutrition', 'meals', creatorId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meals(creatorId) });
       setIsNewMealModalOpen(false);
       setNewMealName('');
       navigate(`/nutrition/meals/${mealId}`);
@@ -202,7 +202,7 @@ export default function NutritionScreen({ clientId = null }) {
         description: '',
         categories: [],
       });
-      queryClient.invalidateQueries({ queryKey: ['nutrition', 'plans', creatorId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
       setIsPlanModalOpen(false);
       setPlanFormName('');
       navigate(`/nutrition/plans/${planId}`);

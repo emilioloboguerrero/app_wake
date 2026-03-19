@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Input from './Input';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import './PlanningLibrarySidebar.css';
 
 const LIBRARY_TAB_SESSIONS = 'sessions';
@@ -21,17 +23,11 @@ const PlanningLibrarySidebar = ({
   pulseTrigger,
 }) => {
   const [activeTab, setActiveTab] = useState(LIBRARY_TAB_SESSIONS);
-  const [librarySessions, setLibrarySessions] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [plansLoading, setPlansLoading] = useState(true);
   const [isPulsing, setIsPulsing] = useState(false);
 
-  // When parent triggers pulse (e.g. user chose "add from library"), switch to Sessions tab and play pulse once
   useEffect(() => {
     if (pulseTrigger == null) return;
     setActiveTab(LIBRARY_TAB_SESSIONS);
-    // Small delay so tab switch paints before the pulse animation runs
     const start = setTimeout(() => setIsPulsing(true), 50);
     const end = setTimeout(() => setIsPulsing(false), 650);
     return () => {
@@ -40,41 +36,19 @@ const PlanningLibrarySidebar = ({
     };
   }, [pulseTrigger]);
 
-  // Load library sessions
-  useEffect(() => {
-    if (!creatorId || activeTab !== LIBRARY_TAB_SESSIONS) return;
-    const load = async () => {
-      try {
-        setSessionsLoading(true);
-        const sessions = await libraryService.getSessionLibrary(creatorId);
-        setLibrarySessions(sessions || []);
-      } catch (err) {
-        console.error('Error loading library sessions:', err);
-        setLibrarySessions([]);
-      } finally {
-        setSessionsLoading(false);
-      }
-    };
-    load();
-  }, [creatorId, activeTab]);
+  const { data: librarySessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: queryKeys.library.sessions(creatorId),
+    queryFn: () => libraryService.getSessionLibrary(creatorId),
+    enabled: !!creatorId && activeTab === LIBRARY_TAB_SESSIONS,
+    ...cacheConfig.programStructure,
+  });
 
-  // Load plans
-  useEffect(() => {
-    if (!creatorId || activeTab !== LIBRARY_TAB_PLANS) return;
-    const load = async () => {
-      try {
-        setPlansLoading(true);
-        const allPlans = await plansService.getPlansByCreator(creatorId);
-        setPlans(allPlans || []);
-      } catch (err) {
-        console.error('Error loading plans:', err);
-        setPlans([]);
-      } finally {
-        setPlansLoading(false);
-      }
-    };
-    load();
-  }, [creatorId, activeTab]);
+  const { data: plans = [], isLoading: plansLoading } = useQuery({
+    queryKey: ['plans', 'byCreator', creatorId],
+    queryFn: () => plansService.getPlansByCreator(creatorId),
+    enabled: !!creatorId && activeTab === LIBRARY_TAB_PLANS,
+    ...cacheConfig.programStructure,
+  });
 
   const q = (searchQuery || '').trim().toLowerCase();
   const filteredSessions = q

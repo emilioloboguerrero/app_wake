@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import logger from '../utils/logger';
@@ -271,6 +271,7 @@ const LibraryContentScreen = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
+  const queryClient = useQueryClient();
 
   // Get the tab from URL params, default to 'modules' if viewing a module, 'sessions' if viewing a session
   const getTabFromContext = () => {

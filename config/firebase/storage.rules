@@ -2,27 +2,30 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Profile pictures
+    // Upload enforcement is at the API layer via signed URLs
     match /profiles/{userId}/{fileName} {
       // Allow users to read any profile picture (for viewing other users)
       allow read: if request.auth != null;
-      
+
       // Allow users to write only their own profile picture
-      allow write: if request.auth != null 
+      allow write: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.size < 5 * 1024 * 1024  // Max 5MB
+        && request.resource.size < 200 * 1024  // Max 200KB (compress before upload)
         && request.resource.contentType.matches('image/.*');  // Only images
     }
     
     // Exercise library videos — shared asset library, readable by any authenticated user.
-    // Write is intentionally open to authenticated users since creators upload exercises.
-    // Tighten to isCreator() when role checks are available in storage rules.
+    // Creator role is enforced at the API layer (signed-URL endpoint validates creator role
+    // before issuing a write URL). Storage rule is a backstop for authenticated users only.
     match /exercises_library/{libraryId}/{exerciseName}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-        && request.resource.contentType.matches('video/.*');
+        && request.resource.contentType.matches('video/.*')
+        && request.resource.size < 500 * 1024 * 1024;  // Max 500MB
     }
     
     // Program images (e.g., courses/{programId}/image.jpg)
+    // Upload enforcement is at the API layer via signed URLs
     match /courses/{programId}/{fileName} {
       // Allow authenticated users to read program images and intro videos
       allow read: if request.auth != null;
@@ -108,11 +111,12 @@ service firebase.storage {
     }
     
     // Progress photos — private to the owner
+    // Upload enforcement is at the API layer via signed URLs
     match /progress_photos/{userId}/{allPaths=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.size < 500 * 1024  // Max 500KB (compress before upload)
         && request.resource.contentType.matches('image/.*');
     }
 

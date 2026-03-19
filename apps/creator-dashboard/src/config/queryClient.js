@@ -91,6 +91,12 @@ export const cacheConfig = {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
+  sessionHistory: {
+    staleTime: 10 * 60 * 1000,
+    gcTime: 20 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
 };
 
 // Query keys factory
@@ -130,11 +136,27 @@ export const queryKeys = {
   },
   clients: {
     byCreator: (creatorId) => ['clients', 'creator', creatorId],
+    detail: (clientId) => ['clients', 'detail', clientId],
+    programs: (clientUserId, creatorId) => ['clients', clientUserId, 'programs', creatorId],
+  },
+  availability: {
+    byCreator: (creatorId) => ['availability', creatorId],
+    day: (creatorId, dateStr) => ['availability', creatorId, dateStr],
+  },
+  bookings: {
+    byCreator: (creatorId) => ['bookings', creatorId],
   },
   library: {
     exercises: (creatorId) => ['library', 'exercises', creatorId],
     sessions: (creatorId) => ['library', 'sessions', creatorId],
     modules: (creatorId) => ['library', 'modules', creatorId],
+  },
+  nutrition: {
+    meals: (creatorId) => ['nutrition', 'meals', creatorId],
+    meal: (creatorId, mealId) => ['nutrition', 'meal', creatorId, mealId],
+    plans: (creatorId) => ['nutrition', 'plans', creatorId],
+    plan: (creatorId, planId) => ['nutrition', 'plan', creatorId, planId],
+    diary: (userId, date) => ['nutrition', 'diary', userId, date],
   },
 };
 

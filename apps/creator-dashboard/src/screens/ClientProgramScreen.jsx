@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -94,6 +94,7 @@ const ClientProgramScreen = () => {
   const { confirm, ConfirmModal } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
@@ -154,8 +155,6 @@ const ClientProgramScreen = () => {
   const [nutritionModalEditingEnd, setNutritionModalEditingEnd] = useState(false);
   const [nutritionModalEditingAssignmentId, setNutritionModalEditingAssignmentId] = useState(null);
   const [nutritionCurrentCardMenuOpen, setNutritionCurrentCardMenuOpen] = useState(false);
-  const [nutritionPlanDetail, setNutritionPlanDetail] = useState(null);
-  const [isLoadingNutritionPlanDetail, setIsLoadingNutritionPlanDetail] = useState(false);
 
   const { data: client, isLoading: loading, error: clientError } = useQuery({
     queryKey: ['clients', 'detail', clientId],
@@ -187,7 +186,7 @@ const ClientProgramScreen = () => {
       }));
     },
     enabled: !!client?.clientUserId && !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    ...cacheConfig.programStructure,
   });
 
   useEffect(() => {
@@ -228,7 +227,7 @@ const ClientProgramScreen = () => {
     queryKey: ['library', 'plans', user?.uid],
     queryFn: () => plansService.getPlansByCreator(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    ...cacheConfig.programStructure,
   });
 
   const { data: clientProgramData } = useQuery({
@@ -238,7 +237,7 @@ const ClientProgramScreen = () => {
       return { contentPlanId: cp?.content_plan_id ?? null, planAssignments: cp?.planAssignments ?? {} };
     },
     enabled: !!selectedProgramId && !!client?.clientUserId,
-    staleTime: 0,
+    ...cacheConfig.activeProgram,
   });
   const contentPlanId = clientProgramData?.contentPlanId ?? null;
   const planAssignments = clientProgramData?.planAssignments ?? {};
@@ -268,64 +267,51 @@ const ClientProgramScreen = () => {
       return enrichPlannedSessionsWithTitles(filtered, user.uid);
     },
     enabled: !!client?.clientUserId && !!user?.uid,
-    staleTime: 0,
+    ...cacheConfig.activeProgram,
   });
 
   const { data: completedSessionIds = new Set() } = useQuery({
     queryKey: ['completedSessionIds', selectedProgramId, client?.clientUserId],
     queryFn: () => clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId),
     enabled: !!client?.clientUserId && !!selectedProgramId,
-    staleTime: 10 * 60 * 1000,
+    ...cacheConfig.sessionHistory,
   });
 
   const { data: sessionHistory = [], isLoading: isLoadingSessionHistory } = useQuery({
     queryKey: ['sessionHistory', selectedProgramId, client?.clientUserId],
     queryFn: () => clientProgramService.getClientSessionHistory(selectedProgramId, client.clientUserId),
     enabled: needsSessionHistory && !!client?.clientUserId && !!selectedProgramId,
-    staleTime: 10 * 60 * 1000,
+    ...cacheConfig.sessionHistory,
   });
 
-  // Load plan detail and meals (for summary: objectives, categories, recipe resolution) when client has an assignment
-  useEffect(() => {
-    const assignment = clientNutritionAssignments[0] || null;
-    if (!assignment?.planId || !user?.uid) {
-      setNutritionPlanDetail(null);
-      return;
-    }
-    let cancelled = false;
-    setIsLoadingNutritionPlanDetail(true);
-    (async () => {
-      try {
-        const [clientCopy, plan] = await Promise.all([
-          clientNutritionPlanContentService.getByAssignmentId(assignment.id),
-          nutritionDb.getPlanById(user.uid, assignment.planId),
-        ]);
-        if (cancelled) return;
-        if (clientCopy?.categories?.length) {
-          setNutritionPlanDetail({
-            daily_calories: clientCopy.daily_calories ?? null,
-            daily_protein_g: clientCopy.daily_protein_g ?? null,
-            daily_carbs_g: clientCopy.daily_carbs_g ?? null,
-            daily_fat_g: clientCopy.daily_fat_g ?? null,
-            categories: clientCopy.categories,
-          });
-          return;
-        }
-        setNutritionPlanDetail(plan ? {
-          daily_calories: plan.daily_calories ?? null,
-          daily_protein_g: plan.daily_protein_g ?? null,
-          daily_carbs_g: plan.daily_carbs_g ?? null,
-          daily_fat_g: plan.daily_fat_g ?? null,
-          categories: plan.categories ?? [],
-        } : null);
-      } catch (e) {
-        if (!cancelled) setNutritionPlanDetail(null);
-      } finally {
-        if (!cancelled) setIsLoadingNutritionPlanDetail(false);
+  const activeNutritionAssignment = clientNutritionAssignments[0] || null;
+  const { data: nutritionPlanDetail = null, isLoading: isLoadingNutritionPlanDetail } = useQuery({
+    queryKey: ['nutritionPlanDetail', activeNutritionAssignment?.id, activeNutritionAssignment?.planId, user?.uid],
+    queryFn: async () => {
+      const [clientCopy, plan] = await Promise.all([
+        clientNutritionPlanContentService.getByAssignmentId(activeNutritionAssignment.id),
+        nutritionDb.getPlanById(user.uid, activeNutritionAssignment.planId),
+      ]);
+      if (clientCopy?.categories?.length) {
+        return {
+          daily_calories: clientCopy.daily_calories ?? null,
+          daily_protein_g: clientCopy.daily_protein_g ?? null,
+          daily_carbs_g: clientCopy.daily_carbs_g ?? null,
+          daily_fat_g: clientCopy.daily_fat_g ?? null,
+          categories: clientCopy.categories,
+        };
       }
-    })();
-    return () => { cancelled = true; };
-  }, [clientNutritionAssignments, user?.uid]);
+      return plan ? {
+        daily_calories: plan.daily_calories ?? null,
+        daily_protein_g: plan.daily_protein_g ?? null,
+        daily_carbs_g: plan.daily_carbs_g ?? null,
+        daily_fat_g: plan.daily_fat_g ?? null,
+        categories: plan.categories ?? [],
+      } : null;
+    },
+    enabled: !!activeNutritionAssignment?.planId && !!user?.uid,
+    ...cacheConfig.programStructure,
+  });
 
   const nutritionObjectivesPieData = useMemo(() => {
     const p = Number(nutritionPlanDetail?.daily_protein_g) || 0;

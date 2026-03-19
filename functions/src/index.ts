@@ -96,6 +96,10 @@ function setCorsHeaders(req: { headers: { origin?: string } }, res: { set: (k: s
 }
 
 const gen1RateStore = new Map<string, { count: number; resetAt: number }>();
+class Gen1RateLimitError extends Error {
+  readonly statusCode = 429;
+  constructor() { super("Too many requests"); }
+}
 function checkGen1RateLimit(key: string, maxPerMinute: number): void {
   const now = Date.now();
   const entry = gen1RateStore.get(key);
@@ -105,7 +109,7 @@ function checkGen1RateLimit(key: string, maxPerMinute: number): void {
   }
   entry.count++;
   if (entry.count > maxPerMinute) {
-    throw Object.assign(new Error("Too many requests"), { statusCode: 429 });
+    throw new Gen1RateLimitError();
   }
 }
 
@@ -307,15 +311,15 @@ export const createPaymentPreference = functions
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({ success: false, error: "Autenticación requerida" });
+      response.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Autenticación requerida" } });
       return;
     }
 
     try {
-      checkGen1RateLimit(`createPaymentPreference_${userId}`, 5);
+      checkGen1RateLimit(`createPaymentPreference_${userId}`, 10);
       const {courseId} = request.body;
       if (!courseId || typeof courseId !== "string" || courseId.length > 128) {
-        response.status(400).json({ success: false, error: "courseId inválido" });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "courseId inválido" } });
         return;
       }
 
@@ -324,10 +328,7 @@ export const createPaymentPreference = functions
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          success: false,
-          error: "Course not found",
-        });
+        response.status(404).json({ error: { code: "NOT_FOUND", message: "Course not found" } });
         return;
       }
 
@@ -355,16 +356,14 @@ export const createPaymentPreference = functions
         externalReference,
       });
 
-      response.json({
-        success: true,
-        init_point: result.init_point,
-      });
+      response.json({ data: { init_point: result.init_point } });
     } catch (error: unknown) {
+      if (error instanceof Gen1RateLimitError) {
+        response.status(429).json({ error: { code: "RATE_LIMITED", message: "Demasiadas solicitudes. Intenta de nuevo en un momento." } });
+        return;
+      }
       functions.logger.error("createPaymentPreference error", error);
-      response.status(500).json({
-        success: false,
-        error: "Error al crear la preferencia de pago",
-      });
+      response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago" } });
     }
   });
 
@@ -383,27 +382,24 @@ export const createSubscriptionCheckout = functions
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({ success: false, error: "Autenticación requerida" });
+      response.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Autenticación requerida" } });
       return;
     }
 
     try {
-      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`, 5);
+      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`, 10);
       const {courseId, payer_email: payerEmail} = request.body;
       if (!courseId || typeof courseId !== "string" || courseId.length > 128) {
-        response.status(400).json({ success: false, error: "courseId inválido" });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "courseId inválido" } });
         return;
       }
 
       if (!payerEmail) {
-        response.status(400).json({
-          success: false,
-          error: "Payer email is required for subscriptions",
-        });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Payer email is required for subscriptions" } });
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
-        response.status(400).json({ success: false, error: "Formato de email inválido" });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Formato de email inválido" } });
         return;
       }
 
@@ -411,18 +407,12 @@ export const createSubscriptionCheckout = functions
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          success: false,
-          error: "Course not found",
-        });
+        response.status(404).json({ error: { code: "NOT_FOUND", message: "Course not found" } });
         return;
       }
 
       if (!course.price) {
-        response.status(400).json({
-          success: false,
-          error: "Course price not found",
-        });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Course price not found" } });
         return;
       }
 
@@ -430,10 +420,7 @@ export const createSubscriptionCheckout = functions
       const user = userDoc.data();
 
       if (!user) {
-        response.status(404).json({
-          success: false,
-          error: "User not found",
-        });
+        response.status(404).json({ error: { code: "NOT_FOUND", message: "User not found" } });
         return;
       }
 
@@ -514,20 +501,17 @@ export const createSubscriptionCheckout = functions
           {merge: true}
         );
 
-        response.json({
-          success: true,
-          init_point: result.init_point,
-          subscription_id: result.id,
-        });
+        response.json({ data: { init_point: result.init_point, subscription_id: result.id } });
         return;
       }
 
       functions.logger.error("PreApproval API did not return init_point");
-      response.status(500).json({
-        success: false,
-        error: "Failed to create subscription checkout URL",
-      });
+      response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Failed to create subscription checkout URL" } });
     } catch (error: unknown) {
+      if (error instanceof Gen1RateLimitError) {
+        response.status(429).json({ error: { code: "RATE_LIMITED", message: "Demasiadas solicitudes. Intenta de nuevo en un momento." } });
+        return;
+      }
       const message = toErrorMessage(error);
       functions.logger.error("Error creating subscription:", error);
 
@@ -540,18 +524,11 @@ export const createSubscriptionCheckout = functions
         normalizedMessage.includes("must belong to this site");
 
       if (requiresAlternateEmail) {
-        response.status(409).json({
-          success: false,
-          error: "Por favor ingresa tu correo de Mercado Pago",
-          requireAlternateEmail: true,
-        });
+        response.status(409).json({ error: { code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago", requireAlternateEmail: true } });
         return;
       }
 
-      response.status(500).json({
-        success: false,
-        error: "Error al crear la suscripción",
-      });
+      response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Error al crear la suscripción" } });
     }
   });
 
@@ -1473,16 +1450,13 @@ export const updateSubscriptionStatus = functions
     }
 
     if (request.method !== "POST") {
-      response.status(405).json({
-        success: false,
-        error: "Method not allowed",
-      });
+      response.status(405).json({ error: { code: "VALIDATION_ERROR", message: "Method not allowed" } });
       return;
     }
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({ success: false, error: "Autenticación requerida" });
+      response.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Autenticación requerida" } });
       return;
     }
 
@@ -1500,10 +1474,7 @@ export const updateSubscriptionStatus = functions
       } = request.body || {};
 
       if (!subscriptionId || !action) {
-        response.status(400).json({
-          success: false,
-          error: "Missing subscriptionId or action",
-        });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Missing subscriptionId or action" } });
         return;
       }
 
@@ -1516,10 +1487,7 @@ export const updateSubscriptionStatus = functions
       const targetStatus = actionToStatus[action];
 
       if (!targetStatus) {
-        response.status(400).json({
-          success: false,
-          error: "Unsupported action",
-        });
+        response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Unsupported action" } });
         return;
       }
 
@@ -1532,10 +1500,7 @@ export const updateSubscriptionStatus = functions
       const subscriptionDoc = await subscriptionRef.get();
 
       if (!subscriptionDoc.exists) {
-        response.status(404).json({
-          success: false,
-          error: "Subscription not found for user",
-        });
+        response.status(404).json({ error: { code: "NOT_FOUND", message: "Subscription not found for user" } });
         return;
       }
 
@@ -1619,16 +1584,14 @@ export const updateSubscriptionStatus = functions
         }
       }
 
-      response.json({
-        success: true,
-        status: targetStatus,
-      });
+      response.json({ data: { status: targetStatus } });
     } catch (error: unknown) {
+      if (error instanceof Gen1RateLimitError) {
+        response.status(429).json({ error: { code: "RATE_LIMITED", message: "Demasiadas solicitudes. Intenta de nuevo en un momento." } });
+        return;
+      }
       functions.logger.error("Error updating subscription status:", error);
-      response.status(500).json({
-        success: false,
-        error: "Error al actualizar el estado de la suscripción",
-      });
+      response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Error al actualizar el estado de la suscripción" } });
     }
   });
 
@@ -1972,7 +1935,7 @@ async function validateAuth(req: express.Request): Promise<AuthResult> {
   }
 
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await admin.auth().verifyIdToken(token, true);
     const userDoc = await db.collection("users").doc(decoded.uid).get();
     await checkRateLimit(`user_${decoded.uid}`, 200, "rate_limit_first_party");
     return { userId: decoded.uid, role: userDoc.data()?.role ?? "user", authType: "firebase" };
@@ -2060,6 +2023,9 @@ app.post("/api/v1/auth/login", async (req, res, next) => {
       { email: "string", password: "string" },
       req.body
     );
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+      throw apiError("VALIDATION_ERROR", "Formato de email inválido", 400, "email");
+    }
     await checkRateLimit(`auth_login_${body.email.trim().toLowerCase()}`, 10);
     const signInRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey.value()}`,
@@ -4300,6 +4266,7 @@ app.post("/api/v1/creator/clients", async (req, res, next) => {
     const body = validateBody<{ email: string }>({ email: "string" }, req.body);
     const email = body.email.trim().toLowerCase();
     if (!email) throw apiError("VALIDATION_ERROR", "email is required", 400, "email");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError("VALIDATION_ERROR", "Formato de email inválido", 400, "email");
 
     // Lookup user by email via Firebase Auth
     let clientUserId: string;

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { queryClient } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import PlanStructureSidebar from '../components/PlanStructureSidebar';
 import PlanWeeksGrid from '../components/PlanWeeksGrid';
@@ -25,6 +24,7 @@ const PlanDetailScreen = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [planTitle, setPlanTitle] = useState('');
   const [planDescription, setPlanDescription] = useState('');

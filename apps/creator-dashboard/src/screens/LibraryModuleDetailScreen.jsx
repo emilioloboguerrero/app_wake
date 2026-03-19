@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import libraryService from '../services/libraryService';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { queryKeys } from '../config/queryClient';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 
@@ -127,6 +127,7 @@ const LibraryModuleDetailScreen = () => {
   const { showToast } = useToast();
   const location = useLocation();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [sessions, setSessions] = useState([]);

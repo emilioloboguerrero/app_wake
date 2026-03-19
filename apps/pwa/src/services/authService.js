@@ -21,6 +21,7 @@ import { handleError, handleNetworkOperation } from '../utils/errorHandler';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
+import { queryClient } from '../config/queryClient';
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -121,7 +122,8 @@ class AuthService {
 
       // Sign out from Firebase
       await signOut(auth);
-      
+      queryClient.clear();
+
       // Clear auth state
       await authStorage.clearAuthState();
       

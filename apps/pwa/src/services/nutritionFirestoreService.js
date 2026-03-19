@@ -4,6 +4,7 @@
  */
 import apiClient, { WakeApiError } from '../utils/apiClient';
 import logger from '../utils/logger';
+import { enqueue } from '../utils/offlineQueue';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ export async function getDatesWithEntries(_userId, startDateYYYYMMDD, endDateYYY
 }
 
 export async function addDiaryEntry(_userId, data) {
-  const result = await apiClient.post('/nutrition/diary', {
+  const body = {
     date: data.date,
     meal: data.meal ?? '',
     foodId: data.food_id,
@@ -171,8 +172,17 @@ export async function addDiaryEntry(_userId, data) {
     servingUnit: data.serving_unit ?? null,
     gramsPerUnit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
-  }, { idempotent: false });
-  return result?.data?.entryId;
+  };
+  try {
+    const result = await apiClient.post('/nutrition/diary', body, { idempotent: false });
+    return result?.data?.entryId;
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      enqueue({ method: 'POST', path: '/nutrition/diary', body });
+      return { queued: true };
+    }
+    throw err;
+  }
 }
 
 export async function updateDiaryEntry(_userId, entryId, data) {

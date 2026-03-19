@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import {
   View,
   ScrollView,
@@ -812,6 +813,26 @@ const NutritionScreen = () => {
     ...cacheConfig.nutrition,
   });
 
+  const savedFoodsQuery = useQuery({
+    queryKey: ['nutrition', 'saved-foods', userId],
+    queryFn: () => nutritionDb.getSavedFoods(userId),
+    enabled: !!userId,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+  });
+
+  const userMealsQuery = useQuery({
+    queryKey: ['nutrition', 'user-meals', userId],
+    queryFn: () => nutritionDb.getUserMeals(userId),
+    enabled: !!userId,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+  });
+
+  const savedFoods = savedFoodsQuery.data ?? [];
+  const userMeals = userMealsQuery.data ?? [];
+  const userMealsLoading = userMealsQuery.isLoading;
+
   const assignment = planQuery.data?.assignment ?? null;
   const plan = planQuery.data?.plan ?? null;
   const diaryEntries = diaryQuery.data ?? [];
@@ -836,8 +857,6 @@ const NutritionScreen = () => {
   const [buscarResults, setBuscarResults] = useState([]);
   const [buscarLoading, setBuscarLoading] = useState(false);
   const [buscarShowSaved, setBuscarShowSaved] = useState(false);
-  const [savedFoods, setSavedFoods] = useState([]);
-  const [savedFoodsLoaded, setSavedFoodsLoaded] = useState(false);
   const [selectedFood, setSelectedFood] = useState(null);
   const [buscarServingIndex, setBuscarServingIndex] = useState(0);
   const [buscarAmount, setBuscarAmount] = useState('1');
@@ -860,8 +879,6 @@ const NutritionScreen = () => {
   const [menuAnchor, setMenuAnchor] = useState({ pageY: 0 });
 
   // Mis comidas (user-created meals)
-  const [userMeals, setUserMeals] = useState([]);
-  const [userMealsLoading, setUserMealsLoading] = useState(false);
   const [misComidasSelectedByCard, setMisComidasSelectedByCard] = useState({});
   const [misComidasQuery, setMisComidasQuery] = useState('');
   const [misComidasSubTab, setMisComidasSubTab] = useState('meals');
@@ -1188,18 +1205,6 @@ const NutritionScreen = () => {
     },
     [userId, selectedDate, misComidasSelectedByCard, queryClient]
   );
-
-  const loadSavedFoods = useCallback(async () => {
-    if (!userId || savedFoodsLoaded) return;
-    try {
-      const foods = await nutritionDb.getSavedFoods(userId);
-      setSavedFoods(foods);
-    } catch (e) {
-      logger.error('[NutritionScreen] loadSavedFoods:', e);
-    } finally {
-      setSavedFoodsLoaded(true);
-    }
-  }, [userId, savedFoodsLoaded]);
 
   const runSearch = useCallback(async (term) => {
     if (!term.trim()) return;
@@ -1557,14 +1562,14 @@ const NutritionScreen = () => {
     if (existing) {
       try {
         await nutritionDb.deleteSavedFood(userId, existing.id);
-        setSavedFoods((prev) => prev.filter((f) => f.id !== existing.id));
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
       } catch (e) {
         logger.error('[NutritionScreen] deleteSavedFood:', e);
       }
       return;
     }
     try {
-      const id = await nutritionDb.saveFood(userId, {
+      await nutritionDb.saveFood(userId, {
         food_id: selectedFood.food_id,
         name: selectedFood.food_name,
         food_category: selectedFood.food_category ?? null,
@@ -1578,14 +1583,11 @@ const NutritionScreen = () => {
         grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
         servings: selectedFood.servings,
       });
-      setSavedFoods((prev) => [
-        { id, food_id: selectedFood.food_id, name: selectedFood.food_name, food_category: selectedFood.food_category, serving_id: serving.serving_id, serving_description: serving.serving_description, number_of_units: Number(buscarAmount) || 1, calories_per_unit: Number(serving.calories), servings: selectedFood.servings },
-        ...prev,
-      ]);
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveFood:', e);
     }
-  }, [userId, selectedFood, buscarServingIndex, buscarAmount, savedFoods]);
+  }, [userId, selectedFood, buscarServingIndex, buscarAmount, queryClient]);
 
   const faltanOpacity = useRef(new Animated.Value(1)).current;
   const llevasOpacity = useRef(new Animated.Value(0)).current;
@@ -1708,31 +1710,6 @@ const NutritionScreen = () => {
     return () => clearTimeout(t);
   }, [addModalVisible, addModalCategoryIndex, addModalTab, opcionesScrollX]);
 
-  useEffect(() => {
-    if (addModalVisible && (addModalTab === 'buscar' || addModalTab === 'mis_comidas')) {
-      loadSavedFoods();
-    }
-  }, [addModalVisible, addModalTab, loadSavedFoods]);
-
-  useEffect(() => {
-    if (createMealSearchOpen) {
-      loadSavedFoods();
-    }
-  }, [createMealSearchOpen, loadSavedFoods]);
-
-  const loadUserMeals = useCallback(async () => {
-    if (!userId) return;
-    setUserMealsLoading(true);
-    try {
-      const meals = await nutritionDb.getUserMeals(userId);
-      setUserMeals(meals ?? []);
-    } catch (e) {
-      logger.error('[NutritionScreen] loadUserMeals:', e);
-      setUserMeals([]);
-    } finally {
-      setUserMealsLoading(false);
-    }
-  }, [userId]);
 
   const fdOpenKey = selectedFood?.food_id ?? null;
   useEffect(() => {
@@ -1791,13 +1768,6 @@ const NutritionScreen = () => {
       }
     });
   }, [addModalSlideAnim]);
-
-  useEffect(() => {
-    if (addModalVisible && addModalTab === 'mis_comidas') {
-      loadUserMeals();
-      setMisComidasSelectedByCard({});
-    }
-  }, [addModalVisible, addModalTab, loadUserMeals]);
 
   useEffect(() => {
     if (addModalVisible && addModalTab === 'mis_comidas') {
@@ -2003,13 +1973,13 @@ const NutritionScreen = () => {
       setCreateMealName('');
       setCreateMealItems([]);
       setCreateMealSelectedFood(null);
-      loadUserMeals();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'user-meals', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveCreateMeal:', e);
     } finally {
       setCreateMealSaving(false);
     }
-  }, [userId, createMealName, createMealItems, loadUserMeals]);
+  }, [userId, createMealName, createMealItems, queryClient]);
 
   const handleSaveCustomFood = useCallback(async () => {
     if (!userId) return;
@@ -2034,21 +2004,15 @@ const NutritionScreen = () => {
           food_category: category,
           servings: servingsPayload,
         });
-        const updated = {
-          ...editingSavedFood,
-          name: nameRaw,
-          food_category: category,
-          servings: servingsPayload,
-        };
-        setSavedFoods((prev) => prev.map((f) => (f.id === editingSavedFood.id ? updated : f)));
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
         setSelectedFood((prev) => (prev && prev.food_id === editingSavedFood.food_id ? { ...prev, food_name: nameRaw, food_category: category, servings: servingsPayload } : prev));
-        setSelectedSavedFoodForEdit((prev) => (prev && prev.id === editingSavedFood.id ? updated : prev));
+        setSelectedSavedFoodForEdit(null);
         setEditingSavedFood(null);
         setCreateFoodModalOpen(false);
       } else {
         const syntheticFoodId = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const first = servingsPayload[0];
-        const id = await nutritionDb.saveFood(userId, {
+        await nutritionDb.saveFood(userId, {
           food_id: syntheticFoodId,
           name: nameRaw,
           food_category: category,
@@ -2062,24 +2026,7 @@ const NutritionScreen = () => {
           grams_per_unit: first.metric_serving_amount,
           servings: servingsPayload,
         });
-        setSavedFoods((prev) => [
-          {
-            id,
-            food_id: syntheticFoodId,
-            name: nameRaw,
-            food_category: category,
-            serving_id: first.serving_id,
-            serving_description: first.serving_description,
-            number_of_units: 1,
-            calories_per_unit: first.calories,
-            protein_per_unit: first.protein,
-            carbs_per_unit: first.carbohydrate,
-            fat_per_unit: first.fat,
-            grams_per_unit: first.metric_serving_amount,
-            servings: servingsPayload,
-          },
-          ...prev,
-        ]);
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
         setCreateFoodName('');
         setCreateFoodCategory('');
         setCreateFoodServings([
@@ -2099,6 +2046,7 @@ const NutritionScreen = () => {
     createFoodCategory,
     createFoodServings,
     editingSavedFood,
+    queryClient,
   ]);
 
   useEffect(() => {

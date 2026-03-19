@@ -3,9 +3,10 @@ import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
-import apiService from '../services/apiService';
+import firestoreService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
@@ -74,7 +75,7 @@ const DailyWorkoutScreen = () => {
       const { start, end, key } = currentMonthMeta;
       logger.log('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
       const [planned, entries] = await Promise.all([
-        apiService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
+        firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
         exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
       ]);
       const plannedArr = Array.isArray(planned) ? planned : [];
@@ -82,7 +83,7 @@ const DailyWorkoutScreen = () => {
       logger.log('[DailyWorkoutScreen.web] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
       return { planned: plannedArr, entries: entriesArr };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
     enabled: !!user?.uid && !!courseId,
   });
 
@@ -104,7 +105,7 @@ const DailyWorkoutScreen = () => {
           ...rawCourse,
         };
       }
-      const courseData = await apiService.getCourse(courseId);
+      const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) return null;
       return {
         id: courseData.id || courseId,
@@ -113,7 +114,7 @@ const DailyWorkoutScreen = () => {
         ...courseData,
       };
     },
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
     enabled: !!courseId,
   });
 
@@ -124,7 +125,7 @@ const DailyWorkoutScreen = () => {
       if (!user?.uid || !courseId) return [];
       try {
         if (isOneOnOne) {
-          return await apiService.getDatesWithCompletedPlannedSessions(
+          return await firestoreService.getDatesWithCompletedPlannedSessions(
             user.uid,
             courseId,
             startDate,
@@ -149,7 +150,7 @@ const DailyWorkoutScreen = () => {
     async (startDate, endDate) => {
       if (!isOneOnOne || !user?.uid || !courseId) return [];
       try {
-        return await apiService.getDatesWithPlannedSessions(
+        return await firestoreService.getDatesWithPlannedSessions(
           user.uid,
           courseId,
           startDate,

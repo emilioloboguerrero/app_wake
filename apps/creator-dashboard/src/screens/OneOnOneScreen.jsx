@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ import AssignProgramModal from '../components/AssignProgramModal';
 import oneOnOneService from '../services/oneOnOneService';
 import clientProgramService from '../services/clientProgramService';
 import programService from '../services/programService';
-import { queryKeys } from '../config/queryClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import './OneOnOneScreen.css';
 
@@ -21,10 +21,11 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const navigate = useNavigate();
   const queryClientHook = useQueryClient();
 
-  const { data: clients = [], isLoading: loading, error: clientsError } = useQuery({
+  const { data: clients = [], isLoading: loading } = useQuery({
     queryKey: queryKeys.clients.byCreator(user?.uid),
     queryFn: () => oneOnOneService.getClientsByCreator(user.uid),
     enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
   });
 
   const [error, setError] = useState(null);
@@ -36,67 +37,50 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const [lookedUpUser, setLookedUpUser] = useState(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [findUserError, setFindUserError] = useState(null);
-  const [oneOnOnePrograms, setOneOnOnePrograms] = useState([]);
-  const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState(null);
   const [isClientDetailModalOpen, setIsClientDetailModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
-  const [clientUserData, setClientUserData] = useState(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
-  const [clientPrograms, setClientPrograms] = useState({});
-  const [isLoadingClientPrograms, setIsLoadingClientPrograms] = useState({});
+  const [clientUserData, setClientUserData] = useState(null);
 
-  useEffect(() => {
-    if (!isAssignProgramModalOpen || !user) return;
-    const loadPrograms = async () => {
-      try {
-        setIsLoadingPrograms(true);
-        const allPrograms = await programService.getProgramsByCreator(user.uid);
-        const oneOnOne = allPrograms.filter(
-          (p) => (p.deliveryType || 'low_ticket') === 'one_on_one'
-        );
-        setOneOnOnePrograms(oneOnOne);
-      } catch (err) {
-        logger.error('Error loading programs:', err);
-        setOneOnOnePrograms([]);
-      } finally {
-        setIsLoadingPrograms(false);
-      }
-    };
-    loadPrograms();
-  }, [isAssignProgramModalOpen, user]);
+  const selectedClientData = useMemo(
+    () => (selectedClientId ? clients.find((c) => c.id === selectedClientId || c.clientUserId === selectedClientId) : null),
+    [clients, selectedClientId]
+  );
+  const selectedClientUserId = selectedClientData?.clientUserId ?? null;
 
-  const loadClientPrograms = useCallback(async (clientUserId) => {
-    if (!user) return;
-    if (isLoadingClientPrograms[clientUserId] || clientPrograms[clientUserId]) return;
-    try {
-      setIsLoadingClientPrograms((prev) => ({ ...prev, [clientUserId]: true }));
+  const { data: oneOnOnePrograms = [], isLoading: isLoadingPrograms } = useQuery({
+    queryKey: queryKeys.programs.byCreator(user?.uid),
+    queryFn: async () => {
       const allPrograms = await programService.getProgramsByCreator(user.uid);
-      const oneOnOnePrograms = allPrograms.filter(
-        (p) => (p.deliveryType || 'low_ticket') === 'one_on_one'
-      );
-      const programsWithClientStatus = await Promise.all(
-        oneOnOnePrograms.map(async (program) => {
+      return allPrograms.filter((p) => (p.deliveryType || 'low_ticket') === 'one_on_one');
+    },
+    enabled: isAssignProgramModalOpen && !!user?.uid,
+    ...cacheConfig.otherPrograms,
+  });
+
+  const { data: clientProgramsList = [], isLoading: isLoadingClientPrograms } = useQuery({
+    queryKey: queryKeys.clients.programs(selectedClientUserId, user?.uid),
+    queryFn: async () => {
+      const allPrograms = await programService.getProgramsByCreator(user.uid);
+      const oneOnOne = allPrograms.filter((p) => (p.deliveryType || 'low_ticket') === 'one_on_one');
+      return Promise.all(
+        oneOnOne.map(async (program) => {
           try {
-            const clientProgram = await clientProgramService.getClientProgram(program.id, clientUserId);
+            const clientProgram = await clientProgramService.getClientProgram(program.id, selectedClientUserId);
             return { ...program, isAssigned: !!clientProgram };
           } catch {
             return { ...program, isAssigned: false };
           }
         })
       );
-      setClientPrograms((prev) => ({ ...prev, [clientUserId]: programsWithClientStatus }));
-    } catch (err) {
-      logger.error('Error loading client programs:', err);
-    } finally {
-      setIsLoadingClientPrograms((prev) => ({ ...prev, [clientUserId]: false }));
-    }
-  }, [user, isLoadingClientPrograms, clientPrograms]);
+    },
+    enabled: !!selectedClientUserId && !!user?.uid,
+    ...cacheConfig.programStructure,
+  });
 
-  useEffect(() => {
-    if (selectedClientId) loadClientPrograms(selectedClientId);
-  }, [selectedClientId, loadClientPrograms]);
+  const assignedPrograms = clientProgramsList.filter((p) => p.isAssigned);
 
   const filteredClients = useMemo(() => {
     const q = (clientSearchQuery || '').trim().toLowerCase();
@@ -108,15 +92,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
         (c.clientUserId || '').toLowerCase().includes(q)
     );
   }, [clients, clientSearchQuery]);
-
-  const selectedClientData = useMemo(
-    () => (selectedClientId ? clients.find((c) => c.id === selectedClientId || c.clientUserId === selectedClientId) : null),
-    [clients, selectedClientId]
-  );
-
-  const selectedClientPrograms = selectedClientData && clientPrograms[selectedClientData.clientUserId]
-    ? clientPrograms[selectedClientData.clientUserId].filter((p) => p.isAssigned)
-    : [];
 
   const handleAddClient = () => {
     setIsFindUserModalOpen(true);
@@ -164,9 +139,9 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       setAssignError(null);
       await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClientHook.invalidateQueries({ queryKey: queryKeys.clients.byCreator(user.uid) });
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.clients.programs(clientUserId, user.uid) });
       setSelectedClientId(clientUserId);
       handleCloseAssignProgramModal();
-      await loadClientPrograms(clientUserId);
     } catch (err) {
       logger.error('Error adding client:', err);
       setAssignError(err.message || 'Error al agregar el cliente');
@@ -240,10 +215,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           <div className="one-on-one-sidebar-content">
             {loading ? (
               <ScreenSkeleton />
-            ) : error ? (
-              <div className="one-on-one-sidebar-error">
-                <p>{error}</p>
-              </div>
             ) : filteredClients.length === 0 ? (
               <div className="one-on-one-sidebar-empty">
                 <p>
@@ -256,8 +227,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
               <ul className="one-on-one-client-list">
                 {filteredClients.map((client) => {
                   const isSelected = selectedClientId === client.id || selectedClientId === client.clientUserId;
-                  const programs = clientPrograms[client.clientUserId];
-                  const assignedCount = programs ? programs.filter((p) => p.isAssigned).length : 0;
                   return (
                     <li key={client.id}>
                       <button
@@ -265,7 +234,6 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                         className={`one-on-one-client-item ${isSelected ? 'one-on-one-client-item-selected' : ''}`}
                         onClick={() => {
                           setSelectedClientId(isSelected ? null : (client.id || client.clientUserId));
-                          if (!clientPrograms[client.clientUserId]) loadClientPrograms(client.clientUserId);
                         }}
                       >
                         <div className="one-on-one-client-item-avatar">
@@ -276,11 +244,13 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                             {client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`}
                           </span>
                           <span className="one-on-one-client-item-meta">
-                            {programs === undefined
+                            {isSelected && isLoadingClientPrograms
                               ? '…'
-                              : assignedCount === 0
+                              : isSelected && assignedPrograms.length === 0
                                 ? 'Sin programas'
-                                : `${assignedCount} programa${assignedCount !== 1 ? 's' : ''}`}
+                                : isSelected
+                                  ? `${assignedPrograms.length} programa${assignedPrograms.length !== 1 ? 's' : ''}`
+                                  : ''}
                           </span>
                         </div>
                         <span className="one-on-one-client-status-pill">Activo</span>
@@ -318,9 +288,9 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                     {selectedClientData.clientName || selectedClientData.clientEmail || `Cliente ${(selectedClientData.clientUserId || '').slice(0, 8)}`}
                   </h3>
                   <p className="one-on-one-main-client-meta">
-                    {selectedClientPrograms.length === 0
+                    {assignedPrograms.length === 0
                       ? 'Sin programas asignados'
-                      : `${selectedClientPrograms.length} programa${selectedClientPrograms.length !== 1 ? 's' : ''} asignado${selectedClientPrograms.length !== 1 ? 's' : ''}`}
+                      : `${assignedPrograms.length} programa${assignedPrograms.length !== 1 ? 's' : ''} asignado${assignedPrograms.length !== 1 ? 's' : ''}`}
                   </p>
                 </div>
                 <div className="one-on-one-main-header-actions">
@@ -347,9 +317,9 @@ const OneOnOneScreen = ({ noLayout = false }) => {
               </div>
               <section className="one-on-one-main-programs">
                 <h4 className="one-on-one-main-programs-title">Programas asignados</h4>
-                {clientPrograms[selectedClientData.clientUserId] === undefined ? (
+                {isLoadingClientPrograms ? (
                   <ScreenSkeleton />
-                ) : selectedClientPrograms.length === 0 ? (
+                ) : assignedPrograms.length === 0 ? (
                   <div className="one-on-one-main-programs-empty">
                     <p>Este cliente no tiene programas asignados. Asigna uno desde la planificación del cliente.</p>
                     <button
@@ -362,7 +332,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                   </div>
                 ) : (
                   <ul className="one-on-one-main-programs-list">
-                    {selectedClientPrograms.map((program) => (
+                    {assignedPrograms.map((program) => (
                       <li key={program.id} className="one-on-one-main-program-card">
                         <div className="one-on-one-main-program-info">
                           <span className="one-on-one-main-program-name">

@@ -7,6 +7,8 @@ export const STALE_TIMES = {
   sessionHistory: 10 * 60 * 1000,
   clientList: 2 * 60 * 1000,
   bodyLog: 5 * 60 * 1000,
+  events: 2 * 60 * 1000,
+  eventRegistrations: 60 * 1000,
 };
 
 export const GC_TIMES = {
@@ -18,4 +20,6 @@ export const GC_TIMES = {
   sessionHistory: 20 * 60 * 1000,
   clientList: 5 * 60 * 1000,
   bodyLog: 15 * 60 * 1000,
+  events: 5 * 60 * 1000,
+  eventRegistrations: 2 * 60 * 1000,
 };

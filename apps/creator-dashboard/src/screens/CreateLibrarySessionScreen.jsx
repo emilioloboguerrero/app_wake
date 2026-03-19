@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
@@ -17,41 +18,15 @@ const CreateLibrarySessionScreen = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
   const [sessionImagePreview, setSessionImagePreview] = useState(null);
   const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
-  const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
-  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-
-  const handleSessionImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      showToast('Por favor, selecciona un archivo de imagen válido', 'error');
-      return;
-    }
-
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
-      return;
-    }
-
-    setSessionImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setSessionImagePreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
   const handleSessionImageDelete = () => {
     setSessionImageFile(null);
@@ -67,25 +42,15 @@ const CreateLibrarySessionScreen = () => {
     setIsMediaPickerOpen(false);
   };
 
-  const handleCreateSession = async () => {
-    if (!sessionName.trim() || !user) {
-      return;
-    }
-
-    try {
-      setIsCreatingSession(true);
-      
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
       let imageUrl = sessionImageUrlFromLibrary || null;
-      
       const librarySession = await libraryService.createLibrarySession(user.uid, {
         title: sessionName.trim(),
-        image_url: imageUrl
+        image_url: imageUrl,
       });
-      
       if (!imageUrl && sessionImageFile) {
         try {
-          setIsUploadingSessionImage(true);
-          setSessionImageUploadProgress(0);
           imageUrl = await libraryService.uploadLibrarySessionImage(
             user.uid,
             librarySession.id,
@@ -93,23 +58,26 @@ const CreateLibrarySessionScreen = () => {
             (progress) => setSessionImageUploadProgress(Math.round(progress))
           );
           await libraryService.updateLibrarySession(user.uid, librarySession.id, {
-            image_url: imageUrl
+            image_url: imageUrl,
           });
         } catch (uploadErr) {
           logger.error('Error uploading session image:', uploadErr);
           showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
-        } finally {
-          setIsUploadingSessionImage(false);
         }
       }
-      
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library', 'sessions', user.uid] });
       navigate(backPath, { state: backState });
-    } catch (err) {
-      logger.error('Error creating library session:', err);
+    },
+    onError: (err) => {
       showToast(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
-    } finally {
-      setIsCreatingSession(false);
-    }
+    },
+  });
+
+  const handleCreateSession = () => {
+    if (!sessionName.trim() || !user) return;
+    createSessionMutation.mutate();
   };
 
   const handleCancel = () => {
@@ -171,7 +139,7 @@ const CreateLibrarySessionScreen = () => {
                           <button
                             className="edit-program-image-action-pill edit-program-image-delete-pill"
                             onClick={handleSessionImageDelete}
-                            disabled={isCreatingSession}
+                            disabled={createSessionMutation.isPending}
                           >
                             <span className="edit-program-image-action-text">Eliminar</span>
                           </button>
@@ -206,10 +174,10 @@ const CreateLibrarySessionScreen = () => {
                 Cancelar
               </button>
               <Button
-                title={isCreatingSession || isUploadingSessionImage ? 'Creando...' : 'Crear'}
+                title={createSessionMutation.isPending ? 'Creando...' : 'Crear'}
                 onClick={handleCreateSession}
-                disabled={!sessionName.trim() || isCreatingSession || isUploadingSessionImage}
-                loading={isCreatingSession || isUploadingSessionImage}
+                disabled={!sessionName.trim() || createSessionMutation.isPending}
+                loading={createSessionMutation.isPending}
               />
             </div>
           </div>

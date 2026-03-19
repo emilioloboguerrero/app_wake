@@ -25,10 +25,9 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
-import apiService from '../services/apiService';
+import firestoreService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
-import { queryClient } from '../config/queryClient';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -38,6 +37,7 @@ import EpaycoWebView from '../components/EpaycoWebView';
 import BookCallSlotModal from '../components/BookCallSlotModal';
 import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
@@ -103,10 +103,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
     queryKey: ['user', effectiveUserUid],
-    // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
-    queryFn: () => apiService.getUser(effectiveUserUid),
+    queryFn: () => firestoreService.getUser(effectiveUserUid),
     enabled: !!effectiveUserUid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
     refetchInterval: processingPurchase ? 2000 : false,
   });
 
@@ -184,8 +183,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
     if (!effectiveUser?.uid) return;
 
     try {
-      // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
-      const userDoc = await apiService.getUser(effectiveUser.uid);
+      const userDoc = await firestoreService.getUser(effectiveUser.uid);
       if (userDoc?.role) {
         setUserRole(userDoc.role);
       }
@@ -201,8 +199,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       
       logger.debug('🔍 Fetching modules for course:', course.id);
       // Fix: Modules can be fetched even without user (for public course details)
-      // TODO: no endpoint for getCourseModules — no matching REST endpoint
-      const coursesModules = await apiService.getCourseModules(course.id, user?.uid);
+      const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
       
       logger.debug('✅ Modules fetched:', coursesModules.length);
       setModules(coursesModules);
@@ -251,11 +248,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
 
       pendingPostPurchaseRef.current = false;
       
-      // Invalidate courses cache so React Query refetches fresh data
-      logger.log('📦 Invalidating courses cache...');
-      queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
-      
-      // FIX: Wait a moment for cache to update, then download
+      // Wait a moment before downloading
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Notify MainScreen about the purchase
@@ -511,8 +504,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       try {
-        // TODO: no endpoint for creator profile lookup — no REST endpoint for arbitrary user lookup by userId
-        const creatorDoc = await apiService.getUser(creatorId);
+        const creatorDoc = await firestoreService.getUser(creatorId);
         if (!isMounted) {
           return;
         }
@@ -821,9 +813,6 @@ useEffect(() => {
           // Do the same operations as the old purchase system
           logger.debug('✅ Processing free access, syncing data...');
           
-          // Invalidate courses cache so React Query refetches fresh data
-          queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
-          
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
           
@@ -1059,7 +1048,6 @@ useEffect(() => {
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {

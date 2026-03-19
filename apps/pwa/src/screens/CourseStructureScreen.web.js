@@ -2,9 +2,10 @@
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
-import apiService from '../services/apiService';
+import firestoreService from '../services/apiService';
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
 const CourseStructureScreenBase = CourseStructureScreenModule.default;
@@ -19,7 +20,7 @@ const CourseStructureScreen = () => {
     queryKey: ['programs', courseId],
     queryFn: async () => {
       if (courseFromState) return courseFromState;
-      const courseData = await apiService.getCourse(courseId);
+      const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) return null;
       return {
         id: courseData.id || courseId,
@@ -29,7 +30,7 @@ const CourseStructureScreen = () => {
       };
     },
     enabled: !!courseId || !!courseFromState,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
   });
   
   // Create navigation adapter

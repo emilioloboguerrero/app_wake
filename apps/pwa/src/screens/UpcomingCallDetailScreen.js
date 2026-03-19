@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   StyleSheet,
@@ -17,7 +18,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getBookingById } from '../services/callBookingService';
-import apiService from '../services/apiService';
+import firestoreService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
 
 const GOLD_ACCENT = 'rgba(255, 255, 255, 1)';
@@ -91,7 +92,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
       if (!b) throw new Error('No se encontró la reserva o ya ha pasado.');
       let cn = null, cName = null, cImg = null, creatorProfileUrl = null;
       if (b.courseId) {
-        const course = await apiService.getCourse(b.courseId).catch(() => null);
+        const course = await firestoreService.getCourse(b.courseId).catch(() => null);
         cn = course?.creatorName || course?.creator_name || null;
         cName = course?.name || course?.title || null;
         cImg = course?.image_url || course?.imageUrl || null;
@@ -102,7 +103,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
       return { booking: b, creatorName: cn, courseName: cName, courseImageUrl: cImg, creatorProfileUrl };
     },
     enabled: !!paramBooking || !!bookingId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
   });
 
   const booking = data?.booking ?? null;

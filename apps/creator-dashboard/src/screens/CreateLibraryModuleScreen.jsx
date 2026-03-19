@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import libraryService from '../services/libraryService';
-import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import './CreateLibraryModuleScreen.css';
 
@@ -12,31 +12,28 @@ const CreateLibraryModuleScreen = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [moduleName, setModuleName] = useState('');
-  const [isCreatingModule, setIsCreatingModule] = useState(false);
 
-  const handleCreateModule = async () => {
-    if (!moduleName.trim() || !user) {
-      return;
-    }
-
-    try {
-      setIsCreatingModule(true);
-      
-      await libraryService.createLibraryModule(user.uid, {
-        title: moduleName.trim(),
-        sessionRefs: []
-      });
-      
+  const createModuleMutation = useMutation({
+    mutationFn: () => libraryService.createLibraryModule(user.uid, {
+      title: moduleName.trim(),
+      sessionRefs: [],
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library', 'modules', user.uid] });
       navigate(backPath, { state: backState });
-    } catch (err) {
-      logger.error('Error creating library module:', err);
+    },
+    onError: (err) => {
       showToast(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
-    } finally {
-      setIsCreatingModule(false);
-    }
+    },
+  });
+
+  const handleCreateModule = () => {
+    if (!moduleName.trim() || !user) return;
+    createModuleMutation.mutate();
   };
 
   const handleCancel = () => {
@@ -73,9 +70,9 @@ const CreateLibraryModuleScreen = () => {
             <button
               className="clm-btn-save"
               onClick={handleCreateModule}
-              disabled={!moduleName.trim() || isCreatingModule}
+              disabled={!moduleName.trim() || createModuleMutation.isPending}
             >
-              {isCreatingModule ? 'Creando...' : 'Crear'}
+              {createModuleMutation.isPending ? 'Creando...' : 'Crear'}
             </button>
           </div>
         </div>

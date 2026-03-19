@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -38,7 +39,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     queryKey: queryKeys.user.courses(user?.uid),
     queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
     enabled: !!user?.uid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
   });
 
   const error = isError ? 'Error al cargar tus cursos' : null;
@@ -169,7 +170,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
           ) : error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={fetchAllCourses}>
+              <TouchableOpacity style={styles.retryButton} onPress={() => window.location.reload()}>
                 <Text style={styles.retryButtonText}>Reintentar</Text>
               </TouchableOpacity>
             </View>
@@ -273,7 +274,6 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '400',
     fontWeight: '600',
   },
   coursesContainer: {
@@ -405,13 +405,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  courseTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    flex: 1,
-    marginRight: 12,
-  },
   disciplineBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 8,
@@ -484,7 +477,6 @@ const styles = StyleSheet.create({
   purchaseDate: {
     color: '#cccccc',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
   },
   expirationInfo: {
@@ -496,7 +488,6 @@ const styles = StyleSheet.create({
   expirationText: {
     color: '#dc3545',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -509,7 +500,6 @@ const styles = StyleSheet.create({
   completionText: {
     color: '#6f42c1',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
     textAlign: 'center',
   },

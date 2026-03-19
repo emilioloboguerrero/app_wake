@@ -332,9 +332,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/events/$(eventId)).data.get('wake_users_only', false) == false
         || isSignedIn()
       );
+      // Creator and admin can read all registrations; registrant can read their own (by doc id matching uid)
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
         || isAdmin()
+        || regId == request.auth.uid
+        || resource.data.get('userId', '') == request.auth.uid
       );
       allow update: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
@@ -345,9 +348,12 @@ service cloud.firestore {
 
     match /event_signups/{eventId}/waitlist/{waitId} {
       allow create: if true;
+      // Creator and admin can read all waitlist entries; waitlist user can read their own
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
         || isAdmin()
+        || waitId == request.auth.uid
+        || resource.data.get('userId', '') == request.auth.uid
       );
       allow delete: if isAdmin();
     }
@@ -361,17 +367,193 @@ service cloud.firestore {
     }
 
     // ============================================
-    // DEFAULT RULE
+    // USER SUBCOLLECTIONS (missing from user block)
     // ============================================
-    // WARNING: The following collections are used in the codebase but have no
-    // explicit rules yet — they fall through to this catch-all:
-    //   plans, client_programs, client_sessions, client_session_content,
-    //   client_plan_content, creator_libraries, exercises_library,
-    //   progress (top-level), community
-    // TODO: Add explicit rules for each collection above, then change this to
-    //   allow read, write: if false;
+
+    // MercadoPago subscription records — owner read, server write only
+    match /users/{userId}/subscriptions/{subId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Per-exercise last performance (quick lookup)
+    match /users/{userId}/exerciseLastPerformance/{key} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Saved foods (user's personal food library)
+    match /users/{userId}/saved_foods/{foodId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ============================================
+    // PLANS (one-on-one delivery)
+    // ============================================
+    match /plans/{planId} {
+      // Creator owner and admin can read/write; enrolled user (has a one_on_one_clients doc pointing to this plan) can read
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        isAdmin() ||
+        creatorHasClientAccess(request.auth.uid)
+      );
+      allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || isAdmin()
+      );
+      match /modules/{moduleId} {
+        allow read, write: if isSignedIn() && (
+          get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
+          || isAdmin()
+        );
+        match /sessions/{sessionId} {
+          allow read, write: if isSignedIn() && (
+            get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
+            || isAdmin()
+          );
+        }
+      }
+    }
+
+    // ============================================
+    // CREATOR LIBRARIES
+    // ============================================
+    match /creator_libraries/{creatorId} {
+      allow read, write: if isOwner(creatorId) || isAdmin();
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(creatorId) || isAdmin();
+      }
+      match /modules/{moduleId} {
+        allow read, write: if isOwner(creatorId) || isAdmin();
+      }
+    }
+
+    // ============================================
+    // EXERCISES LIBRARY (shared)
+    // ============================================
+    match /exercises_library/{exerciseId} {
+      allow read: if isSignedIn();
+      allow create, update: if isCreator();
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // CLIENT PROGRAMS & SESSION CONTENT
+    // ============================================
+
+    // Client programs (doc id = userId_programId)
+    match /client_programs/{docId} {
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // One-on-one sessions assigned to a client
+    match /client_sessions/{sessionId} {
+      allow read: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid ||
+        resource.data.client_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isCreator() && request.resource.data.creator_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /client_session_content/{docId} {
+      allow read: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid ||
+        resource.data.client_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isCreator() && request.resource.data.creator_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.creator_id == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /client_plan_content/{docId} {
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ============================================
+    // PROGRESS (top-level, user_id field scoped)
+    // ============================================
+    match /progress/{docId} {
+      allow read: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid || isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ============================================
+    // COMMUNITY
+    // ============================================
+    match /community/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ============================================
+    // SERVER-ONLY COLLECTIONS (never client-accessible)
+    // ============================================
+
+    // API keys — SHA-256 hashes, must never be readable from clients
+    match /api_keys/{keyId} {
+      allow read, write: if false;
+    }
+
+    // MercadoPago webhook idempotency records
+    match /processed_payments/{paymentId} {
+      allow read, write: if false;
+    }
+
+    // FatSecret API cache — server-managed
+    match /fatsecret_cache/{cacheId} {
+      allow read, write: if false;
+    }
+
+    // ============================================
+    // SUBSCRIPTION CANCELLATION FEEDBACK
+    // ============================================
+    match /subscription_cancellation_feedback/{feedbackId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ============================================
+    // DEFAULT RULE — deny everything not explicitly covered
+    // ============================================
     match /{document=**} {
-      allow read, write: if isSignedIn();
+      allow read, write: if false;
     }
   }
 }

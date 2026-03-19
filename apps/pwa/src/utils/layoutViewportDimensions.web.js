@@ -8,6 +8,8 @@
 
 'use client';
 
+import logger from './logger';
+
 const canUseDOM = typeof window !== 'undefined';
 
 const dimensions = {
@@ -48,7 +50,7 @@ function getCanonicalWindowHeight() {
   const out = Math.round(h);
   if (!dimensionsLogOnce && canUseDOM) {
     dimensionsLogOnce = true;
-    console.log(VIEWPORT_LOG, 'Dimensions (useWindowDimensions)', { innerHeight: win.innerHeight, visualViewportH: win.visualViewport?.height, screenAvailH: win.screen?.availHeight, useAvail, canonicalHeight: out, isPWA: isPWA(), isIOS: isIOS(), isAndroid: isAndroid() });
+    logger.debug(VIEWPORT_LOG, 'Dimensions (useWindowDimensions)', { innerHeight: win.innerHeight, visualViewportH: win.visualViewport?.height, screenAvailH: win.screen?.availHeight, useAvail, canonicalHeight: out, isPWA: isPWA(), isIOS: isIOS(), isAndroid: isAndroid() });
   }
   return out;
 }

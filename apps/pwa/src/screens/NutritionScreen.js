@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
@@ -130,8 +130,6 @@ export function NutritionScreenBase({ navigation }) {
   const [manualCarbs, setManualCarbs] = useState('');
   const [manualFat, setManualFat] = useState('');
 
-  const [submittingLog, setSubmittingLog] = useState(false);
-
   const { data: assignmentData, isLoading: loadingAssignment } = useQuery({
     queryKey: ['nutrition', 'assignment', userId],
     queryFn: () => nutritionDb.getEffectivePlanForUser(userId),
@@ -150,6 +148,30 @@ export function NutritionScreenBase({ navigation }) {
     staleTime: STALE_TIMES.nutritionDiary,
     gcTime: GC_TIMES.nutritionDiary,
   });
+
+  const addDiaryMutation = useMutation({
+    mutationFn: (entry) => nutritionDb.addDiaryEntry(userId, entry),
+    onSuccess: () => {
+      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
+      closeLogModal();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
+    },
+    onError: (e) => {
+      logger.error(e);
+    },
+  });
+
+  const deleteDiaryMutation = useMutation({
+    mutationFn: (entryId) => nutritionDb.deleteDiaryEntry(userId, entryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
+    },
+    onError: (e) => {
+      logger.error(e);
+    },
+  });
+
+  const submittingLog = addDiaryMutation.isPending;
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -174,60 +196,40 @@ export function NutritionScreenBase({ navigation }) {
     setServingUnits('1');
   }
 
-  async function handleLogFromSearch() {
+  function handleLogFromSearch() {
     if (!userId || !diaryDate || !selectedFood || !selectedServing) return;
     const s = selectedServing;
     const mult = Number(servingUnits) || 1;
-    setSubmittingLog(true);
-    try {
-      await nutritionDb.addDiaryEntry(userId, {
-        date: diaryDate,
-        meal: logMeal,
-        food_id: selectedFood.food_id,
-        serving_id: s.serving_id,
-        number_of_units: mult,
-        name: selectedFood.food_name || 'Food',
-        food_category: selectedFood.food_category ?? null,
-        calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
-        protein: s.protein != null ? Math.round(Number(s.protein) * mult) : null,
-        carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult) : null,
-        fat: s.fat != null ? Math.round(Number(s.fat) * mult) : null,
-      });
-      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
-      closeLogModal();
-      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setSubmittingLog(false);
-    }
+    addDiaryMutation.mutate({
+      date: diaryDate,
+      meal: logMeal,
+      food_id: selectedFood.food_id,
+      serving_id: s.serving_id,
+      number_of_units: mult,
+      name: selectedFood.food_name || 'Food',
+      food_category: selectedFood.food_category ?? null,
+      calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
+      protein: s.protein != null ? Math.round(Number(s.protein) * mult) : null,
+      carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult) : null,
+      fat: s.fat != null ? Math.round(Number(s.fat) * mult) : null,
+    });
   }
 
-  async function handleLogManual() {
+  function handleLogManual() {
     if (!userId || !diaryDate || !manualName.trim()) return;
-    setSubmittingLog(true);
-    try {
-      await nutritionDb.addDiaryEntry(userId, {
-        date: diaryDate,
-        meal: logMeal,
-        food_id: `manual-${Date.now()}`,
-        serving_id: '0',
-        number_of_units: Number(manualUnits) || 1,
-        name: manualName.trim(),
-        food_category: null,
-        calories: manualCalories !== '' ? Number(manualCalories) : null,
-        protein: manualProtein !== '' ? Number(manualProtein) : null,
-        carbs: manualCarbs !== '' ? Number(manualCarbs) : null,
-        fat: manualFat !== '' ? Number(manualFat) : null,
-      });
-      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
-      closeLogModal();
-      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setSubmittingLog(false);
-    }
+    addDiaryMutation.mutate({
+      date: diaryDate,
+      meal: logMeal,
+      food_id: `manual-${Date.now()}`,
+      serving_id: '0',
+      number_of_units: Number(manualUnits) || 1,
+      name: manualName.trim(),
+      food_category: null,
+      calories: manualCalories !== '' ? Number(manualCalories) : null,
+      protein: manualProtein !== '' ? Number(manualProtein) : null,
+      carbs: manualCarbs !== '' ? Number(manualCarbs) : null,
+      fat: manualFat !== '' ? Number(manualFat) : null,
+    });
   }
 
   function closeLogModal() {
@@ -245,14 +247,9 @@ export function NutritionScreenBase({ navigation }) {
     setManualFat('');
   }
 
-  async function handleDeleteEntry(entryId) {
+  function handleDeleteEntry(entryId) {
     if (!userId || !entryId) return;
-    try {
-      await nutritionDb.deleteDiaryEntry(userId, entryId);
-      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
-    } catch (e) {
-      logger.error(e);
-    }
+    deleteDiaryMutation.mutate(entryId);
   }
 
   const dailyTotalCal = diaryEntries.reduce((s, e) => s + (Number(e.calories) || 0), 0);

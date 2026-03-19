@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import availabilityService from '../services/availabilityService';
-import { queryClient } from '../config/queryClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { GlowingEffect, AnimatedList, ShimmerSkeleton } from '../components/ui';
 import './AvailabilityDayScreen.css';
 
@@ -28,6 +28,7 @@ export default function AvailabilityDayScreen() {
   const { date: dateParam } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [mutationError, setMutationError] = useState(null);
 
@@ -39,13 +40,14 @@ export default function AvailabilityDayScreen() {
   const isValidDate = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
 
   const { data: dayData, isLoading: loading, error: dayError } = useQuery({
-    queryKey: ['availability', user?.uid, dateStr],
+    queryKey: queryKeys.availability.day(user?.uid, dateStr),
     queryFn: async () => {
       const avail = await availabilityService.getAvailability(user.uid);
       const daySlots = await availabilityService.getDaySlots(user.uid, dateStr);
       return { timezone: avail.timezone || availabilityService.getCreatorTimezone(), slots: daySlots };
     },
     enabled: !!user?.uid && !!dateStr,
+    ...cacheConfig.userProfile,
   });
   const slots = dayData?.slots ?? [];
   const timezone = dayData?.timezone ?? '';
@@ -65,7 +67,7 @@ export default function AvailabilityDayScreen() {
     setMutationError(null);
     try {
       await availabilityService.addSlotsForDay(user.uid, dateStr, startMinutes, endMinutes, addDuration, timezone);
-      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, dateStr] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.availability.day(user?.uid, dateStr) });
       setAddStart(addEnd);
       setAddEnd(addEnd === '12:00' ? '13:00' : String(eh + 1).padStart(2, '0') + ':00');
     } catch (e) {
@@ -82,7 +84,7 @@ export default function AvailabilityDayScreen() {
     setMutationError(null);
     try {
       await availabilityService.setDaySlots(user.uid, dateStr, newSlots, timezone);
-      await queryClient.invalidateQueries({ queryKey: ['availability', user?.uid, dateStr] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.availability.day(user?.uid, dateStr) });
     } catch (e) {
       setMutationError(e?.message || 'Error al eliminar');
     } finally {

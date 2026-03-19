@@ -3,7 +3,6 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   useWindowDimensions,
   Animated,
   Alert,
@@ -36,6 +35,7 @@ import WakeLoader from '../components/WakeLoader';
 import { trackScreenView } from '../services/monitoringService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useUserCourses } from '../hooks/workout/useUserCourses';
 
 // Cards share no spacing — they overlap for the 3D carousel effect
@@ -421,8 +421,8 @@ const MainScreen = ({ navigation, route }) => {
     queryKey: ['bookings', 'upcoming', user?.uid],
     queryFn: () => getUpcomingBookingsForUser(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.clientList,
+    gcTime: GC_TIMES.clientList,
   });
 
   // Log auth state on mount for diagnostics
@@ -944,7 +944,7 @@ const MainScreen = ({ navigation, route }) => {
     );
   };
   
-  const retryUpdate = async (courseId) => {
+  const retryUpdate = async (_courseId) => {
     try {
       await loadCoursesFromCache();
     } catch (error) {

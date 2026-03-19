@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   SafeAreaView,
   ScrollView,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
-import apiService from '../services/apiService';
+import firestoreService from '../services/apiService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -79,9 +80,9 @@ const SubscriptionsScreen = ({ navigation }) => {
 
   const { data: rawSubscriptions = [], isLoading: loading } = useQuery({
     queryKey: queryKeys.user.subscriptions(user?.uid),
-    queryFn: () => apiService.getUserSubscriptions(user.uid),
+    queryFn: () => firestoreService.getUserSubscriptions(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.clientList,
   });
 
   const subscriptions = rawSubscriptions

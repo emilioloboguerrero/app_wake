@@ -20,43 +20,28 @@ import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
-// Component to handle async exercise resolution
+
 const ExerciseList = ({ exercises, styles }) => {
-  const [resolvedExercises, setResolvedExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const exerciseIds = exercises.map(e => e.id).join(',');
 
-  useEffect(() => {
-    const resolveExercises = async () => {
-      try {
-        const resolved = await Promise.all(
-          exercises.map(async (exercise, exerciseIndex) => {
-            try {
-              const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
-              return {
-                id: exercise.id,
-                title: primaryExerciseData.title,
-                index: exerciseIndex
-              };
-            } catch (error) {
-              logger.error(`❌ Error resolving exercise ${exercise.id}:`, error);
-              return {
-                id: exercise.id,
-                title: `Exercise ${exercise.id}`,
-                index: exerciseIndex
-              };
-            }
-          })
-        );
-        setResolvedExercises(resolved);
-      } catch (error) {
-        logger.error('❌ Error resolving exercises:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    resolveExercises();
-  }, [exercises]);
+  const { data: resolvedExercises = [], isLoading: loading } = useQuery({
+    queryKey: ['programs', 'exercises', exerciseIds],
+    queryFn: () =>
+      Promise.all(
+        exercises.map(async (exercise, exerciseIndex) => {
+          try {
+            const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
+            return { id: exercise.id, title: primaryExerciseData.title, index: exerciseIndex };
+          } catch (error) {
+            logger.error(`❌ Error resolving exercise ${exercise.id}:`, error);
+            return { id: exercise.id, title: `Exercise ${exercise.id}`, index: exerciseIndex };
+          }
+        })
+      ),
+    enabled: exercises.length > 0,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
+  });
 
   if (loading) {
     return (
