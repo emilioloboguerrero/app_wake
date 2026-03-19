@@ -1934,6 +1934,18 @@ async function validateAuth(req: express.Request): Promise<AuthResult> {
     return { userId: keyData.owner_id, role: userDoc.data()?.role ?? "user", authType: "apikey" };
   }
 
+  // App Check verification — required for all first-party (Firebase ID token) requests
+  const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
+  if (appCheckToken) {
+    try {
+      await admin.appCheck().verifyToken(appCheckToken);
+    } catch {
+      throw apiError("APP_CHECK_FAILED", "Invalid App Check token", 401);
+    }
+  }
+  // If no App Check token is present, allow through (emulator / third-party API key callers
+  // already took the early return above). Enforcement is done at the Firebase Console level.
+
   try {
     const decoded = await admin.auth().verifyIdToken(token, true);
     const userDoc = await db.collection("users").doc(decoded.uid).get();
@@ -6911,26 +6923,25 @@ function getMondayKey(d: Date): string {
 
 // Helper: batch-read exercises_library docs for a set of libraryIds
 async function batchReadExerciseLibraries(libraryIds: string[]): Promise<Record<string, Record<string, any>>> {
+  if (libraryIds.length === 0) return {};
+  const refs = libraryIds.map((libId) => db.collection("exercises_library").doc(libId));
+  const docs = await db.getAll(...refs);
   const result: Record<string, Record<string, any>> = {};
-  await Promise.all(libraryIds.map(async (libId) => {
-    try {
-      const doc = await db.collection("exercises_library").doc(libId).get();
-      if (doc.exists) result[libId] = doc.data() as Record<string, any>;
-    } catch (_) { /* ignore missing */ }
-  }));
+  for (const doc of docs) {
+    if (doc.exists) result[doc.id] = doc.data() as Record<string, any>;
+  }
   return result;
 }
 
 // Helper: batch-read exerciseLastPerformance docs for a set of keys
 async function batchReadLastPerformance(userId: string, keys: string[]): Promise<Record<string, any>> {
+  if (keys.length === 0) return {};
+  const refs = keys.map((key) => db.collection("users").doc(userId).collection("exerciseLastPerformance").doc(key));
+  const docs = await db.getAll(...refs);
   const result: Record<string, any> = {};
-  await Promise.all(keys.map(async (key) => {
-    try {
-      const doc = await db.collection("users").doc(userId)
-        .collection("exerciseLastPerformance").doc(key).get();
-      if (doc.exists) result[key] = doc.data();
-    } catch (_) { /* ignore */ }
-  }));
+  for (const doc of docs) {
+    if (doc.exists) result[doc.id] = doc.data();
+  }
   return result;
 }
 
