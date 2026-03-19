@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
-import firestoreService from '../../services/firestoreService';
+import apiService from '../../services/apiService';
 import { auth } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/apiClient';
@@ -332,7 +332,7 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
       try {
         const uid = getEffectiveUid();
         // TODO: no endpoint for isUsernameTaken — no REST endpoint for username availability check
-        const taken = await firestoreService.isUsernameTaken(username, uid);
+        const taken = await apiService.isUsernameTaken(username, uid);
         setField('usernameStatus', taken ? 'taken' : 'available');
       } catch {
         setField('usernameStatus', 'error');

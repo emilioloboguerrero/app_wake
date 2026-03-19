@@ -173,7 +173,7 @@ class AuthService {
       }
 
       // Import firestoreService here to avoid circular dependency
-      const firestoreService = (await import('./firestoreService')).default;
+      const apiService = (await import('./apiService')).default;
       
       // Delete profile picture from Storage FIRST (before deleting user document)
       // This ensures we still have permissions to access Storage
@@ -192,7 +192,7 @@ class AuthService {
       }
 
       // Delete all user data from Firestore (except purchases as per requirements)
-      await firestoreService.deleteAllUserData(userId);
+      await apiService.deleteAllUserData(userId);
 
       // Revoke OAuth tokens (if applicable)
       if (!isExpoGo) {

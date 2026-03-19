@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 
 // Import navigators
@@ -38,7 +38,7 @@ const AppNavigator = () => {
           // Small delay to ensure user document is created after registration
           await new Promise(resolve => setTimeout(resolve, 1500));
           
-          const profile = await firestoreService.getUser(user.uid);
+          const profile = await apiService.getUser(user.uid);
           logger.log('🔍 User profile loaded:', profile);
           logger.log('🔍 Onboarding completed?', profile?.onboardingCompleted);
           

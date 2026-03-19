@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,11 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
@@ -79,9 +81,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user } = useAuth();
-  const [courseData, setCourseData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [expandedModules, setExpandedModules] = useState({});
   const [expandedSessions, setExpandedSessions] = useState({});
   const moduleAnimsRef = useRef(new Map());
@@ -262,25 +261,16 @@ const CourseStructureScreen = ({ navigation, route }) => {
     },
   }), [screenWidth, screenHeight]);
 
-  useEffect(() => {
-    fetchCourseData();
-  }, []);
+  const { data: courseQueryData, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ['programs', 'structure', course.courseId, user?.uid],
+    queryFn: () => workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid),
+    enabled: !!course.courseId,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
+  });
 
-  const fetchCourseData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid);
-      setCourseData(data?.courseData);
-      
-    } catch (error) {
-      logger.error('❌ Error fetching course data:', error);
-      setError('Error al cargar la estructura del curso');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const courseData = courseQueryData?.courseData ?? null;
+  const error = isError ? 'Error al cargar la estructura del curso' : null;
 
   const toggleModule = (moduleId) => {
     setExpandedModules(prev => {
@@ -440,7 +430,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchCourseData}>
+            <TouchableOpacity style={styles.retryButton} onPress={refetch}>
               <Text style={styles.retryButtonText}>Reintentar</Text>
             </TouchableOpacity>
           </View>

@@ -1,6 +1,6 @@
 // Progress Query Service - Updated to use new data structure
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import userProgressService from '../services/userProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 
@@ -177,7 +177,7 @@ class ProgressQueryService {
    */
   async getUserActiveCourseIds(userId) {
     try {
-      const userDoc = await firestoreService.getUser(userId);
+      const userDoc = await apiService.getUser(userId);
       return userDoc?.courses ? Object.keys(userDoc.courses) : [];
     } catch (error) {
       logger.error('Failed to get user active courses:', error);

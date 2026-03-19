@@ -25,7 +25,7 @@ const AnimatedKeyboardAwareScrollView = Animated.createAnimatedComponent(Keyboar
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 import profilePictureService from '../services/profilePictureService';
@@ -896,7 +896,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     setUsernameValidating(true);
     try {
       // TODO: no endpoint for isUsernameTaken — no REST endpoint for username availability check
-      const taken = await firestoreService.isUsernameTaken(username);
+      const taken = await apiService.isUsernameTaken(username);
       setUsernameAvailable(!taken);
     } catch (error) {
       logger.error('Error validating username:', error);

@@ -3,7 +3,7 @@ import React from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 
@@ -27,7 +27,7 @@ const CourseDetailScreen = () => {
         return courseFromState;
       }
       logger.log('🔍 Fetching course data for courseId:', courseId);
-      const courseData = await firestoreService.getCourse(courseId);
+      const courseData = await apiService.getCourse(courseId);
       if (!courseData) throw new Error('Course not found');
       const transformedCourse = {
         id: courseData.id || courseId,

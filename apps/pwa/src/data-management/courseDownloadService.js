@@ -1,6 +1,6 @@
 // Course Download Service - Manages offline course content
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import updateEventManager from '../services/updateEventManager';
 import { getMondayWeek } from '../utils/weekCalculation';
 import logger from '../utils/logger';
@@ -65,7 +65,7 @@ class CourseDownloadService {
       this._weekChecksInProgress.add(checkKey);
 
       try {
-        const courseData = await firestoreService.getCourse(courseId);
+        const courseData = await apiService.getCourse(courseId);
         
         // Only check for weekly programs
         if (courseData?.weekly !== true) {
@@ -121,7 +121,7 @@ class CourseDownloadService {
       logger.debug('📥 Starting course download (internal):', courseId);
       let courseData = null;
       try {
-        courseData = await firestoreService.getCourse(courseId);
+        courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
@@ -131,7 +131,7 @@ class CourseDownloadService {
       let isOneOnOne = false;
       if (userId) {
         try {
-          const userDoc = await firestoreService.getUser(userId);
+          const userDoc = await apiService.getUser(userId);
           isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
         } catch (e) {
           logger.warn('⚠️ Could not check deliveryType:', e);
@@ -151,7 +151,7 @@ class CourseDownloadService {
         };
         await this.storeCourseLocally(courseId, { ...minimalCourseData, size_mb: 0, compressed: false });
         if (userId) {
-          await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+          await apiService.updateUserCourseVersionStatus(userId, courseId, {
             downloaded_version: publishedVersion,
             update_status: 'ready',
             lastUpdated: Date.now()
@@ -160,7 +160,7 @@ class CourseDownloadService {
         return true;
       }
       let modules = [];
-      modules = await firestoreService.getCourseModules(courseId, userId);
+      modules = await apiService.getCourseModules(courseId, userId);
       const currentWeek = courseData?.weekly === true ? getMondayWeek() : null;
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
       const basicCourseData = {
@@ -184,7 +184,7 @@ class CourseDownloadService {
         compressed: false
       });
       if (userId) {
-        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        await apiService.updateUserCourseVersionStatus(userId, courseId, {
           downloaded_version: publishedVersion,
           update_status: 'ready',
           lastUpdated: Date.now()
@@ -212,7 +212,7 @@ class CourseDownloadService {
       
       // ✅ NEW: Check if week changed (only for weekly programs)
       // Check without downloading first to see if week changed
-      let courseMetadata = await firestoreService.getCourse(courseId);
+      let courseMetadata = await apiService.getCourse(courseId);
       if (courseMetadata?.weekly === true) {
         const currentWeek = getMondayWeek();
         const storedWeek = await this.getStoredWeek(courseId);
@@ -239,7 +239,7 @@ class CourseDownloadService {
       
       let courseData = null;
       try {
-        courseData = await firestoreService.getCourse(courseId);
+        courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
@@ -250,7 +250,7 @@ class CourseDownloadService {
       let isOneOnOne = false;
       if (userId) {
         try {
-          const userDoc = await firestoreService.getUser(userId);
+          const userDoc = await apiService.getUser(userId);
           isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
         } catch (e) {
           logger.warn('⚠️ Could not check deliveryType:', e);
@@ -277,7 +277,7 @@ class CourseDownloadService {
         try {
           await this.storeCourseLocally(courseId, { ...minimalCourseData, size_mb: 0, compressed: false });
           if (userId) {
-            await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+            await apiService.updateUserCourseVersionStatus(userId, courseId, {
               downloaded_version: publishedVersion,
               update_status: 'ready',
               lastUpdated: Date.now()
@@ -292,7 +292,7 @@ class CourseDownloadService {
       
       let modules = [];
       try {
-        modules = await firestoreService.getCourseModules(courseId, userId);
+        modules = await apiService.getCourseModules(courseId, userId);
         logger.debug('📚 Course modules loaded from DB:', modules.length);
       } catch (error) {
         logger.warn('⚠️ Error getting modules:', error.message);
@@ -307,7 +307,7 @@ class CourseDownloadService {
       let clientProgramVersion = null;
       if (userId) {
         try {
-          clientProgram = await firestoreService.getClientProgram(userId, courseId);
+          clientProgram = await apiService.getClientProgram(userId, courseId);
           if (clientProgram) clientProgramVersion = clientProgram.version_snapshot || null;
         } catch (error) {
           logger.warn('⚠️ Could not load client program:', error);
@@ -339,7 +339,7 @@ class CourseDownloadService {
           compressed: false
         });
         if (userId) {
-          await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+          await apiService.updateUserCourseVersionStatus(userId, courseId, {
             downloaded_version: publishedVersion,
             update_status: 'ready',
             lastUpdated: Date.now()
@@ -473,7 +473,7 @@ class CourseDownloadService {
         
         // Check if course is already being updated
         logger.debug('🔍 VERSION CHECK: Calling getUserCourseVersion...');
-        const userCourse = await firestoreService.getUserCourseVersion(this.currentUserId, courseId);
+        const userCourse = await apiService.getUserCourseVersion(this.currentUserId, courseId);
         logger.debug('🔍 VERSION CHECK: getUserCourseVersion result:', userCourse);
         const updateStatus = userCourse?.update_status || 'ready';
         
@@ -496,7 +496,7 @@ class CourseDownloadService {
           if (isStuck) {
             logger.debug('⚠️ VERSION CHECK: Update appears stuck, clearing status');
             // Clear stuck status
-            await firestoreService.updateUserCourseVersionStatus(this.currentUserId, courseId, {
+            await apiService.updateUserCourseVersionStatus(this.currentUserId, courseId, {
               update_status: 'ready',
               lastUpdated: Date.now()
             });
@@ -575,7 +575,7 @@ class CourseDownloadService {
             // ✅ NEW: Check client program version
             if (this.currentUserId && decompressedData.clientProgramVersion) {
               try {
-                const currentClientProgram = await firestoreService.getClientProgram(this.currentUserId, courseId);
+                const currentClientProgram = await apiService.getClientProgram(this.currentUserId, courseId);
                 if (currentClientProgram) {
                   const currentVersion = currentClientProgram.version_snapshot;
                   const storedVersion = decompressedData.clientProgramVersion;
@@ -728,7 +728,7 @@ class CourseDownloadService {
       logger.debug('🧹 Cleaning up expired courses for user:', userId);
       
       // Get user's active courses from Firestore
-      const userDoc = await firestoreService.getUser(userId);
+      const userDoc = await apiService.getUser(userId);
       if (!userDoc) return;
       
       const activeCourseIds = Object.keys(userDoc.courses || {});
@@ -976,7 +976,7 @@ class CourseDownloadService {
       logger.debug('🔄 Handling library version update for course:', courseId);
       
       // Mark as updating
-      await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+      await apiService.updateUserCourseVersionStatus(userId, courseId, {
         update_status: 'updating',
         lastUpdated: Date.now()
       });
@@ -1013,7 +1013,7 @@ class CourseDownloadService {
         logger.debug('✅ LIBRARY BACKGROUND UPDATE: Download completed');
         
         // Update status
-        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        await apiService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'ready',
           lastUpdated: Date.now()
         });
@@ -1030,7 +1030,7 @@ class CourseDownloadService {
       } catch (error) {
         logger.error('❌ LIBRARY BACKGROUND UPDATE FAILED:', error);
         
-        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        await apiService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'failed'
         });
         
@@ -1053,13 +1053,13 @@ class CourseDownloadService {
     try {
       logger.debug('🔍 Checking version mismatch for course:', courseId);
       
-      const latestCourseData = await firestoreService.getCourse(courseId);
+      const latestCourseData = await apiService.getCourse(courseId);
       if (!latestCourseData) {
         logger.debug('❌ Course not found in database:', courseId);
         return { needsUpdate: false };
       }
       const publishedVersion = latestCourseData.published_version ?? latestCourseData.version;
-      const userCourse = await firestoreService.getUserCourseVersion(userId, courseId);
+      const userCourse = await apiService.getUserCourseVersion(userId, courseId);
       const downloadedVersion = userCourse?.downloaded_version || localCourseData.publishedVersion || localCourseData.version || 'unknown';
       
       logger.debug('📊 Version comparison (published_version):', {
@@ -1096,7 +1096,7 @@ class CourseDownloadService {
     if (this._versionChecksInProgress?.has(updateKey)) {
       // Check if status is already 'updating' in Firestore
       try {
-        const userCourse = await firestoreService.getUserCourseVersion(userId, courseId);
+        const userCourse = await apiService.getUserCourseVersion(userId, courseId);
         if (userCourse?.update_status === 'updating') {
           logger.debug('⚠️ handleVersionUpdate: Update already in progress, skipping duplicate call');
           return;
@@ -1111,7 +1111,7 @@ class CourseDownloadService {
       
       // CRITICAL: Mark course as updating FIRST to prevent infinite loop
       // This must happen before any getCourseData() calls
-      await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+      await apiService.updateUserCourseVersionStatus(userId, courseId, {
         downloaded_version: newVersion,
         update_status: 'updating',
         lastUpdated: Date.now()
@@ -1171,7 +1171,7 @@ class CourseDownloadService {
         // Program media downloads disabled
         
         // Update user's version
-        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        await apiService.updateUserCourseVersionStatus(userId, courseId, {
           downloaded_version: newVersion,
           update_status: 'ready'
         });
@@ -1198,7 +1198,7 @@ class CourseDownloadService {
         });
         
         // Mark as failed
-        await firestoreService.updateUserCourseVersionStatus(userId, courseId, {
+        await apiService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'failed'
         });
         logger.debug('❌ BACKGROUND UPDATE: Status marked as failed for:', courseId);

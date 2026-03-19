@@ -46,7 +46,7 @@ import EventsManagementScreen from '../screens/EventsManagementScreen.web';
 import EventCheckinScreen from '../screens/EventCheckinScreen.web';
 import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import logger from '../utils/logger';
 import { isSafariWeb } from '../utils/platform';
 import BottomTabBar from '../components/BottomTabBar.web';
@@ -241,7 +241,7 @@ const AuthenticatedLayout = ({ children }) => {
             }
           }
 
-          const profilePromise = firestoreService.getUser(effectiveUidForFetch);
+          const profilePromise = apiService.getUser(effectiveUidForFetch);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Firestore timeout')), 5000)
           );

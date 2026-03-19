@@ -12,7 +12,7 @@ import SvgArrowReload from '../components/icons/SvgArrowReload';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import Text from '../components/Text';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import oneRepMaxService from '../services/oneRepMaxService';
@@ -333,14 +333,14 @@ const CreatorProfileScreen = ({ navigation, route }) => {
       let viewerRole = 'user';
       if (viewerUid) {
         try {
-          const viewerDoc = await firestoreService.getUser(viewerUid);
+          const viewerDoc = await apiService.getUser(viewerUid);
           viewerRole = viewerDoc?.role || 'user';
         } catch { viewerRole = 'user'; }
       }
 
       const [creatorDocResult, programsResult] = await Promise.all([
-        firestoreService.getUser(creatorId),
-        firestoreService.getCoursesByCreatorId(creatorId),
+        apiService.getUser(creatorId),
+        apiService.getCoursesByCreatorId(creatorId),
       ]);
 
       const filteredPrograms = filterProgramsByViewer(programsResult, viewerUid, viewerRole);

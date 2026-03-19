@@ -25,7 +25,7 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { queryClient } from '../config/queryClient';
@@ -104,7 +104,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const { data: userDocData } = useQuery({
     queryKey: ['user', effectiveUserUid],
     // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
-    queryFn: () => firestoreService.getUser(effectiveUserUid),
+    queryFn: () => apiService.getUser(effectiveUserUid),
     enabled: !!effectiveUserUid,
     staleTime: 5 * 60 * 1000,
     refetchInterval: processingPurchase ? 2000 : false,
@@ -185,7 +185,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
 
     try {
       // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
-      const userDoc = await firestoreService.getUser(effectiveUser.uid);
+      const userDoc = await apiService.getUser(effectiveUser.uid);
       if (userDoc?.role) {
         setUserRole(userDoc.role);
       }
@@ -202,7 +202,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       logger.debug('🔍 Fetching modules for course:', course.id);
       // Fix: Modules can be fetched even without user (for public course details)
       // TODO: no endpoint for getCourseModules — no matching REST endpoint
-      const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
+      const coursesModules = await apiService.getCourseModules(course.id, user?.uid);
       
       logger.debug('✅ Modules fetched:', coursesModules.length);
       setModules(coursesModules);
@@ -512,7 +512,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
 
       try {
         // TODO: no endpoint for creator profile lookup — no REST endpoint for arbitrary user lookup by userId
-        const creatorDoc = await firestoreService.getUser(creatorId);
+        const creatorDoc = await apiService.getUser(creatorId);
         if (!isMounted) {
           return;
         }

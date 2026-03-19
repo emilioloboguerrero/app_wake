@@ -1,6 +1,6 @@
 // Workout Session Service - Manages local workout sessions with auto-save
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 
 import logger from '../utils/logger.js';
 // Session states

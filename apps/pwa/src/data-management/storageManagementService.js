@@ -241,8 +241,8 @@ class StorageManagementService {
       logger.log('🧹 Removing unused courses...');
       
       // Get user's active courses  
-      const firestoreService = require('../services/firestoreService').default;
-      const userDoc = await firestoreService.getUser(userId);
+      const apiService = require('../services/apiService').default;
+      const userDoc = await apiService.getUser(userId);
       const activeCourseIds = userDoc?.courses ? Object.keys(userDoc.courses) : [];
       
       // Get locally stored courses

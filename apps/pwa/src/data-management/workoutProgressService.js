@@ -6,7 +6,7 @@ import uploadService from './uploadService';
 import sessionRecoveryService from './sessionRecoveryService';
 import progressQueryService from './progressQueryService';
 import storageManagementService from './storageManagementService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import { getMondayWeek } from '../utils/weekCalculation';
 
@@ -490,7 +490,7 @@ class WorkoutProgressService {
       if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
         const moduleOpts = { cacheInMemory: true, ttlMs: 5 * 60 * 1000 };
         if (weekKeyForTarget) moduleOpts.weekKey = weekKeyForTarget;
-        const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOpts);
+        const modules = await apiService.getCourseModules(courseId, effectiveUserId, moduleOpts);
         logger.log('📦 [getCourseDataForWorkout] getCourseModules result:', { modulesLength: modules?.length ?? 0, isArray: Array.isArray(modules) });
         if (modules) {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
@@ -499,7 +499,7 @@ class WorkoutProgressService {
       // For non-one-on-one programs, merge fresh modules from Firestore so creator dashboard changes (reorder, move sessions) are visible without re-downloading
       if (!courseData?.courseData?.isOneOnOne && courseData?.courseData) {
         try {
-          const freshModules = await firestoreService.getCourseModules(courseId, effectiveUserId);
+          const freshModules = await apiService.getCourseModules(courseId, effectiveUserId);
           if (freshModules && Array.isArray(freshModules)) {
             courseData = {
               ...courseData,
@@ -514,7 +514,7 @@ class WorkoutProgressService {
       // One-on-one: attach planned session id for selected date (or today)
       // Use plan slot id (userId_courseId_weekKey_sessionId) when plan session so list match and sessionHistory dedupes in dashboard
       if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
-        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+        const planned = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
         const plannedId = planned
           ? (planned.plan_id && planned.session_id
             ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : effectiveTargetDate))}_${planned.session_id}`
@@ -535,7 +535,7 @@ class WorkoutProgressService {
       if (!courseData && effectiveUserId) {
         logger.log('📥 Course not found locally, fetching from API:', courseId);
         try {
-          const allCourses = await firestoreService.getCourses();
+          const allCourses = await apiService.getCourses();
           const hybridCourse = allCourses.find(c => c.id === courseId);
           logger.log('📦 [getCourseDataForWorkout] API lookup:', {
             courseId,
@@ -546,8 +546,8 @@ class WorkoutProgressService {
           if (hybridCourse) {
             logger.log('✅ Found course in hybrid cache, fetching modules...');
             const moduleOptsHybrid = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
-            const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
-            const plannedHybrid = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+            const modulesToUse = await apiService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
+            const plannedHybrid = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
             const plannedIdHybrid = isOneOnOne && plannedHybrid
               ? (plannedHybrid.plan_id && plannedHybrid.session_id
@@ -586,14 +586,14 @@ class WorkoutProgressService {
           logger.log('📥 Course not in hybrid list (hybrid uses courses collection; one-on-one may be in users.courses). Fetching from Firestore:', courseId);
           const firestoreModuleOpts = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
           const [firestoreCourse, modules] = await Promise.all([
-            firestoreService.getCourse(courseId),
-            firestoreService.getCourseModules(courseId, effectiveUserId, firestoreModuleOpts)
+            apiService.getCourse(courseId),
+            apiService.getCourseModules(courseId, effectiveUserId, firestoreModuleOpts)
           ]);
           if (firestoreCourse) {
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
               logger.error('❌ Background download failed:', error);
             });
-            const plannedFirestore = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+            const plannedFirestore = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = firestoreCourse.deliveryType === 'one_on_one' || firestoreCourse.isOneOnOne === true;
             const modulesToUse = modules || [];
             const plannedIdFirestore = isOneOnOne && plannedFirestore
@@ -689,7 +689,7 @@ class WorkoutProgressService {
    */
   async getCompletedSessionData(sessionId) {
     try {
-      return await firestoreService.getProgressSession(sessionId);
+      return await apiService.getProgressSession(sessionId);
     } catch (error) {
       logger.error('❌ Failed to get completed session data:', error);
       return null;
@@ -701,7 +701,7 @@ class WorkoutProgressService {
    */
   async getUserCourseProgress(userId, courseId) {
     try {
-      return await firestoreService.getUserCourseProgress(userId, courseId);
+      return await apiService.getUserCourseProgress(userId, courseId);
     } catch (error) {
       logger.error('❌ Failed to get user course progress:', error);
       return [];
@@ -713,7 +713,7 @@ class WorkoutProgressService {
    */
   async getUserAllProgress(userId) {
     try {
-      return await firestoreService.getUserAllProgress(userId);
+      return await apiService.getUserAllProgress(userId);
     } catch (error) {
       logger.error('❌ Failed to get user all progress:', error);
       return [];
@@ -725,7 +725,7 @@ class WorkoutProgressService {
    */
   async getCourseStatistics(courseId) {
     try {
-      return await firestoreService.getCourseStatistics(courseId);
+      return await apiService.getCourseStatistics(courseId);
     } catch (error) {
       logger.error('❌ Failed to get course statistics:', error);
       return { sessions: [], stats: null };

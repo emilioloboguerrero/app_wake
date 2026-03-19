@@ -4,7 +4,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
 const CourseStructureScreenBase = CourseStructureScreenModule.default;
@@ -19,7 +19,7 @@ const CourseStructureScreen = () => {
     queryKey: ['programs', courseId],
     queryFn: async () => {
       if (courseFromState) return courseFromState;
-      const courseData = await firestoreService.getCourse(courseId);
+      const courseData = await apiService.getCourse(courseId);
       if (!courseData) return null;
       return {
         id: courseData.id || courseId,

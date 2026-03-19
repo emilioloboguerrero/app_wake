@@ -2,7 +2,7 @@
 // Expo-compatible Google Sign-In with Firebase Web SDK
 import { GoogleAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import firestoreService from './firestoreService';
+import apiService from './apiService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
@@ -282,12 +282,12 @@ class GoogleAuthService {
       };
 
       // Check if user already exists in Firestore
-      const existingUser = await firestoreService.getUser(firebaseUser.uid);
+      const existingUser = await apiService.getUser(firebaseUser.uid);
       logger.log('[GOOGLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
       
       if (existingUser) {
         // User exists - update login time and provider info
-        await firestoreService.updateUser(firebaseUser.uid, {
+        await apiService.updateUser(firebaseUser.uid, {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
@@ -295,7 +295,7 @@ class GoogleAuthService {
       } else {
         // New Google user - updateUser now creates doc if missing
         logger.log('[GOOGLE AUTH] No document for new Google user — calling updateUser (will create doc)');
-        await firestoreService.updateUser(firebaseUser.uid, userData);
+        await apiService.updateUser(firebaseUser.uid, userData);
       }
       
     } catch (error) {

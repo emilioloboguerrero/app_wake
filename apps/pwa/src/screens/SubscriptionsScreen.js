@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -79,7 +79,7 @@ const SubscriptionsScreen = ({ navigation }) => {
 
   const { data: rawSubscriptions = [], isLoading: loading } = useQuery({
     queryKey: queryKeys.user.subscriptions(user?.uid),
-    queryFn: () => firestoreService.getUserSubscriptions(user.uid),
+    queryFn: () => apiService.getUserSubscriptions(user.uid),
     enabled: !!user?.uid,
     staleTime: 2 * 60 * 1000,
   });

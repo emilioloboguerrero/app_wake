@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { TrainingNutritionChoiceModal } from '../components/TrainingNutritionChoiceModal.web';
 import logger from '../utils/logger';
@@ -52,7 +52,7 @@ const MainScreen = () => {
             const active = nutritionDb.getActiveAssignmentsForDate(assignments);
             let creatorId = course.creator_id || course.creatorId;
             if (!creatorId && courseId) {
-              const courseDoc = await firestoreService.getCourse(courseId);
+              const courseDoc = await apiService.getCourse(courseId);
               creatorId = courseDoc?.creator_id ?? courseDoc?.creatorId ?? null;
             }
             const assignmentForCreator = active.find((a) => a.assignedBy === creatorId);

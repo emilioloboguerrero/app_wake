@@ -19,7 +19,7 @@ import Text from '../components/Text';
 import TextInput from '../components/TextInput';
 // import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { auth } from '../config/firebase';
@@ -85,7 +85,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const { data: userDoc } = useQuery({
     queryKey: ['user', userId],
     // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
-    queryFn: () => firestoreService.getUser(userId),
+    queryFn: () => apiService.getUser(userId),
     enabled: !!userId,
     ...cacheConfig.userProfile,
   });
@@ -252,7 +252,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     queryKey: ['programs', 'library', userId, userRole],
     queryFn: async () => {
       // TODO: no endpoint for getCourses — no REST endpoint; courses are in the users/me courses map
-      const allCourses = await firestoreService.getCourses(userId);
+      const allCourses = await apiService.getCourses(userId);
       let filtered;
       if (isAdmin(userRole)) {
         filtered = allCourses;
@@ -345,7 +345,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     try {
       logger.log('🔄 Fetching modules for course:', courseId);
       // TODO: no endpoint for getCourseModules — no matching REST endpoint
-      const modules = await firestoreService.getCourseModules(courseId, user?.uid);
+      const modules = await apiService.getCourseModules(courseId, user?.uid);
       
       // Cache the modules
       moduleCache.current.set(courseId, {

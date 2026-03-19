@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector';
@@ -38,7 +38,7 @@ export default function DailyWorkoutScreen({ navigation, route }) {
 
   const { data: initialPlannedDates } = useQuery({
     queryKey: ['workout', 'calendar', 'planned', courseId, CURRENT_MONTH_KEY],
-    queryFn: () => firestoreService.getDatesWithPlannedSessions(user.uid, courseId, CURRENT_MONTH_START, CURRENT_MONTH_END),
+    queryFn: () => apiService.getDatesWithPlannedSessions(user.uid, courseId, CURRENT_MONTH_START, CURRENT_MONTH_END),
     enabled: !!user?.uid && !!courseId && isOneOnOne,
     ...cacheConfig.programStructure,
   });
@@ -55,7 +55,7 @@ export default function DailyWorkoutScreen({ navigation, route }) {
       if (!user?.uid || !courseId) return [];
       try {
         if (isOneOnOne) {
-          return await firestoreService.getDatesWithCompletedPlannedSessions(
+          return await apiService.getDatesWithCompletedPlannedSessions(
             user.uid,
             courseId,
             startDate,
@@ -79,7 +79,7 @@ export default function DailyWorkoutScreen({ navigation, route }) {
     async (startDate, endDate) => {
       if (!isOneOnOne || !user?.uid || !courseId) return [];
       try {
-        return await firestoreService.getDatesWithPlannedSessions(
+        return await apiService.getDatesWithPlannedSessions(
           user.uid,
           courseId,
           startDate,

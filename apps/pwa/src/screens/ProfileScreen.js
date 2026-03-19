@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { auth } from '../config/firebase';
@@ -634,7 +634,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setDeleteAccountLoading(true);
       
       // TODO: no endpoint for saveAccountDeletionFeedback — no REST endpoint for account deletion feedback
-      await firestoreService.saveAccountDeletionFeedback(
+      await apiService.saveAccountDeletionFeedback(
         auth.currentUser.uid,
         feedbackToSave
       );

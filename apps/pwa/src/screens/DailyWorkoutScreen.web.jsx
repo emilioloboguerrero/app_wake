@@ -5,7 +5,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
@@ -74,7 +74,7 @@ const DailyWorkoutScreen = () => {
       const { start, end, key } = currentMonthMeta;
       logger.log('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
       const [planned, entries] = await Promise.all([
-        firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
+        apiService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
         exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
       ]);
       const plannedArr = Array.isArray(planned) ? planned : [];
@@ -104,7 +104,7 @@ const DailyWorkoutScreen = () => {
           ...rawCourse,
         };
       }
-      const courseData = await firestoreService.getCourse(courseId);
+      const courseData = await apiService.getCourse(courseId);
       if (!courseData) return null;
       return {
         id: courseData.id || courseId,
@@ -124,7 +124,7 @@ const DailyWorkoutScreen = () => {
       if (!user?.uid || !courseId) return [];
       try {
         if (isOneOnOne) {
-          return await firestoreService.getDatesWithCompletedPlannedSessions(
+          return await apiService.getDatesWithCompletedPlannedSessions(
             user.uid,
             courseId,
             startDate,
@@ -149,7 +149,7 @@ const DailyWorkoutScreen = () => {
     async (startDate, endDate) => {
       if (!isOneOnOne || !user?.uid || !courseId) return [];
       try {
-        return await firestoreService.getDatesWithPlannedSessions(
+        return await apiService.getDatesWithPlannedSessions(
           user.uid,
           courseId,
           startDate,

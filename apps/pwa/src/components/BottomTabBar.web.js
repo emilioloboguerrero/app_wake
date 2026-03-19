@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import sessionService from '../services/sessionService';
 import sessionManager from '../services/sessionManager';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
@@ -67,7 +67,7 @@ const BottomTabBar = () => {
     const today = toYYYYMMDD(new Date());
     Promise.all([
       purchaseService.getUserPurchasedCourses(userId, false),
-      firestoreService.getPinnedTrainingCourseId(userId),
+      apiService.getPinnedTrainingCourseId(userId),
     ]).then(([courses, pinnedId]) => {
       if (cancelled) return;
       const active = Array.isArray(courses) ? courses : [];
@@ -168,7 +168,7 @@ const BottomTabBar = () => {
     setMenuActionLoading(true);
     Promise.all([
       purchaseService.getUserPurchasedCourses(userId, false),
-      firestoreService.getPinnedTrainingCourseId(userId),
+      apiService.getPinnedTrainingCourseId(userId),
     ]).then(([courses, pinnedId]) => {
       const active = Array.isArray(courses) ? courses : [];
       if (active.length === 0) {
@@ -209,7 +209,7 @@ const BottomTabBar = () => {
     const userId = user?.uid ?? auth.currentUser?.uid;
     if (!userId) return;
     setProgramPickerTraining((prev) => ({ ...prev, visible: false }));
-    firestoreService.setPinnedTrainingCourseId(userId, item.courseId || item.id).then(() => {
+    apiService.setPinnedTrainingCourseId(userId, item.courseId || item.id).then(() => {
       setMenuActionLoading(true);
       runEntrenarFlow(item, userId);
     }).catch((err) => {
@@ -233,7 +233,7 @@ const BottomTabBar = () => {
     setMenuActionLoading(true);
     Promise.all([
       nutritionFirestoreService.getAssignmentsByUser(userId),
-      firestoreService.getPinnedNutritionAssignmentId(userId),
+      apiService.getPinnedNutritionAssignmentId(userId),
     ]).then(([assignments, pinnedId]) => {
       const today = toYYYYMMDD(new Date());
       const activeAssignments = nutritionFirestoreService.getActiveAssignmentsForDate(assignments || [], today);
@@ -302,7 +302,7 @@ const BottomTabBar = () => {
     const planSnapshot = item.plan && typeof item.plan === 'object'
       ? { id: item.planId, ...item.plan }
       : null;
-    firestoreService.setPinnedNutritionAssignmentId(userId, assignmentId).then(() => {
+    apiService.setPinnedNutritionAssignmentId(userId, assignmentId).then(() => {
       navigate('/nutrition', {
         state: {
           preferredAssignmentId: assignmentId,
