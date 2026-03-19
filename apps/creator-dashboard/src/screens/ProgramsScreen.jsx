@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
@@ -295,6 +296,7 @@ const CreateProgramModal = ({ onClose, onSubmit, isPending }) => {
 const GrupalesTab = ({ userId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [showModal, setShowModal] = useState(false);
 
   const { data: programs = [], isLoading, error } = useQuery({
@@ -310,6 +312,10 @@ const GrupalesTab = ({ userId }) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', userId] });
       setShowModal(false);
+    },
+    onError: (err) => {
+      console.error('[ProgramsScreen] create program failed', err);
+      showToast('No se pudo crear el programa. Intenta de nuevo.', 'error');
     },
   });
 

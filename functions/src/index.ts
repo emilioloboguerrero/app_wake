@@ -95,6 +95,20 @@ function setCorsHeaders(req: { headers: { origin?: string } }, res: { set: (k: s
   res.set("Vary", "Origin");
 }
 
+const gen1RateStore = new Map<string, { count: number; resetAt: number }>();
+function checkGen1RateLimit(key: string, maxPerMinute: number): void {
+  const now = Date.now();
+  const entry = gen1RateStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    gen1RateStore.set(key, { count: 1, resetAt: now + 60_000 });
+    return;
+  }
+  entry.count++;
+  if (entry.count > maxPerMinute) {
+    throw Object.assign(new Error("Too many requests"), { statusCode: 429 });
+  }
+}
+
 async function verifyGen1Auth(request: Request): Promise<string | null> {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) return null;
@@ -298,7 +312,12 @@ export const createPaymentPreference = functions
     }
 
     try {
+      checkGen1RateLimit(`createPaymentPreference_${userId}`, 5);
       const {courseId} = request.body;
+      if (!courseId || typeof courseId !== "string" || courseId.length > 128) {
+        response.status(400).json({ success: false, error: "courseId inválido" });
+        return;
+      }
 
       // Get course
       const courseDoc = await db.collection("courses").doc(courseId).get();
@@ -369,13 +388,22 @@ export const createSubscriptionCheckout = functions
     }
 
     try {
+      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`, 5);
       const {courseId, payer_email: payerEmail} = request.body;
+      if (!courseId || typeof courseId !== "string" || courseId.length > 128) {
+        response.status(400).json({ success: false, error: "courseId inválido" });
+        return;
+      }
 
       if (!payerEmail) {
         response.status(400).json({
           success: false,
           error: "Payer email is required for subscriptions",
         });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
+        response.status(400).json({ success: false, error: "Formato de email inválido" });
         return;
       }
 
@@ -1459,6 +1487,7 @@ export const updateSubscriptionStatus = functions
     }
 
     try {
+      checkGen1RateLimit(`updateSubscriptionStatus_${userId}`, 10);
       const {
         subscriptionId,
         action,
@@ -1993,6 +2022,12 @@ app.post("/api/v1/auth/signup", async (req, res, next) => {
       { email: "string", password: "string", displayName: "optional_string" },
       req.body
     );
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+      throw apiError("VALIDATION_ERROR", "Formato de email inválido", 400, "email");
+    }
+    if (body.password.length < 8) {
+      throw apiError("VALIDATION_ERROR", "La contraseña debe tener al menos 8 caracteres", 400, "password");
+    }
     await checkRateLimit(`auth_signup_${body.email.trim().toLowerCase()}`, 5);
     const userRecord = await admin.auth().createUser({
       email: body.email,
@@ -2695,6 +2730,7 @@ app.get("/api/v1/nutrition/foods/search", async (req, res, next) => {
     await validateAuth(req);
     const { q, page } = req.query as Record<string, string | undefined>;
     if (!q?.trim()) throw apiError("VALIDATION_ERROR", "q is required", 400, "q");
+    if (q.trim().length > 200) throw apiError("VALIDATION_ERROR", "q exceeds 200 characters", 400, "q");
     const pageNum = page ? Math.max(0, parseInt(page, 10) - 1) : 0;
     if (isNaN(pageNum)) throw apiError("VALIDATION_ERROR", "page must be a number", 400, "page");
 
@@ -2756,12 +2792,14 @@ app.get("/api/v1/nutrition/foods/search", async (req, res, next) => {
 app.get("/api/v1/nutrition/foods/barcode/:barcode", async (req, res, next) => {
   try {
     await validateAuth(req);
+    const { barcode } = req.params;
+    if (!/^\d{8,14}$/.test(barcode)) throw apiError("VALIDATION_ERROR", "Código de barras inválido", 400, "barcode");
     const clientId = fatSecretClientId.value();
     const clientSecret = fatSecretClientSecret.value();
     if (!clientId || !clientSecret) throw apiError("SERVICE_UNAVAILABLE", "Nutrition service not configured", 503);
     const token = await getFatSecretToken(clientId, clientSecret, "basic barcode");
     const params = new URLSearchParams({
-      barcode: req.params.barcode.trim(), format: "json", region: "ES", language: "es",
+      barcode: barcode.trim(), format: "json", region: "ES", language: "es",
     });
     const fsRes = await fetch(`https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -6431,17 +6469,19 @@ app.get("/api/v1/creator/clients/:clientId/programs", async (req, res, next) => 
       .where("clientId", "==", req.params.clientId)
       .orderBy("assignedAt", "desc")
       .get();
-    const data = await Promise.all(snap.docs.map(async (d) => {
+    const courseIds = snap.docs.map((d) => d.data().courseId).filter(Boolean) as string[];
+    const courseRefs = courseIds.map((id) => db.collection("courses").doc(id));
+    const courseDocs = courseRefs.length > 0 ? await db.getAll(...courseRefs) : [];
+    const courseTitleMap = new Map(courseDocs.map((d) => [d.id, d.exists ? (d.data()?.title ?? "") : ""]));
+    const data = snap.docs.map((d) => {
       const e = d.data();
-      const programDoc = await db.collection("courses").doc(e.courseId).get();
-      const programTitle = programDoc.exists ? (programDoc.data()?.title ?? "") : "";
       return {
         courseId: e.courseId,
-        title: programTitle,
+        title: courseTitleMap.get(e.courseId) ?? "",
         assignedAt: e.assignedAt?.toDate?.()?.toISOString() ?? null,
         planAssignments: (e.planAssignments ?? {}) as Record<string, unknown>,
       };
-    }));
+    });
     res.json({ data });
   } catch (err) { next(err); }
 });
@@ -7329,10 +7369,8 @@ app.get("/api/v1/creator/events", async (req, res, next) => {
       .where("creatorId", "==", auth.userId)
       .orderBy("createdAt", "desc")
       .get();
-    const data = await Promise.all(snap.docs.map(async (d) => {
+    const data = snap.docs.map((d) => {
       const e = d.data();
-      const regSnap = await db.collection("event_signups").doc(d.id)
-        .collection("registrations").get();
       return {
         eventId: d.id,
         title: e.title ?? "",
@@ -7342,11 +7380,11 @@ app.get("/api/v1/creator/events", async (req, res, next) => {
         location: (e.location ?? null) as string | null,
         status: e.status ?? "draft",
         maxRegistrations: (e.maxRegistrations ?? null) as number | null,
-        registrationCount: regSnap.size,
+        registrationCount: (e.registration_count ?? 0) as number,
         fields: (e.fields ?? []) as EventField[],
         createdAt: e.createdAt?.toDate?.()?.toISOString() ?? null,
       };
-    }));
+    });
     res.json({ data });
   } catch (err) { next(err); }
 });
@@ -7866,6 +7904,8 @@ app.post("/api/v1/bookings", async (req, res, next) => {
       slotStartUtc: "string",
       slotEndUtc: "string",
     }, req.body);
+    if (isNaN(new Date(body.slotStartUtc).getTime())) throw apiError("VALIDATION_ERROR", "slotStartUtc is not a valid date", 400, "slotStartUtc");
+    if (isNaN(new Date(body.slotEndUtc).getTime())) throw apiError("VALIDATION_ERROR", "slotEndUtc is not a valid date", 400, "slotEndUtc");
     const creatorDoc = await db.collection("users").doc(body.creatorId).get();
     if (!creatorDoc.exists) throw apiError("NOT_FOUND", "Creator not found", 404);
     const availDoc = await db.collection("creator_availability").doc(body.creatorId).get();
@@ -10040,8 +10080,12 @@ app.post("/api/v1/users/me/init", async (req, res, next) => {
       res.json({ data: { created: false } });
       return;
     }
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    await userRef.set({ ...body, role: "user", created_at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const safeFields: Record<string, unknown> = {};
+    if (typeof raw.displayName === "string") safeFields.displayName = raw.displayName.trim().slice(0, 100);
+    if (typeof raw.email === "string") safeFields.email = raw.email.trim().toLowerCase().slice(0, 254);
+    if (typeof raw.photoURL === "string") safeFields.photoURL = raw.photoURL.slice(0, 500);
+    await userRef.set({ ...safeFields, role: "user", created_at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     res.json({ data: { created: true } });
   } catch (err) { next(err); }
 });
@@ -10119,8 +10163,14 @@ app.get("/api/v1/library/exercises/:exerciseId", async (req, res, next) => {
 app.post("/api/v1/purchases", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    const body = validateBody<{ courseId: string; amount: number; currency?: string }>(
+      { courseId: "string", amount: "number", currency: "optional_string" },
+      req.body
+    );
     const ref = await db.collection("purchases").add({
-      ...req.body,
+      courseId: body.courseId,
+      amount: body.amount,
+      currency: body.currency ?? "COP",
       user_id: auth.userId,
       created_at: FieldValue.serverTimestamp(),
     });
@@ -10141,8 +10191,15 @@ app.get("/api/v1/community/posts", async (req, res, next) => {
 app.post("/api/v1/community/posts", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    const body = validateBody<{ content: string; mediaUrl?: string }>(
+      { content: "string", mediaUrl: "optional_string" },
+      req.body
+    );
+    if (body.content.trim().length === 0) throw apiError("VALIDATION_ERROR", "content cannot be empty", 400, "content");
+    if (body.content.length > 2000) throw apiError("VALIDATION_ERROR", "content exceeds 2000 characters", 400, "content");
     const ref = await db.collection("community").add({
-      ...req.body,
+      content: body.content.trim(),
+      ...(body.mediaUrl ? { mediaUrl: body.mediaUrl } : {}),
       user_id: auth.userId,
       created_at: FieldValue.serverTimestamp(),
     });
@@ -10155,8 +10212,13 @@ app.post("/api/v1/community/posts", async (req, res, next) => {
 app.post("/api/v1/users/me/delete-feedback", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    const body = validateBody<{ reason: string; details?: string }>(
+      { reason: "string", details: "optional_string" },
+      req.body
+    );
     const ref = await db.collection("account_deletion_feedback").add({
-      ...req.body,
+      reason: body.reason.trim().slice(0, 500),
+      ...(body.details ? { details: body.details.trim().slice(0, 2000) } : {}),
       user_id: auth.userId,
       created_at: FieldValue.serverTimestamp(),
     });

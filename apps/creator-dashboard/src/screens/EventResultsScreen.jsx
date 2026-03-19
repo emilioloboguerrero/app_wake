@@ -36,12 +36,14 @@ function relativeLuminance(r, g, b) {
 
 function formatDate(ts) {
   if (!ts) return '—';
-  return ts.toDate().toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatTime(ts) {
   if (!ts) return '';
-  return ts.toDate().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDay(ts) {
@@ -791,14 +793,22 @@ export default function EventResultsScreen() {
   }
 
   async function handleManualCheckIn(regId) {
-    await eventService.checkInRegistration(eventId, regId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+    try {
+      await eventService.checkInRegistration(eventId, regId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+    } catch (err) {
+      logger.error('[EventResults] check-in failed', err);
+    }
   }
 
   async function handleDeleteRegistration(regId) {
-    await eventService.deleteRegistration(eventId, regId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
-    setSelectedReg(null);
+    try {
+      await eventService.deleteRegistration(eventId, regId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+      setSelectedReg(null);
+    } catch (err) {
+      logger.error('[EventResults] delete registration failed', err);
+    }
   }
 
   async function admitFromWaitlist(waitId) {

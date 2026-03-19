@@ -77,7 +77,7 @@ export default function NutritionScreen({ clientId = null }) {
   const [planFormName, setPlanFormName] = useState('');
   const [planFormCreating, setPlanFormCreating] = useState(false);
 
-  const nutritionCache = cacheConfig.userProfile;
+  const nutritionCache = cacheConfig.programStructure;
 
   const { data: meals = [], isLoading: mealsLoading } = useQuery({
     queryKey: ['nutrition', 'meals', creatorId],

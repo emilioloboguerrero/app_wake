@@ -191,14 +191,14 @@ const ProfileScreen = () => {
     }).catch(() => setNavPrefsLoaded(true));
   }, [user?.uid]);
 
-  const getFilteredCountries = () => {
+  const getFilteredCountries = useMemo(() => {
     if (!countrySearchQuery.trim()) return countries;
     const searchLower = countrySearchQuery.toLowerCase();
     return countries.filter(
       (c) =>
         c.label.toLowerCase().includes(searchLower) || c.name.toLowerCase().includes(searchLower)
     );
-  };
+  }, [countries, countrySearchQuery]);
 
   const filteredCities = useMemo(() => {
     if (!country) return [];
@@ -701,10 +701,10 @@ const ProfileScreen = () => {
                       )}
                       {showCountryDropdown && (
                         <div className="profile-dropdown-list">
-                          {getFilteredCountries().map((option) => (
+                          {getFilteredCountries.map((option) => (
                             <div key={option.value} className={`profile-dropdown-option${country === option.value ? ' profile-dropdown-option-selected' : ''}`} onClick={() => handleCountrySelect(option.value)}>{option.label}</div>
                           ))}
-                          {getFilteredCountries().length === 0 && <div className="profile-dropdown-option">No se encontraron países</div>}
+                          {getFilteredCountries.length === 0 && <div className="profile-dropdown-option">No se encontraron países</div>}
                         </div>
                       )}
                     </div>

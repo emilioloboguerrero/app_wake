@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { queryClient } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import availabilityService from '../services/availabilityService';
@@ -119,6 +118,7 @@ function dateToStr(d) {
 
 export default function AvailabilityCalendarScreen() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const today = useMemo(() => new Date(), []);
   const [currentDate, setCurrentDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDateStr, setSelectedDateStr] = useState(null);

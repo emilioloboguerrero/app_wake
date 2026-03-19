@@ -1,10 +1,5 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
-
-const RedirectLibrarySessionEdit = () => {
-  const { sessionId } = useParams();
-  return <Navigate to={`/content/sessions/${sessionId}`} replace />;
-};
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import LoginScreen from './screens/LoginScreen';
@@ -17,7 +12,6 @@ import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
 import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
-import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
 import LibraryManagementScreen from './screens/LibraryManagementScreen';
 import PlanDetailScreen from './screens/PlanDetailScreen';
@@ -37,6 +31,11 @@ import ApiKeysScreen from './screens/ApiKeysScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
+
+const RedirectLibrarySessionEdit = () => {
+  const { sessionId } = useParams();
+  return <Navigate to={`/content/sessions/${sessionId}`} replace />;
+};
 
 const CREATOR_BASE = '/creators';
 

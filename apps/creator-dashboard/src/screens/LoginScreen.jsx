@@ -172,6 +172,7 @@ const LoginScreen = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       await authService.resetPassword(email);
       setForgotSent(true);
@@ -180,6 +181,8 @@ const LoginScreen = () => {
     } catch (error) {
       logger.error('[LoginScreen] Password Reset Error:', error);
       setFormError('No pudimos enviar el correo. Intenta de nuevo');
+    } finally {
+      setIsLoading(false);
     }
   };
 

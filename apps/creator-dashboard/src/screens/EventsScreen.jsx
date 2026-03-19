@@ -49,7 +49,7 @@ export default function EventsScreen() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.events.byCreator(user?.uid),
     queryFn: () => eventService.getEventsByCreator(user.uid),
     enabled: !!user,
@@ -137,6 +137,11 @@ export default function EventsScreen() {
             <div className="es-grid">
               {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
+          ) : isError ? (
+            <div className="es-empty">
+              <p className="es-empty-title">Error al cargar eventos</p>
+              <p className="es-empty-sub">Intenta recargar la página</p>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="es-empty">
               <div className="es-empty-icon">
@@ -148,7 +153,7 @@ export default function EventsScreen() {
                 </svg>
               </div>
               <p className="es-empty-title">
-                {activeFilter === 'all' ? 'Sin eventos' : `Sin eventos ${STATUS_FILTERS.find(f => f.key === activeFilter)?.label.toLowerCase()}`}
+                {activeFilter === 'all' ? 'Sin eventos' : `Sin eventos ${NAV_TABS.find(t => t.id === activeFilter)?.label.toLowerCase()}`}
               </p>
               <p className="es-empty-sub">Crea tu primer evento para empezar a recibir registros</p>
               {activeFilter === 'all' && (
