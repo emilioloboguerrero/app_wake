@@ -1,0 +1,2020 @@
+================================================================================
+WAKE — PART 2 FULL CODE AUDIT REPORT
+Generated: 2026-03-14
+Coverage: apps/pwa/src/, apps/creator-dashboard/src/, functions/src/
+================================================================================
+
+This document covers all 18 investigation items from Part 2 of API_STRATEGY_PRE_INVESTIGATION.md.
+Every finding is sourced directly from code reading across the three apps and Cloud Functions.
+
+================================================================================
+2.1 — AUTHENTICATION FLOWS
+================================================================================
+
+PWA — AuthContext.js (apps/pwa/src/contexts/AuthContext.js)
+─────────────────────────────────────────────────────────────
+Flow:
+  onAuthStateChanged fires → if user found, starts a check loop with delays:
+  100ms, 300ms, 500ms, 1s, 2s (each check: if user is loaded, stop)
+  Purpose: handle IndexedDB restore timing (Firebase auth restores from IndexedDB
+  on web, which is async and not guaranteed to finish before the listener fires).
+
+  Safety timeout: if user exists but loading still true after 2s, forces loading=false
+  Safari fallback: if no user after 3s → loading=false
+  Other browsers: if no user after 10s → loading=false
+
+  Persistence: browserLocalPersistence (web), getReactNativePersistence(AsyncStorage) (native)
+  Firebase Auth initialized differently per platform in apps/pwa/src/config/firebase.js
+
+Exposes: { user, loading }
+Auth methods in PWA: email/password, Google (googleAuthService), Apple (appleAuthService)
+
+Creator Dashboard — AuthContext.jsx (apps/creator-dashboard/src/contexts/AuthContext.jsx)
+──────────────────────────────────────────────────────────────────────────────────────────
+Flow:
+  onAuthStateChanged → getUser(firebaseUser.uid) → sets role, onboarding flags
+
+Exposes: {
+  user, userRole, loading,
+  webOnboardingCompleted, profileCompleted, onboardingCompleted,
+  isCreator, isAdmin,
+  refreshUserData
+}
+
+Issues:
+  - Has console.log on every render (performance concern, not using logger)
+  - Blocks render with "Cargando..." while loading (no skeleton or partial load)
+
+Native AppNavigator.js (apps/pwa/src/navigation/AppNavigator.js):
+  After auth, fetches profile after 1500ms delay and caches to AsyncStorage.
+  Uses firestoreService.getUser() for the profile fetch.
+
+================================================================================
+2.2 — APP ENTRY POINTS AND ROUTE STRUCTURE
+================================================================================
+
+PWA Web Routes (React Router v6, basename: /app)
+  Source: apps/pwa/src/navigation/WebAppNavigator.jsx
+
+  PUBLIC:
+    /login                             → LoginScreen.web.js
+
+  ONBOARDING (checked before main app):
+    /onboarding                        → OnboardingFlow.web.jsx (initialStep=0)
+    /onboarding/questions              → OnboardingFlow.web.jsx (initialStep=4)
+
+  AUTHENTICATED (AuthenticatedLayout wrapper):
+    /                                  → MainScreen.web.js
+    /profile                           → ProfileScreen
+    /nutrition                         → NutritionScreen.web.jsx
+    /library                           → ProgramLibraryScreen
+    /course/:courseId                  → CourseDetailScreen
+    /creator/:creatorId                → CreatorProfileScreen
+    /course/:courseId/structure        → CourseStructureScreen
+    /course/:courseId/workout          → DailyWorkoutScreen.web.jsx
+    /course/:courseId/workout/execution → WorkoutExecutionScreen.web.jsx
+    /course/:courseId/workout/completion → WorkoutCompletionScreen.web.js
+    /warmup                            → WarmupScreen
+    /sessions                          → SessionsScreen
+    /sessions/:sessionId               → SessionDetailScreen
+    /prs                               → PRsScreen
+    /prs/:exerciseId                   → PRDetailScreen
+    /volume                            → WeeklyVolumeHistoryScreen
+    /progress                          → (body progress screen)
+    /subscriptions                     → SubscriptionsScreen
+    /courses                           → AllPurchasedCoursesScreen
+    /call/:bookingId                   → UpcomingCallDetailScreen
+
+  CREATOR-ONLY ROUTES (role check within screen):
+    /creator/events                    → EventsManagementScreen.web.jsx
+    /creator/events/:eventId/checkin   → EventCheckinScreen.web.jsx
+    /creator/events/:eventId/registrations → EventRegistrationsScreen.web.jsx
+
+  CATCH-ALL: * → redirect to /
+
+AuthenticatedLayout behavior:
+  - Checks onboarding status from user profile → redirects to /onboarding if incomplete
+  - Fetches profile from firestoreService with 5s timeout (2s for Safari)
+  - Caches profile in webStorageService (sessionStorage) with 5min TTL
+  - Falls back to cached profile on error
+  - Renders BottomTabBar in React portal to document.body
+  - Exposes RefreshProfileContext and OpenReadinessModalContext to children
+
+Creator Dashboard Routes (React Router v6, basename: /creators)
+  Login, onboarding, all creator management screens
+  Source: apps/creator-dashboard/src/ (58+ screen files, not fully enumerated here)
+
+Landing Routes (React Router v6, basename: /)
+  Marketing pages only. Reads app_resources collection for hero images/cards.
+
+================================================================================
+2.3 — STATE MANAGEMENT
+================================================================================
+
+Global Contexts (PWA):
+  - AuthContext: { user, loading }
+  - UserRoleContext: { role } — derived from user.role field
+  - VideoContext: video playback state
+  - ActivityStreakContext: uses useActivityStreak hook (see 2.4 for onSnapshot detail)
+  - RefreshProfileContext: function to trigger profile re-fetch
+  - OpenReadinessModalContext: function to open readiness modal
+
+Global Contexts (Creator Dashboard):
+  - AuthContext: { user, userRole, loading, isCreator, isAdmin, etc. }
+
+React Query (@tanstack/react-query) v5:
+  - Creator Dashboard: full React Query for all server state
+  - PWA DailyWorkoutScreen.web.jsx: also uses React Query
+    - useQuery(['daily-prefetch', userId, courseId, monthKey]) — planned/completed dates
+    - useQuery(['programs', courseId]) — course data, staleTime: 30min
+
+In-memory caches (per process, reset on reload):
+  - consolidatedDataService: 5-min Map per userId
+  - firestoreService._oneOnOneModulesCache: 5-min per courseId
+  - firestoreService._getCourseModulesInFlight: promise deduplication
+  - activityStreakService.streakCache: per userId+day
+  - fatSecretTokenCache: per scope, expires with token
+
+Persistent caches:
+  - AsyncStorage (24h TTL) via hybridDataService:
+      user_profile_v2, courses_data_v2, user_progress_v2, last_sync_timestamp_v2
+  - AsyncStorage via courseDownloadService:
+      course_data_{courseId}, course_download_meta_{courseId}, course_version_{courseId}
+  - AsyncStorage via workoutSessionService:
+      active_session, session_backup_0, session_backup_1, session_backup_2,
+      session_metadata, upload_queue, pending_session_{id}
+  - webStorageService (sessionStorage): profile with 5min TTL in WebAppNavigator
+
+================================================================================
+2.4 — REAL-TIME LISTENERS (onSnapshot)
+================================================================================
+
+All confirmed onSnapshot usages found in the codebase:
+
+1. activityStreakService.useActivityStreak (PWA)
+   File: apps/pwa/src/services/activityStreakService.js
+   Collection: users/{userId}  (entire user document)
+   Options: { includeMetadataChanges: true }
+   When: mounted if userId is set
+   Purpose: track activity streak; fires on any user doc change
+   Cleanup: proper unsubscribe in useEffect cleanup
+   Notes:
+     - Has loading fallback at 400ms and 2s
+     - Midnight recalculation timeout (re-fetches at start of next day)
+     - Also calls getDocFromServer (cache-bypass) and getDoc for streak calculation
+     - Writes back to users/{userId} with updateDoc when streak changes
+
+2. useProgramRealtime.useProgramRealtime (Creator Dashboard)
+   File: apps/creator-dashboard/src/hooks/useProgramRealtime.js
+   Collections:
+     a) courses/{programId}             (program document)
+     b) courses/{programId}/modules     (modules collection, orderBy order asc)
+   When: only when isActive=true
+   Purpose: real-time updates during active program editing
+   Cleanup: proper unsubscribe; also handles tab visibility changes (pauses when hidden)
+   Notes:
+     - Resolves libraryModuleRef pointers inside the snapshot callback (async)
+     - Updates React Query cache directly: queryClient.setQueryData()
+
+3. useProgramRealtime.useModuleSessionsRealtime (Creator Dashboard)
+   File: apps/creator-dashboard/src/hooks/useProgramRealtime.js
+   Collection: courses/{programId}/modules/{moduleId}/sessions (orderBy order asc)
+   When: only when isActive=true
+   Purpose: real-time session updates during editing
+   Cleanup: proper unsubscribe; visibility handling
+   Notes:
+     - Resolves library references (libraryModuleRef → librarySessionRef)
+     - Does extra getDoc calls for program and module inside callback
+
+4. useProgramRealtime.useSessionExercisesRealtime (Creator Dashboard)
+   File: apps/creator-dashboard/src/hooks/useProgramRealtime.js
+   Collection: courses/{programId}/modules/{moduleId}/sessions/{sessionId}/exercises (orderBy order asc)
+   When: only when isActive=true
+   Purpose: real-time exercise updates during editing
+   Cleanup: proper unsubscribe; visibility handling
+
+Summary: 4 real-time listeners total. All have proper cleanup.
+The activityStreakService listener is the highest-cost — it fires on ANY change to the
+full users/{userId} document including all fields.
+
+================================================================================
+2.5 — SERVICE ARCHITECTURE
+================================================================================
+
+PWA Services (all singletons: export default new ServiceClass())
+  apps/pwa/src/services/:
+
+  firestoreService.js       (~1100+ lines) — Core Firestore operations
+    - User: createUser, getUser, updateUser, getPinnedTrainingCourseId, setPinnedTrainingCourseId,
+            getPinnedNutritionAssignmentId, setPinnedNutritionAssignmentId
+    - Progress: getUserCourseProgress (deprecated - top-level progress), getUserProgress,
+                createProgressSession, getProgressSession
+    - Courses: getCourseModules (large method with 4 paths: low_ticket/weekly/plan-based/one-on-one),
+               getCourse, getCourses
+    - One-on-one: getDatesWithPlannedSessions, getDatesWithCompletedPlannedSessions,
+                  getPlannedSessionForDate, resolvePlannedSessionContent,
+                  getPlannedSessionContentForDate, getPlannedSessionContentBySlotId,
+                  _getOneOnOneModuleFromClientSessions
+    - Content: getClientSessionContentCopy, getClientPlanContentCopy,
+               _resolvePlannedSessionFromPlan, getSessionOverrides, getExerciseOverrides, getSetOverrides
+    - In-memory cache: _oneOnOneModulesCache (5min TTL), _getCourseModulesInFlight (dedup)
+
+  hybridDataService.js      — Cache-first AsyncStorage (24h TTL) + background Firestore sync
+    - loadUserProfile, syncUserProfile, patchUserProfileCache, updateUserProfile
+    - loadCourses, syncCourses
+    - loadUserProgress, syncUserProgressForCourse, syncUserProgress, updateUserProgress
+    - loadAvailableDisciplines
+    - clearAllCache, clearUserCache, forceSyncAll, getCacheStatus, initialize, clearOldCacheKeys
+    - updateUserProfile → firestoreService.updateUser() (writes to users/{userId})
+
+  consolidatedDataService.js — 5-min in-memory cache combining purchase+hybrid+download
+    - getUserCoursesWithDetails() → purchaseService + hybridDataService + courseDownloadService
+
+  exerciseHistoryService.js  — Session completion writes
+    - addSessionData → updateExerciseHistory + updateSessionHistory
+    - updateExerciseHistory → writes users/{userId}/exerciseHistory/{libraryId}_{exerciseName}
+    - updateLastExercisePerformance → writes users/{userId}/exerciseLastPerformance/{exerciseKey}
+    - updateSessionHistory → writes users/{userId}/sessionHistory/{sessionId}
+    - updateSessionNotes → updateDoc users/{userId}/sessionHistory/{sessionId}
+    - getSessionHistoryPaginated, getAllSessionHistory, getDatesWithCompletedSessionsForCourse,
+      getAllExerciseKeysFromExerciseHistory
+    BUG: getAllExerciseKeysFromExerciseHistory defined twice (lines 596-617 and 624-645)
+
+  activityStreakService.js   — Streak tracking (see 2.4 for onSnapshot detail)
+    - useActivityStreak(userId) hook
+    - updateActivityStreak(userId, activityDate)
+    - clearStreakCache(userId)
+
+  courseDownloadService.js   — Full course download to AsyncStorage for offline use
+    - Large file (>53KB), handles version checking, week updates, background updates
+    - Downloads low_ticket courses in full for offline access
+
+  workoutSessionService.js   — Local-first workout session management
+    - All data in AsyncStorage during workout (auto-save after every set)
+    - startSession, addSetToSession, completeSession, createProgressSession
+    - createProgressSession → writes to deprecated top-level progress collection
+
+  sessionRecoveryService.js  — Crash recovery
+    - Reads active_session, session_metadata, session_backup_0/1/2, upload_queue, pending_session_{id}
+    - Auto-completes sessions <24h old, discards sessions >24h
+    - Adds to upload queue (via uploadService), no direct Firestore writes
+
+  nutritionFirestoreService.js — Nutrition data for PWA
+    - getAssignmentsByUser, getEffectivePlanForUser, getPlanForAssignmentId
+    - getDiaryEntries, getDiaryEntriesInRange, getDatesWithEntries
+    - addDiaryEntry, updateDiaryEntry, deleteDiaryEntry
+    - getUserMeals, createUserMeal, updateUserMeal, deleteUserMeal
+    - getSavedFoods, saveFood, updateSavedFood, deleteSavedFood
+    - getClientNutritionPlanContent, getPlanById
+    Collections: nutrition_assignments, client_nutrition_plan_content,
+                 users/{userId}/diary, users/{userId}/meals, users/{userId}/saved_foods,
+                 creator_nutrition_library/{creatorId}/plans
+
+  nutritionApiService.js     — FatSecret proxy calls (via Cloud Functions)
+    - searchFoods, getFoodById, lookupBarcode
+    - Always calls Cloud Functions, never FatSecret directly
+
+  purchaseService.js         — Course access validation from user.courses map
+  authService.js             — Email/password auth wrapper
+  googleAuthService.js       — Google Sign-In
+  appleAuthService.js        — Apple Sign-In
+  libraryResolutionService.js — Resolves libraryModuleRef/librarySessionRef pointers
+  monitoringService.js        — Crashlytics + Analytics (native only, not in Expo Go)
+  profilePictureService.js   — Storage upload: pickImage(), uploadProfilePicture(userId, imageUri)
+  bodyProgressService.js     — Progress photo tracking (users/{userId}/bodyLog/)
+  readinessService.js        — Readiness data (users/{userId}/readiness/)
+  callBookingService.js      — Booking slot reads
+  eventService.js            — Event registration for PWA users
+  webStorageService.js       — sessionStorage-based cache
+  programMediaService.js     — Course media management
+  appResourcesService.js     — Reads app_resources collection
+  videoCacheService.js       — Video caching
+  networkService.js          — Network status detection
+  notificationService.js     — Push notification setup
+  oneRepMaxService.js        — 1RM calculations
+  muscleVolumeInfoService.js — Volume tracking data
+  objectivesInfoService.js   — Objectives/goals data
+  disciplineImagesService.js — Discipline image data
+
+  data-management/ (not singletons):
+  courseDownloadService.js   — see above
+  sessionRecoveryService.js  — see above
+  workoutSessionService.js   — see above
+  uploadService.js           — processes upload_queue from AsyncStorage → Firestore
+  appSessionManager.js       — app lifecycle tracking
+  storageManagementService.js — manages AsyncStorage usage
+
+Creator Dashboard Services (apps/creator-dashboard/src/services/):
+  programService.js          — Course CRUD + module/session/exercise/set management
+    - getProgramsByCreator, getProgramById, getModulesByProgram, etc.
+    - Manages the full courses/{courseId}/modules/… tree
+    - Storage: uploadBytesResumable for course images to courses/{programId}/{fileName}
+
+  plansService.js            — Plan CRUD + full tree management
+    - getPlansByCreator, getPlanById, createPlan, updatePlan, deletePlan
+    - getModulesByPlan, createModule, deleteModule, updateModule, duplicateModule
+    - getSessionsByModule, createSession, deleteSession, updateSession
+    - getExercisesBySession, createExercise, updateExercise, deleteExercise
+    - getSetsByExercise, createSet, updateSet, deleteSet
+    - copyLibraryContentToPlanSession (detaches library ref to inline content)
+    Collection tree: plans/{planId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}/sets/{setId}
+
+  oneOnOneService.js         — Client relationship management
+    - lookupUserByEmailOrUsername → calls lookupUserForCreatorInvite Cloud Function
+    - getClientsByCreator → one_on_one_clients (with orderBy fallback)
+    - addClient → creates one_on_one_clients doc + creator_client_access doc
+    - addClientToProgram → addClient + clientProgramService.assignProgramToClient
+    - addCourseToClient, removeCourseFromClient, getClientById, deleteClient, updateClient
+    - getClientUserData → reads users/{userId} via firestoreService.getUser()
+
+  clientProgramService.js    — Client program assignment and week scheduling
+    - assignProgramToClient: users.courses + client_programs (with rollback on failure, 3 retries)
+    - ensureCreatorClientAccess: writes creator_client_access doc
+    - assignPlanToWeek: assigns plan to a week; creates client_sessions for each session
+    - assignPlanToConsecutiveWeeks: multi-week assignment
+    - removePlanFromWeek, removePlanEntirely
+    - setClientProgramAccessEndDate: updates users/{userId}.courses[programId].expires_at
+    - getClientCompletedSessionIds: reads users/{userId} + users/{userId}/sessionHistory
+    - getClientSessionHistory: reads users/{userId}/sessionHistory for a program
+    - getPlanAssignments, getClientProgram
+    Collections: client_programs, creator_client_access, users/{userId}, users/{userId}/sessionHistory
+
+  clientSessionService.js    — Per-client session date assignments
+    - assignSessionToDate → writes client_sessions/{id}
+    - getSessionsForProgram, deleteClientSessionsForWeek
+    Collection: client_sessions (doc id format: userId_programId_sessionId_date)
+
+  clientPlanContentService.js — Custom week content copies
+    - deleteClientPlanContent → deletes client_plan_content/{userId}_{programId}_{weekKey}
+    Collection: client_plan_content (doc id: userId_programId_weekKey)
+
+  clientSessionContentService.js — Per-session content copies
+    - deleteClientSessionContent → deletes client_session_content/{id}
+    Collection: client_session_content
+
+  libraryService.js          — Creator library management
+    - getLibraryModuleById, getLibrarySessionById
+    - reads creator_libraries collection (scoped by creatorId)
+
+  nutritionFirestoreService.js (creator dashboard version)
+    - Manages creator nutrition library (meals, plans, assignments)
+    - Collections: creator_nutrition_library/{creatorId}/meals, creator_nutrition_library/{creatorId}/plans,
+                   nutrition_assignments, client_nutrition_plan_content
+
+  eventService.js            — Event CRUD + registration management
+    - checkInRegistration, getEventsByCreator, getEvent, createEvent, updateEvent, deleteEvent
+    - getEventRegistrations, getEventWaitlist, updateRegistration, deleteRegistration
+    - admitFromWaitlist → deletes from waitlist, optionally increments max_registrations
+    Collections: events, event_signups/{eventId}/registrations, event_signups/{eventId}/waitlist
+
+  availabilityService.js     — Booking slot management
+    Collections: creator_availability (per creatorId)
+
+  courseService.js           — Thin wrapper over programService for creator-dashboard
+  purchaseService.js         — Course assignment for creator-dashboard
+  propagationService.js      — Propagates library changes to programs
+  cardService.js             — Card/thumbnail management (Storage: cards/{userId}/{fileName})
+  creatorMediaService.js     — Creator media library (creator_media)
+  creatorFeedbackService.js  — Feedback submissions (creator_feedback)
+  profilePictureService.js   — Profile picture upload (profiles/{userId}/{fileName})
+  callBookingService.js      — Booking management
+  programAnalyticsService.js — Program analytics queries
+  measureObjectivePresetsService.js — Measurement presets
+
+Creator Dashboard Hooks (apps/creator-dashboard/src/hooks/):
+  useProgramRealtime.js      — onSnapshot hooks (see 2.4)
+  usePrograms.js             — React Query hook for programs list
+
+================================================================================
+2.6 — OFFLINE / CACHING STRATEGY
+================================================================================
+
+Layer 1 — Full Course Download (low_ticket programs only):
+  Service: courseDownloadService.js
+  Storage: AsyncStorage
+  Keys: course_data_{courseId}, course_download_meta_{courseId}, course_version_{courseId}
+  Content: full module/session/exercise tree downloaded at assignment
+  Version checking: compares version field, re-downloads on mismatch
+  Background updates: checks for updates in background after serving cached data
+
+Layer 2 — Hybrid Data Service (profile + courses metadata):
+  Service: hybridDataService.js
+  Storage: AsyncStorage, 24h TTL
+  Keys: user_profile_v2, courses_data_v2, user_progress_v2, last_sync_timestamp_v2
+  Pattern: return cache immediately → sync in background → update cache → re-render
+
+Layer 3 — Workout Session Local-First:
+  Service: workoutSessionService.js
+  Storage: AsyncStorage (in-flight workout data)
+  Keys: active_session, session_backup_0/1/2, session_metadata, upload_queue, pending_session_{id}
+  Pattern: every set auto-saved to AsyncStorage; data uploaded after completion via upload queue
+
+Layer 4 — In-Memory Caches (cleared on page reload):
+  - consolidatedDataService: 5-min Map per userId
+  - firestoreService._oneOnOneModulesCache: 5-min per courseId + in-flight deduplication
+  - activityStreakService.streakCache: per userId+day
+  - fatSecretTokenCache (Cloud Functions): per OAuth scope, refreshed 5min before expiry
+  - WebAppNavigator profile: webStorageService (sessionStorage), 5min TTL
+
+Layer 5 — React Query (Creator Dashboard + DailyWorkoutScreen):
+  - staleTime: 30min for program data in DailyWorkoutScreen
+  - queryClient.setQueryData() updated by onSnapshot in useProgramRealtime
+
+Layer 6 — One-on-One Per-Session Fetch:
+  No full download. Fetched on demand with 5-min in-memory cache (_oneOnOneModulesCache).
+  Falls back to multiple Firestore paths in priority order:
+    1. client_sessions (per-date session assignments)
+    2. client_session_content (per-session content copies)
+    3. client_plan_content (per-week content copies)
+    4. plans/{planId}/modules/… (original plan)
+    5. creator_libraries (resolved library references)
+
+Firestore's own offline persistence:
+  Not explicitly configured in any of the three apps.
+  SDK default: offline persistence enabled on web when not in Node.js environment,
+  but not explicitly set with enableIndexedDbPersistence() or enableMultiTabIndexedDbPersistence().
+
+================================================================================
+2.7 — PAYMENT & SUBSCRIPTION FLOW
+================================================================================
+
+MercadoPago Integration (Colombia, COP, server-side only via Cloud Functions)
+
+One-time payment:
+  1. Client calls createPaymentPreference (POST, no auth required beyond CORS)
+     Body: { userId, courseId, returnUrl }
+     Reads: courses/{courseId}, users/{userId}
+     Returns: { init_point } (MP redirect URL)
+     externalRef format: v1|{userId}|{courseId}|otp
+
+Subscription:
+  1. Client calls createSubscriptionCheckout (POST)
+     Body: { userId, courseId, payer_email }
+     Reads: courses/{courseId}, users/{userId}
+     Writes: users/{userId}/subscriptions/{preapprovalId} (setDoc merge)
+     Returns: { init_point, subscription_id }
+     externalRef format: v1|{userId}|{courseId}|sub
+     Rejects (409): wrong country (non-CO email domain) or wrong email
+
+Webhook processing (processPaymentWebhook):
+  Validates HMAC-SHA256 signature — two formats supported:
+    Legacy: x-hmac-signature header (raw hex of body)
+    New:    x-signature header with ts=…,v1=… (signs ts+body)
+
+  Payment types handled:
+    payment.created / payment.updated:
+      - Fetches payment from MP API
+      - Checks status: pending/in_process → 200 OK (wait); failed → mark processed; approved → assign
+      - Uses Firestore transaction for atomic idempotency check on processed_payments/{paymentId}
+      - Course assignment via atomic transaction on users/{userId}:
+          courses[courseId] = { access_duration, expires_at, status: 'active', deliveryType, title, ... }
+          purchased_courses: [...Set, courseId]
+
+    subscription_authorized_payment.created:
+      - Same as above but isSubscription=true
+      - Extends expires_at for renewals (existing course → update expires_at)
+      - Writes users/{userId}/subscriptions/{subscriptionId}
+
+    subscription_preapproval:
+      - Updates subscription status in users/{userId}/subscriptions/{preapprovalId}
+      - Does NOT assign course (handled by authorized_payment event)
+
+  Error handling:
+    RETRYABLE errors → 500 (MP will retry)
+    NON_RETRYABLE errors → 200 (write error to processed_payments)
+
+Subscription management (updateSubscriptionStatus):
+  Body: { userId, subscriptionId, action: 'cancel'|'pause'|'resume', survey? }
+  Reads: users/{userId}/subscriptions/{subscriptionId}
+  Calls: MP preapproval.update({ status: targetStatus })
+  Writes: users/{userId}/subscriptions/{subscriptionId} (status, last_action, cancelled_at)
+  If cancel + survey.answers present:
+    Writes: subscription_cancellation_feedback/{id} (NEW COLLECTION — not in CLAUDE.md)
+            Fields: userId, subscriptionId, answers, source, statusAfter, submittedAt,
+                    courseId?, courseTitle?, statusBefore?, payerEmail?
+
+================================================================================
+2.8 — CLOUD FUNCTIONS INVENTORY
+================================================================================
+
+All 9 functions in functions/src/index.ts:
+
+1. createPaymentPreference
+   Type: HTTPS onRequest
+   Secrets: MERCADOPAGO_ACCESS_TOKEN
+   Reads: courses/{courseId}, users/{userId}
+   Returns: { init_point } (MP preference URL)
+
+2. createSubscriptionCheckout
+   Type: HTTPS onRequest
+   Secrets: MERCADOPAGO_ACCESS_TOKEN
+   Reads: courses/{courseId}, users/{userId}
+   Writes: users/{userId}/subscriptions/{preapprovalId}
+   Returns: { init_point, subscription_id }
+   Errors: 409 if email domain not .co or wrong country
+
+3. processPaymentWebhook
+   Type: HTTPS onRequest
+   Secrets: MERCADOPAGO_WEBHOOK_SECRET, MERCADOPAGO_ACCESS_TOKEN
+   Reads: courses/{courseId}, users/{userId}, processed_payments/{paymentId}
+   Writes (transactional):
+     - users/{userId} (courses map + purchased_courses)
+     - users/{userId}/subscriptions/{subscriptionId}
+     - processed_payments/{paymentId}
+   HMAC validation: dual format (legacy + new x-signature)
+   Retryable: 500 for network/API errors; 200 for validation/data errors
+
+4. updateSubscriptionStatus
+   Type: HTTPS onRequest
+   Secrets: MERCADOPAGO_ACCESS_TOKEN
+   Reads: users/{userId}/subscriptions/{subscriptionId}
+   Writes: users/{userId}/subscriptions/{subscriptionId}
+   Writes (if cancel): subscription_cancellation_feedback/{id}
+   Calls: MP preapproval.update()
+
+5. lookupUserForCreatorInvite
+   Type: HTTPS onCall (requires auth)
+   Reads: users/{creatorId} (role check), users by username query, users/{userId}
+   Also: admin.auth().getUserByEmail() for email lookups
+   Returns: { userId, displayName, email, username, age, gender, country, city, height, weight }
+   Auth check: caller must have role 'creator' or 'admin'
+
+7. nutritionFoodSearch
+   Type: HTTPS onRequest
+   Secrets: FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET
+   External: FatSecret /rest/foods/search/v4 (OAuth scope: 'premier')
+   Token: in-memory cache with 5min pre-expiry buffer
+   No Firestore reads/writes
+
+8. nutritionFoodGet
+   Type: HTTPS onRequest
+   Secrets: FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET
+   External: FatSecret /rest/food/v5 (scope: 'basic' or 'premier' if include_sub_categories)
+   No Firestore reads/writes
+
+9. nutritionBarcodeLookup
+   Type: HTTPS onRequest
+   Secrets: FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET
+   External: FatSecret /rest/food/barcode/find-by-id/v2 (scope: 'basic barcode')
+   No Firestore reads/writes
+
+10. sendEventConfirmationEmail
+    Type: Firestore onCreate trigger
+    Document: event_signups/{eventId}/registrations/{regId}
+    Secrets: RESEND_API_KEY
+    Reads: events/{eventId}
+    Condition: event.settings.send_confirmation_email must be true (else skips)
+    External: Resend API (HTML email with QR code)
+    QR: api.qrserver.com/v1/create-qr-code/ (client-side URL in email HTML, no server call)
+    QR data: JSON { eventId, token: check_in_token } or just regId if no token
+    From address: hardcoded "Wake Eventos <eventos@wakelab.co>"
+
+Secrets inventory (Firebase Secret Manager):
+  MERCADOPAGO_WEBHOOK_SECRET  — used in processPaymentWebhook
+  MERCADOPAGO_ACCESS_TOKEN    — used in createPaymentPreference, createSubscriptionCheckout,
+                                  processPaymentWebhook, updateSubscriptionStatus
+  FATSECRET_CLIENT_ID         — used in nutritionFoodSearch, nutritionFoodGet, nutritionBarcodeLookup
+  FATSECRET_CLIENT_SECRET     — same as above
+  RESEND_API_KEY              — used in sendEventConfirmationEmail
+
+Function runtime options:
+  All: us-central1, gen1 (functions v1), Node 22
+  Nutrition functions: optional VPC connector (NUTRITION_VPC_CONNECTOR='' → not used)
+
+================================================================================
+2.9 — ERROR HANDLING PATTERNS
+================================================================================
+
+Cloud Functions:
+  - classifyError helper: 'RETRYABLE' (network, API timeout) vs 'NON_RETRYABLE' (validation)
+  - RETRYABLE → 500 status (MP/Pub-Sub will retry)
+  - NON_RETRYABLE → 200 status (prevent retry loop)
+  - All errors logged with functions.logger
+  - Webhook errors: write processed_payments error doc to prevent future retries
+  - Soft errors (survey write, checkout intent update) swallowed with try/catch + logger.error
+
+PWA:
+  - logger.js: debug/log/warn/error/prod levels, controlled by ?wake_debug=1 or localStorage.WAKE_DEBUG
+  - No raw console.log in PWA services
+  - firestoreService: fallback queries (orderBy → plain getDocs on index error)
+  - exerciseHistoryService: getSessionHistoryPaginated has orderBy fallback
+  - sessionRecoveryService: auto-complete <24h, discard >24h
+  - authService (PWA): multiple delay checks + safety timeout for Safari/IndexedDB timing
+
+Creator Dashboard:
+  - Uses console.error/warn (no custom logger — inconsistency with PWA)
+  - console.log present in many service methods (performance concern)
+  - clientProgramService: 3-retry loop for addOneOnOneProgramToUserCourses with 500ms*attempt backoff
+  - clientProgramService.assignProgramToClient: rollback on client_programs write failure
+  - oneOnOneService: has try/catch fallback (query without orderBy if index missing)
+
+================================================================================
+2.10 — COMPLETE FIRESTORE COLLECTION INVENTORY
+================================================================================
+
+Each collection with: path, fields written, who writes, who reads, query patterns.
+
+─────────────────────────────────────────────────
+users/{userId}
+─────────────────────────────────────────────────
+Fields written:
+  role, courses (map: courseId → {access_duration, expires_at, status, deliveryType,
+  title, image_url, discipline, creatorName, is_trial, trial_consumed, purchased_at,
+  assigned_by, assigned_at, completedTutorials{dailyWorkout,warmup,workoutExecution,workoutCompletion}}),
+  purchased_courses (array), email, displayName, name, username, age, gender, birthDate,
+  country, city, height, bodyweight/weight, onboardingData (primaryGoal, trainingExperience,
+  trainingDaysPerWeek, sessionDuration, equipment, nutritionGoal, dietaryRestrictions[],
+  sleepHours, stressLevel, completedAt), courseProgress (map: courseId → allSessionsCompleted[]),
+  activityStreak {currentStreak, longestStreak, lastActivityDate, streakHistory[]},
+  pinnedTrainingCourseId, pinnedNutritionAssignmentId,
+  webOnboardingCompleted, profileCompleted, onboardingCompleted
+Writers:
+  PWA: authService (create), hybridDataService → firestoreService.updateUser() (profile updates),
+       activityStreakService (activityStreak field), firestoreService (pinned IDs)
+  Cloud Functions: processPaymentWebhook (courses + purchased_courses), updateSubscriptionStatus (indirectly)
+  Creator Dashboard: clientProgramService (courses map for one-on-one), oneOnOneService → getUser
+Readers:
+  PWA: hybridDataService, consolidatedDataService, firestoreService, activityStreakService,
+       AuthContext (via firestoreService.getUser)
+  Creator Dashboard: clientProgramService, oneOnOneService, lookupUserForCreatorInvite
+  Cloud Functions: processPaymentWebhook, lookupUserForCreatorInvite
+Query patterns:
+  - getDoc by userId (most common)
+  - where('username', '==', trimmed) + limit(1) in lookupUserForCreatorInvite
+  - Real-time onSnapshot on full doc in activityStreakService (PWA)
+Rule: isOwner OR isAdmin OR creatorHasClientAccess (for read/update)
+
+─────────────────────────────────────────────────
+users/{userId}/subscriptions/{subscriptionId}
+─────────────────────────────────────────────────
+Fields written:
+  status, last_payment_id, last_payment_date, transaction_amount, currency_id,
+  management_url, updated_at, last_action, cancelled_at, payer_email,
+  course_id/courseId/program_id (inconsistent naming), course_title/courseTitle
+Writers:
+  Cloud Functions: createSubscriptionCheckout (initial), processPaymentWebhook (renewals/updates),
+                   updateSubscriptionStatus
+Readers:
+  Cloud Functions: updateSubscriptionStatus
+  PWA: SubscriptionsScreen (presumably via firestoreService)
+Rule: catch-all (isSignedIn only — no explicit rule!)
+
+─────────────────────────────────────────────────
+users/{userId}/exerciseHistory/{exerciseKey}
+─────────────────────────────────────────────────
+Key format: {libraryId}_{exerciseName}
+Fields written: session data prepended to array
+Writers: PWA exerciseHistoryService.updateExerciseHistory()
+Readers: PWA exerciseHistoryService.getAllExerciseKeysFromExerciseHistory()
+Rule: isOwner (explicit)
+
+─────────────────────────────────────────────────
+users/{userId}/exerciseLastPerformance/{exerciseKey}
+─────────────────────────────────────────────────
+NOT IN CLAUDE.md — discovered in code
+Fields written: last exercise performance data (setDoc, only if newer)
+Writers: PWA exerciseHistoryService.updateLastExercisePerformance()
+Rule: catch-all (isSignedIn) — NO explicit rule
+
+─────────────────────────────────────────────────
+users/{userId}/sessionHistory/{sessionId}
+─────────────────────────────────────────────────
+Fields written:
+  exercises (dict by exerciseKey), plannedSnapshot (optional),
+  completedAt, courseId, sessionId, sessionName, duration
+Writers: PWA exerciseHistoryService.updateSessionHistory()
+Readers:
+  PWA: exerciseHistoryService.getSessionHistoryPaginated/getAllSessionHistory/getDatesWithCompletedSessionsForCourse
+       DailyWorkoutScreen (for completed date markers)
+  Creator Dashboard: clientProgramService.getClientCompletedSessionIds + getClientSessionHistory
+Query patterns:
+  - orderBy completedAt desc (with fallback: no orderBy)
+  - where('courseId', '==', courseId) + where('completedAt', '>=', start) (with fallback in-memory)
+  - getDocs (full scan) in creator dashboard
+Rule: isOwner can write; isOwner OR isAdmin OR creatorHasClientAccess can read (explicit)
+
+─────────────────────────────────────────────────
+users/{userId}/diary/{entryId}
+─────────────────────────────────────────────────
+Fields written:
+  userId, date (YYYY-MM-DD), meal, food_id, serving_id, number_of_units, name,
+  food_category, calories, protein, carbs, fat, serving_unit, grams_per_unit, servings, createdAt
+Writers: PWA nutritionFirestoreService.addDiaryEntry/updateDiaryEntry/deleteDiaryEntry
+Readers: PWA nutritionFirestoreService.getDiaryEntries/getDiaryEntriesInRange/getDatesWithEntries
+         Creator Dashboard: diary reader (presumably)
+Query patterns:
+  - where('date', '==', date) + orderBy('meal', 'asc')
+  - where('date', '>=', start) + where('date', '<=', end)
+Rule: isOwner (read+write); creatorHasClientAccess (read only)
+
+─────────────────────────────────────────────────
+users/{userId}/meals/{mealId}
+─────────────────────────────────────────────────
+Fields written: name, items[], createdAt, updatedAt
+Writers: PWA nutritionFirestoreService.createUserMeal/updateUserMeal/deleteUserMeal
+Readers: PWA nutritionFirestoreService.getUserMeals
+Query: orderBy('createdAt', 'desc')
+Rule: isOwner only (explicit)
+
+─────────────────────────────────────────────────
+users/{userId}/saved_foods/{savedFoodId}
+─────────────────────────────────────────────────
+NOT IN CLAUDE.MD — discovered in code; NO explicit Firestore rule
+Fields written:
+  userId, food_id, name, food_category, serving_id, serving_description,
+  number_of_units, calories_per_unit, protein_per_unit, carbs_per_unit, fat_per_unit,
+  grams_per_unit, servings[], savedAt
+Writers: PWA nutritionFirestoreService.saveFood/updateSavedFood/deleteSavedFood
+Readers: PWA nutritionFirestoreService.getSavedFoods
+Query: orderBy('savedAt', 'desc')
+Rule: catch-all (isSignedIn) — SECURITY GAP: any auth user can read any user's saved foods
+
+─────────────────────────────────────────────────
+users/{userId}/readiness/{date}
+─────────────────────────────────────────────────
+NOT IN CLAUDE.md — in rules but not documented
+Fields written: readiness check-in data (one doc per day)
+Writers: PWA readinessService
+Rule: isOwner only (explicit in rules)
+
+─────────────────────────────────────────────────
+users/{userId}/bodyLog/{dateStr}
+─────────────────────────────────────────────────
+NOT IN CLAUDE.md — in rules but not documented
+Fields written: weight + progress photos (one doc per day)
+Writers: PWA bodyProgressService
+Rule: isOwner only (explicit in rules)
+
+─────────────────────────────────────────────────
+courses/{courseId}
+─────────────────────────────────────────────────
+Fields written:
+  creator_id, title, image_url, discipline, creatorName/creator_name, deliveryType
+  (low_ticket|one_on_one), access_duration, version, published_version, weekly (bool),
+  description, status (publicado|published|draft), order, modules (inline for some patterns)
+Writers: Creator Dashboard programService (create/update/delete)
+Readers:
+  PWA: firestoreService (getCourse, getCourses, getCourseModules)
+  Creator Dashboard: programService
+  Cloud Functions: processPaymentWebhook, createPaymentPreference, createSubscriptionCheckout
+Query patterns:
+  - getDoc by courseId (most common)
+  - where('creator_id', '==', creatorId) in creator dashboard
+  - onSnapshot on doc in useProgramRealtime
+Rule: read if published/publicado/empty status or creator/admin; write: creator/admin (explicit)
+
+─────────────────────────────────────────────────
+courses/{courseId}/modules/{moduleId}
+─────────────────────────────────────────────────
+Fields written:
+  order, title, week (ISO week string for weekly programs), libraryModuleRef,
+  created_at, updated_at
+Writers: Creator Dashboard programService
+Readers: PWA firestoreService.getCourseModules; Creator Dashboard programService, useProgramRealtime
+Query: onSnapshot with orderBy('order', 'asc') in useProgramRealtime
+Rule: all auth users can read; creator/admin can write (explicit)
+
+─────────────────────────────────────────────────
+courses/{courseId}/modules/{moduleId}/sessions/{sessionId}
+─────────────────────────────────────────────────
+Fields written:
+  order, title, image_url, librarySessionRef, useLocalContent, week, duration,
+  created_at, updated_at
+Writers: Creator Dashboard programService
+Readers: PWA firestoreService; Creator Dashboard programService, useModuleSessionsRealtime
+Query: onSnapshot with orderBy('order', 'asc') in useModuleSessionsRealtime
+Rule: all auth can read; creator/admin write (explicit)
+
+─────────────────────────────────────────────────
+courses/{courseId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}
+─────────────────────────────────────────────────
+Fields written:
+  order, title, name, primary, secondary, tertiary, video_url, description,
+  exercise library reference fields, created_at, updated_at
+Writers: Creator Dashboard programService
+Readers: PWA firestoreService; Creator Dashboard; useSessionExercisesRealtime
+Rule: all auth read; creator/admin write (explicit)
+
+─────────────────────────────────────────────────
+courses/{courseId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}/sets/{setId}
+─────────────────────────────────────────────────
+Fields written: order, reps, weight, rest, type, notes, etc.
+Writers: Creator Dashboard programService
+Rule: all auth read; creator/admin write (explicit)
+
+─────────────────────────────────────────────────
+plans/{planId}
+─────────────────────────────────────────────────
+Fields written: creator_id, creatorName, title, description, discipline, created_at, updated_at
+Writers: Creator Dashboard plansService
+Readers: Creator Dashboard plansService, clientProgramService; PWA firestoreService (reads plan tree)
+Query: where('creator_id', '==', creatorId)
+Rule: catch-all (isSignedIn) — no explicit rule
+
+─────────────────────────────────────────────────
+plans/{planId}/modules/{moduleId}
+─────────────────────────────────────────────────
+Fields written: title, order, created_at, updated_at
+Writers: Creator Dashboard plansService
+Readers: plansService, clientProgramService (via plansService.getModulesByPlan)
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+plans/{planId}/modules/{moduleId}/sessions/{sessionId}
+─────────────────────────────────────────────────
+Fields written: title, order, image_url, librarySessionRef, dayIndex, useLocalContent,
+                created_at, updated_at
+Writers: Creator Dashboard plansService
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+plans/{planId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}
+─────────────────────────────────────────────────
+Fields: title, name, order, exercise data fields, created_at, updated_at
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+plans/{planId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}/sets/{setId}
+─────────────────────────────────────────────────
+Fields: order, title ("Serie N"), set-specific fields, created_at, updated_at
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+processed_payments/{paymentId}
+─────────────────────────────────────────────────
+Doc ID: MP payment ID
+Fields written:
+  processed_at, status (approved|error|already_owned|already_active), userId, courseId,
+  isSubscription, isRenewal, payment_type, userEmail, userName, courseTitle, state,
+  error_message, error_type
+Writers: Cloud Functions (processPaymentWebhook, updateSubscriptionStatus)
+Readers: Cloud Functions (idempotency check in processPaymentWebhook)
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+subscription_cancellation_feedback/{id}
+─────────────────────────────────────────────────
+NOT IN CLAUDE.md — discovered in code; NO explicit Firestore rule
+Fields written:
+  userId, subscriptionId, answers, source, statusAfter, submittedAt,
+  courseId?, courseTitle?, statusBefore?, payerEmail?
+Writers: Cloud Function updateSubscriptionStatus (on cancel with survey)
+Readers: (presumably admin only, no read rule defined)
+Rule: catch-all (isSignedIn) — any auth user could read ALL cancellation feedback!
+
+─────────────────────────────────────────────────
+creator_nutrition_library/{creatorId}/meals/{mealId}
+─────────────────────────────────────────────────
+Fields written: (meal data — name, ingredients, macros, etc.)
+Writers: Creator Dashboard nutritionFirestoreService
+Readers: Creator Dashboard nutritionFirestoreService; PWA nutritionFirestoreService.getPlanById
+Rule: isSignedIn AND request.auth.uid == creatorId (explicit)
+Index: COLLECTION_GROUP on meals: (creatorId ASC, createdAt DESC)
+
+─────────────────────────────────────────────────
+creator_nutrition_library/{creatorId}/plans/{planId}
+─────────────────────────────────────────────────
+Fields written:
+  (plan data — daily_calories, daily_protein_g, daily_carbs_g, daily_fat_g, meals, etc.)
+Writers: Creator Dashboard nutritionFirestoreService
+Readers: PWA nutritionFirestoreService.getPlanById (as fallback for plan content)
+Rule: isSignedIn AND request.auth.uid == creatorId (explicit)
+
+─────────────────────────────────────────────────
+nutrition_assignments/{assignmentId}
+─────────────────────────────────────────────────
+Fields written:
+  userId, planId, assignedBy (creatorId), startDate, endDate, plan (snapshot object)
+Writers: Creator Dashboard nutritionFirestoreService (create/update/delete by creator)
+Readers: PWA nutritionFirestoreService.getAssignmentsByUser; Creator Dashboard
+Query patterns:
+  - where('userId', '==', userId) + orderBy('startDate', 'desc')
+  - where('assignedBy', '==', creatorId) [creator dashboard view]
+Rule: userId OR assignedBy OR admin can read; creator(assignedBy) can create; assignedBy/admin update/delete
+Index: (userId, startDate DESC), (assignedBy, createdAt DESC)
+
+─────────────────────────────────────────────────
+client_nutrition_plan_content/{assignmentId}
+─────────────────────────────────────────────────
+Doc ID: assignmentId (same as nutrition_assignments doc ID)
+Fields written: (copy of plan content, personalized)
+Writers: Creator Dashboard nutritionFirestoreService (creator only)
+Readers: PWA nutritionFirestoreService.getClientNutritionPlanContent
+Rule: userId OR assignedBy OR admin can read (via lookup of nutrition_assignments); assignedBy/admin write
+      Uses document lookup (get()) in rule — adds one read per rule check (cost concern)
+
+─────────────────────────────────────────────────
+one_on_one_clients/{clientDocId}
+─────────────────────────────────────────────────
+Fields written:
+  creatorId, clientUserId, clientName, clientEmail, courseId[] (array of programIds),
+  createdAt, updatedAt
+Writers: Creator Dashboard oneOnOneService (create/update/delete)
+Readers:
+  Creator Dashboard: oneOnOneService.getClientsByCreator
+  PWA: (client reads own record)
+Query: where('creatorId', '==', creatorId) + orderBy('createdAt', 'desc') with fallback (no orderBy)
+Rule: creator OR client can read; creator only can write; creator/admin delete (explicit)
+
+─────────────────────────────────────────────────
+creator_client_access/{accessId}
+─────────────────────────────────────────────────
+Doc ID: {creatorId}_{userId}
+Fields written: creatorId, userId, updated_at
+Writers: Creator Dashboard oneOnOneService.addClient, clientProgramService.ensureCreatorClientAccess
+Readers: (used indirectly by creatorHasClientAccess() function in rules)
+Rule: creator can read/write own records (accessId must match uid + '_' + userId)
+
+─────────────────────────────────────────────────
+call_bookings/{bookingId}
+─────────────────────────────────────────────────
+Fields: creatorId, clientUserId, status, slotStartUtc, (other booking fields)
+Writers: PWA users (create own), creator/admin (update)
+Readers: creator OR client OR admin
+Query: where('creatorId', '==', creatorId) + orderBy('slotStartUtc')
+Rule: explicit — creator or client can read/update; users create own; delete: false
+Indexes: (creatorId, slotStartUtc), (creatorId, status, slotStartUtc)
+
+─────────────────────────────────────────────────
+creator_availability/{creatorId}
+─────────────────────────────────────────────────
+Fields: availability slot data
+Writers: creator (own only)
+Readers: all authenticated
+Rule: all auth read; creator write own (explicit)
+
+─────────────────────────────────────────────────
+app_resources/{resourceId}
+─────────────────────────────────────────────────
+Fields: (hero images, cards, public assets)
+Writers: admin only
+Readers: PUBLIC (true) — no auth required
+Rule: explicit
+
+─────────────────────────────────────────────────
+disciplines/{disciplineId}
+─────────────────────────────────────────────────
+Fields: (discipline data for UI)
+Writers: admin only
+Readers: all authenticated
+Rule: explicit
+
+─────────────────────────────────────────────────
+events/{eventId}
+─────────────────────────────────────────────────
+Fields written:
+  title, status (draft|active|closed), fields[] (V2 dynamic form definition),
+  max_registrations, registration_count, wake_users_only, settings.confirmation_message,
+  settings.send_confirmation_email (bool, triggers email function), image_url,
+  creator_id, created_at, updated_at
+Writers: Creator Dashboard eventService
+Readers: PUBLIC (anyone — no auth required)
+Notes:
+  Two update rules in rules — valid in Firestore:
+    1. creator/admin can update any fields
+    2. Anyone (even unauthenticated!) can increment registration_count field
+Rule: public read; creator(creator_id) can create/update/delete; public can update registration_count only
+
+─────────────────────────────────────────────────
+event_signups/{eventId}/registrations/{regId}
+─────────────────────────────────────────────────
+Fields written:
+  V1: email, nombre, (flat fields per form)
+  V2: responses: { [fieldId]: value }
+  Always: check_in_token (UUID), checked_in (bool), checked_in_at (timestamp), created_at
+Writers:
+  PWA/Public: create (public if !wake_users_only, or auth if wake_users_only)
+  Creator Dashboard eventService: updateRegistration (check-in), deleteRegistration
+  Cloud Function: sendEventConfirmationEmail (reads, but trigger function reads only)
+Readers: creator or admin only (not the registrant themselves)
+Rule: explicit — create: public (non-wake events) or auth; read/update: creator/admin; delete: admin
+
+─────────────────────────────────────────────────
+event_signups/{eventId}/waitlist/{waitId}
+─────────────────────────────────────────────────
+Fields written: contact, created_at
+Writers: PUBLIC (anyone can join waitlist — allow create: if true)
+Readers: creator or admin only
+Rule: explicit — create: public; read: creator/admin; delete: admin only
+
+─────────────────────────────────────────────────
+client_programs/{clientProgramId}
+─────────────────────────────────────────────────
+Doc ID: {userId}_{programId}
+Fields written:
+  program_id, user_id, content_plan_id,
+  version_snapshot: { program_version, library_versions: { sessions: {}, modules: {} } },
+  planAssignments: { [weekKey]: { planId, moduleIndex, moduleId, assignedAt } },
+  modules (overrides map), title, description, image_url, created_at, updated_at
+Writers: Creator Dashboard clientProgramService
+Readers:
+  PWA: firestoreService (reads for one-on-one content delivery)
+  Creator Dashboard: clientProgramService
+Query: where('program_id', '==', programId) for creator view
+Rule: catch-all (isSignedIn) — any auth user can read/write ANY client program doc!
+
+─────────────────────────────────────────────────
+client_sessions/{sessionId}
+─────────────────────────────────────────────────
+Fields written:
+  client_id, program_id, plan_id, session_id, date_timestamp, date_string,
+  module_id, day_index, week_key, (other session metadata)
+Writers: Creator Dashboard clientSessionService.assignSessionToDate
+Readers:
+  PWA: firestoreService._getOneOnOneModuleFromClientSessions,
+       getDatesWithPlannedSessions, getDatesWithCompletedPlannedSessions, getPlannedSessionForDate
+  Creator Dashboard: clientSessionService.getSessionsForProgram
+Query patterns (PWA):
+  - where('client_id', '==', userId) + where('program_id', '==', programId) + date range
+  - orderBy('date_timestamp', 'asc/desc')
+Rule: catch-all (isSignedIn) — any auth user can read ANY client's sessions
+Indexes: 3 composite indexes — (client_id, program_id, date_timestamp ASC),
+                                (client_id, program_id, date_timestamp DESC),
+                                (client_id, date_timestamp ASC)
+
+─────────────────────────────────────────────────
+client_plan_content/{docId}
+─────────────────────────────────────────────────
+Doc ID: {userId}_{programId}_{weekKey}
+Fields written: (copy of plan week content for client)
+Writers: Creator Dashboard clientPlanContentService
+Readers:
+  PWA: firestoreService.getClientPlanContentCopy
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+client_session_content/{docId}
+─────────────────────────────────────────────────
+Fields: (per-session content copy)
+Writers: Creator Dashboard clientSessionContentService
+Readers: PWA firestoreService.getClientSessionContentCopy
+Rule: catch-all (isSignedIn)
+
+─────────────────────────────────────────────────
+creator_media/{creatorId}/files/{fileId}
+─────────────────────────────────────────────────
+Fields: (media file metadata)
+Writers/Readers: creator only (own)
+Rule: explicit (creatorId == auth.uid)
+
+─────────────────────────────────────────────────
+creator_feedback/{feedbackId}
+─────────────────────────────────────────────────
+Fields: (bug reports/suggestions from creators)
+Writers: creator (own creatorId)
+Readers: admin only
+Rule: explicit
+
+─────────────────────────────────────────────────
+purchases/{purchaseId}
+─────────────────────────────────────────────────
+Fields: user_id, (purchase data)
+Writers: users (own)
+Readers: own user or admin
+Rule: explicit (legacy, seems unused by main purchase flow which goes through user.courses)
+
+─────────────────────────────────────────────────
+account_deletion_feedback/{feedbackId}
+─────────────────────────────────────────────────
+Fields: userId, feedback
+Writers: users (own)
+Readers: admin only
+Rule: explicit
+
+─────────────────────────────────────────────────
+DEPRECATED COLLECTIONS (still in rules, may still be written)
+─────────────────────────────────────────────────
+progress/{docId} — top-level, DEPRECATED
+  Still written by: PWA workoutSessionService.createProgressSession() (active bug!)
+  Rule: catch-all (isSignedIn)
+
+user_progress/{docId} — DEPRECATED (doc ID: userId or userId_courseId)
+  Referenced in hybridDataService.syncUserProgress
+  Rule: explicit (owner only, by doc ID pattern match)
+
+completed_sessions/{docId} — DEPRECATED
+  Rule: explicit (owner by doc ID pattern)
+
+─────────────────────────────────────────────────
+COLLECTIONS REFERENCED IN RULES BUT NOT FOUND IN MAIN CODE
+─────────────────────────────────────────────────
+community — mentioned in rules catch-all comment, no service found
+exercises_library — mentioned in rules catch-all comment; exerciseLibraryService.js exists
+creator_libraries — mentioned in rules catch-all comment; libraryService reads this
+
+================================================================================
+2.11 — FIREBASE STORAGE PATH AUDIT
+================================================================================
+
+All discovered storage paths (from storage.rules and code):
+
+profiles/{userId}/{fileName}
+  Operation: upload (write), read
+  Content: profile picture
+  Writers: PWA profilePictureService.uploadProfilePicture(); Creator Dashboard profilePictureService
+  Storage Rule: read: auth; write: request.auth.uid == userId
+
+exercises_library/{libraryId}/{exerciseName}/{fileName}
+  Operation: upload, read
+  Content: exercise demo videos/images
+  Writers: Any authenticated user (⚠️ explicitly noted as "tighten later" in rules)
+  Storage Rule: read: auth; write: auth (no creator/admin check — open to all!)
+
+courses/{programId}/{fileName}
+  Operation: upload, read
+  Content: course cover images, general media
+  Writers: Creator Dashboard programService (uploadBytesResumable)
+  Storage Rule: read: auth; write: creator check (uid must match course.creator_id)
+  Note: rules use a Firestore lookup (get()) to verify creator_id — adds read cost
+
+courses/{programId}/tutorials/{screenName}/{fileName}
+  Content: tutorial videos per screen name
+  Storage Rule: same as courses
+
+courses/{programId}/modules/{moduleId}/sessions/{fileName}
+  Content: session media
+  Storage Rule: same as courses
+
+cards/{userId}/{fileName}
+  Content: card/thumbnail images per user
+  Writers: Creator Dashboard cardService
+  Storage Rule: read: auth; write: request.auth.uid == userId
+
+creator_media/{creatorId}/{fileName}
+  Content: creator personal media library
+  Writers: Creator Dashboard creatorMediaService
+  Storage Rule: read/write: request.auth.uid == creatorId
+
+creator_feedback_attachments/{creatorId}/{fileName}
+  Content: attachments for feedback/bug reports
+  Storage Rule: read/write: request.auth.uid == creatorId
+
+legal-documents/{fileName}
+  Content: terms of service, privacy policy, etc.
+  Storage Rule: public read; no write
+
+progress_photos/{userId}/{allPaths=**}
+  Content: body progress photos
+  Writers: PWA bodyProgressService
+  Storage Rule: read/write: request.auth.uid == userId
+
+================================================================================
+2.12 — FIRESTORE SECURITY RULES AUDIT
+================================================================================
+
+Source: config/firebase/firestore.rules
+
+Helper functions:
+  isSignedIn()              — request.auth != null
+  isOwner(userId)           — isSignedIn() && request.auth.uid == userId
+  getUserRole()             — reads users/{auth.uid} via get() — costs 1 read per call!
+  isAdmin()                 — getUserRole() == 'admin'
+  isCreator()               — getUserRole() == 'creator' OR isAdmin()
+  creatorHasClientAccess(u) — isCreator() && exists(creator_client_access/{uid}_{u})
+
+NOTE: getUserRole() does a Firestore document read on EVERY rule evaluation that calls
+isCreator() or isAdmin(). This means multiple reads per request in complex rules.
+
+EXPLICIT RULES (what they cover):
+  users/{userId}                      — owner/admin/creatorHasClientAccess read+update
+  users/{userId}/exerciseHistory      — owner only
+  users/{userId}/sessionHistory       — owner write; owner/admin/creator read
+  users/{userId}/readiness            — owner only
+  users/{userId}/bodyLog              — owner only
+  creator_client_access               — creator manages own records
+  one_on_one_clients                  — creator or client read; creator write
+  courses (+ full subcollection tree) — published courses auth read; creator/admin write
+  user_progress                       — owner only (by doc ID pattern)
+  completed_sessions                  — owner only (by doc ID pattern)
+  disciplines                         — auth read; admin write
+  app_resources                       — public read; admin write
+  purchases                           — own or admin
+  account_deletion_feedback           — own create; admin read
+  creator_media                       — own creator
+  creator_availability                — auth read; own creator write
+  call_bookings                       — creator/client read; client create; creator/client update
+  creator_nutrition_library/meals     — own creator
+  creator_nutrition_library/plans     — own creator
+  nutrition_assignments               — userId/assignedBy/admin read; creator+assignedBy create
+  users/{userId}/diary                — owner; creator read
+  users/{userId}/meals                — owner only
+  client_nutrition_plan_content       — get() lookup per evaluation (double read cost)
+  events                              — public read; creator create/update/delete; public registration_count update
+  event_signups/registrations         — public/auth create; creator/admin read+update; admin delete
+  event_signups/waitlist              — public create; creator/admin read; admin delete
+  creator_feedback                    — creator create own; admin read
+
+CATCH-ALL RULE (critical security concern):
+  match /{document=**} { allow read, write: if isSignedIn(); }
+
+Collections covered ONLY by catch-all (any auth user can read/write everything):
+  - plans (and all subcollections: modules/sessions/exercises/sets)
+  - client_programs
+  - client_sessions
+  - client_session_content
+  - client_plan_content
+  - creator_libraries (and subcollections)
+  - exercises_library
+  - progress (deprecated)
+  - community
+  - processed_payments
+  - subscription_cancellation_feedback (NEW — sensitive payment cancellation data!)
+  - users/{userId}/exerciseLastPerformance (NOT IN CLAUDE.md)
+  - users/{userId}/saved_foods (NOT IN CLAUDE.MD)
+
+SECURITY GAPS / CONCERNS:
+
+[CRITICAL] catch-all gives any logged-in user read/write to:
+  - client_programs: user A can read user B's personalized program assignments
+  - client_sessions: any user can read all clients' session schedules
+  - subscription_cancellation_feedback: any user can read all cancellation survey answers
+  - plans: any creator can see another creator's plan content
+  - processed_payments: any user can read payment history for all users
+
+[HIGH] exercises_library Storage write is open to ALL authenticated users
+  "Tighten later" noted in rules but not done yet — any user can upload exercise media
+
+[HIGH] client_nutrition_plan_content rule uses get() on nutrition_assignments for each check
+  This doubles Firestore read costs for every read/write to this collection.
+  Consider storing userId/assignedBy directly on client_nutrition_plan_content document.
+
+[MEDIUM] getUserRole() reads users/{uid} on EVERY rule invocation
+  Any rule involving isCreator() or isAdmin() costs 1 extra read.
+  Heavy auth flows (checking courses → modules → sessions → exercises) multiply this.
+
+[MEDIUM] event_signups update rule: anyone with auth can update any field of any registration
+  (current update rule only requires event creator or admin — this is correct, but note that
+  event.settings.send_confirmation_email in the event doc controls email function trigger)
+
+[LOW] one_on_one_clients.read: any auth user can read client records for events they're party to
+  This is intentional (client reads own record) but the creatorId/clientUserId check in the
+  rule could be bypassed if doc data is manipulated before saving (no server-side validation).
+
+[LOW] users/{userId}/subscriptions has NO explicit rule (only catch-all)
+  Any authenticated user can potentially list/read all subscription docs of any user
+  if they know the user ID and query for the subcollection.
+
+STORAGE RULES CONCERNS:
+[HIGH] exercises_library write: all authenticated users can upload — should be creator/admin only
+[LOW] legal-documents: public read is correct, but no write rule means admin can't update via SDK
+      (must use Storage console or service account)
+
+================================================================================
+2.13 — FIRESTORE INDEXES
+================================================================================
+
+Source: firestore.indexes.json (12 composite indexes)
+
+1. events (COLLECTION)
+   fields: creator_id ASC, created_at DESC
+   Used by: eventService.getEventsByCreator()
+
+2. call_bookings (COLLECTION)
+   fields: creatorId ASC, slotStartUtc ASC
+   Used by: availabilityService / callBookingService queries
+
+3. call_bookings (COLLECTION)
+   fields: creatorId ASC, status ASC, slotStartUtc ASC
+   Used by: callBookingService filtered queries
+
+4. plans (COLLECTION)
+   fields: creator_id ASC, created_at DESC
+   Used by: plansService.getPlansByCreator() (note: currently sorts in memory to avoid this)
+
+5. client_sessions (COLLECTION)
+   fields: client_id ASC, program_id ASC, date_timestamp ASC
+   Used by: firestoreService client session queries (date ascending)
+
+6. client_sessions (COLLECTION)
+   fields: client_id ASC, program_id ASC, date_timestamp DESC
+   Used by: firestoreService client session queries (date descending)
+
+7. client_sessions (COLLECTION)
+   fields: client_id ASC, date_timestamp ASC
+   Used by: broader client session queries without program filter
+
+8. meals COLLECTION_GROUP
+   fields: creatorId ASC, createdAt DESC
+   Used by: creator nutrition library queries across creatorId
+
+9. nutrition_assignments (COLLECTION)
+   fields: userId ASC, startDate DESC
+   Used by: nutritionFirestoreService.getAssignmentsByUser()
+
+10. nutrition_assignments (COLLECTION)
+    fields: assignedBy ASC, createdAt DESC
+    Used by: creator view of their assigned plans
+
+11. sessionHistory COLLECTION_GROUP
+    fields: courseId ASC, completedAt ASC
+    Used by: exerciseHistoryService.getDatesWithCompletedSessionsForCourse()
+    Note: index has completedAt ASCENDING but query orders by DESC — may not be optimal
+
+12. diary COLLECTION_GROUP
+    fields: date ASC, meal ASC
+    Used by: getDiaryEntries cross-user queries (collection group)
+
+MISSING INDEXES (queries that would need indexes but don't have them):
+  - one_on_one_clients: creatorId + createdAt (service falls back to no-orderBy)
+  - courses: creator_id + any field (currently queries without orderBy)
+  - exerciseHistory/exerciseLastPerformance: no complex queries found (getDocs only)
+  - users/sessionHistory: orderBy completedAt has fallback path in code
+
+================================================================================
+2.14 — EXTERNAL API INTEGRATIONS
+================================================================================
+
+1. MercadoPago (payments)
+   Library: mercadopago ^2.10.0 (server-side only)
+   Used in: Cloud Functions (createPaymentPreference, createSubscriptionCheckout,
+            processPaymentWebhook, updateSubscriptionStatus)
+   Credentials: MERCADOPAGO_ACCESS_TOKEN secret
+   Webhook validation: MERCADOPAGO_WEBHOOK_SECRET secret (HMAC-SHA256, dual format)
+   Region: Colombia (.com.co), currency: COP
+   Note: planned replacement in future — logic isolated in Cloud Functions
+
+2. FatSecret (nutrition database)
+   Library: direct fetch (no SDK)
+   Used in: Cloud Functions (nutritionFoodSearch, nutritionFoodGet, nutritionBarcodeLookup)
+   Auth: OAuth 2.0 client_credentials, tokens cached in function memory per scope
+   Credentials: FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET secrets
+   Scopes used: 'premier' (search), 'basic' (food get), 'basic barcode' (barcode)
+   Default locale: region=ES, language=es
+   Endpoints:
+     - https://oauth.fatsecret.com/connect/token (auth)
+     - https://platform.fatsecret.com/rest/foods/search/v4
+     - https://platform.fatsecret.com/rest/food/v5
+     - https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2
+
+3. Resend (transactional email)
+   Library: resend (npm)
+   Used in: sendEventConfirmationEmail Cloud Function
+   Credential: RESEND_API_KEY secret
+   From: hardcoded "Wake Eventos <eventos@wakelab.co>"
+   Trigger: Firestore onCreate on event registrations
+
+4. api.qrserver.com (QR code generation)
+   Usage: URL embedded in confirmation email HTML — no server-side call, no API key
+   Format: https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={encodedData}
+   Data encoded: JSON { eventId, check_in_token } or regId fallback
+
+5. Firebase Admin SDK (server-side only)
+   Used in: lookupUserForCreatorInvite → admin.auth().getUserByEmail()
+
+================================================================================
+2.15 — NAVIGATION AND ROUTING
+================================================================================
+
+PWA Web (React Router v6):
+  Basename: /app
+  File: apps/pwa/src/navigation/WebAppNavigator.jsx
+  Auth guard: AuthenticatedLayout component wraps private routes
+  Flow:
+    1. Check Firebase auth (AuthContext.user)
+    2. If no user → redirect to /login
+    3. If user → check profile loaded (5min webStorage cache, then Firestore with 5s timeout)
+    4. If onboarding incomplete → redirect to /onboarding (or /onboarding/questions for returning users)
+    5. Render requested route
+  BottomTabBar: rendered via React.createPortal to document.body
+
+PWA Native (React Navigation v7):
+  File: apps/pwa/src/navigation/AppNavigator.js
+  Stack: Auth → OnboardingProfile → Onboarding → MainApp
+  Auth fetch delay: 1500ms after auth state change (gives AsyncStorage time to load)
+  Profile cache: AsyncStorage
+
+Creator Dashboard (React Router v6):
+  Basename: /creators
+  Auth guard: AuthContext.jsx blocks render with "Cargando..." during auth load
+  Role-based access: checked within screens (isCreator, isAdmin flags)
+
+Landing (React Router v6):
+  Basename: /
+  No auth required
+
+================================================================================
+2.16 — DATA DELIVERY PATTERNS
+================================================================================
+
+Low-ticket program delivery:
+  1. User purchases → Cloud Function writes users/{userId}.courses[courseId]
+  2. PWA courseDownloadService downloads full course tree to AsyncStorage
+  3. hybridDataService serves AsyncStorage cache (24h TTL) + background Firestore sync
+  4. consolidatedDataService wraps: purchase check + hybrid + download data in 5-min cache
+  5. DailyWorkoutScreen serves pre-cached session from AsyncStorage (offline capable)
+
+One-on-one program delivery:
+  1. Creator assigns program via clientProgramService.assignProgramToClient
+     → writes client_programs + users.courses (deliveryType: 'one_on_one')
+  2. Creator assigns plan to weeks via assignPlanToWeek
+     → writes planAssignments map on client_programs doc
+     → writes client_sessions docs (per-session per-date)
+  3. PWA firestoreService.getCourseModules reads:
+     a. client_sessions → find session for today's date
+     b. client_session_content → get personalized session copy (if exists)
+     c. client_plan_content → get personalized week copy (if exists)
+     d. plans/{planId}/modules → original plan content
+     e. creator_libraries → resolve any library references
+  4. In-memory 5-min cache prevents repeat reads within same session
+
+Weekly program delivery:
+  Similar to low-ticket but modules have week field (ISO week strings like "2025-W03")
+  courseDownloadService filters modules by current week
+
+Nutrition delivery:
+  1. getEffectivePlanForUser: checks nutrition_assignments (by userId, sorted startDate desc)
+  2. Finds active assignment for requested date
+  3. Resolution order: client_nutrition_plan_content → assignment.plan snapshot → creator library plan
+  4. Diary: direct read/write to users/{userId}/diary with date filter
+
+Session completion flow:
+  1. workoutSessionService saves all set data to AsyncStorage during workout
+  2. On complete: marks session in AsyncStorage + adds to upload_queue
+  3. uploadService processes queue: calls exerciseHistoryService.addSessionData()
+  4. exerciseHistoryService writes:
+     - users/{userId}/sessionHistory/{sessionId}
+     - users/{userId}/exerciseHistory/{exerciseKey} (prepend)
+     - users/{userId}/exerciseLastPerformance/{exerciseKey} (if newer)
+  5. sessionRecoveryService handles crashes: auto-completes sessions <24h old
+
+Content copy pattern (one-on-one personalization):
+  Creator can create copies of content for specific clients:
+  - client_plan_content/{userId}_{programId}_{weekKey}: week-level personalization
+  - client_session_content/{id}: session-level personalization
+  - client_nutrition_plan_content/{assignmentId}: nutrition plan copy
+  PWA always checks for copy first, falls back to original
+
+================================================================================
+2.17 — PERFORMANCE PATTERNS
+================================================================================
+
+Read optimization:
+  - consolidatedDataService: 5-min in-memory Map (avoids repeat Firestore reads)
+  - hybridDataService: AsyncStorage 24h cache → return immediately, sync in background
+  - courseDownloadService: full offline course download
+  - firestoreService._oneOnOneModulesCache: 5-min with in-flight promise deduplication
+  - React Query staleTime: 30min for program data in DailyWorkoutScreen
+  - DailyWorkoutScreen: month-level prefetch query for planned/completed dates
+  - webStorageService: 5-min sessionStorage profile cache in WebAppNavigator
+
+Real-time listener management:
+  - useProgramRealtime: only activates when isActive=true
+  - Visibility API used: pauses listeners when tab is hidden
+  - Proper cleanup on unmount/deactivation
+
+Write optimization:
+  - workoutSessionService: local-first, uploads asynchronously via queue
+  - hybridDataService.updateUserProfile: optimistic update (cache first, then Firestore)
+
+Creator Dashboard:
+  - react-window: virtualized lists for long creator content
+  - React Query: built-in deduplication and background refetch
+
+Performance concerns identified:
+  - getUserRole() in security rules: one extra Firestore read per rule invocation
+    that calls isCreator() or isAdmin(). Complex course rules multiply this.
+  - activityStreakService onSnapshot: fires on ANY change to full users/{userId} doc
+    (wasteful when most changes are unrelated to streak)
+  - console.log in creator dashboard AuthContext on every render
+  - sendEventConfirmationEmail: no deduplication guard — if registration doc is created
+    twice (e.g., retry), two emails could be sent
+  - client_nutrition_plan_content rule: uses get() lookup → 2 reads per rule check
+
+================================================================================
+2.18 — BUGS, GAPS, AND UNDOCUMENTED FINDINGS
+================================================================================
+
+BUGS:
+─────
+[BUG] exerciseHistoryService.getAllExerciseKeysFromExerciseHistory defined twice
+  File: apps/pwa/src/services/exerciseHistoryService.js (lines 596-617 and 624-645)
+  Impact: second definition shadows first; potential inconsistency
+
+[BUG] workoutSessionService.createProgressSession writes to deprecated top-level progress collection
+  File: apps/pwa/src/data-management/workoutSessionService.js
+  Issue: The progress collection is deprecated (mentioned in rules comment) but still actively
+  written by the workout completion flow. Data accumulates in a collection that may be removed.
+
+[BUG] subscription data field naming inconsistency
+  In users/{userId}/subscriptions/{id}, field names vary:
+    course_id / courseId / program_id (all found in updateSubscriptionStatus)
+    course_title / courseTitle
+  This makes reliable data reads brittle.
+
+[BUG] sessionHistory index direction mismatch
+  Index: courseId ASC, completedAt ASCENDING
+  Most queries order by completedAt DESC → may require Firestore to do in-memory sort or use
+  a different index path (fallback queries in code handle this, but it's inefficient)
+
+UNDOCUMENTED COLLECTIONS (not in CLAUDE.md):
+────────────────────────────────────────────
+  users/{userId}/exerciseLastPerformance/{exerciseKey}
+    → Written by exerciseHistoryService (only if newer than existing)
+    → No explicit Firestore rule (catch-all)
+
+  users/{userId}/saved_foods/{savedFoodId}
+    → PWA: user's saved/favorite foods for quick diary logging
+    → No explicit Firestore rule (catch-all — any auth user can read any user's saved foods)
+
+  users/{userId}/readiness/{date}
+    → Daily readiness check-in (one doc per day)
+    → In rules, not in CLAUDE.md
+
+  users/{userId}/bodyLog/{dateStr}
+    → Daily body weight + progress photos
+    → In rules, not in CLAUDE.md
+
+  subscription_cancellation_feedback/{id}
+    → Written when user cancels subscription with survey
+    → No explicit Firestore rule (catch-all)
+    → Contains sensitive answers about why users cancelled
+
+  creator_libraries/{...} (subcollections)
+    → Referenced in catch-all rule comment and libraryResolutionService
+    → Not documented in CLAUDE.md
+
+SECURITY RULE GAPS (summary):
+──────────────────────────────
+See Section 2.12 for full detail. Top priorities:
+  1. plans and all subcollections: any auth user can read all creators' plan content
+  2. client_programs: any auth user can read all clients' personalized program data
+  3. client_sessions: any auth user can read all clients' session schedules
+  4. subscription_cancellation_feedback: any auth user can read sensitive survey answers
+  5. users/{userId}/exerciseLastPerformance: no isolation (any auth user can read)
+  6. users/{userId}/saved_foods: no isolation (any auth user can read)
+  7. exercises_library Storage: open write to all authenticated users
+  8. users/{userId}/subscriptions: no explicit rule (catch-all)
+
+ACTION ITEM: The catch-all should be changed to `allow read, write: if false` after
+adding explicit rules for each collection listed in the comment block in firestore.rules.
+
+ARCHITECTURAL OBSERVATIONS:
+─────────────────────────────
+  - The collection client_programs uses {userId}_{programId} as doc ID — this prevents
+    efficient querying "all programs for a user" without knowing program IDs in advance.
+    The creator needs to know program IDs to look up client programs.
+
+  - The events collection has two update rules (one for creator/admin, one for registration_count)
+    Firestore evaluates rules with OR — both are valid simultaneously. This is intentional and
+    correctly implemented.
+
+  - Library resolution (libraryModuleRef/librarySessionRef) adds async waterfall reads
+    on every course load for one-on-one programs. The 5-min in-memory cache helps but
+    cold loads can generate many Firestore reads.
+
+  - No explicit Firestore offline persistence configured. Firestore SDK default behavior
+    enables indexedDB persistence on web automatically, but this is not confirmed tested.
+
+  - The FatSecret token cache is in Cloud Function memory (process-level). In a scaled
+    multi-instance scenario, each cold start re-fetches a token. This is correct behavior
+    (stateless function) but means potentially many token requests if functions scale widely.
+
+  - MercadoPago external_reference format v1|{userId}|{courseId}|{type} — the v1 prefix
+    suggests future versioning was anticipated. Good for forward compatibility.
+
+  - sendEventConfirmationEmail has no idempotency guard — if a registration document fires
+    onCreate twice (unlikely but possible in Firestore trigger scenarios), two emails go out.
+    Consider writing a sent flag to the registration doc after successful send.
+
+================================================================================
+SUPPLEMENT — GAPS FILLED 2026-03-15
+Items 2.6, 2.8, 2.14, 2.17 from the pre-investigation checklist were missing from
+the original report. They are documented here.
+================================================================================
+
+================================================================================
+S1 — CREATOR DASHBOARD SCREEN INVENTORY (pre-investigation item 2.6)
+================================================================================
+
+All 36 screens in apps/creator-dashboard/src/screens/.
+
+─────────────────────────────────────────────────
+DashboardScreen.jsx
+─────────────────────────────────────────────────
+Data: NONE — stub screen with hardcoded zeros (0 Programas, 0 Estudiantes, 0 Vistas)
+React Query: NO
+Services: AuthContext only
+Status: placeholder, needs real analytics
+
+─────────────────────────────────────────────────
+ProductsScreen.jsx
+─────────────────────────────────────────────────
+Data: courses list filtered by deliveryType
+React Query: YES — useQuery(['programs', userId]) → programService.getProgramsByCreator
+Writes: NONE (navigation only)
+Notes: Thin list screen; used as sub-component in ProgramsAndClientsScreen
+CACHE BUG: uses raw key ['programs', uid] instead of queryKeys.programs.byCreator(uid)
+
+─────────────────────────────────────────────────
+ProgramsScreen.jsx
+─────────────────────────────────────────────────
+Data: programs list, library modules, user doc (for tutorial settings)
+React Query: YES — useQuery (programs), useMutation (create/update/delete program, tutorial toggle)
+Writes: programService (create/update/delete), firestoreService.getUser (tutorial flags), updateDoc (users/{userId}.completedTutorials)
+Collections: courses, users/{userId}
+
+─────────────────────────────────────────────────
+ProgramDetailScreen.jsx
+─────────────────────────────────────────────────
+Data: full program tree (course, modules, sessions, exercises), analytics, plans, library
+React Query: YES — useQuery + custom hooks (useProgram, useModules, useSessions, useExercises) + mutation hooks
+Real-time: useProgramRealtime / useModuleSessionsRealtime / useSessionExercisesRealtime (onSnapshot, isActive-gated)
+DnD: @dnd-kit for reordering
+Charts: recharts
+Writes: programService (full CRUD for modules/sessions/exercises/sets), measureObjectivePresetsService
+Collections: courses and full subcollection tree, plans (read)
+Tabs: Lab (analytics), Configuración (settings), Contenido (editor)
+
+─────────────────────────────────────────────────
+OneOnOneScreen.jsx
+─────────────────────────────────────────────────
+Data: clients list, one-on-one programs, per-client assignment status
+React Query: YES — useQuery(queryKeys.clients.byCreator) for client list; manual fetches for per-client programs
+Writes: oneOnOneService.addClientToProgram → one_on_one_clients + client_programs + users.courses
+Collections: one_on_one_clients, courses (read), client_programs (read)
+
+─────────────────────────────────────────────────
+ClientProgramScreen.jsx
+─────────────────────────────────────────────────
+Data: client info, assigned programs, plan assignments, session schedule, session history,
+      nutrition assignments, plan content, volume analysis
+React Query: YES (primary fetches) — useQuery(['clients','detail',clientId]) + useQuery(queryKeys.user.detail)
+             + useQuery(['nutrition','plans',uid]) + useQuery(['nutrition','assignments',clientUserId]);
+             tab-gated via enabled flags; secondary fetches (assignedPrograms, plannedSessions, etc.) still useState/useEffect
+Services: plansService, oneOnOneService, clientSessionService, clientProgramService,
+          clientPlanContentService, programService, libraryService, nutritionFirestoreService,
+          clientNutritionPlanContentService, firestoreService.getUser
+Tabs: Lab, Planificación, Nutrición, Info
+Writes: client_sessions, client_plan_content, nutrition_assignments,
+        client_nutrition_plan_content, users/{userId}.courses (access end date); invalidates nutrition + user keys
+Notes: Most complex screen in the creator dashboard. Primary fetches migrated; secondary fetches are future migration target.
+
+─────────────────────────────────────────────────
+NutritionScreen.jsx
+─────────────────────────────────────────────────
+Data: creator's meals library, creator's nutrition plans
+React Query: YES — useQuery(['nutrition','meals',creatorId]) + useQuery(['nutrition','plans',creatorId]); invalidates on create
+Writes: nutritionDb.createMeal, createPlan (then navigates to editor)
+Collections: creator_nutrition_library/{creatorId}/meals, creator_nutrition_library/{creatorId}/plans
+
+─────────────────────────────────────────────────
+MealEditorScreen.jsx
+─────────────────────────────────────────────────
+Data: single meal with items; FatSecret food search via Cloud Functions
+React Query: YES — useQuery(['nutrition','meal',creatorId,mealId]); seededRef guards form seed
+Writes: nutritionDb (update meal, items CRUD)
+Collections: creator_nutrition_library/{creatorId}/meals/{mealId}
+
+─────────────────────────────────────────────────
+PlanDetailScreen.jsx
+─────────────────────────────────────────────────
+Data: plan metadata, modules list
+React Query: YES — useQuery(['plans',planId]) + useQuery(['plans',planId,'modules']); seededRef for title field
+Writes: plansService (create/update/delete modules, update plan metadata); invalidates both query keys
+Collections: plans/{planId}, plans/{planId}/modules
+
+─────────────────────────────────────────────────
+PlanEditorScreen.jsx
+─────────────────────────────────────────────────
+Data: plan modules and sessions; creator meals for nutrition plan editor
+React Query: YES — useQuery(['nutrition','meals',creatorId]) + useQuery(['nutrition','plan',...]) with assignment/library branch; seededRef guards form seed
+Writes: plansService (sessions CRUD, reorder); DnD reordering via local state
+Collections: plans/{planId}/modules/{moduleId}/sessions, creator_nutrition_library
+
+─────────────────────────────────────────────────
+PlanSessionDetailScreen.jsx
+─────────────────────────────────────────────────
+Data: single plan session (orchestrator — routes to edit or library view)
+React Query: YES — useQuery(['plans',planId,'modules',moduleId,'sessions']); actionStartedRef prevents double-execution of decision logic
+DnD: @dnd-kit for reordering (in downstream edit screen)
+Writes: plansService (librarySessionRef), then navigates; no invalidation needed
+Collections: plans/.../sessions/{sessionId}
+
+─────────────────────────────────────────────────
+ContentHubScreen.jsx
+─────────────────────────────────────────────────
+Data: exercise libraries, session library, plans list
+React Query: YES — useQuery (exercise libraries), useMutation (create/delete libraries)
+             Plans and sessions tabs: useState/useEffect (not React Query)
+Services: libraryService, plansService, firestoreService.getUser
+Writes: libraryService (create/delete libraries), plansService (delete plans)
+Collections: creator_libraries, plans
+
+─────────────────────────────────────────────────
+LibraryManagementScreen.jsx
+─────────────────────────────────────────────────
+Data: exercise libraries, session library, module library (tab-gated)
+React Query: YES — useQuery x3 (exercises/sessions/modules), enabled only for active tab
+Service: libraryService
+Writes: NONE (navigation to detail screens)
+
+─────────────────────────────────────────────────
+LibrarySessionDetailScreen.jsx
+─────────────────────────────────────────────────
+Data: single library session with exercises/sets; multi-branch (planInstance / clientPlan / clientEdit / standard)
+React Query: YES — useQuery(['library','session',sessionId,{...context}]); staleTime:0, gcTime:0; queryFn handles all branches
+             returning {session, libraries, editMode}; sessionDataSeededRef for one-shot local state seed
+DnD: @dnd-kit
+Writes: libraryService (exercises/sets CRUD), propagationService; invalidates queryKeys.library.sessions(uid)
+Collections: creator_libraries/{libraryId}/sessions/...
+
+─────────────────────────────────────────────────
+LibraryModuleDetailScreen.jsx
+─────────────────────────────────────────────────
+React Query: YES — useQuery(['library','module',moduleId]) for module+sessions + useQuery(queryKeys.library.sessions(uid)) for available sessions
+             sessions local state seeded via useEffect (no seededRef — refreshes after invalidation); availableSessions via useMemo
+Writes: libraryService (addSession, deleteModule); invalidates both query keys
+
+─────────────────────────────────────────────────
+LibraryExercisesScreen.jsx
+─────────────────────────────────────────────────
+React Query: YES — useQuery(['library','detail',libraryId]); exercises seeded into local state via useEffect
+Writes: libraryService CRUD (exercises include Storage upload to exercises_library/ path); invalidates ['library','detail',libraryId]
+
+─────────────────────────────────────────────────
+LibraryContentScreen.jsx
+─────────────────────────────────────────────────
+React Query: YES — useQuery(queryKeys.library.modules(uid)) + useQuery(['library','module',moduleId,'sessions']) + useQuery(['library','session',sessionId,'exercises'])
+             tab/param-gated via enabled flags; each query seeds local state via useEffect
+Writes: libraryService CRUD; invalidates relevant query keys per mutation
+
+─────────────────────────────────────────────────
+CreateLibraryModuleScreen.jsx / CreateLibrarySessionScreen.jsx
+─────────────────────────────────────────────────
+React Query: NO — form + single write on submit
+Writes: libraryService.createModule / createSession
+
+─────────────────────────────────────────────────
+EventsScreen.jsx
+─────────────────────────────────────────────────
+Data: events list for creator
+React Query: YES — useQuery(queryKeys.events.byCreator), useMutation (delete, toggle status)
+Service: eventService
+Collections: events
+
+─────────────────────────────────────────────────
+EventEditorScreen.jsx
+─────────────────────────────────────────────────
+Data: single event (create or edit), dynamic form fields
+React Query: YES — useQuery (event by id), useMutation (save event)
+DnD: @dnd-kit for form field reordering
+Storage: Firebase Storage DIRECT upload (violates signed-URL strategy from 1.4)
+Writes: eventService.createEvent / updateEvent, Storage direct
+Collections: events
+
+─────────────────────────────────────────────────
+EventResultsScreen.jsx
+─────────────────────────────────────────────────
+Data: event + all registrations + analytics charts
+React Query: YES — useQuery (event, registrations), useMutation (check-in, delete, waitlist)
+Charts: recharts
+DnD: @dnd-kit (edit mode)
+Storage: Firebase Storage DIRECT upload
+Writes: eventService (updateRegistration, deleteRegistration, admitFromWaitlist, updateEvent)
+Collections: events, event_signups/{eventId}/registrations, event_signups/{eventId}/waitlist
+
+─────────────────────────────────────────────────
+EventCheckinScreen.jsx (creator dashboard)
+─────────────────────────────────────────────────
+Data: event + registrations (QR scan check-in)
+React Query: YES — useQuery(queryKeys.events.detail(eventId)); accessStatus derived from eventLoading + event data
+Writes: eventService.checkInRegistration → checked_in, checked_in_at on registration doc
+Collections: event_signups/{eventId}/registrations
+
+─────────────────────────────────────────────────
+AvailabilityCalendarScreen.jsx
+─────────────────────────────────────────────────
+Data: creator availability slots, bookings, client user docs
+React Query: YES — useQuery(['availability',uid]) + useQuery(['bookings',uid]) + useQuery(['availability',uid,selectedDateStr])
+             + useQuery(['user',userId]) for slot detail booking user (select transform for age/fields); 4 separate queries
+Writes: availabilityService (create/update/delete slots); callBookingService.updateBookingCallLink; invalidates relevant keys
+Collections: creator_availability/{creatorId}, call_bookings
+
+─────────────────────────────────────────────────
+AvailabilityDayScreen.jsx
+─────────────────────────────────────────────────
+Data: single day availability detail (slots + timezone)
+React Query: YES — useQuery(['availability',uid,dateStr]); mutationError state for write-path errors
+Writes: availabilityService (addSlotsForDay, setDaySlots); invalidates ['availability',uid,dateStr]
+
+─────────────────────────────────────────────────
+ProfileScreen.jsx
+─────────────────────────────────────────────────
+Data: user profile, creator cards
+React Query: YES — useQuery(queryKeys.user.detail(userId)) → firestoreService.getUser
+Writes: firestoreService.updateUser, Firebase Auth updateProfile, profilePictureService.uploadProfilePicture, cardService (CRUD)
+Storage: profiles/{userId}/{fileName}, cards/{userId}/{fileName}
+Collections: users/{userId}
+
+─────────────────────────────────────────────────
+LabScreen.jsx (creator dashboard)
+─────────────────────────────────────────────────
+Data: programs list, aggregated analytics
+React Query: YES — useQuery x2 (programs, analytics)
+Services: programService, programAnalyticsService
+Writes: NONE (read-only analytics view)
+
+─────────────────────────────────────────────────
+ProgramsAndClientsScreen.jsx
+─────────────────────────────────────────────────
+Composition screen — renders ProductsScreen + OneOnOneScreen as sub-components.
+No independent data fetching.
+
+─────────────────────────────────────────────────
+CreatorOnboardingScreen.jsx / onboarding/OnboardingQ1–Q5.jsx / OnboardingComplete.jsx
+─────────────────────────────────────────────────
+Data: onboarding form answers, profile setup
+React Query: NO — direct Firestore writes
+Writes: users/{userId} (role, onboarding flags, profile data)
+
+================================================================================
+S2 — CREATOR DASHBOARD REACT QUERY USAGE AUDIT (pre-investigation item 2.8)
+================================================================================
+
+Screens with React Query (24 of ~36 screens):
+  ✅ ProgramsScreen.jsx          — useQuery + useMutation
+  ✅ ProductsScreen.jsx          — useQuery (cache key fixed — queryKeys.programs.byCreator)
+  ✅ ProgramDetailScreen.jsx     — useQuery + real-time hooks + mutation hooks
+  ✅ OneOnOneScreen.jsx          — useQuery (client list); rest is manual
+  ✅ ContentHubScreen.jsx        — useQuery + useMutation (libraries); plans tab is manual
+  ✅ LibraryManagementScreen.jsx — useQuery x3 (tab-gated)
+  ✅ EventsScreen.jsx            — useQuery + useMutation
+  ✅ EventEditorScreen.jsx       — useQuery + useMutation
+  ✅ EventResultsScreen.jsx      — useQuery + useMutation
+  ✅ ProfileScreen.jsx           — useQuery
+  ✅ LabScreen.jsx               — useQuery x2
+  ✅ NutritionScreen.jsx         — useQuery x2 (meals + plans)
+  ✅ MealEditorScreen.jsx        — useQuery (['nutrition','meal',creatorId,mealId])
+  ✅ PlanDetailScreen.jsx        — useQuery x2 (['plans',planId], ['plans',planId,'modules'])
+  ✅ PlanEditorScreen.jsx        — useQuery x2 (['nutrition','meals',creatorId], plan key)
+  ✅ PlanSessionDetailScreen.jsx — useQuery (['plans',planId,'modules',moduleId,'sessions'])
+  ✅ ClientProgramScreen.jsx     — useQuery x4 (client, user doc, nutrition plans, assignments)
+  ✅ LibrarySessionDetailScreen.jsx  — useQuery (['library','session',sessionId,...context])
+  ✅ LibraryModuleDetailScreen.jsx   — useQuery x2 (['library','module',moduleId], queryKeys.library.sessions)
+  ✅ LibraryExercisesScreen.jsx      — useQuery (['library','detail',libraryId])
+  ✅ LibraryContentScreen.jsx        — useQuery x3 (modules, module sessions, session exercises)
+  ✅ EventCheckinScreen.jsx          — useQuery (queryKeys.events.detail(eventId))
+  ✅ AvailabilityCalendarScreen.jsx  — useQuery x4 (availability, bookings, slots, client user doc)
+  ✅ AvailabilityDayScreen.jsx       — useQuery (['availability',userId,dateStr])
+
+Screens without React Query (skipped per task spec):
+  ❌ DashboardScreen.jsx         — stub, no data
+  ❌ CreateLibraryModuleScreen.jsx   — form only, no reads to cache
+  ❌ CreateLibrarySessionScreen.jsx  — form only, no reads to cache
+
+Cache key inconsistency: FIXED
+  ProductsScreen aligned to queryKeys.programs.byCreator(uid). Cache invalidations now propagate correctly.
+
+================================================================================
+S3 — DUPLICATE LOGIC AUDIT (pre-investigation item 2.14)
+================================================================================
+
+1. nutritionFirestoreService.js — exists in both apps (intended split; has a bug)
+   PWA:    apps/pwa/src/services/nutritionFirestoreService.js
+   CD:     apps/creator-dashboard/src/services/nutritionFirestoreService.js
+   Scope overlap: Both export getDiaryEntries, addDiaryEntry, deleteDiaryEntry
+   FIXED (creator-dashboard version):
+     diaryRef was collection(firestore, 'users', userId, 'nutrition', 'diary')
+     Corrected to: collection(firestore, 'users', userId, 'diary')
+     These functions are exported but never called in any creator-dashboard screen (dead code).
+     Path is now correct if they are ever wired up.
+
+2. profilePictureService.js — parallel implementations (intentional)
+   PWA: apps/pwa/src/services/profilePictureService.js
+   CD:  apps/creator-dashboard/src/services/profilePictureService.js
+   Similar Storage upload logic. Intentional separation. Will converge on API.
+
+3. callBookingService.js — parallel implementations (intentional)
+   PWA reads call_bookings; creator-dashboard reads + writes.
+   Intentional. No bug.
+
+4. exerciseHistoryService.js — getAllExerciseKeysFromExerciseHistory defined twice
+   File: apps/pwa/src/services/exerciseHistoryService.js
+   Lines 596–617 (first definition) and 624–645 (second definition, identical)
+   Second definition shadows first. BUG — fixed separately (removed second definition).
+
+5. ProductsScreen vs ProgramsScreen — duplicate program list query with different cache keys
+   See S2 — cache invalidation gap. BUG — fixed by aligning cache keys.
+
+6. EventEditorScreen / EventResultsScreen — shared helper functions duplicated inline
+   (relativeLuminance, formatDate, DEFAULT_FIELDS etc.) — acceptable for now.
+
+================================================================================
+S4 — NOTIFICATION SYSTEM AUDIT (pre-investigation item 2.17)
+================================================================================
+
+File: apps/pwa/src/services/notificationService.js
+
+Status: STUB — all methods are no-ops. FCM is NOT active on the web PWA.
+
+  initialize()        → async no-op
+  setUserId(userId)   → no-op (ignores argument)
+  getStoredToken()    → returns null always
+
+The stub exists so imports in notificationUtils.js do not crash.
+No push notification infrastructure is active:
+  - No FCM token registration
+  - No notification permission request
+  - Service worker (apps/pwa/public/sw.js) has no push event handler
+
+Decision: Not a blocker. No API endpoints for notifications needed in Phase 3.
+FCM is a separate future feature outside current scope.
+
+================================================================================
+ADDITIONAL BUGS FOUND DURING SUPPLEMENT INVESTIGATION
+================================================================================
+
+[FIXED] creator-dashboard nutritionFirestoreService.js diary path corrected
+  File: apps/creator-dashboard/src/services/nutritionFirestoreService.js
+  Was:    collection(firestore, 'users', userId, 'nutrition', 'diary')
+  Fixed:  collection(firestore, 'users', userId, 'diary')
+  Note: diary functions are still exported but never called in any creator-dashboard screen (dead code). Path is now correct if they are ever wired up.
+
+[BUG] ProductsScreen.jsx uses wrong React Query cache key
+  File: apps/creator-dashboard/src/screens/ProductsScreen.jsx line 27
+  Bug:    useQuery(['programs', user?.uid], ...)
+  Correct: useQuery({ queryKey: queryKeys.programs.byCreator(user?.uid), ... })
+  Impact: Cache invalidations from ProgramsScreen mutations do not propagate here.
+  Action: Fixed (aligned to queryKeys.programs.byCreator).
+
+[ASSESSED — NO ACTION] EventEditorScreen and EventResultsScreen upload images directly to Firebase Storage
+  Files: apps/creator-dashboard/src/screens/EventEditorScreen.jsx
+         apps/creator-dashboard/src/screens/EventResultsScreen.jsx
+  Both use the Firebase Storage SDK client-side (uploadBytesResumable + getDownloadURL).
+  Assessment: This is the correct idiomatic pattern for Firebase Storage. Authorization is enforced
+  via Storage security rules. Unlike MercadoPago/FatSecret, Storage holds no server-side secrets
+  that require a proxy. Routing file uploads through Cloud Functions would add latency and complexity
+  for no security benefit. No refactor needed.
+
+================================================================================
+PRE-PHASE 3 CHECKLIST
+================================================================================
+Tasks to complete before beginning Phase 3 API migration:
+
+✅ TASK 1 — ContentHubScreen.jsx: Migrate sessions tab and plans tab fetches to useQuery
+   File: apps/creator-dashboard/src/screens/ContentHubScreen.jsx
+   - Removed useState for librarySessions, isLoadingSessions, plans, isLoadingPlans, sessionIdToPlanNames
+   - Removed two useEffect data fetch blocks
+   - Added sessions useQuery (tab-gated, enabled: !!user && activeTab === 'sessions', staleTime 2min)
+     Returns { sessions, planMap } combining getSessionLibrary + sessionIdToPlanNames build
+   - Added plans useQuery (tab-gated, enabled: !!user && activeTab === 'contenido', staleTime 2min)
+   - handleCreateSession + handleConfirmDeleteSession: queryClient.invalidateQueries
+
+✅ TASK 2 — ClientProgramScreen.jsx: Migrate all secondary useEffect data fetches to useQuery
+   File: apps/creator-dashboard/src/screens/ClientProgramScreen.jsx
+   - Removed useState for assignedPrograms, plannedSessions, planAssignments, contentPlanId,
+     isSavingContentPlan, plans, completedSessionIds, sessionHistory, isLoadingSessionHistory,
+     isLoadingPlanAssignments, isLoadingContentPlan
+   - Removed 6 useEffect data fetch blocks
+   - Added useQuery for: assignedPrograms, plans, clientProgram (contentPlanId + planAssignments),
+     plannedSessions, completedSessionIds, sessionHistory (tab-gated)
+   - All mutation handlers updated to use queryClient.invalidateQueries
+
+✅ TASK 3 — CourseDetailScreen.js: Remove onSnapshot/subscribeToUserDoc, replace with useQuery
+   File: apps/pwa/src/screens/CourseDetailScreen.js
+   - Removed firestoreListenerRef ref and the 120-line subscribeToUserDoc useEffect block
+   - Added useQuery({ queryKey: ['user', uid], queryFn: firestoreService.getUser, staleTime: 5min,
+     refetchInterval: processingPurchase ? 2000 : false }) — polls every 2s during purchase processing
+   - Added useEffect watching userDocData + processingPurchase to trigger handlePostPurchaseFlow()
+     when purchase is detected (replaces real-time listener's purchase detection role)
+
+✅ TASK 4 — firestoreService.js: Remove subscribeToUserDoc if no callers remain after Task 3
+   File: apps/pwa/src/services/firestoreService.js
+   - Confirmed no remaining callers after Task 3
+   - Deleted subscribeToUserDoc method (onSnapshot import retained for subscribeToUserSubscriptions)
+
+================================================================================
+END OF PART 2 INVESTIGATION REPORT
+================================================================================
+Audited files:
+  apps/pwa/src/contexts/AuthContext.js
+  apps/pwa/src/navigation/WebAppNavigator.jsx
+  apps/pwa/src/navigation/AppNavigator.js
+  apps/pwa/src/services/firestoreService.js (lines 0–1400+)
+  apps/pwa/src/services/hybridDataService.js
+  apps/pwa/src/services/consolidatedDataService.js
+  apps/pwa/src/services/exerciseHistoryService.js
+  apps/pwa/src/services/activityStreakService.js
+  apps/pwa/src/services/monitoringService.js
+  apps/pwa/src/services/nutritionFirestoreService.js
+  apps/pwa/src/data-management/courseDownloadService.js (preview)
+  apps/pwa/src/data-management/sessionRecoveryService.js
+  apps/pwa/src/data-management/workoutSessionService.js
+  apps/pwa/src/screens/DailyWorkoutScreen.web.jsx (lines 0–200)
+  apps/pwa/src/screens/WorkoutExecutionScreen.web.jsx
+  apps/pwa/src/screens/WorkoutCompletionScreen.web.js
+  apps/creator-dashboard/src/contexts/AuthContext.jsx
+  apps/creator-dashboard/src/hooks/useProgramRealtime.js
+  apps/creator-dashboard/src/services/programService.js
+  apps/creator-dashboard/src/services/plansService.js
+  apps/creator-dashboard/src/services/oneOnOneService.js
+  apps/creator-dashboard/src/services/clientProgramService.js
+  apps/creator-dashboard/src/services/clientSessionService.js (via clientProgramService refs)
+  apps/creator-dashboard/src/services/clientPlanContentService.js (via clientProgramService refs)
+  apps/creator-dashboard/src/services/clientSessionContentService.js (via clientProgramService refs)
+  apps/creator-dashboard/src/services/eventService.js
+  functions/src/index.ts (all 2554 lines — 1–650, 650–1350, 1350–1950, 1950–2554)
+  config/firebase/firestore.rules
+  config/firebase/storage.rules
+  firestore.indexes.json
+================================================================================

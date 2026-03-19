@@ -160,8 +160,7 @@ assets/videos/**/*
 # ============================================
 # Scripts and Documentation
 # ============================================
-# Note: scripts/ is kept, only docs/ are ignored
-docs/
+# scripts/ and docs/ are both kept
 
 # ============================================
 # React Native / Metro

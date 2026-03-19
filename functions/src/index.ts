@@ -2286,15 +2286,21 @@ app.patch("/api/v1/users/me", async (req, res, next) => {
     }
 
     if ("courseProgress" in rawBody && rawBody.courseProgress !== null && typeof rawBody.courseProgress === "object") {
+      const userDocForProgress = await db.collection("users").doc(auth.userId).get();
+      const enrolledForProgress = (userDocForProgress.data()?.courses as Record<string, unknown> | undefined) ?? {};
       const cp = rawBody.courseProgress as Record<string, unknown>;
       for (const [courseId, progressVal] of Object.entries(cp)) {
+        if (!Object.prototype.hasOwnProperty.call(enrolledForProgress, courseId)) continue;
         update[`courseProgress.${courseId}`] = progressVal;
       }
     }
 
     if ("courses" in rawBody && rawBody.courses !== null && typeof rawBody.courses === "object") {
+      const userDocForCourses = await db.collection("users").doc(auth.userId).get();
+      const enrolledForCourses = (userDocForCourses.data()?.courses as Record<string, unknown> | undefined) ?? {};
       const coursesMap = rawBody.courses as Record<string, unknown>;
       for (const [courseId, courseVal] of Object.entries(coursesMap)) {
+        if (!Object.prototype.hasOwnProperty.call(enrolledForCourses, courseId)) continue;
         if (courseVal !== null && typeof courseVal === "object") {
           const cv = courseVal as Record<string, unknown>;
           if ("completedTutorials" in cv) {
@@ -2363,6 +2369,11 @@ app.post("/api/v1/users/me/tutorials/complete", async (req, res, next) => {
 
     const userRef = db.collection("users").doc(auth.userId);
     if (programId) {
+      const userDoc = await userRef.get();
+      const courses = (userDoc.data()?.courses as Record<string, unknown> | undefined) ?? {};
+      if (!Object.prototype.hasOwnProperty.call(courses, programId)) {
+        throw apiError("FORBIDDEN", "No tienes acceso a este programa", 403, "programId");
+      }
       await userRef.update({ [`courses.${programId}.completedTutorials.${screenName}`]: FieldValue.arrayUnion(videoUrl) });
     } else {
       await userRef.update({ [`generalTutorials.${screenName}`]: true });
@@ -2760,6 +2771,16 @@ app.get("/api/v1/nutrition/foods/barcode/:barcode", async (req, res, next) => {
     await validateAuth(req);
     const { barcode } = req.params;
     if (!/^\d{8,14}$/.test(barcode)) throw apiError("VALIDATION_ERROR", "Código de barras inválido", 400, "barcode");
+    const cacheKey = `barcode_${barcode.trim()}`;
+    const cacheRef = db.collection("fatsecret_cache").doc(cacheKey);
+    const cacheDoc = await cacheRef.get();
+    if (cacheDoc.exists) {
+      const cacheData = cacheDoc.data()!;
+      if (Date.now() - cacheData.cachedAt.toMillis() < FATSECRET_CACHE_TTL_MS) {
+        res.json({ data: cacheData.payload });
+        return;
+      }
+    }
     const clientId = fatSecretClientId.value();
     const clientSecret = fatSecretClientSecret.value();
     if (!clientId || !clientSecret) throw apiError("SERVICE_UNAVAILABLE", "Nutrition service not configured", 503);
@@ -2776,7 +2797,11 @@ app.get("/api/v1/nutrition/foods/barcode/:barcode", async (req, res, next) => {
       throw apiError("SERVICE_UNAVAILABLE", "Barcode lookup service unavailable", 503);
     }
     const json = await fsRes.json() as { food?: Record<string, unknown> };
-    res.json({ data: normalizeFoodDetail(json?.food ?? {}) });
+    const payload = normalizeFoodDetail(json?.food ?? {});
+    cacheRef.set({ payload, cachedAt: FieldValue.serverTimestamp() }).catch((e: unknown) => {
+      functions.logger.warn("fatsecret_cache write failed", { cacheKey, error: e instanceof Error ? e.message : String(e) });
+    });
+    res.json({ data: payload });
   } catch (err) { next(err); }
 });
 
@@ -3539,12 +3564,29 @@ app.patch("/api/v1/workout/courses/:courseId/progress", async (req, res, next) =
   try {
     const auth = await validateAuth(req);
     const { courseId } = req.params;
-    const body = req.body as Record<string, unknown>;
-    if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
-      throw apiError("VALIDATION_ERROR", "Request body must be a non-empty object", 400);
+    const body = validateBody<{
+      currentWeek?: number;
+      currentDay?: number;
+      lastSessionId?: string;
+      completedSessions?: number;
+    }>({
+      currentWeek: "optional_number",
+      currentDay: "optional_number",
+      lastSessionId: "optional_string",
+      completedSessions: "optional_number",
+    }, req.body);
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    const enrolledCourses = (userDoc.data()?.courses as Record<string, unknown> | undefined) ?? {};
+    if (!Object.prototype.hasOwnProperty.call(enrolledCourses, courseId)) {
+      throw apiError("FORBIDDEN", "No tienes acceso a este programa", 403);
     }
+    const progress: Record<string, unknown> = { lastActivity: new Date().toISOString() };
+    if (body.currentWeek !== undefined) progress.currentWeek = body.currentWeek;
+    if (body.currentDay !== undefined) progress.currentDay = body.currentDay;
+    if (body.lastSessionId !== undefined) progress.lastSessionId = body.lastSessionId;
+    if (body.completedSessions !== undefined) progress.completedSessions = body.completedSessions;
     await db.collection("users").doc(auth.userId).update({
-      [`courseProgress.${courseId}`]: { ...body, lastActivity: new Date().toISOString() },
+      [`courseProgress.${courseId}`]: progress,
     });
     res.json({ data: { success: true } });
   } catch (err) { next(err); }
@@ -8013,6 +8055,9 @@ app.post("/api/v1/payments/subscription", async (req, res, next) => {
       { courseId: "string", payerEmail: "string", accessDuration: "optional_string" },
       req.body
     );
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.payerEmail.trim())) {
+      throw apiError("VALIDATION_ERROR", "Formato de email inválido", 400, "payerEmail");
+    }
     const courseDoc = await db.collection("courses").doc(body.courseId).get();
     if (!courseDoc.exists) throw apiError("NOT_FOUND", "Course not found", 404);
     const token = mercadopagoAccessToken.value();

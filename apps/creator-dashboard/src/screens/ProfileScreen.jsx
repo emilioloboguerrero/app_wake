@@ -398,11 +398,11 @@ const ProfileScreen = () => {
 
     const updateData = {};
 
-    if (snapshot.name !== (userData?.displayName || '')) updateData.displayName = snapshot.name;
-    if (snapshot.username !== (userData?.username || '')) updateData.username = snapshot.username.toLowerCase();
+    if (snapshot.name.trim() !== (userData?.displayName || '')) updateData.displayName = snapshot.name.trim();
+    if (snapshot.username.trim() !== (userData?.username || '')) updateData.username = snapshot.username.trim().toLowerCase();
     if (snapshot.gender !== (userData?.gender || '')) updateData.gender = snapshot.gender;
-    if (snapshot.city !== (userData?.city || '')) updateData.city = snapshot.city;
-    if (snapshot.country !== (userData?.country || '')) updateData.country = snapshot.country;
+    if (snapshot.city.trim() !== (userData?.city || '')) updateData.city = snapshot.city.trim();
+    if (snapshot.country.trim() !== (userData?.country || '')) updateData.country = snapshot.country.trim();
     if (String(snapshot.height) !== String(userData?.height || ''))
       updateData.height = parseFloat(snapshot.height) || null;
     if (String(snapshot.weight) !== String(userData?.weight || ''))
