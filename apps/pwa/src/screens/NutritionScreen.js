@@ -1,7 +1,7 @@
 /**
  * PWA Nutrition Screen — User view: assigned plan, diary, log food (search + manual).
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
 import activityStreakService from '../services/activityStreakService';
 import WakeLoader from '../components/WakeLoader';
 import logger from '../utils/logger';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 
 const MEAL_OPTIONS = [
   { id: 'breakfast', label: 'Desayuno' },
@@ -102,16 +104,12 @@ function getServingsWithStandardOptions(food) {
 export function NutritionScreenBase({ navigation }) {
   const { user } = useAuth();
   const userId = user?.uid ?? '';
+  const queryClient = useQueryClient();
 
-  const [assignment, setAssignment] = useState(null);
-  const [plan, setPlan] = useState(null);
-  const [loadingAssignment, setLoadingAssignment] = useState(true);
   const [diaryDate, setDiaryDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  const [diaryEntries, setDiaryEntries] = useState([]);
-  const [loadingDiary, setLoadingDiary] = useState(false);
   const [logMode, setLogMode] = useState('search'); // 'search' | 'manual'
   const [logMeal, setLogMeal] = useState('breakfast');
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -134,43 +132,24 @@ export function NutritionScreenBase({ navigation }) {
 
   const [submittingLog, setSubmittingLog] = useState(false);
 
-  const loadAssignment = useCallback(async () => {
-    if (!userId) return;
-    setLoadingAssignment(true);
-    try {
-      const { plan: effectivePlan, assignment: a } = await nutritionDb.getEffectivePlanForUser(userId);
-      setAssignment(a);
-      setPlan(effectivePlan);
-    } catch (e) {
-      logger.error(e);
-      setAssignment(null);
-      setPlan(null);
-    } finally {
-      setLoadingAssignment(false);
-    }
-  }, [userId]);
+  const { data: assignmentData, isLoading: loadingAssignment } = useQuery({
+    queryKey: ['nutrition', 'assignment', userId],
+    queryFn: () => nutritionDb.getEffectivePlanForUser(userId),
+    enabled: !!userId,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
+  });
 
-  useEffect(() => {
-    loadAssignment();
-  }, [loadAssignment]);
+  const assignment = assignmentData?.assignment ?? null;
+  const plan = assignmentData?.plan ?? null;
 
-  const loadDiary = useCallback(async () => {
-    if (!userId || !diaryDate) return;
-    setLoadingDiary(true);
-    try {
-      const list = await nutritionDb.getDiaryEntries(userId, diaryDate);
-      setDiaryEntries(list);
-    } catch (e) {
-      logger.error(e);
-      setDiaryEntries([]);
-    } finally {
-      setLoadingDiary(false);
-    }
-  }, [userId, diaryDate]);
-
-  useEffect(() => {
-    loadDiary();
-  }, [loadDiary]);
+  const { data: diaryEntries = [], isLoading: loadingDiary } = useQuery({
+    queryKey: ['nutrition', 'diary', userId, diaryDate],
+    queryFn: () => nutritionDb.getDiaryEntries(userId, diaryDate),
+    enabled: !!userId && !!diaryDate,
+    staleTime: STALE_TIMES.nutritionDiary,
+    gcTime: GC_TIMES.nutritionDiary,
+  });
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -216,7 +195,7 @@ export function NutritionScreenBase({ navigation }) {
       });
       activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
-      loadDiary();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     } catch (e) {
       logger.error(e);
     } finally {
@@ -243,7 +222,7 @@ export function NutritionScreenBase({ navigation }) {
       });
       activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
-      loadDiary();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     } catch (e) {
       logger.error(e);
     } finally {
@@ -270,7 +249,7 @@ export function NutritionScreenBase({ navigation }) {
     if (!userId || !entryId) return;
     try {
       await nutritionDb.deleteDiaryEntry(userId, entryId);
-      loadDiary();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     } catch (e) {
       logger.error(e);
     }
