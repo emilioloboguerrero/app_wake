@@ -1,14 +1,4 @@
 import apiClient from '../utils/apiClient';
-import { firestore } from '../config/firebase';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  updateDoc,
-  doc,
-  serverTimestamp,
-} from 'firebase/firestore';
 
 class EventService {
   async getEvent(eventId) {
@@ -27,23 +17,9 @@ class EventService {
     return res.data.map(r => ({ id: r.registrationId, ...r }));
   }
 
-  // TODO: no endpoint for checkInByToken
   async checkInByToken(eventId, token) {
-    const snap = await getDocs(
-      query(
-        collection(firestore, 'event_signups', eventId, 'registrations'),
-        where('check_in_token', '==', token)
-      )
-    );
-    if (snap.empty) return { status: 'invalid' };
-    const regDoc = snap.docs[0];
-    const reg = { id: regDoc.id, ...regDoc.data() };
-    if (reg.checked_in) return { status: 'already', reg };
-    await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regDoc.id), {
-      checked_in: true,
-      checked_in_at: serverTimestamp(),
-    });
-    return { status: 'success', reg };
+    const result = await apiClient.post(`/events/${eventId}/check-in-by-token`, { token });
+    return result?.data ?? null;
   }
 
   async manualCheckIn(eventId, regId) {

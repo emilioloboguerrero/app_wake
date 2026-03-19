@@ -75,6 +75,14 @@ class EventService {
     );
     return result?.data;
   }
+
+  async checkInByToken(eventId, token) {
+    const result = await apiClient.post(
+      `/creator/events/${eventId}/checkin-by-token`,
+      { token }
+    );
+    return result?.data;
+  }
 }
 
 export default new EventService();
