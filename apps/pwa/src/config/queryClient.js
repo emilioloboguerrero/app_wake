@@ -1,11 +1,13 @@
 import { QueryClient, QueryCache } from '@tanstack/react-query';
 import { WakeApiError } from '../utils/apiClient';
 import authService from '../services/authService';
+import { STALE_TIMES, GC_TIMES } from './queryConfig';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      if (error instanceof WakeApiError && error.code === 'UNAUTHENTICATED') {
+      if (error instanceof WakeApiError &&
+          (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
         authService.signOutUser();
       }
     },
@@ -25,52 +27,45 @@ export const queryClient = new QueryClient({
   },
 });
 
-// staleTime tiers for different data types
 export const cacheConfig = {
-  // Active workout session in progress: always fresh
   activeSession: {
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: STALE_TIMES.activeSession,
+    gcTime: GC_TIMES.activeSession,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   },
 
-  // Program structure (modules, sessions, exercises): 2 minutes
   programStructure: {
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
 
-  // Nutrition data (diary, assignments): 5 minutes
   nutrition: {
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: STALE_TIMES.nutritionDiary,
+    gcTime: GC_TIMES.nutritionDiary,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
 
-  // PRs and analytics: 15 minutes
   analytics: {
-    staleTime: 15 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
 
-  // User profile: 5 minutes
   userProfile: {
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
 
-  // Session history: 10 minutes (append-only, historical)
   sessionHistory: {
-    staleTime: 10 * 60 * 1000,
-    gcTime: 20 * 60 * 1000,
+    staleTime: STALE_TIMES.sessionHistory,
+    gcTime: GC_TIMES.sessionHistory,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },

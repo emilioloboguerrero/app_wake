@@ -25,7 +25,8 @@ import authService from '../services/authService';
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      if (error instanceof WakeApiError && error.code === 'UNAUTHENTICATED') {
+      if (error instanceof WakeApiError &&
+          (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
         authService.signOutUser();
       }
     },
