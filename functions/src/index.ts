@@ -9,6 +9,8 @@ import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
 import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
 import {Resend} from "resend";
+import swaggerUi from "swagger-ui-express";
+import { generateOpenApiSpec } from "./openapi";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -2143,6 +2145,9 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use("/api/v1/docs", swaggerUi.serve);
+app.get("/api/v1/docs", swaggerUi.setup(generateOpenApiSpec()));
+
 // ─── Error helpers ───────────────────────────────────────────────────────────
 
 class WakeApiServerError extends Error {
@@ -3862,6 +3867,77 @@ app.get("/api/v1/progress/prs", async (req, res, next) => {
     }).filter((pr) => pr.bestWeight !== null || pr.bestReps !== null);
 
     res.json({ data: prs });
+  } catch (err) { next(err); }
+});
+
+// ── 5.4 Progress Photos (standalone — user-level, not tied to a body-log date) ─
+
+app.post("/api/v1/progress/photos/upload-url", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const body = validateBody<{ contentType: string }>({ contentType: "string" }, req.body);
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(body.contentType)) {
+      throw apiError("VALIDATION_ERROR", "contentType must be image/jpeg, image/png, or image/webp", 400, "contentType");
+    }
+    const storagePath = `progress/${auth.userId}/${Date.now()}.jpg`;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    let uploadUrl: string;
+    try {
+      [uploadUrl] = await admin.storage().bucket().file(storagePath).getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: expiresAt,
+        contentType: body.contentType,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      functions.logger.error("getSignedUrl failed", { error: msg });
+      throw apiError("INTERNAL_ERROR", "Storage signing failed", 500);
+    }
+    res.json({ data: { uploadUrl, storagePath, expiresAt: expiresAt.toISOString() } });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/progress/photos/confirm", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const body = validateBody<{ storagePath: string }>({ storagePath: "string" }, req.body);
+    if (!body.storagePath.startsWith(`progress/${auth.userId}/`)) {
+      throw apiError("FORBIDDEN", "Storage path does not belong to this user", 403);
+    }
+    const file = admin.storage().bucket().file(body.storagePath);
+    const [exists] = await file.exists();
+    if (!exists) throw apiError("NOT_FOUND", "File not found in storage", 404);
+    const downloadToken = crypto.randomUUID();
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: downloadToken } });
+    const bucketName = admin.storage().bucket().name;
+    const encodedPath = encodeURIComponent(body.storagePath);
+    const photoUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+    const photoId = crypto.randomUUID();
+    const photo = { id: photoId, storagePath: body.storagePath, photoUrl, addedAt: new Date().toISOString() };
+    await db.collection("users").doc(auth.userId).update({
+      progressPhotos: FieldValue.arrayUnion(photo),
+    });
+    res.json({ data: { photoId, photoUrl } });
+  } catch (err) { next(err); }
+});
+
+app.delete("/api/v1/progress/photos/:photoId", async (req, res, next) => {
+  try {
+    const auth = await validateAuth(req);
+    const { photoId } = req.params;
+    const userRef = db.collection("users").doc(auth.userId);
+    const userSnap = await userRef.get();
+    const photos: Array<{ id?: string; storagePath?: string; photoUrl?: string; addedAt?: string }> =
+      userSnap.data()?.progressPhotos ?? [];
+    const photo = photos.find((p) => p.id === photoId);
+    if (!photo) throw apiError("NOT_FOUND", "Photo not found", 404);
+    if (photo.storagePath) {
+      await admin.storage().bucket().file(photo.storagePath).delete().catch(() => { /* best-effort */ });
+    }
+    await userRef.update({ progressPhotos: FieldValue.arrayRemove(photo) });
+    res.status(204).end();
   } catch (err) { next(err); }
 });
 
