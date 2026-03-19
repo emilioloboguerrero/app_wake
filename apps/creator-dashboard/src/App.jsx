@@ -19,6 +19,7 @@ import LabScreen from './screens/LabScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import OneOnOneScreen from './screens/OneOnOneScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
+import LibraryManagementScreen from './screens/LibraryManagementScreen';
 import ContentHubScreen from './screens/ContentHubScreen';
 import PlanDetailScreen from './screens/PlanDetailScreen';
 import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
@@ -122,7 +123,7 @@ function AppContent() {
               path="/content"
               element={
                 <ProtectedRoute>
-                  <ContentHubScreen />
+                  <LibraryManagementScreen />
                 </ProtectedRoute>
               }
             />

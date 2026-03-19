@@ -165,6 +165,21 @@
 }
 
 /* ─── Sidebar footer ─────────────────────────────────────────── */
+.dl-sidebar__dev {
+  padding: 8px 8px 4px;
+  flex-shrink: 0;
+}
+
+.dl-sidebar__dev-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  padding: 0 10px;
+  margin: 0 0 4px;
+}
+
 .dl-sidebar__footer {
   border-top: 1px solid var(--border-subtle);
   padding: 10px 8px 12px;

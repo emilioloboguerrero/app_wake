@@ -16,6 +16,7 @@ import {
   Utensils,
   CalendarCheck,
   Clock,
+  KeyRound,
 } from 'lucide-react';
 
 const TYPE_BUG = 'bug';
@@ -89,6 +90,16 @@ const NAV_ITEMS = [
     hideable: true,
     firestoreKey: 'disponibilidad',
     icon: <Clock size={ICON_SIZE} />,
+  },
+];
+
+const DEV_NAV_ITEMS = [
+  {
+    key: 'api-keys',
+    label: 'API Keys',
+    path: '/api-keys',
+    match: (p) => p === '/api-keys',
+    icon: <KeyRound size={ICON_SIZE} />,
   },
 ];
 
@@ -332,6 +343,22 @@ const DashboardLayout = ({
             </button>
           ))}
         </nav>
+
+        {/* Developer section */}
+        <div className="dl-sidebar__dev">
+          <p className="dl-sidebar__dev-label">Desarrolladores</p>
+          {DEV_NAV_ITEMS.map(item => (
+            <button
+              key={item.key}
+              className={`dl-nav-item ${item.match(location.pathname) ? 'dl-nav-item--active' : ''}`}
+              onClick={() => navTo(item.path)}
+              aria-current={item.match(location.pathname) ? 'page' : undefined}
+            >
+              <span className="dl-nav-item__icon">{item.icon}</span>
+              <span className="dl-nav-item__label">{item.label}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Footer */}
         <div className="dl-sidebar__footer">

@@ -126,9 +126,9 @@ export default function EventsScreen() {
 
           {/* ── Nav tabs ── */}
           <TubelightNavBar
-            tabs={NAV_TABS}
-            activeTab={activeFilter}
-            onTabChange={setActiveFilter}
+            items={NAV_TABS}
+            activeId={activeFilter}
+            onSelect={setActiveFilter}
             className="es-nav"
           />
 

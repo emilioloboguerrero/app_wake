@@ -1,309 +1,326 @@
-import { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
+import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
 import apiClient from '../utils/apiClient';
 import './ApiKeysScreen.css';
 
-const AVAILABLE_SCOPES = ['read', 'write'];
+const formatDate = (iso) => {
+  if (!iso) return 'Nunca';
+  return new Intl.DateTimeFormat('es-CO', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(iso));
+};
+
+const truncateKeyId = (id) => {
+  if (!id) return '—';
+  return id.length > 16 ? `${id.slice(0, 16)}...` : id;
+};
 
 const ApiKeysScreen = () => {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [revealModalOpen, setRevealModalOpen] = useState(false);
-  const [newKeyName, setNewKeyName] = useState('');
-  const [newKeyScopes, setNewKeyScopes] = useState(['read']);
+  const [revokeConfirmKey, setRevokeConfirmKey] = useState(null);
+  const [keyName, setKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [revokeConfirmId, setRevokeConfirmId] = useState(null);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['api-keys', user?.uid],
-    queryFn: () => apiClient.get('/api-keys'),
-    enabled: !!user?.uid,
+  const nameInputRef = useRef(null);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['creator', 'api-keys'],
+    queryFn: () => apiClient.get('/api-keys').then((r) => r.data ?? r),
   });
 
-  const keys = data?.data ?? [];
+  const keys = Array.isArray(data) ? data : (data?.keys ?? []);
 
   const createMutation = useMutation({
-    mutationFn: () => apiClient.post('/api-keys', { name: newKeyName.trim(), scopes: newKeyScopes }),
+    mutationFn: (name) => apiClient.post('/api-keys', { name }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['api-keys', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ['creator', 'api-keys'] });
       setCreateModalOpen(false);
-      setCreatedKey(res);
+      setKeyName('');
+      setCreatedKey(res.data ?? res);
       setRevealModalOpen(true);
-      setNewKeyName('');
-      setNewKeyScopes(['read']);
     },
   });
 
   const revokeMutation = useMutation({
     mutationFn: (keyId) => apiClient.delete(`/api-keys/${keyId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-keys', user?.uid] });
-      setRevokeConfirmId(null);
+      queryClient.invalidateQueries({ queryKey: ['creator', 'api-keys'] });
+      setRevokeConfirmKey(null);
     },
   });
 
-  const handleCopy = () => {
-    if (!createdKey?.key) return;
-    navigator.clipboard.writeText(createdKey.key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
-
-  const toggleScope = (scope) => {
-    setNewKeyScopes((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
-    );
-  };
-
-  const formatDate = (iso) => {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+  const handleOpenCreate = () => {
+    setKeyName('');
+    createMutation.reset();
+    setCreateModalOpen(true);
   };
 
   const handleCloseCreate = () => {
     setCreateModalOpen(false);
-    setNewKeyName('');
-    setNewKeyScopes(['read']);
+    setKeyName('');
+    createMutation.reset();
+  };
+
+  const handleCreateSubmit = (e) => {
+    e.preventDefault();
+    if (!keyName.trim() || createMutation.isPending) return;
+    createMutation.mutate(keyName.trim());
+  };
+
+  const handleCopy = () => {
+    const raw = createdKey?.key ?? createdKey?.rawKey ?? '';
+    if (!raw) return;
+    navigator.clipboard.writeText(raw).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    });
+  };
+
+  const handleCloseReveal = () => {
+    setRevealModalOpen(false);
+    setCreatedKey(null);
+    setCopied(false);
+  };
+
+  const handleOpenRevoke = (key) => {
+    revokeMutation.reset();
+    setRevokeConfirmKey(key);
+  };
+
+  const handleCloseRevoke = () => {
+    setRevokeConfirmKey(null);
+    revokeMutation.reset();
+  };
+
+  useEffect(() => {
+    if (createModalOpen && nameInputRef.current) {
+      nameInputRef.current.focus();
+    }
+  }, [createModalOpen]);
+
+  const renderList = () => {
+    if (isLoading) {
+      return (
+        <div className="apikeys-card apikeys-card--loading">
+          <GlowingEffect />
+          <div className="apikeys-skeleton-list">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="apikeys-skeleton-row">
+                <div className="apikeys-skeleton-left">
+                  <ShimmerSkeleton height="13px" width="140px" />
+                  <ShimmerSkeleton height="11px" width="100px" />
+                </div>
+                <ShimmerSkeleton height="32px" width="68px" borderRadius="8px" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (isError) {
+      return (
+        <div className="apikeys-card">
+          <GlowingEffect />
+          <p className="apikeys-error-msg">
+            No se pudieron cargar las claves. Verifica tu conexión e intenta de nuevo.
+          </p>
+        </div>
+      );
+    }
+
+    if (keys.length === 0) {
+      return (
+        <div className="apikeys-card apikeys-card--empty">
+          <GlowingEffect />
+          <div className="apikeys-empty">
+            <div className="apikeys-empty__icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <p className="apikeys-empty__title">Sin claves de API</p>
+            <p className="apikeys-empty__sub">
+              Aún no tienes claves de API. Crea una para conectar herramientas externas.
+            </p>
+            <button className="apikeys-btn-create" onClick={handleOpenCreate}>
+              Crear clave
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="apikeys-card">
+        <GlowingEffect />
+        <ul className="apikeys-list">
+          {keys.map((k, idx) => {
+            const keyId = k.id ?? k.keyId;
+            return (
+              <li
+                key={keyId ?? idx}
+                className="apikeys-row"
+                style={{ animationDelay: `${idx * 40}ms` }}
+              >
+                <div className="apikeys-row__info">
+                  <span className="apikeys-row__name">{k.name || 'Sin nombre'}</span>
+                  <span className="apikeys-row__id">{truncateKeyId(keyId)}</span>
+                  <div className="apikeys-row__meta">
+                    <span>Creada {formatDate(k.createdAt)}</span>
+                    <span className="apikeys-row__dot" aria-hidden>·</span>
+                    <span>Último uso: {formatDate(k.lastUsedAt)}</span>
+                  </div>
+                </div>
+                <button
+                  className="apikeys-btn-revoke"
+                  onClick={() => handleOpenRevoke(k)}
+                  disabled={revokeMutation.isPending && revokeConfirmKey?.id === keyId}
+                  aria-label={`Revocar clave ${k.name || 'Sin nombre'}`}
+                >
+                  Revocar
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
   };
 
   return (
     <DashboardLayout screenName="API Keys">
-      <div className="api-keys-screen">
+      <div className="apikeys-screen">
+        <div className="apikeys-content">
 
-        {/* Header */}
-        <div className="api-keys-header">
-          <div>
-            <h1 className="api-keys-title">API Keys</h1>
-            <p className="api-keys-subtitle">Permite que herramientas externas accedan a tu cuenta de forma segura.</p>
-          </div>
-          <button className="api-keys-new-btn" onClick={() => setCreateModalOpen(true)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-            Nueva API key
-          </button>
-        </div>
-
-        {/* Info banner */}
-        <div className="api-keys-banner">
-          <span className="api-keys-banner-icon" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </span>
-          <p className="api-keys-banner-text">
-            Las claves solo se muestran una vez al crearlas. Guárdalas en un lugar seguro — no podremos recuperarlas.
-          </p>
-        </div>
-
-        {/* Loading */}
-        {isLoading && (
-          <div>
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="api-keys-skeleton-row"
-                style={{ animationDelay: `${i * 80}ms`, opacity: 1 - i * 0.15 }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Error */}
-        {!isLoading && error && (
-          <div className="api-keys-error">
-            No se pudieron cargar las claves. Verifica tu conexión e intenta de nuevo.
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!isLoading && !error && keys.length === 0 && (
-          <div className="api-keys-empty">
-            <span className="api-keys-empty-icon" aria-hidden>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </span>
-            <p className="api-keys-empty-title">No tienes API keys</p>
-            <p className="api-keys-empty-desc">Crea una para conectar herramientas externas a tu cuenta.</p>
-            <button className="api-keys-empty-cta" onClick={() => setCreateModalOpen(true)}>
-              Crear primera clave
+          <div className="apikeys-header">
+            <div className="apikeys-header__text">
+              <p className="apikeys-section-label">Desarrolladores</p>
+              <p className="apikeys-header__sub">
+                Usa estas claves para conectar herramientas externas a tu cuenta Wake de forma segura.
+              </p>
+            </div>
+            <button className="apikeys-btn-create" onClick={handleOpenCreate}>
+              Crear clave
             </button>
           </div>
-        )}
 
-        {/* Key list */}
-        {!isLoading && !error && keys.length > 0 && (
-          <div className="api-keys-list">
-            {keys.map((k, i) => (
-              <div
-                key={k.keyId}
-                className="api-key-row api-keys-fade-in"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <div className="api-key-info">
-                  <span className="api-key-name">{k.name}</span>
-                  <span className="api-key-prefix">{k.keyPrefix}…</span>
-                  <div className="api-key-meta">
-                    <div className="api-key-scopes">
-                      {(k.scopes || []).map((s) => (
-                        <span key={s} className="api-key-scope-pill">{s}</span>
-                      ))}
-                    </div>
-                    <span className="api-key-date">Creada {formatDate(k.createdAt)}</span>
-                    {k.lastUsedAt && (
-                      <span className="api-key-date">Último uso {formatDate(k.lastUsedAt)}</span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  className="api-key-revoke-btn"
-                  onClick={() => setRevokeConfirmId(k.keyId)}
-                  aria-label={`Revocar clave ${k.name}`}
-                >
-                  Revocar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+          {renderList()}
+
+        </div>
       </div>
 
-      {/* Create modal */}
-      <Modal
-        isOpen={createModalOpen}
-        onClose={handleCloseCreate}
-        title="Nueva API Key"
-      >
-        <div className="api-keys-modal-form">
-          <div className="api-keys-field">
-            <label className="api-keys-label">Nombre</label>
+      {/* ── Create modal ─────────────────────────────────────────── */}
+      <Modal isOpen={createModalOpen} onClose={handleCloseCreate} title="Nueva clave de API">
+        <form onSubmit={handleCreateSubmit} className="apikeys-modal-form">
+          <div className="apikeys-modal-field">
+            <label className="apikeys-modal-label">Nombre</label>
             <input
-              className="api-keys-input"
-              placeholder="Ej. Integración Garmin"
-              value={newKeyName}
-              onChange={(e) => setNewKeyName(e.target.value)}
-              maxLength={60}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newKeyName.trim() && newKeyScopes.length > 0 && !createMutation.isPending) {
-                  createMutation.mutate();
-                }
-              }}
+              ref={nameInputRef}
+              className="apikeys-modal-input"
+              placeholder="Ej. Integración Zapier"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              disabled={createMutation.isPending}
+              maxLength={80}
             />
           </div>
-
-          <div className="api-keys-field">
-            <label className="api-keys-label">Permisos</label>
-            <div className="api-keys-scopes">
-              {AVAILABLE_SCOPES.map((scope) => (
-                <button
-                  key={scope}
-                  className={`api-keys-scope-btn ${newKeyScopes.includes(scope) ? 'active' : ''}`}
-                  onClick={() => toggleScope(scope)}
-                  type="button"
-                >
-                  {scope}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {createMutation.error && (
-            <p className="api-keys-error-inline">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              Error al crear la clave. Intenta de nuevo.
+          {createMutation.isError && (
+            <p className="apikeys-error-inline">
+              {createMutation.error?.message || 'No se pudo crear la clave. Intenta de nuevo.'}
             </p>
           )}
-
-          <div className="api-keys-modal-actions">
-            <button className="api-keys-cancel-btn" type="button" onClick={handleCloseCreate}>
+          <div className="apikeys-modal-actions">
+            <button
+              type="button"
+              className="apikeys-btn-ghost"
+              onClick={handleCloseCreate}
+              disabled={createMutation.isPending}
+            >
               Cancelar
             </button>
             <button
-              className="api-keys-submit-btn"
-              type="button"
-              onClick={() => createMutation.mutate()}
-              disabled={!newKeyName.trim() || newKeyScopes.length === 0 || createMutation.isPending}
+              type="submit"
+              className="apikeys-btn-primary"
+              disabled={!keyName.trim() || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creando…' : 'Crear clave'}
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
 
-      {/* Reveal modal — shown once after creation */}
-      <Modal
-        isOpen={revealModalOpen}
-        onClose={() => { setRevealModalOpen(false); setCreatedKey(null); setCopied(false); }}
-        title="Copia tu clave ahora"
-      >
+      {/* ── Reveal modal — shown once after creation ──────────────── */}
+      <Modal isOpen={revealModalOpen} onClose={handleCloseReveal} title="Copia tu clave ahora">
         {createdKey && (
-          <div className="api-keys-reveal">
-            <p className="api-keys-reveal-warning">
-              <span className="api-keys-reveal-warning-icon" aria-hidden>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                  <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </span>
-              Esta es la única vez que verás esta clave completa. No podremos volvértela a mostrar.
-            </p>
-            <div className="api-keys-reveal-key">
-              <code>{createdKey.key}</code>
+          <div className="apikeys-reveal">
+            <div className="apikeys-reveal-warning">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden style={{ flexShrink: 0, marginTop: 1 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <span>Esta clave solo se muestra una vez. Cópiala ahora antes de cerrar.</span>
+            </div>
+            <div className="apikeys-reveal-box">
+              <code className="apikeys-reveal-code">
+                {createdKey?.key ?? createdKey?.rawKey ?? '—'}
+              </code>
             </div>
             <button
-              className={`api-keys-copy-btn ${copied ? 'api-keys-copy-btn--copied' : ''}`}
+              className={`apikeys-btn-copy ${copied ? 'apikeys-btn-copy--done' : ''}`}
               onClick={handleCopy}
               type="button"
             >
-              {copied ? '¡Copiado!' : 'Copiar clave'}
+              {copied ? 'Copiada ✓' : 'Copiar clave'}
             </button>
           </div>
         )}
       </Modal>
 
-      {/* Revoke confirm modal */}
+      {/* ── Revoke confirmation modal ─────────────────────────────── */}
       <Modal
-        isOpen={!!revokeConfirmId}
-        onClose={() => setRevokeConfirmId(null)}
-        title="Revocar clave"
+        isOpen={!!revokeConfirmKey}
+        onClose={handleCloseRevoke}
+        title="¿Revocar esta clave?"
       >
-        <div className="api-keys-modal-form">
-          <p className="api-keys-revoke-warning">
-            Esta acción es permanente. La clave dejará de funcionar de inmediato y no puede recuperarse.
+        <div className="apikeys-modal-form">
+          <p className="apikeys-revoke-desc">
+            Las integraciones que la usen dejarán de funcionar. Esta acción no se puede deshacer.
           </p>
-          {revokeMutation.error && (
-            <p className="api-keys-error-inline">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              Error al revocar. Intenta de nuevo.
+          {revokeConfirmKey?.name && (
+            <p className="apikeys-revoke-keyname">{revokeConfirmKey.name}</p>
+          )}
+          {revokeMutation.isError && (
+            <p className="apikeys-error-inline">
+              {revokeMutation.error?.message || 'No se pudo revocar. Intenta de nuevo.'}
             </p>
           )}
-          <div className="api-keys-modal-actions">
-            <button className="api-keys-cancel-btn" type="button" onClick={() => setRevokeConfirmId(null)}>
+          <div className="apikeys-modal-actions">
+            <button
+              type="button"
+              className="apikeys-btn-ghost"
+              onClick={handleCloseRevoke}
+              disabled={revokeMutation.isPending}
+            >
               Cancelar
             </button>
             <button
-              className="api-keys-submit-btn api-keys-submit-btn--danger"
               type="button"
-              onClick={() => revokeMutation.mutate(revokeConfirmId)}
+              className="apikeys-btn-danger"
+              onClick={() => revokeMutation.mutate(revokeConfirmKey?.id ?? revokeConfirmKey?.keyId)}
               disabled={revokeMutation.isPending}
             >
-              {revokeMutation.isPending ? 'Revocando…' : 'Revocar'}
+              {revokeMutation.isPending ? 'Revocando…' : 'Sí, revocar'}
             </button>
           </div>
         </div>

@@ -106,6 +106,7 @@ All in `functions/src/index.ts`. Do not create separate function files. When add
 | `nutritionFoodGet` | HTTPS onRequest | FatSecret proxy — food detail by ID |
 | `nutritionBarcodeLookup` | HTTPS onRequest | FatSecret proxy — barcode lookup |
 | `sendEventConfirmationEmail` | Firestore onCreate | HTML confirmation email with QR on `event_signups/{eventId}/registrations/{regId}` |
+| `onUserCreated` | Auth user().onCreate | Bootstraps `users/{userId}` document (`role: "user"`, `created_at`, email, displayName) on Firebase Auth user creation |
 
 **Secrets (Firebase Secret Manager):** `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_ACCESS_TOKEN`, `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `RESEND_API_KEY`
 

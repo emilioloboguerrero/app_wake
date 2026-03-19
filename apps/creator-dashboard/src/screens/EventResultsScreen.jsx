@@ -959,13 +959,13 @@ export default function EventResultsScreen() {
 
             {/* Tabs */}
             <TubelightNavBar
-              tabs={[
+              items={[
                 { id: 'registros', label: 'Registros' },
                 { id: 'analytics', label: 'Analytics' },
                 { id: 'editar', label: 'Editar' },
               ]}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
+              activeId={activeTab}
+              onSelect={setActiveTab}
             />
 
             {/* ── Registros tab ── */}
