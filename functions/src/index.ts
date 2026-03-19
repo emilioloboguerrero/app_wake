@@ -7857,7 +7857,10 @@ app.get("/api/v1/events/:eventId", async (req, res, next) => {
         date: e.date ?? null,
         location: (e.location ?? null) as string | null,
         status: e.status,
+        maxRegistrations: (e.maxRegistrations ?? null) as number | null,
         spotsRemaining,
+        wakeUsersOnly: Boolean(e.wakeUsersOnly ?? false),
+        settings: (e.settings ?? null) as Record<string, unknown> | null,
         fields: (e.fields ?? []) as EventField[],
       },
     });
@@ -7903,6 +7906,8 @@ app.post("/api/v1/events/:eventId/register", async (req, res, next) => {
         }
       }
     } catch (_) { /* unauthenticated is fine */ }
+    const qrEnabled = (e.settings as Record<string, unknown> | null)?.enableQrCheckin === true;
+    const checkInToken = qrEnabled ? crypto.randomUUID() : null;
     const result = await db.runTransaction(async (tx) => {
       const regSnap = await tx.get(signupsRef.collection("registrations"));
       const atCapacity = e.maxRegistrations != null && regSnap.size >= (e.maxRegistrations as number);
@@ -7916,7 +7921,7 @@ app.post("/api/v1/events/:eventId/register", async (req, res, next) => {
           fieldValues,
           createdAt: FieldValue.serverTimestamp(),
         });
-        return { registrationId: waitRef.id, status: "waitlisted" as const, waitlistPosition: waitSnap.size + 1 };
+        return { registrationId: waitRef.id, status: "waitlisted" as const, waitlistPosition: waitSnap.size + 1, checkInToken: null };
       } else {
         const regRef = signupsRef.collection("registrations").doc();
         tx.set(regRef, {
@@ -7924,15 +7929,31 @@ app.post("/api/v1/events/:eventId/register", async (req, res, next) => {
           displayName: body.displayName ?? null,
           clientUserId,
           fieldValues,
+          checkInToken,
           checkedIn: false,
           checkedInAt: null,
           createdAt: FieldValue.serverTimestamp(),
         });
-        return { registrationId: regRef.id, status: "registered" as const, waitlistPosition: null };
+        return { registrationId: regRef.id, status: "registered" as const, waitlistPosition: null, checkInToken };
       }
     });
 
     res.json({ data: result });
+  } catch (err) { next(err); }
+});
+
+app.post("/api/v1/events/:eventId/waitlist", async (req, res, next) => {
+  try {
+    await checkRateLimit(`event_waitlist_${req.params.eventId}`, 10);
+    const doc = await db.collection("events").doc(req.params.eventId).get();
+    if (!doc.exists) throw apiError("NOT_FOUND", "Event not found", 404);
+    const body = validateBody<{ contact: string }>({ contact: "string" }, req.body);
+    const contact = body.contact.trim();
+    if (!contact) throw apiError("VALIDATION_ERROR", "contact is required", 400, "contact");
+    const ref = db.collection("event_signups").doc(req.params.eventId)
+      .collection("waitlist").doc();
+    await ref.set({ contact, createdAt: FieldValue.serverTimestamp() });
+    res.json({ data: { waitlistId: ref.id } });
   } catch (err) { next(err); }
 });
 
@@ -8795,6 +8816,8 @@ app.get("/api/v1/app-resources", async (_req, res, next) => {
     }> = [];
     let mainHeroLanding: unknown[] = [];
     let heroAppPage: unknown[] = [];
+    let cards: unknown[] = [];
+    let dosFormas: string | null = null;
     let assets: Record<string, unknown> | null = null;
     let disciplineImages: Record<string, string> = {};
 
@@ -8817,6 +8840,8 @@ app.get("/api/v1/app-resources", async (_req, res, next) => {
       } else {
         if (!mainHeroLanding.length && Array.isArray(e.main_hero_landing)) mainHeroLanding = e.main_hero_landing;
         if (!heroAppPage.length && Array.isArray(e.hero_app_page)) heroAppPage = e.hero_app_page;
+        if (!cards.length && Array.isArray(e.cards)) cards = e.cards;
+        if (!dosFormas && typeof e.dos_formas === "string") dosFormas = e.dos_formas;
         programCards.push({
           resourceId: doc.id,
           title: e.title ?? "",
@@ -8830,7 +8855,7 @@ app.get("/api/v1/app-resources", async (_req, res, next) => {
     programCards.sort((a, b) => a.order - b.order);
 
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.json({ data: { hero, programCards, mainHeroLanding, heroAppPage, assets, disciplineImages } });
+    res.json({ data: { hero, programCards, mainHeroLanding, heroAppPage, cards, dosFormas, assets, disciplineImages } });
   } catch (err) { next(err); }
 });
 
