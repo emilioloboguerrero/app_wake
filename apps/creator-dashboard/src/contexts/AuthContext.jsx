@@ -79,11 +79,13 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={value}>
       {loading ? (
         <div className="auth-loading">
-          <img
-            className="auth-loading__logo"
-            src={`${ASSET_BASE}wake-logo-new.png`}
-            alt="Wake"
-          />
+          <div className="auth-loading__logo-wrap">
+            <img
+              className="auth-loading__logo"
+              src={`${ASSET_BASE}wake-logo-new.png`}
+              alt="Wake"
+            />
+          </div>
           <div className="auth-loading__spinner" />
         </div>
       ) : (

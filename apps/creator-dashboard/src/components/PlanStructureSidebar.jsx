@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Input from './Input';
-import './PlanningSidebar.css';
+import './PlanStructureSidebar.css';
 
 const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
 

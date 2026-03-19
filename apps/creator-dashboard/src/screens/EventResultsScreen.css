@@ -61,7 +61,7 @@
   font-size: 1.4rem;
   font-weight: 700;
   margin: 0 0 4px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .event-results-count {
@@ -111,7 +111,7 @@
 
 .event-results-export-btn {
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   color: #a0a0a0;
   cursor: pointer;
@@ -158,12 +158,12 @@
   letter-spacing: 0.04em;
   padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 
 .event-results-table td {
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 12px 14px;
   border-bottom: 1px solid #1e1e1e;
   vertical-align: middle;
@@ -175,7 +175,7 @@
 
 .er-admit-btn {
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   color: #a0a0a0;
   cursor: pointer;
@@ -227,7 +227,7 @@
 .er-search-input {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--text-primary);
   flex: 1;
   font-family: inherit;
   font-size: 0.875rem;
@@ -297,7 +297,7 @@
 }
 
 .er-modal {
-  background: #1a1a1a;
+  background: var(--canvas);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 18px;
   box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05);
@@ -323,7 +323,7 @@
   transition: background 0.15s, color 0.15s;
   width: 28px;
 }
-.er-modal-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.er-modal-close:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
 
 .er-modal-header {
   display: flex;
@@ -334,7 +334,7 @@
   padding-right: 32px;
 }
 
-.er-modal-name { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0; }
+.er-modal-name { color: var(--text-primary); font-size: 1.1rem; font-weight: 700; margin: 0; }
 
 .er-modal-checkin-badge {
   background: rgba(255,255,255,0.06);
@@ -355,7 +355,7 @@
 .er-modal-fields { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .er-modal-field { display: flex; flex-direction: column; gap: 3px; }
 .er-modal-field-label { color: rgba(255,255,255,0.35); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
-.er-modal-field-value { color: #fff; font-size: 0.9rem; }
+.er-modal-field-value { color: var(--text-primary); font-size: 0.9rem; }
 
 .er-modal-checkin-btn {
   background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.85);
@@ -389,7 +389,7 @@
 .er-modal-confirm-yes {
   padding: 6px 14px;
   background: rgba(239,68,68,0.7); border: none; border-radius: 7px;
-  color: #fff; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  color: var(--text-primary); font-size: 0.8rem; font-weight: 700; cursor: pointer;
   font-family: inherit;
 }
 .er-modal-confirm-yes:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -438,7 +438,7 @@
 
 .er-tab--active {
   background: rgba(255,255,255,0.09);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .er-tab:hover:not(.er-tab--active) {
@@ -511,7 +511,7 @@
 .er-stat-value {
   font-size: 2rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary);
   line-height: 1.1;
 }
 
@@ -567,7 +567,7 @@
 .er-checkin-pct {
   font-size: 1.4rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary);
   min-width: 52px;
   text-align: right;
 }
@@ -616,7 +616,7 @@
 }
 
 .er-tooltip-value {
-  color: #fff;
+  color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
   margin: 0;

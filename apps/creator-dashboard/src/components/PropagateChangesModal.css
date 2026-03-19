@@ -158,7 +158,7 @@
 .propagate-modal-btn-dont {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #cccccc;
+  color: var(--text-secondary);
 }
 
 .propagate-modal-btn-dont:hover:not(:disabled) {
@@ -170,7 +170,7 @@
 .propagate-modal-btn-propagate {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .propagate-modal-btn-propagate:hover:not(:disabled) {

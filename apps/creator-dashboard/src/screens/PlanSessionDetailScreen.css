@@ -1,0 +1,177 @@
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.plan-session-detail-container {
+  background: var(--canvas);
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.plan-session-detail-content {
+  max-width: 800px;
+  margin: 0 auto;
+  animation: fadeUp 0.35s var(--spring) both;
+}
+
+/* Loading & error states */
+.plan-session-detail-loading,
+.plan-session-detail-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 32px;
+  text-align: center;
+  min-height: 400px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.plan-session-detail-error {
+  color: rgba(255, 68, 68, 0.9);
+}
+
+/* Session header */
+.plan-session-detail-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.plan-session-detail-meta {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  margin-bottom: 28px;
+}
+
+/* Section heading */
+.plan-session-detail-section-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 14px;
+}
+
+/* Exercise blocks */
+.plan-session-exercise-block {
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  border: 1px solid transparent;
+  transition: background var(--duration-fast) var(--spring),
+              border-color var(--duration-fast) var(--spring);
+}
+
+.plan-session-exercise-block:hover {
+  background: var(--surface-3);
+  border-color: var(--border-subtle);
+}
+
+.plan-session-exercise-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+/* Sets */
+.plan-session-sets-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plan-session-set-chip {
+  background: var(--surface-3);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.plan-session-set-chip-label {
+  color: var(--text-tertiary);
+  margin-right: 4px;
+}
+
+/* Action buttons */
+.plan-session-detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.plan-session-detail-btn-primary {
+  background: var(--text-primary);
+  color: #000;
+  border-radius: var(--radius-pill);
+  padding: 10px 24px;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: var(--font-sans), sans-serif;
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--spring);
+}
+
+.plan-session-detail-btn-primary:hover {
+  opacity: 0.88;
+}
+
+.plan-session-detail-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  padding: 10px 24px;
+  font-size: 14px;
+  font-family: var(--font-sans), sans-serif;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--spring),
+              color var(--duration-fast) var(--spring);
+}
+
+.plan-session-detail-btn-secondary:hover {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/* Back button (error state) */
+.plan-session-detail-back-btn {
+  margin-top: 20px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  padding: 10px 24px;
+  font-size: 14px;
+  font-family: var(--font-sans), sans-serif;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--spring),
+              color var(--duration-fast) var(--spring);
+}
+
+.plan-session-detail-back-btn:hover {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/* Empty exercises state */
+.plan-session-exercises-empty {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}

@@ -55,9 +55,9 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: #333333;
+  background-color: var(--surface-3);
   border: none;
-  color: #FFFFFF;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 600;
   cursor: pointer;
@@ -117,7 +117,7 @@
   margin-top: 20px;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #000;
   text-align: center;
   letter-spacing: 0.5px;
 }
@@ -125,7 +125,7 @@
 .payment-modal-loading-subtext {
   margin-top: 8px;
   font-size: 14px;
-  color: #1a1a1a;
+  color: #000;
   text-align: center;
   opacity: 0.8;
 }
@@ -157,7 +157,7 @@
   padding: 12px 24px;
   border-radius: 8px;
   border: none;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;

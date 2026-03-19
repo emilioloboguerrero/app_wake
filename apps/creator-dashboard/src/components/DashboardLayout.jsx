@@ -4,7 +4,9 @@ import { ASSET_BASE } from '../config/assets';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import { submitCreatorFeedback } from '../services/creatorFeedbackService';
+import Tooltip from './ui/Tooltip';
 import './DashboardLayout.css';
+import CommandPalette from './CommandPalette';
 
 const TYPE_BUG = 'bug';
 const TYPE_SUGGESTION = 'suggestion';
@@ -302,18 +304,20 @@ const DashboardLayout = ({
         <div className="dl-sidebar__footer">
           {/* Nav visibility settings */}
           <div className="dl-nav-settings" ref={settingsRef}>
-            <button
-              className="dl-nav-settings__trigger"
-              onClick={() => setSettingsOpen(v => !v)}
-              aria-label="Personalizar navegación"
-              title="Personalizar menú"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8"/>
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.8"/>
-              </svg>
-              <span>Personalizar</span>
-            </button>
+            <Tooltip label="Personalizar menú" placement="right">
+              <button
+                className="dl-nav-settings__trigger"
+                onClick={() => setSettingsOpen(v => !v)}
+                aria-label="Personalizar navegación"
+                title="Personalizar menú"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.8"/>
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.8"/>
+                </svg>
+                <span>Personalizar</span>
+              </button>
+            </Tooltip>
 
             {settingsOpen && (
               <div className="dl-nav-settings__panel">
@@ -333,27 +337,29 @@ const DashboardLayout = ({
           </div>
 
           {/* User profile */}
-          <button
-            className="dl-user"
-            onClick={() => navTo('/profile')}
-            title="Perfil"
-            aria-label="Ir a perfil"
-          >
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt={user?.displayName || 'Usuario'} className="dl-user__avatar-img" />
-            ) : (
-              <div className="dl-user__avatar">
-                {user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+          <Tooltip label="Tu perfil" placement="right">
+            <button
+              className="dl-user"
+              onClick={() => navTo('/profile')}
+              title="Perfil"
+              aria-label="Ir a perfil"
+            >
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt={user?.displayName || 'Usuario'} className="dl-user__avatar-img" />
+              ) : (
+                <div className="dl-user__avatar">
+                  {user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+              )}
+              <div className="dl-user__info">
+                <p className="dl-user__name">{user?.displayName || 'Tu perfil'}</p>
+                <p className="dl-user__email">{user?.email}</p>
               </div>
-            )}
-            <div className="dl-user__info">
-              <p className="dl-user__name">{user?.displayName || 'Tu perfil'}</p>
-              <p className="dl-user__email">{user?.email}</p>
-            </div>
-            <svg className="dl-user__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+              <svg className="dl-user__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </Tooltip>
         </div>
       </aside>
 
@@ -497,6 +503,7 @@ const DashboardLayout = ({
           )}
         </div>
       )}
+      <CommandPalette />
     </div>
   );
 };

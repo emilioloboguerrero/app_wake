@@ -1,0 +1,168 @@
+/* LibraryContentScreen.css
+ * Targeted fixes for the 5 most visually broken areas.
+ * Global layout is inherited from ProgramDetailScreen.css (already imported).
+ */
+
+/* === Delete / Confirm Modals ===
+ * Classes: modal-library-content, delete-instruction-text,
+ *          delete-input-button-row, delete-library-button,
+ *          delete-warning-text
+ * These are used in the Delete Module and Delete Session modals.
+ * ProgramDetailScreen.css has no definitions for these; LibraryExercisesScreen.css
+ * does but is not imported here.
+ */
+
+.modal-library-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.delete-instruction-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.delete-input-button-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.delete-input-button-row .input-container {
+  flex: 1;
+}
+
+.delete-library-button {
+  background-color: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  padding: 0 24px;
+  height: 52px;
+  color: rgba(255, 68, 68, 0.85);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans), sans-serif;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease,
+              border-color var(--duration-fast) ease,
+              transform var(--duration-fast) var(--spring);
+  min-width: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.delete-library-button:hover:not(.delete-library-button-disabled) {
+  background-color: rgba(255, 68, 68, 0.25);
+  border-color: rgba(255, 68, 68, 0.5);
+  transform: translateY(-1px);
+}
+
+.delete-library-button-disabled {
+  background-color: var(--surface-3);
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.delete-warning-text {
+  color: rgba(255, 68, 68, 0.8);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 0;
+}
+
+
+/* === Modal Actions Row ===
+ * Class: modal-actions
+ * Used in Create Module and Create Session modals.
+ * No definition exists in ProgramDetailScreen.css for bare .modal-actions.
+ */
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+
+/* === Copy-Session Modal Loading / Empty States ===
+ * The "Agregar Sesión" modal uses inline styles to show loading/empty
+ * states — overriding them with proper CSS classes avoids raw hex colors
+ * and keeps the design token system intact.
+ * Classes: copy-session-modal-loading, copy-session-modal-empty,
+ *          copy-session-session-list (wrapping flex column)
+ */
+
+.copy-session-modal-loading,
+.copy-session-modal-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.copy-session-modal-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.copy-session-modal-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  transition: background var(--duration-fast) ease;
+}
+
+.copy-session-modal-session-row:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.copy-session-modal-session-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+
+/* === Action Pills — Add + / Edit buttons ===
+ * These exist in ProgramDetailScreen.css but the container class
+ * .modules-actions / .sessions-actions / .exercises-actions lacks
+ * alignment when the section header and actions row share a flex row.
+ * A targeted override ensures the row aligns correctly here.
+ */
+
+.modules-content .modules-actions,
+.sessions-content .sessions-actions,
+.exercises-content .exercises-actions {
+  align-items: center;
+  flex-shrink: 0;
+}
+
+
+/* === Exercise Card — Video player sizing ===
+ * In the exercises grid (2-col by default), an unstyled <video> stretches
+ * to fill whatever container it's in.  Constrain it to the card width.
+ */
+
+.exercise-card-video-player {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  display: block;
+}

@@ -18,6 +18,7 @@ import measureObjectivePresetsService from '../services/measureObjectivePresetsS
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import programAnalyticsService from '../services/programAnalyticsService';
+import useConfirm from '../hooks/useConfirm';
 
 import {
   useProgram,
@@ -651,6 +652,7 @@ const ProgramDetailScreen = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   
   const [selectedUserInfo, setSelectedUserInfo] = useState(null);
@@ -1746,7 +1748,8 @@ const ProgramDetailScreen = () => {
       return;
     }
 
-    if (!window.confirm('¿Estás seguro de que quieres eliminar la imagen del programa?')) {
+    const ok = await confirm('¿Estás seguro de que quieres eliminar la imagen del programa?');
+    if (!ok) {
       return;
     }
 
@@ -2281,7 +2284,8 @@ const ProgramDetailScreen = () => {
     const videos = program.tutorials?.[selectedScreen] || [];
     if (selectedVideoIndex >= videos.length) return;
 
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este video?')) {
+    const ok = await confirm('¿Estás seguro de que quieres eliminar este video?');
+    if (!ok) {
       return;
     }
 
@@ -2360,7 +2364,8 @@ const ProgramDetailScreen = () => {
     if (!program) return;
     const videos = program.tutorials?.[screenKey] || [];
     if (videoIndex >= videos.length) return;
-    if (!window.confirm('¿Eliminar este video?')) return;
+    const ok = await confirm('¿Eliminar este video?');
+    if (!ok) return;
     try {
       const videoURL = videos[videoIndex];
       await programService.deleteTutorialVideo(program.id, screenKey, videoURL);
@@ -2447,7 +2452,8 @@ const ProgramDetailScreen = () => {
   const handleIntroVideoDelete = async () => {
     if (!program || !program.video_intro_url) return;
 
-    if (!window.confirm('¿Estás seguro de que quieres eliminar el video de introducción?')) {
+    const ok = await confirm('¿Estás seguro de que quieres eliminar el video de introducción?');
+    if (!ok) {
       return;
     }
 
@@ -3829,9 +3835,10 @@ const ProgramDetailScreen = () => {
     }
   };
 
-  const handleCloseExerciseModal = () => {
+  const handleCloseExerciseModal = async () => {
     if (isCreatingExercise && canSaveCreatingExercise()) {
-      if (window.confirm('¿Guardar ejercicio antes de cerrar?')) {
+      const ok = await confirm('¿Guardar ejercicio antes de cerrar?');
+      if (ok) {
         handleSaveCreatingExercise();
         return;
       }
@@ -3839,9 +3846,10 @@ const ProgramDetailScreen = () => {
 
     // Check if there are unsaved changes
     const hasUnsavedChanges = Object.values(unsavedSetChanges).some(hasChanges => hasChanges);
-    
+
     if (hasUnsavedChanges) {
-      if (!window.confirm('Tienes cambios sin guardar. ¿Estás seguro de que quieres cerrar?')) {
+      const ok = await confirm('Tienes cambios sin guardar. ¿Estás seguro de que quieres cerrar?');
+      if (!ok) {
         return;
       }
     }
@@ -3876,7 +3884,7 @@ const ProgramDetailScreen = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isExerciseModalOpen, isCreatingExercise]);
 
-  const syncProgramSetsCount = (targetCount) => {
+  const syncProgramSetsCount = async (targetCount) => {
     const target = Math.max(1, Math.min(20, Math.floor(targetCount) || 1));
     const current = exerciseSets.length;
     if (target === current) return;
@@ -3886,7 +3894,8 @@ const ProgramDetailScreen = () => {
         for (let i = 0; i < target - current; i++) await handleCreateSet();
       })();
     } else {
-      if (!window.confirm(`Se eliminarán ${current - target} serie(s). ¿Continuar?`)) return;
+      const ok = await confirm(`Se eliminarán ${current - target} serie(s). ¿Continuar?`);
+      if (!ok) return;
       const toRemove = exerciseSets.slice(-(current - target));
       (async () => {
         for (const s of toRemove) await handleDeleteSet(s, { skipConfirm: true });
@@ -4384,8 +4393,9 @@ const ProgramDetailScreen = () => {
       return;
     }
 
-    if (!options.skipConfirm && !window.confirm('¿Estás seguro de que quieres eliminar esta serie?')) {
-      return;
+    if (!options.skipConfirm) {
+      const ok = await confirm('¿Estás seguro de que quieres eliminar esta serie?');
+      if (!ok) return;
     }
 
     // If creating a new exercise, just remove from local state
@@ -5599,7 +5609,7 @@ const ProgramDetailScreen = () => {
       
       if (sessionToEdit.librarySessionRef && !isEditingLibrarySession) {
         // Show modal to choose: edit library or customize for program
-        const editChoice = window.confirm(
+        const editChoice = await confirm(
           'Esta sesión está vinculada a la biblioteca.\n\n' +
           '¿Cómo deseas editar?\n\n' +
           'OK = Editar en biblioteca (afecta todos los programas)\n' +
@@ -6019,8 +6029,8 @@ const ProgramDetailScreen = () => {
           <div className="program-tab-content">
             <h1 className="program-page-title">Ajustes</h1>
             {program.deliveryType === 'one_on_one' && (
-              <div className="program-section" style={{ marginBottom: 24 }}>
-                <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
+              <div className="program-section pd-one-on-one-notice">
+                <p className="pd-one-on-one-notice-text">
                   Este programa es un contenedor general (1-on-1). Los cambios aquí se aplican por referencia a todos los clientes. El contenido (semanas y sesiones) se asigna en la ficha de cada cliente.
                 </p>
               </div>
@@ -6069,7 +6079,7 @@ const ProgramDetailScreen = () => {
                         <video src={program.video_intro_url} muted playsInline />
                         <div className="program-visual-card__overlay">
                           <label className="program-visual-card__btn program-visual-card__btn--change">
-                            <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} style={{ display: 'none' }} />
+                            <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} className="pd-hidden-input" />
                             {isUploadingIntroVideo ? `Subiendo ${introVideoUploadProgress}%` : 'Cambiar'}
                           </label>
                           {isUploadingIntroVideo && (
@@ -6082,7 +6092,7 @@ const ProgramDetailScreen = () => {
                       </>
                     ) : (
                       <label className="program-visual-card__placeholder program-visual-card__placeholder--clickable">
-                        <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} style={{ display: 'none' }} />
+                        <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} className="pd-hidden-input" />
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 10l4.553-2.724c.281-.169.628-.169.909 0 .281.169.538.52.538.842v7.764c0 .322-.257.673-.538.842-.281.169-.628.169-.909 0L15 14M5 18h8c.53 0 1.039-.211 1.414-.586C14.789 17.039 15 16.53 15 16V8c0-.53-.211-1.039-.586-1.414C14.039 6.211 13.53 6 13 6H5c-.53 0-1.039.211-1.414.586C3.211 6.961 3 7.47 3 8v8c0 .53.211 1.039.586 1.414C3.961 17.789 4.47 18 5 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         <span>{isUploadingIntroVideo ? `Subiendo ${introVideoUploadProgress}%` : 'Subir video'}</span>
                         {isUploadingIntroVideo && <div className="program-visual-card__progress"><div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${introVideoUploadProgress}%` }} /></div></div>}
@@ -6102,7 +6112,7 @@ const ProgramDetailScreen = () => {
                           <span className="program-visual-card__tutorial-label">{label}</span>
                           <div className="program-visual-card__tutorial-actions">
                             <label className="program-visual-card__btn program-visual-card__btn--small">
-                              <input type="file" accept="video/*" onChange={(e) => handleAnuncioVideoUploadForScreen(e, screenKey, false)} disabled={isUploadingAnuncioVideo} style={{ display: 'none' }} />
+                              <input type="file" accept="video/*" onChange={(e) => handleAnuncioVideoUploadForScreen(e, screenKey, false)} disabled={isUploadingAnuncioVideo} className="pd-hidden-input" />
                               {isUploadingAnuncioVideo ? 'Subiendo...' : '+'}
                             </label>
                             {videos.map((url, idx) => (
@@ -6129,7 +6139,7 @@ const ProgramDetailScreen = () => {
                 <div className="program-config-inline-row">
                   <span className="program-config-item-label">Nombre</span>
                   <div className="program-config-inline-field">
-                    <input type="text" className="program-config-inline-input" value={programNameValue} onChange={(e) => setProgramNameValue(e.target.value)} placeholder="Nombre del programa" style={{ minWidth: 200 }} />
+                    <input type="text" className="program-config-inline-input pd-inline-input-min200" value={programNameValue} onChange={(e) => setProgramNameValue(e.target.value)} placeholder="Nombre del programa" />
                     <button type="button" className="program-config-inline-btn" onClick={() => saveTitle(programNameValue)} disabled={isUpdatingProgram || !programNameValue.trim() || programNameValue.trim() === (program?.title || '')}>
                       {isUpdatingProgram ? 'Guardando...' : 'Guardar'}
                     </button>
@@ -6178,7 +6188,7 @@ const ProgramDetailScreen = () => {
                 <div className="program-config-inline-row">
                   <span className="program-config-item-label">Precio</span>
                   <div className="program-config-inline-field">
-                    <input type="text" className="program-config-inline-input" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Gratis o monto" style={{ maxWidth: 140 }} />
+                    <input type="text" className="program-config-inline-input pd-inline-input-max140" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Gratis o monto" />
                     <span className="program-config-inline-hint">$ (mín. 2000)</span>
                     <button type="button" className="program-config-inline-btn" onClick={() => savePrice(priceValue)} disabled={isUpdatingPrice || (priceValue !== '' && parseInt(priceValue, 10) < 2000)}>{isUpdatingPrice ? 'Guardando...' : 'Guardar'}</button>
                   </div>
@@ -6192,7 +6202,7 @@ const ProgramDetailScreen = () => {
                     </label>
                     {freeTrialActive && (
                       <>
-                        <input type="number" min={0} className="program-config-inline-input" value={freeTrialDurationDays} onChange={(e) => setFreeTrialDurationDays(e.target.value.replace(/\D/g, ''))} style={{ width: 56 }} />
+                        <input type="number" min={0} className="program-config-inline-input pd-inline-input-w56" value={freeTrialDurationDays} onChange={(e) => setFreeTrialDurationDays(e.target.value.replace(/\D/g, ''))} />
                         <span className="program-config-inline-hint">días</span>
                       </>
                     )}
@@ -6203,7 +6213,7 @@ const ProgramDetailScreen = () => {
                   <span className="program-config-item-label">Duración</span>
                   {isOneTimePayment() ? (
                     <div className="program-config-inline-field">
-                      <input type="number" min={1} className="program-config-inline-input" value={durationValue} onChange={(e) => setDurationValue(Math.max(1, parseInt(e.target.value, 10) || 1))} style={{ width: 64 }} />
+                      <input type="number" min={1} className="program-config-inline-input pd-inline-input-w64" value={durationValue} onChange={(e) => setDurationValue(Math.max(1, parseInt(e.target.value, 10) || 1))} />
                       <span className="program-config-inline-hint">semanas</span>
                       <button type="button" className="program-config-inline-btn" onClick={() => saveDuration(durationValue)} disabled={isUpdatingDuration}>{isUpdatingDuration ? 'Guardando...' : 'Guardar'}</button>
                     </div>
@@ -6372,12 +6382,11 @@ const ProgramDetailScreen = () => {
           return (
             <div className="program-tab-content">
               <h1 className="program-page-title">Contenido</h1>
-              <div className="program-section" style={{ padding: 24, background: 'rgba(255,255,255,0.04)', borderRadius: 12 }}>
-                <p style={{ margin: 0, marginBottom: 16 }}>El contenido de este programa viene del plan de la biblioteca. Edita semanas y sesiones en el plan.</p>
+              <div className="program-section pd-content-plan-box">
+                <p className="pd-content-plan-text">El contenido de este programa viene del plan de la biblioteca. Edita semanas y sesiones en el plan.</p>
                 <button
                   type="button"
-                  className="program-page__tab"
-                  style={{ alignSelf: 'flex-start' }}
+                  className="program-page__tab pd-content-plan-link-btn"
                   onClick={() => navigate(`/plans/${contentPlanId}`, { state: { returnTo: location.pathname } })}
                 >
                   Ir al plan {linkedPlan?.title ? `"${linkedPlan.title}"` : ''}
@@ -6904,7 +6913,7 @@ const ProgramDetailScreen = () => {
         <div className="weight-suggestions-modal-content">
           <div className="weight-suggestions-modal-body">
             <div className="weight-suggestions-toggle-section">
-              <label className="weight-suggestions-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <label className="weight-suggestions-toggle-label pd-toggle-label-row">
                 <span>Activar Sugerencias de Peso</span>
                 <label className="elegant-toggle">
                 <input
@@ -6937,7 +6946,7 @@ const ProgramDetailScreen = () => {
         <div className="free-trial-modal-content">
           <div className="free-trial-modal-body">
             <div className="free-trial-toggle-section">
-              <label className="free-trial-toggle-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <label className="free-trial-toggle-label pd-toggle-label-row">
                 <span>Activar prueba gratis</span>
                 <label className="elegant-toggle">
                 <input
@@ -7024,14 +7033,14 @@ const ProgramDetailScreen = () => {
                         key={library.id}
                         className={`auxiliary-library-card ${selectedLibraryIds.has(library.id) ? 'auxiliary-library-card-selected' : ''}`}
                       >
-                        <div className="auxiliary-library-card-content" onClick={() => handleToggleLibrary(library.id)} style={{ cursor: 'pointer', flex: 1 }}>
+                        <div className="auxiliary-library-card-content pd-lib-card-content" onClick={() => handleToggleLibrary(library.id)}>
                           <h4 className="auxiliary-library-card-title">{library.title || 'Sin título'}</h4>
                           {library.description && (
                             <p className="auxiliary-library-card-description">{library.description}</p>
                           )}
                         </div>
                         <div className="auxiliary-library-card-checkbox" onClick={(e) => e.stopPropagation()}>
-                          <label className="elegant-toggle" style={{ cursor: 'pointer' }}>
+                          <label className="elegant-toggle pd-lib-toggle">
                             <input
                               type="checkbox"
                               checked={selectedLibraryIds.has(library.id)}
@@ -7158,7 +7167,7 @@ const ProgramDetailScreen = () => {
                                       accept="video/*"
                                       onChange={(e) => handleAnuncioVideoUpload(e, true)}
                                       disabled={isUploadingAnuncioVideo}
-                                      style={{ display: 'none' }}
+                                      className="pd-hidden-input"
                                     />
                                     <span className="anuncios-video-action-text">
                                       {isUploadingAnuncioVideo ? 'Subiendo...' : 'Cambiar'}
@@ -7230,7 +7239,7 @@ const ProgramDetailScreen = () => {
                         accept="video/*"
                         onChange={(e) => handleAnuncioVideoUpload(e, false)}
                         disabled={isUploadingAnuncioVideo}
-                        style={{ display: 'none' }}
+                        className="pd-hidden-input"
                       />
                       <span className="anuncios-video-add-icon">+</span>
                     </label>
@@ -7255,7 +7264,7 @@ const ProgramDetailScreen = () => {
         <div className="intro-video-modal-content">
           <div className="intro-video-modal-body">
             {/* Left Side - Hidden */}
-            <div className="intro-video-modal-left" style={{ display: 'none' }}>
+            <div className="intro-video-modal-left pd-hidden">
             </div>
 
             {/* Right Side - Video Display */}
@@ -7294,7 +7303,7 @@ const ProgramDetailScreen = () => {
                                     accept="video/*"
                                     onChange={handleIntroVideoUpload}
                                     disabled={isUploadingIntroVideo}
-                                    style={{ display: 'none' }}
+                                    className="pd-hidden-input"
                                   />
                                   <span className="intro-video-action-text">
                                     {isUploadingIntroVideo ? 'Subiendo...' : 'Cambiar'}
@@ -7344,7 +7353,7 @@ const ProgramDetailScreen = () => {
                           accept="video/*"
                           onChange={handleIntroVideoUpload}
                           disabled={isUploadingIntroVideo}
-                          style={{ display: 'none' }}
+                          className="pd-hidden-input"
                         />
                         {isUploadingIntroVideo ? 'Subiendo...' : 'Subir Video'}
                       </label>
@@ -7407,7 +7416,7 @@ const ProgramDetailScreen = () => {
             {/* Right Side - Content */}
             <div className="anuncios-modal-right">
               {copyModuleModalPage === 'crear' && (
-                <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                <div className="edit-program-modal-right pd-modal-scroll-panel">
                   <div className="edit-program-input-group">
                     <label className="edit-program-input-label">Nombre del Módulo</label>
                     <Input
@@ -7418,7 +7427,7 @@ const ProgramDetailScreen = () => {
                       light={true}
                     />
                   </div>
-                  <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px' }}>
+                  <div className="edit-program-modal-actions pd-modal-footer-actions">
                     <Button
                       title={isCreatingModule ? 'Creando...' : 'Crear'}
                       onClick={handleCreateModule}
@@ -7432,17 +7441,16 @@ const ProgramDetailScreen = () => {
               {/* ✅ NEW: Library modules page */}
               {copyModuleModalPage === 'biblioteca' && (
                 <div className="copy-session-selection-section">
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                  <div className="pd-modal-section-header-row">
                     <button
-                      className="copy-session-item-button"
+                      className="copy-session-item-button pd-modal-new-btn"
                       onClick={() => {
                         // TODO: Navigate to library module creation page
                         logger.log('Navigate to library module creation page');
                         navigate('/library/modules/new'); // Placeholder route
                       }}
-                      style={{ minWidth: 'auto', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                      <span style={{ fontSize: '18px' }}>+</span>
+                      <span className="pd-modal-new-btn-icon">+</span>
                       <span>Nuevo Módulo</span>
                     </button>
                   </div>
@@ -7462,15 +7470,14 @@ const ProgramDetailScreen = () => {
                             <h4 className="copy-session-item-name">
                               {libraryModule.title || `Módulo ${libraryModule.id?.slice(0, 8)}`}
                             </h4>
-                            <p className="copy-session-item-module" style={{ fontSize: '12px', color: '#666' }}>
+                            <p className="copy-session-item-module pd-copy-item-meta">
                               📚 Módulo de biblioteca • {(libraryModule.sessionRefs || []).length} sesiones
                             </p>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div className="pd-copy-item-actions">
                             <button
-                              className="copy-session-item-button"
+                              className="copy-session-item-button pd-copy-item-edit-btn"
                               onClick={() => navigate(`/library/modules/${libraryModule.id}/edit`)}
-                              style={{ minWidth: 'auto', padding: '8px 12px', fontSize: '14px' }}
                             >
                               Editar
                             </button>
@@ -7683,7 +7690,7 @@ const ProgramDetailScreen = () => {
             {/* Right Side - Content */}
             <div className="anuncios-modal-right">
               {copySessionModalPage === 'crear' && (
-                <div className="edit-program-modal-right" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                <div className="edit-program-modal-right pd-modal-scroll-panel">
                   <div className="edit-program-input-group">
                     <label className="edit-program-input-label">Nombre de la Sesión</label>
                     <Input
@@ -7694,7 +7701,7 @@ const ProgramDetailScreen = () => {
                       light={true}
                     />
                   </div>
-                  <div className="edit-program-image-section" style={{ flex: '0 1 auto', minHeight: '300px', maxHeight: '400px' }}>
+                  <div className="edit-program-image-section pd-session-image-edit">
                     {sessionImagePreview ? (
                       <div className="edit-program-image-container">
                         <img
@@ -7726,7 +7733,7 @@ const ProgramDetailScreen = () => {
                       </div>
                     )}
                   </div>
-                  <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: 'auto', paddingTop: '16px' }}>
+                  <div className="edit-program-modal-actions pd-modal-footer-actions">
             <Button
               title={isCreatingSession || isUploadingSessionImage ? 'Creando...' : 'Crear'}
               onClick={handleCreateSession}
@@ -7740,17 +7747,16 @@ const ProgramDetailScreen = () => {
               {/* ✅ NEW: Library sessions page */}
               {copySessionModalPage === 'biblioteca' && (
                 <div className="copy-session-selection-section">
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                  <div className="pd-modal-section-header-row">
                     <button
-                      className="copy-session-item-button"
+                      className="copy-session-item-button pd-modal-new-btn"
                       onClick={() => {
                         // TODO: Navigate to library session creation page
                         logger.log('Navigate to library session creation page');
                         navigate('/library/sessions/new'); // Placeholder route
                       }}
-                      style={{ minWidth: 'auto', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                      <span style={{ fontSize: '18px' }}>+</span>
+                      <span className="pd-modal-new-btn-icon">+</span>
                       <span>Nueva Sesión</span>
                     </button>
                   </div>
@@ -7771,11 +7777,10 @@ const ProgramDetailScreen = () => {
                               {librarySession.title || `Sesión ${librarySession.id?.slice(0, 8)}`}
                             </h4>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div className="pd-copy-item-actions">
                             <button
-                              className="copy-session-item-button"
+                              className="copy-session-item-button pd-copy-item-edit-btn"
                               onClick={() => navigate(`/content/sessions/${librarySession.id}`, { state: { returnTo: location.pathname } })}
-                              style={{ minWidth: 'auto', padding: '8px 12px', fontSize: '14px' }}
                             >
                               Editar
                             </button>
@@ -7945,7 +7950,7 @@ const ProgramDetailScreen = () => {
         <div className="exercise-modal-layout">
           {/* Requirements Announcement - Always at top when creating */}
           {isCreatingExercise && !canSaveCreatingExercise() && (
-            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '8px' }}>
+            <div className="create-exercise-requirements-summary pd-requirements-box">
               <p className="create-exercise-requirements-text">
                 Para crear el ejercicio, necesitas:
                 {(!exerciseDraft?.primary || Object.values(exerciseDraft.primary || {}).length === 0) && (
@@ -7970,7 +7975,7 @@ const ProgramDetailScreen = () => {
                   <p>Cargando ejercicio...</p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="pd-exercise-col-stack">
                     {/* Primary Exercise Section */}
                     <div className="one-on-one-modal-section">
                       <div className="one-on-one-modal-section-header">
@@ -8016,7 +8021,7 @@ const ProgramDetailScreen = () => {
                               </svg>
                             </button>
                             {isCreatingExercise && (
-                              <p className="one-on-one-field-note" style={{ marginTop: '8px', marginBottom: 0 }}>
+                              <p className="one-on-one-field-note pd-note-top">
                                 Selecciona el ejercicio principal de tu biblioteca
                               </p>
                             )}
@@ -8032,8 +8037,8 @@ const ProgramDetailScreen = () => {
                         <span className="one-on-one-modal-section-badge-recommended">Altamente Recomendado</span>
                       </div>
                       <div className="one-on-one-modal-section-content">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <p className="one-on-one-field-note" style={{ margin: 0 }}>
+                        <div className="pd-section-spaced-header">
+                          <p className="one-on-one-field-note pd-note-no-margin">
                             Ejercicios alternativos que pueden reemplazar al ejercicio principal
                           </p>
                           <div className="exercise-general-actions-container">
@@ -8065,11 +8070,11 @@ const ProgramDetailScreen = () => {
                           </div>
                         </div>
                         {Object.keys(draftAlternatives).length === 0 ? (
-                          <div className="one-on-one-empty-state" style={{ padding: '24px 16px' }}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                          <div className="one-on-one-empty-state pd-empty-state-padded">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pd-empty-icon-faded">
                               <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88M13 7C13 9.20914 11.2091 11 9 11C6.79086 11 5 9.20914 5 7C5 4.79086 6.79086 3 9 3C11.2091 3 13 4.79086 13 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                             </svg>
-                            <p style={{ margin: 0 }}>No hay alternativas agregadas</p>
+                            <p className="pd-note-no-margin">No hay alternativas agregadas</p>
                           </div>
                         ) : (
                           <div className="exercise-alternatives-list">
@@ -8415,7 +8420,7 @@ const ProgramDetailScreen = () => {
                 )}
                 
                 {isCreatingExercise && (
-                  <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                  <div className="pd-sets-footer">
                     <Button
                       title={isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio (⌘↵)'}
                       onClick={handleSaveCreatingExercise}
@@ -8427,7 +8432,7 @@ const ProgramDetailScreen = () => {
                 )}
 
                 {!isCreatingExercise && (
-                  <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                  <div className="pd-sets-footer">
                     <Button
                       title="Guardar y cerrar"
                       onClick={handleCloseExerciseModal}
@@ -8499,7 +8504,7 @@ const ProgramDetailScreen = () => {
                 setIsMeasuresObjectivesEditorOpen(true);
               }}
             >
-              <span style={{ fontSize: 18 }}>+</span>
+              <span className="pd-modal-new-btn-icon">+</span>
               Crear plantilla nueva
             </button>
           </div>
@@ -8623,7 +8628,7 @@ const ProgramDetailScreen = () => {
       >
         <div className="exercise-modal-layout">
           {!canSaveNewExercise() && (
-            <div className="create-exercise-requirements-summary" style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '8px' }}>
+            <div className="create-exercise-requirements-summary pd-requirements-box">
               <p className="create-exercise-requirements-text">
                 Para crear el ejercicio, necesitas:
                 {(!newExerciseDraft?.primary || Object.values(newExerciseDraft.primary || {}).length === 0) && (
@@ -8639,7 +8644,7 @@ const ProgramDetailScreen = () => {
           <div className="exercise-modal-main-content">
             {/* Left Side - General Exercise Info */}
             <div className="exercise-modal-left-panel">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="pd-exercise-col-stack">
                 {/* Primary Exercise Section */}
                 <div className="one-on-one-modal-section">
                   <div className="one-on-one-modal-section-header">
@@ -8672,7 +8677,7 @@ const ProgramDetailScreen = () => {
                             <path d="M12 8.00012L4 16.0001V20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </button>
-                        <p className="one-on-one-field-note" style={{ marginTop: '8px', marginBottom: 0 }}>
+                        <p className="one-on-one-field-note pd-note-top">
                           Selecciona el ejercicio principal de tu biblioteca
                         </p>
                       </>
@@ -8687,22 +8692,14 @@ const ProgramDetailScreen = () => {
                     <span className="one-on-one-modal-section-badge-optional">Opcional</span>
                   </div>
                   <div className="one-on-one-modal-section-content">
-                    <p className="one-on-one-field-note" style={{ marginBottom: '16px' }}>
+                    <p className="one-on-one-field-note pd-note-margin-bottom">
                       Puedes agregar alternativas, medidas y objetivos después de crear el ejercicio desde la vista de edición.
                     </p>
-                    <div style={{ 
-                      padding: '16px', 
-                      backgroundColor: 'rgba(255, 255, 255, 0.03)', 
-                      border: '1px solid rgba(255, 255, 255, 0.08)', 
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.6, flexShrink: 0 }}>
+                    <div className="pd-info-box">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pd-info-box-icon">
                         <path d="M13 16H12V12H11M12 8H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)', lineHeight: '1.5' }}>
+                      <p className="pd-info-box-text">
                         Las alternativas, medidas y objetivos pueden configurarse después de crear el ejercicio
                       </p>
                     </div>
@@ -8795,7 +8792,7 @@ const ProgramDetailScreen = () => {
                 </>
                 )}
                 
-                <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <div className="pd-sets-footer">
                   <Button
                     title={isCreatingNewExercise ? 'Creando...' : 'Crear Ejercicio'}
                     onClick={handleCreateNewExercise}
@@ -8803,8 +8800,8 @@ const ProgramDetailScreen = () => {
                     loading={isCreatingNewExercise}
                     style={{ width: '100%' }}
                   />
-                  <p className="one-on-one-modal-help-text" style={{ marginTop: '12px', marginBottom: 0 }}>
-                    Los campos marcados con <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span> son requeridos.
+                  <p className="one-on-one-modal-help-text pd-help-text-top">
+                    Los campos marcados con <span className="pd-required-marker">*</span> son requeridos.
                   </p>
                 </div>
               </div>
@@ -8894,6 +8891,7 @@ const ProgramDetailScreen = () => {
         </div>
       </Modal>
     </DashboardLayout>
+      {ConfirmModal}
     </ErrorBoundary>
   );
 };

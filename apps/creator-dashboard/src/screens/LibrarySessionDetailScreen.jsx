@@ -43,6 +43,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
 import './LibrarySessionDetailScreen.css';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
+import useConfirm from '../hooks/useConfirm';
 
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
@@ -258,6 +260,7 @@ const LibrarySessionDetailScreen = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
   const isPlanInstanceEdit = Boolean(planInstancePlanId && planInstanceModuleId && sessionId && location.pathname.includes('/plans/') && location.pathname.includes('/edit'));
   const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/content');
   const backState = location.state?.returnState ?? {};
@@ -2770,7 +2773,8 @@ const LibrarySessionDetailScreen = () => {
                   type="button"
                   className="library-session-client-edit-revert"
                   onClick={async () => {
-                    if (!window.confirm('¿Restablecer esta sesión al contenido de la biblioteca? Se perderán los cambios personalizados para este cliente.')) return;
+                    const ok = await confirm('¿Restablecer esta sesión al contenido de la biblioteca? Se perderán los cambios personalizados para este cliente.');
+                    if (!ok) return;
                     try {
                       await clientSessionContentService.deleteClientSessionContent(effectiveClientSessionId);
                       hasClientCopyRef.current = false;
@@ -4041,6 +4045,7 @@ const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous
         </div>
       </Modal>
     </DashboardLayout>
+    {ConfirmModal}
     </ErrorBoundary>
   );
 };

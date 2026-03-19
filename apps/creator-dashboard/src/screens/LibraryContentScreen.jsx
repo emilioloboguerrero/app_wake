@@ -13,6 +13,7 @@ import Input from '../components/Input';
 import MeasuresObjectivesEditorModal from '../components/MeasuresObjectivesEditorModal';
 import libraryService from '../services/libraryService';
 import measureObjectivePresetsService from '../services/measureObjectivePresetsService';
+import useConfirm from '../hooks/useConfirm';
 
 import {
   DndContext,
@@ -31,6 +32,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
+import './LibraryContentScreen.css';
 
 // Helper functions
 const getLibraryExerciseKey = (libraryId, exerciseName) => `${libraryId || ''}::${exerciseName || ''}`;
@@ -267,7 +270,8 @@ const LibraryContentScreen = () => {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
-  
+  const { confirm, ConfirmModal } = useConfirm();
+
   // Get the tab from URL params, default to 'modules' if viewing a module, 'sessions' if viewing a session
   const getTabFromContext = () => {
     const tabParam = searchParams.get('tab');
@@ -1462,9 +1466,10 @@ const LibraryContentScreen = () => {
   };
 
   // Exercise modal handlers (adapted from ProgramDetailScreen)
-  const handleCloseExerciseModal = () => {
+  const handleCloseExerciseModal = async () => {
     if (isCreatingExercise && canSaveCreatingExercise()) {
-      if (window.confirm('¿Guardar ejercicio antes de cerrar?')) {
+      const ok = await confirm('¿Guardar ejercicio antes de cerrar?');
+      if (ok) {
         handleSaveCreatingExercise();
         return;
       }
@@ -3539,11 +3544,11 @@ const LibraryContentScreen = () => {
       >
         <div className="modal-library-content" style={{ minHeight: '400px', maxHeight: '600px', overflowY: 'auto' }}>
           {isLoadingLibrarySessions ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <p>Cargando sesiones...</p>
             </div>
           ) : availableLibrarySessions.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <p>No hay sesiones disponibles en la biblioteca.</p>
             </div>
           ) : (
@@ -3551,7 +3556,7 @@ const LibraryContentScreen = () => {
               {availableLibrarySessions.map((session) => (
                 <div key={session.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                   <div>
-                    <h4 style={{ margin: 0, color: '#ffffff', fontSize: '16px', fontWeight: 600 }}>
+                    <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '16px', fontWeight: 600 }}>
                       {session.title || `Sesión ${session.id.slice(0, 8)}`}
                     </h4>
                   </div>
@@ -3682,6 +3687,7 @@ const LibraryContentScreen = () => {
           </p>
         </div>
       </Modal>
+    {ConfirmModal}
     </DashboardLayout>
   );
 };

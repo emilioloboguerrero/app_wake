@@ -41,7 +41,7 @@
 }
 
 .button-social {
-  background-color: #333333;
+  background-color: var(--surface-3);
 }
 
 .button-outline {
@@ -65,15 +65,15 @@
 }
 
 .button-text-primary {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .button-text-secondary {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .button-text-social {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .button-text-outline {
@@ -82,12 +82,12 @@
 }
 
 .button-text-active {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-weight: 700;
 }
 
 .button-text-disabled {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .button-loading {
@@ -100,7 +100,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: rgba(255, 255, 255, 1);
+  border-top-color: var(--text-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

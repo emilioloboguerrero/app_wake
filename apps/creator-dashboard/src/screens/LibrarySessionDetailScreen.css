@@ -175,7 +175,7 @@
 .library-session-filter-button.active {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .library-session-filter-button-text {
@@ -185,7 +185,7 @@
 }
 
 .library-session-filter-badge {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -220,7 +220,7 @@
 }
 
 .library-session-active-filter-chip-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
 }
@@ -351,7 +351,7 @@
 .library-session-edit-button.active {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .library-session-exercises-container {
@@ -958,7 +958,7 @@
 }
 
 .muscle-silhouette-container {
-  background: rgba(42, 42, 42, 1);
+  background: var(--surface-3);
   border-radius: 12px;
   padding: 15px;
   display: flex;
@@ -991,13 +991,13 @@
 }
 
 .filter-chip-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
 }
 
 .filter-chip-remove {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: bold;
   line-height: 1;
@@ -1035,7 +1035,7 @@
 }
 
 .implement-chip-text-selected {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .filter-modal-actions {
@@ -1093,7 +1093,7 @@
 }
 
 .filter-apply-button-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 600;
 }
@@ -1196,7 +1196,7 @@
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
 }
 
@@ -1303,7 +1303,7 @@
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .sets-detail-input:focus {
@@ -1325,7 +1325,7 @@
 
 .sets-detail-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -1438,7 +1438,7 @@
 
 .sets-panel-number-btn:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .sets-panel-number-input {
@@ -1500,7 +1500,7 @@
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.25);
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
 }
 

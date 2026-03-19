@@ -198,11 +198,13 @@ const LoginScreen = () => {
       <div className="ln-card">
         {/* Logo */}
         <div className="ln-logo-wrap">
-          <img
-            src={`${ASSET_BASE}wake-logo-new.png`}
-            alt="Wake"
-            className="ln-logo"
-          />
+          <div className="ln-logo-shine-wrap">
+            <img
+              src={`${ASSET_BASE}wake-logo-new.png`}
+              alt="Wake"
+              className="ln-logo"
+            />
+          </div>
           <span className="ln-badge">Creadores</span>
         </div>
 

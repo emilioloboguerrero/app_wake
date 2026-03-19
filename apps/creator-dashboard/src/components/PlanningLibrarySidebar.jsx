@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Input from './Input';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
-import './PlanningSidebar.css';
+import './PlanningLibrarySidebar.css';
 
 const LIBRARY_TAB_SESSIONS = 'sessions';
 const LIBRARY_TAB_PLANS = 'plans';

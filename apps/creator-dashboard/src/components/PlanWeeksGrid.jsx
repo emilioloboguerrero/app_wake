@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
@@ -27,6 +28,7 @@ const PlanWeeksGrid = ({
   onOpenWeekVolume = null,
 }) => {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [addSessionModuleId, setAddSessionModuleId] = useState(null);
   const [addSessionDayIndex, setAddSessionDayIndex] = useState(0);
@@ -134,7 +136,7 @@ const PlanWeeksGrid = ({
         });
       }
     } catch (err) {
-      alert(err.message || 'Error al crear la sesión');
+      showToast(err.message || 'Error al crear la sesión', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -179,7 +181,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
     } catch (err) {
       onModulesChange?.(prevModules);
-      alert(err.message || 'Error al asignar la sesión');
+      showToast(err.message || 'Error al asignar la sesión', 'error');
     } finally {
       setAddingToModuleId(null);
       setAddingToDayIndex(null);
@@ -211,7 +213,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
     } catch (err) {
       console.error('Error duplicating week:', err);
-      alert(err.message || 'Error al duplicar la semana');
+      showToast(err.message || 'Error al duplicar la semana', 'error');
     } finally {
       setIsDuplicatingWeek(false);
       setDuplicatingWeekModuleId(null);
@@ -234,7 +236,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      alert(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'));
+      showToast(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'), 'error');
     } finally {
       setIsDeleting(false);
     }

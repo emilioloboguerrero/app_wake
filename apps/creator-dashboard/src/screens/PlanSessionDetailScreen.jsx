@@ -9,7 +9,7 @@ import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import '../components/PropagateChangesModal.css';
-import './LibrarySessionDetailScreen.css';
+import './PlanSessionDetailScreen.css';
 
 const PlanSessionDetailScreen = () => {
   const { planId, moduleId, sessionId } = useParams();
@@ -151,8 +151,10 @@ const PlanSessionDetailScreen = () => {
   if (loading) {
     return (
       <DashboardLayout screenName="Sesión" showBackButton backPath={`/plans/${planId}`}>
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-loading">Cargando...</div>
+        <div className="plan-session-detail-container">
+          <div className="plan-session-detail-content">
+            <div className="plan-session-detail-loading">Cargando...</div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -161,12 +163,14 @@ const PlanSessionDetailScreen = () => {
   if (error) {
     return (
       <DashboardLayout screenName="Sesión" showBackButton backPath={`/plans/${planId}`}>
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-error">
-            <p>{error}</p>
-            <button onClick={handleBack} className="back-button">
-              Volver al plan
-            </button>
+        <div className="plan-session-detail-container">
+          <div className="plan-session-detail-content">
+            <div className="plan-session-detail-error">
+              <p>{error}</p>
+              <button onClick={handleBack} className="plan-session-detail-back-btn">
+                Volver al plan
+              </button>
+            </div>
           </div>
         </div>
       </DashboardLayout>
@@ -183,42 +187,44 @@ const PlanSessionDetailScreen = () => {
 
   return (
     <DashboardLayout screenName="Sesión" showBackButton backPath={`/plans/${planId}`}>
-      <div className="library-session-detail-container">
-        <Modal
-          isOpen={showScopeModal}
-          onClose={handleCloseScopeModal}
-          title="¿Dónde aplicar los cambios?"
-          containerClassName="propagate-modal-container"
-          contentClassName="propagate-modal-content-wrapper"
-        >
-          <div className="propagate-modal-content">
-            <div className="propagate-modal-intro-wrap">
-              <p className="propagate-modal-intro">
-                <strong>Solo esta sesión</strong> → Cambios solo aquí. Nadie más los ve.
-                <br /><br />
-                <strong>Todos los sitios</strong> → Se actualiza la sesión en la biblioteca. Todos los planes que la usan cambian.
-              </p>
+      <div className="plan-session-detail-container">
+        <div className="plan-session-detail-content">
+          <Modal
+            isOpen={showScopeModal}
+            onClose={handleCloseScopeModal}
+            title="¿Dónde aplicar los cambios?"
+            containerClassName="propagate-modal-container"
+            contentClassName="propagate-modal-content-wrapper"
+          >
+            <div className="propagate-modal-content">
+              <div className="propagate-modal-intro-wrap">
+                <p className="propagate-modal-intro">
+                  <strong>Solo esta sesión</strong> → Cambios solo aquí. Nadie más los ve.
+                  <br /><br />
+                  <strong>Todos los sitios</strong> → Se actualiza la sesión en la biblioteca. Todos los planes que la usan cambian.
+                </p>
+              </div>
+              <div className="propagate-modal-footer">
+                <button
+                  type="button"
+                  className="propagate-modal-btn propagate-modal-btn-dont"
+                  onClick={handleScopeOnlyThisWeek}
+                  disabled={applyingScope}
+                >
+                  {applyingScope ? 'Preparando…' : 'Solo esta sesión'}
+                </button>
+                <button
+                  type="button"
+                  className="propagate-modal-btn propagate-modal-btn-propagate"
+                  onClick={handleScopeEverywhere}
+                  disabled={applyingScope}
+                >
+                  Todos los sitios
+                </button>
+              </div>
             </div>
-            <div className="propagate-modal-footer">
-              <button
-                type="button"
-                className="propagate-modal-btn propagate-modal-btn-dont"
-                onClick={handleScopeOnlyThisWeek}
-                disabled={applyingScope}
-              >
-                {applyingScope ? 'Preparando…' : 'Solo esta sesión'}
-              </button>
-              <button
-                type="button"
-                className="propagate-modal-btn propagate-modal-btn-propagate"
-                onClick={handleScopeEverywhere}
-                disabled={applyingScope}
-              >
-                Todos los sitios
-              </button>
-            </div>
-          </div>
-        </Modal>
+          </Modal>
+        </div>
       </div>
     </DashboardLayout>
   );

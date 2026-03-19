@@ -14,6 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../contexts/ToastContext';
 import Modal from '../Modal';
 import MediaPickerModal from '../MediaPickerModal';
 import Input from '../Input';
@@ -33,6 +34,7 @@ const ContentManager = ({
   compactHeader = false,
 }) => {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [modules, setModules] = useState([]);
   const [selectedModule, setSelectedModule] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -202,7 +204,7 @@ const ContentManager = ({
       setIsModuleModalOpen(false);
       setModuleName('');
     } catch (err) {
-      alert(err.message || 'Error al crear la semana');
+      showToast(err.message || 'Error al crear la semana', 'error');
     } finally {
       setIsCreatingModule(false);
     }
@@ -241,7 +243,7 @@ const ContentManager = ({
       setSessionImagePreview(null);
       setSessionImageUrlFromLibrary(null);
     } catch (err) {
-      alert(err.message || 'Error al crear la sesión');
+      showToast(err.message || 'Error al crear la sesión', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -257,7 +259,7 @@ const ContentManager = ({
       setIsExerciseModalOpen(false);
       setExerciseName('');
     } catch (err) {
-      alert(err.message || 'Error al crear el ejercicio');
+      showToast(err.message || 'Error al crear el ejercicio', 'error');
     } finally {
       setIsCreatingExercise(false);
     }
@@ -278,7 +280,7 @@ const ContentManager = ({
       setModuleToDelete(null);
       setDeleteModuleConfirmation('');
     } catch (err) {
-      alert(err.message || 'Error al eliminar');
+      showToast(err.message || 'Error al eliminar', 'error');
     } finally {
       setIsDeletingModule(false);
     }
@@ -298,7 +300,7 @@ const ContentManager = ({
       setSessionToDelete(null);
       setDeleteSessionConfirmation('');
     } catch (err) {
-      alert(err.message || 'Error al eliminar');
+      showToast(err.message || 'Error al eliminar', 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -314,7 +316,7 @@ const ContentManager = ({
       setExerciseToDelete(null);
       setDeleteExerciseConfirmation('');
     } catch (err) {
-      alert(err.message || 'Error al eliminar');
+      showToast(err.message || 'Error al eliminar', 'error');
     } finally {
       setIsDeletingExercise(false);
     }

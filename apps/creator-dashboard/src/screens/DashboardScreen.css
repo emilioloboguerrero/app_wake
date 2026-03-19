@@ -11,13 +11,13 @@
 .welcome-text {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 8px 0;
 }
 
 .welcome-subtext {
   font-size: 1rem;
-  color: #cccccc;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -28,31 +28,41 @@
   margin-top: 32px;
 }
 
+@keyframes statCardIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .stat-card {
-  background-color: #2a2a2a;
-  border: 1px solid #333;
+  background-color: var(--surface-3);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
   padding: 24px;
   text-align: center;
   transition: all 0.2s ease;
+  animation: statCardIn 0.4s var(--spring) both;
 }
 
+.stat-card:nth-child(1) { animation-delay: 0ms; }
+.stat-card:nth-child(2) { animation-delay: 50ms; }
+.stat-card:nth-child(3) { animation-delay: 100ms; }
+.stat-card:nth-child(4) { animation-delay: 150ms; }
+
 .stat-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--border-default);
   transform: translateY(-2px);
 }
 
 .stat-number {
   font-size: 2.5rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   margin: 0 0 8px 0;
 }
 
 .stat-label {
   font-size: 1rem;
-  color: #cccccc;
+  color: var(--text-secondary);
   margin: 0;
   font-weight: 400;
 }
-

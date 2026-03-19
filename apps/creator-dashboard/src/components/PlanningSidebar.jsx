@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import programService from '../services/programService';
 import clientProgramService from '../services/clientProgramService';
+import useConfirm from '../hooks/useConfirm';
+import { useToast } from '../contexts/ToastContext';
 import './PlanningSidebar.css';
 
 const PlanningSidebar = ({ 
@@ -10,6 +12,8 @@ const PlanningSidebar = ({
   onProgramSelect, 
   onProgramsChange 
 }) => {
+  const { confirm, ConfirmModal } = useConfirm();
+  const { showToast } = useToast();
   const [programs, setPrograms] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAssigning, setIsAssigning] = useState(false);
@@ -87,7 +91,7 @@ const PlanningSidebar = ({
       }
     } catch (error) {
       console.error('Error assigning program:', error);
-      alert('Error al asignar el programa');
+      showToast('Error al asignar el programa', 'error');
     } finally {
       setIsAssigning(false);
     }
@@ -95,10 +99,9 @@ const PlanningSidebar = ({
 
   const handleUnassignProgram = async (programId, event) => {
     event.stopPropagation();
-    
-    if (!window.confirm('¿Estás seguro de que quieres desasignar este programa?')) {
-      return;
-    }
+
+    const ok = await confirm('¿Estás seguro de que quieres desasignar este programa?');
+    if (!ok) return;
 
     try {
       setIsAssigning(true);
@@ -116,7 +119,7 @@ const PlanningSidebar = ({
       }
     } catch (error) {
       console.error('Error unassigning program:', error);
-      alert('Error al desasignar el programa');
+      showToast('Error al desasignar el programa', 'error');
     } finally {
       setIsAssigning(false);
     }
@@ -277,6 +280,7 @@ const PlanningSidebar = ({
         )}
       </div>
     </div>
+    {ConfirmModal}
   );
 };
 

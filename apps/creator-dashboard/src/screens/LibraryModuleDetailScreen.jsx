@@ -29,6 +29,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import './LibrarySessionDetailScreen.css';
+import './LibraryModuleDetailScreen.css';
 
 // Drop Zone Component
 const DropZone = ({ id, children, className }) => {
@@ -95,9 +96,9 @@ const DraggableSession = ({ session, isInModule = false, onDelete, isEditMode, o
           </div>
         )}
         <div className="draggable-exercise-info">
-          <div className="draggable-exercise-name">{session.title || 'Sesión sin nombre'}</div>
+          <div className="draggable-exercise-name lmd-session-title">{session.title || 'Sesión sin nombre'}</div>
           {session.exercises && (
-            <div className="draggable-exercise-meta">
+            <div className="draggable-exercise-meta lmd-session-meta">
               {session.exercises.length} ejercicio{session.exercises.length !== 1 ? 's' : ''}
             </div>
           )}
@@ -319,8 +320,12 @@ const LibraryModuleDetailScreen = () => {
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-loading">Cargando...</div>
+        <div className="lmd-page">
+          <div className="lmd-inner">
+            <div className="library-session-detail-container">
+              <div className="library-session-detail-loading">Cargando...</div>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -334,12 +339,16 @@ const LibraryModuleDetailScreen = () => {
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-error">
-            <p>{error || 'Módulo no encontrado'}</p>
-            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
-              Volver a Contenido
-            </button>
+        <div className="lmd-page">
+          <div className="lmd-inner">
+            <div className="library-session-detail-container">
+              <div className="library-session-detail-error">
+                <p>{error || 'Módulo no encontrado'}</p>
+                <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
+                  Volver a Contenido
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </DashboardLayout>
@@ -347,12 +356,14 @@ const LibraryModuleDetailScreen = () => {
   }
 
   return (
-    <DashboardLayout 
+    <DashboardLayout
       screenName={module.title}
       showBackButton={true}
       backPath={backPath}
       backState={backState}
     >
+      <div className="lmd-page">
+      <div className="lmd-inner">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -363,7 +374,7 @@ const LibraryModuleDetailScreen = () => {
           {/* Sidebar - Available Sessions */}
           <div className="library-session-sidebar">
             <div className="library-session-sidebar-header">
-              <h3 className="library-session-sidebar-title">Sesiones Disponibles</h3>
+              <h3 className="library-session-sidebar-title lmd-section-label">Sesiones Disponibles</h3>
             </div>
             
             <div className="library-session-sidebar-content">
@@ -396,13 +407,13 @@ const LibraryModuleDetailScreen = () => {
           <div className="library-session-main">
             <div className="library-session-main-header">
               <div>
-                <h2 className="library-session-main-title">Sesiones en el Módulo</h2>
-                <p className="library-session-main-subtitle">
+                <h2 className="library-session-main-title lmd-title">Sesiones en el Módulo</h2>
+                <p className="library-session-main-subtitle lmd-subtitle">
                   Arrastra sesiones desde el panel izquierdo o reorganiza las existentes
                 </p>
               </div>
               <button
-                className={`library-session-edit-button ${isEditMode ? 'active' : ''}`}
+                className={`library-session-edit-button lmd-btn-outline ${isEditMode ? 'active' : ''}`}
                 onClick={() => setIsEditMode(!isEditMode)}
               >
                 {isEditMode ? 'Guardar Orden' : 'Editar Orden'}
@@ -426,15 +437,16 @@ const LibraryModuleDetailScreen = () => {
                   items={sessions.map(s => s.dragId)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {sessions.map((session) => (
-                    <DraggableSession
-                      key={session.dragId}
-                      session={session}
-                      isInModule={true}
-                      onDelete={isEditMode ? handleDeleteSession : null}
-                      isEditMode={isEditMode}
-                      onClick={(s) => navigate(`/content/sessions/${s.id}`, { state: { returnTo: location.pathname, returnState: {} } })}
-                    />
+                  {sessions.map((session, index) => (
+                    <div key={session.dragId} style={{ '--index': index }}>
+                      <DraggableSession
+                        session={session}
+                        isInModule={true}
+                        onDelete={isEditMode ? handleDeleteSession : null}
+                        isEditMode={isEditMode}
+                        onClick={(s) => navigate(`/content/sessions/${s.id}`, { state: { returnTo: location.pathname, returnState: {} } })}
+                      />
+                    </div>
                   ))}
                 </SortableContext>
               )}
@@ -476,6 +488,8 @@ const LibraryModuleDetailScreen = () => {
           ) : null}
         </DragOverlay>
       </DndContext>
+      </div>
+      </div>
 
       {/* Delete Modal */}
       <Modal

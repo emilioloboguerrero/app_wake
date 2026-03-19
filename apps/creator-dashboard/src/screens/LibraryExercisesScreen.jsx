@@ -14,6 +14,7 @@ import { queryClient } from '../config/queryClient';
 
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import useConfirm from '../hooks/useConfirm';
 import './LibraryExercisesScreen.css';
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
@@ -196,6 +197,7 @@ const LibraryExercisesScreen = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [allExercises, setAllExercises] = useState([]); // Store all exercises
@@ -527,7 +529,8 @@ const LibraryExercisesScreen = () => {
       return;
     }
 
-    if (!window.confirm('¿Estás seguro de que quieres eliminar el video de este ejercicio?')) {
+    const ok = await confirm('¿Estás seguro de que quieres eliminar el video de este ejercicio?');
+    if (!ok) {
       return;
     }
 
@@ -1807,6 +1810,7 @@ const LibraryExercisesScreen = () => {
         </div>
       </Modal>
       </DashboardLayout>
+      {ConfirmModal}
     </ErrorBoundary>
   );
 };

@@ -237,7 +237,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 300px;
   min-width: 300px;
   flex-shrink: 0;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;
@@ -323,7 +323,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 300px;
   min-width: 300px;
   flex-shrink: 0;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;
@@ -404,7 +404,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 300px;
   min-width: 300px;
   flex-shrink: 0;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;

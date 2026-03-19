@@ -82,7 +82,7 @@
 }
 
 .ec-event-name {
-  color: #fff;
+  color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
   margin: 0 0 3px;
@@ -244,7 +244,7 @@
 .ec-result-title {
   font-size: 1.3rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -277,7 +277,7 @@
 
 .ec-reset-btn:hover {
   background: rgba(255,255,255,0.11);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* ── Instructions ── */

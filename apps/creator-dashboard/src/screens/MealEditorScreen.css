@@ -255,7 +255,7 @@
 
 .meal-editor-sort-opt.active {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* Header: meal name + edit icon */
@@ -431,7 +431,7 @@
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 16px;
   box-sizing: border-box;
 }
@@ -453,7 +453,7 @@
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 13px;
   margin-bottom: 8px;
 }
@@ -510,7 +510,7 @@
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 13px;
   box-sizing: border-box;
 }
@@ -582,7 +582,7 @@
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 20px;
   font-weight: 600;
   font-family: inherit;

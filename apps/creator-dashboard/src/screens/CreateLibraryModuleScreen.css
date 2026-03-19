@@ -1,0 +1,138 @@
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.clm-root {
+  min-height: 100vh;
+  background: var(--canvas);
+  padding: 32px;
+}
+
+.clm-form-container {
+  max-width: 600px;
+  margin: 0 auto;
+  animation: slideUp 0.4s var(--spring) both;
+}
+
+.clm-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.clm-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+}
+
+.clm-form-group {
+  margin-bottom: 24px;
+}
+
+.clm-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+
+.clm-input {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 12px 16px;
+  width: 100%;
+  font-size: 15px;
+  font-family: var(--font-sans);
+  box-sizing: border-box;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+
+.clm-input:focus {
+  border-color: var(--border-default);
+  outline: none;
+  background: var(--surface-3);
+}
+
+.clm-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.clm-textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.clm-input-order {
+  width: 80px;
+}
+
+.clm-divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 24px 0;
+}
+
+.clm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.clm-btn-save {
+  background: var(--text-primary);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 12px 28px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  transition: opacity var(--duration-fast);
+}
+
+.clm-btn-save:hover {
+  opacity: 0.88;
+}
+
+.clm-btn-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.clm-btn-cancel {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  padding: 12px 28px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.clm-btn-cancel:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--text-primary);
+}
+
+.clm-error {
+  color: rgba(255, 80, 80, 0.9);
+  font-size: 13px;
+  margin-top: 6px;
+}

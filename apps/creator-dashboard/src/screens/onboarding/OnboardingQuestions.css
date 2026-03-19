@@ -1,12 +1,12 @@
 .user-onboarding-questions-container {
   min-height: 100vh;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
 }
 
 .onboarding-question-container {
   min-height: 100vh;
-  background-color: #1a1a1a;
-  color: #ffffff;
+  background-color: var(--canvas);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   padding: 20px;
@@ -36,7 +36,7 @@
 .question-title {
   font-size: 28px;
   font-weight: bold;
-  color: #ffffff;
+  color: var(--text-primary);
   text-align: center;
   line-height: 36px;
   margin: 0;
@@ -57,7 +57,7 @@
 }
 
 .option-cube {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   padding: 20px;
@@ -92,7 +92,7 @@
 
 .option-text {
   font-size: 14px;
-  color: #ffffff;
+  color: var(--text-primary);
   line-height: 20px;
   text-align: center;
   font-weight: 500;
@@ -105,7 +105,7 @@
 }
 
 .option-text-selected {
-  color: #ffffff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -150,7 +150,7 @@
 }
 
 .question-button-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 600;
 }
@@ -162,7 +162,7 @@
 .question-progress {
   margin-top: 6px;
   font-size: 14px;
-  color: #ffffff;
+  color: var(--text-primary);
   text-align: center;
   font-weight: 500;
 }
@@ -174,8 +174,8 @@
 /* Complete Screen */
 .onboarding-complete-container {
   min-height: 100vh;
-  background-color: #1a1a1a;
-  color: #ffffff;
+  background-color: var(--canvas);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -208,7 +208,7 @@
 
 .complete-message {
   font-size: 28px;
-  color: #ffffff;
+  color: var(--text-primary);
   text-align: center;
   line-height: 36px;
   margin: 0;
@@ -236,7 +236,7 @@
 }
 
 .complete-button-text {
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 600;
 }

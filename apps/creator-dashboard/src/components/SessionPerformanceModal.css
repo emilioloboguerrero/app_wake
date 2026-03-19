@@ -40,7 +40,7 @@
 .session-performance-title {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.03em;
 }
@@ -71,7 +71,7 @@
 
 .session-performance-close:hover {
   background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* ===== Content ===== */
@@ -119,7 +119,7 @@
 .session-performance-session-name {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .session-performance-date {
@@ -309,7 +309,7 @@
 .session-performance-compare-col-title {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -371,7 +371,7 @@
   flex: 1;
   font-weight: 600;
   font-size: 1.05rem;
-  color: #ffffff;
+  color: var(--text-primary);
   line-height: 1.4;
 }
 

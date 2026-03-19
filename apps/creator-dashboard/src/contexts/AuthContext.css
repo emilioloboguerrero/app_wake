@@ -4,7 +4,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   gap: 28px;
 }
 
@@ -41,4 +41,30 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.auth-loading__logo-wrap {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.auth-loading__logo-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%);
+  transform: translateX(-100%);
+  animation: logo-shine 2.4s cubic-bezier(0.22,1,0.36,1) 0.6s forwards, logo-shine-loop 6s ease 3.2s infinite;
+  pointer-events: none;
+}
+
+@keyframes logo-shine {
+  to { transform: translateX(100%); }
+}
+
+@keyframes logo-shine-loop {
+  0%, 70% { transform: translateX(-100%); opacity: 0; }
+  72% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
 }

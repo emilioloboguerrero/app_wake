@@ -7,13 +7,13 @@
 .date-picker-input {
   width: 100%;
   height: 56px;
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
   border-radius: 12px;
   padding: 0 20px;
   font-size: 16px;
   font-weight: 400;
-  color: #ffffff;
-  border: 1px solid #333;
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
   outline: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   transition: border-color 0.2s ease;
@@ -25,7 +25,7 @@
 }
 
 .date-picker-input:hover { border-color: rgba(255,255,255,0.2); }
-.date-picker-input.has-value { border-color: #333; }
+.date-picker-input.has-value { border-color: var(--border-default); }
 .date-picker-input.has-error { border-color: #FF6B6B; background-color: #3a2a2a; }
 .date-picker-input .placeholder { color: #999; }
 
@@ -89,7 +89,7 @@
 .date-picker-nav-btn:hover:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.13);
   border-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .date-picker-nav-btn:active:not(:disabled) {
@@ -133,7 +133,7 @@
 
 .date-picker-month-year-select option {
   background-color: #1e1e1e;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* ── Weekday labels ── */
@@ -186,7 +186,7 @@
 }
 
 .date-picker-day.today:not(.selected) {
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -205,7 +205,7 @@
 .date-picker-day.selected {
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.45);
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 

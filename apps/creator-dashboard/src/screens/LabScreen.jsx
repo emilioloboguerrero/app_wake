@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import useCountUp from '../hooks/useCountUp';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import programService from '../services/programService';
@@ -145,6 +146,11 @@ const LabScreen = () => {
   const sessionsChart    = analytics?.engagement?.sessionsCompletedOverTime ?? [];
   const hasAnyData       = totalEnrolled != null && totalEnrolled > 0;
 
+  const animatedActiveNow      = useCountUp(activeNow, 900, !isLoading);
+  const animatedRecentSignups  = useCountUp(recentSignups, 900, !isLoading);
+  const animatedCompletionRate = useCountUp(completionRate, 900, !isLoading);
+  const animatedTotalSessions  = useCountUp(totalSessions, 900, !isLoading);
+
   const greeting = (() => {
     const h = new Date().getHours();
     if (h < 12) return firstName ? `Buenos días, ${firstName}` : 'Buenos días';
@@ -182,7 +188,7 @@ const LabScreen = () => {
               <>
                 <Widget
                   label="Clientes activos"
-                  value={activeNow}
+                  value={activeNow != null ? animatedActiveNow : null}
                   sub={totalEnrolled != null ? `de ${totalEnrolled} en total` : undefined}
                   icon={
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -193,7 +199,7 @@ const LabScreen = () => {
                 />
                 <Widget
                   label="Inscripciones (30 días)"
-                  value={recentSignups}
+                  value={recentSignups != null ? animatedRecentSignups : null}
                   trend={recentChange}
                   trendPositive={recentChange >= 0}
                   icon={
@@ -204,7 +210,7 @@ const LabScreen = () => {
                 />
                 <Widget
                   label="Tasa de finalización"
-                  value={completionRate != null ? `${completionRate}%` : null}
+                  value={completionRate != null ? `${animatedCompletionRate}%` : null}
                   sub="de sesiones completadas"
                   icon={
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -215,7 +221,7 @@ const LabScreen = () => {
                 />
                 <Widget
                   label="Sesiones completadas"
-                  value={totalSessions}
+                  value={totalSessions != null ? animatedTotalSessions : null}
                   sub={avgSessions != null ? `${avgSessions} por usuario` : undefined}
                   icon={
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">

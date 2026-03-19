@@ -14,6 +14,7 @@ import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
 import '../components/PropagateChangesModal.css';
 
 /** Get per-100g values from food servings (FatSecret: find 100g serving or normalize by metric_serving_amount). */

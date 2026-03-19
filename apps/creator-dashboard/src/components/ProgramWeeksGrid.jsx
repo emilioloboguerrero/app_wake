@@ -6,8 +6,11 @@ import Input from './Input';
 import Button from './Button';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
 import programService from '../services/programService';
+import { useToast } from '../contexts/ToastContext';
 import '../screens/ProgramDetailScreen.css';
+import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
+import './ProgramWeeksGrid.css';
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
@@ -38,6 +41,7 @@ const ProgramWeeksGrid = ({
   queryClient = null,
   queryKeys = null,
 }) => {
+  const { showToast } = useToast();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [addSessionModuleId, setAddSessionModuleId] = useState(null);
   const [addSessionSlotIndex, setAddSessionSlotIndex] = useState(0);
@@ -155,7 +159,7 @@ const ProgramWeeksGrid = ({
         if (modAgain && sess) onSessionClick(modAgain, sess);
       }
     } catch (err) {
-      alert(err.message || 'Error al crear la sesión');
+      showToast(err.message || 'Error al crear la sesión', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -193,7 +197,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      alert(err.message || 'Error al asignar la sesión');
+      showToast(err.message || 'Error al asignar la sesión', 'error');
     }
   };
 
@@ -228,7 +232,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      alert(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'));
+      showToast(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'), 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -308,7 +312,7 @@ const ProgramWeeksGrid = ({
     } catch (err) {
       setIsMovingOrAddingItem(false);
       console.warn('Session reorder failed:', err);
-      alert(err?.message || 'Error al cambiar el orden');
+      showToast(err?.message || 'Error al cambiar el orden', 'error');
     }
   };
 
@@ -324,7 +328,7 @@ const ProgramWeeksGrid = ({
       if (toSlotIndex < 0 || toSlotIndex > 6) return;
       const sessionAtTarget = getSessionForSlot(modules.find((m) => m.id === toModuleId), toSlotIndex);
       if (sessionAtTarget) {
-        alert('Ese día ya tiene una sesión. Mueve o elimina esa sesión primero.');
+        showToast('Ese día ya tiene una sesión. Mueve o elimina esa sesión primero.', 'error');
         return;
       }
       setIsMovingOrAddingItem(true);
@@ -338,7 +342,7 @@ const ProgramWeeksGrid = ({
     } catch (err) {
       setIsMovingOrAddingItem(false);
       console.warn('Move session to week failed:', err);
-      alert(err?.message || 'Error al mover la sesión');
+      showToast(err?.message || 'Error al mover la sesión', 'error');
     }
   };
 
@@ -384,7 +388,7 @@ const ProgramWeeksGrid = ({
     try {
       const planModules = await plansService.getModulesByPlan(planId);
       if (!planModules?.length) {
-        alert('El plan no tiene semanas.');
+        showToast('El plan no tiene semanas.', 'error');
         return;
       }
       if (targetModuleId != null && targetModIndex != null) {
@@ -410,7 +414,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       await new Promise((r) => setTimeout(r, 0));
     } catch (err) {
-      alert(err?.message || 'Error al asignar el plan');
+      showToast(err?.message || 'Error al asignar el plan', 'error');
     } finally {
       setIsAssigningPlan(false);
       setDragOverWeekId(null);

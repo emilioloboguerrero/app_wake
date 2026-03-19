@@ -1,0 +1,60 @@
+/* ProgramWeeksGrid — program-specific layout overrides */
+
+/* The list wrapper scrolls horizontally when 7 columns are too wide */
+.plan-weeks-list-wrap {
+  min-width: 0;
+}
+
+/* Days header: fixed column widths matching the week-days grid */
+.plan-weeks-days-header {
+  min-width: calc(7 * 120px + 6 * 10px + 28px);
+}
+
+/* Week days row: enforce a minimum column width so session cards stay readable */
+.plan-weeks-week-days {
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  min-width: calc(7 * 120px + 6 * 10px);
+}
+
+/* Week header: title pushed to the left, menu stays right */
+.plan-weeks-week-header {
+  justify-content: flex-start;
+}
+
+.plan-weeks-week-title {
+  margin-right: auto;
+}
+
+/* Drag-over state on a week header when a plan is being dragged onto it */
+.plan-weeks-week-header--drag-over {
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom-color: var(--border-default);
+  outline: 1px dashed var(--border-default);
+  outline-offset: -1px;
+  transition: background 0.12s ease, outline-color 0.12s ease;
+}
+
+/* Cell drag-over: highlight the target day cell */
+.plan-weeks-day-cell.plan-weeks-cell-drag-over {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  outline: 1px dashed var(--border-default);
+  outline-offset: -1px;
+}
+
+/* Drop-below zone: appears after all week blocks for appending plan weeks */
+.plan-weeks-drop-below {
+  border-radius: var(--radius-lg);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.plan-weeks-drop-below--drag-over {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+/* Overlay shown while async operations are in flight */
+.plan-weeks-grid-overlay {
+  border-radius: var(--radius-lg);
+}

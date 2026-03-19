@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import profilePictureService from '../services/profilePictureService';
 import cardService from '../services/cardService';
 import authService from '../services/authService';
 import apiClient from '../utils/apiClient';
+import useAutoSave from '../hooks/useAutoSave';
 import { GetCountries, GetState, GetCity } from 'react-country-state-city';
 import logger from '../utils/logger';
 import './ProfileScreen.css';
@@ -69,6 +70,7 @@ const ProfileScreen = () => {
   const [isCardUploading, setIsCardUploading] = useState(false);
   const [cardUploadProgress, setCardUploadProgress] = useState(0);
   const [usernameAvailable, setUsernameAvailable] = useState(null);
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const cardMediaInputRef = useRef(null);
 
   // Detect card type (same logic as CreatorProfileScreen)
@@ -177,6 +179,33 @@ const ProfileScreen = () => {
     };
     loadCities();
   }, [country, citiesCache]);
+
+  // Debounced username availability check
+  useEffect(() => {
+    const savedUsername = originalValues?.username ?? '';
+    if (username === savedUsername) {
+      setUsernameAvailable(null);
+      return;
+    }
+    if (!username || username.length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCheckingUsername(true);
+      try {
+        const data = await apiClient.get(`/creator/username-check?username=${encodeURIComponent(username)}`);
+        setUsernameAvailable(data.available);
+      } catch {
+        setUsernameAvailable(null);
+      } finally {
+        setIsCheckingUsername(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [username, originalValues]);
 
   const getFilteredCountries = () => {
     if (!countrySearchQuery.trim()) return countries;
@@ -349,12 +378,14 @@ const ProfileScreen = () => {
     setCountrySearchQuery('');
     setCity('');
     setCitySearchQuery('');
+    autoSaveTrigger({ ...getFormSnapshot(), country: countryValue, city: '' });
   };
 
   const handleCitySelect = (selectedCity) => {
     setCity(selectedCity);
     setShowCityDropdown(false);
     setCitySearchQuery('');
+    autoSaveTrigger({ ...getFormSnapshot(), city: selectedCity });
   };
 
   const hasChanges = () => {
@@ -508,6 +539,52 @@ const ProfileScreen = () => {
     }
   };
 
+  const saveProfile = useCallback(async (snapshot) => {
+    if (!user) return;
+
+    const updateData = {};
+
+    if (snapshot.name !== (userData?.displayName || '')) updateData.displayName = snapshot.name;
+    if (snapshot.username !== (userData?.username || '')) updateData.username = snapshot.username.toLowerCase();
+    if (snapshot.gender !== (userData?.gender || '')) updateData.gender = snapshot.gender;
+    if (snapshot.city !== (userData?.city || '')) updateData.city = snapshot.city;
+    if (snapshot.country !== (userData?.country || '')) updateData.country = snapshot.country;
+    if (String(snapshot.height) !== String(userData?.height || ''))
+      updateData.height = parseFloat(snapshot.height) || null;
+    if (String(snapshot.weight) !== String(userData?.weight || ''))
+      updateData.weight = parseFloat(snapshot.weight) || null;
+    if (snapshot.birthDate && snapshot.birthDate !== (userData?.birthDate || ''))
+      updateData.birthDate = snapshot.birthDate;
+
+    if (Object.keys(updateData).length === 0) return;
+
+    await apiClient.patch('/users/me', updateData);
+
+    await refreshUserData();
+    await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+
+    setProfilePicture(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [user, userData, refreshUserData, queryClientHook]);
+
+  const { trigger: autoSaveTrigger, flush: autoSaveFlush, isSaving: isAutoSaving } = useAutoSave(
+    saveProfile,
+    { delay: 800, successMessage: 'Cambios guardados', errorMessage: 'No se pudo guardar' }
+  );
+
+  const getFormSnapshot = useCallback(() => ({
+    name,
+    username,
+    gender,
+    city,
+    country,
+    height,
+    weight,
+    birthDate,
+  }), [name, username, gender, city, country, height, weight, birthDate]);
+
   const handleSave = async () => {
     if (!user) return;
 
@@ -516,33 +593,7 @@ const ProfileScreen = () => {
 
     try {
       setSaving(true);
-
-      const updateData = {};
-
-      if (name !== (userData?.displayName || '')) updateData.displayName = name;
-      if (username !== (userData?.username || '')) updateData.username = username.toLowerCase();
-      if (gender !== (userData?.gender || '')) updateData.gender = gender;
-      if (city !== (userData?.city || '')) updateData.city = city;
-      if (country !== (userData?.country || '')) updateData.country = country;
-      if (String(height) !== String(userData?.height || ''))
-        updateData.height = parseFloat(height) || null;
-      if (String(weight) !== String(userData?.weight || ''))
-        updateData.weight = parseFloat(weight) || null;
-      if (birthDate && birthDate !== (userData?.birthDate || ''))
-        updateData.birthDate = birthDate;
-
-      if (Object.keys(updateData).length > 0) {
-        await apiClient.patch('/users/me', updateData);
-      }
-
-      await refreshUserData();
-      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
-
-      setProfilePicture(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
+      await autoSaveFlush(getFormSnapshot());
       setFormSuccess('Perfil actualizado correctamente');
     } catch (error) {
       logger.error('Error saving profile:', error);
@@ -705,7 +756,7 @@ const ProfileScreen = () => {
                   <Input
                     placeholder="Nombre completo"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => { setName(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), name: e.target.value }); }}
                   />
                 </div>
 
@@ -716,8 +767,17 @@ const ProfileScreen = () => {
                     <Input
                       placeholder="Nombre de usuario"
                       value={username}
-                      onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                      onChange={(e) => { const v = e.target.value.toLowerCase(); setUsername(v); autoSaveTrigger({ ...getFormSnapshot(), username: v }); }}
                     />
+                    {isCheckingUsername && (
+                      <span className="username-checking">Verificando...</span>
+                    )}
+                    {!isCheckingUsername && usernameAvailable === true && (
+                      <span className="username-available">&#x2713; Disponible</span>
+                    )}
+                    {!isCheckingUsername && usernameAvailable === false && (
+                      <span className="username-taken">&#x2717; No disponible</span>
+                    )}
                   </div>
                 </div>
 
@@ -739,7 +799,7 @@ const ProfileScreen = () => {
                     <select
                       className="profile-form-select"
                       value={gender}
-                      onChange={(e) => setGender(e.target.value)}
+                      onChange={(e) => { setGender(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), gender: e.target.value }); }}
                     >
                       <option value="">Seleccionar</option>
                       <option value="male">Masculino</option>
@@ -753,7 +813,7 @@ const ProfileScreen = () => {
                       type="date"
                       className="profile-date-input"
                       value={birthDate}
-                      onChange={(e) => setBirthDate(e.target.value)}
+                      onChange={(e) => { setBirthDate(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), birthDate: e.target.value }); }}
                     />
                   </div>
                 </div>
@@ -767,15 +827,17 @@ const ProfileScreen = () => {
                         type="number"
                         placeholder="Altura"
                         value={height}
-                        onChange={(e) => setHeight(e.target.value)}
+                        onChange={(e) => { setHeight(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), height: e.target.value }); }}
                       />
                       <div className="profile-number-spinner">
                         <button
                           type="button"
                           className="profile-spinner-button profile-spinner-up"
-                          onClick={() =>
-                            setHeight((prev) => String((parseFloat(prev) || 0) + 1))
-                          }
+                          onClick={() => {
+                            const v = String((parseFloat(height) || 0) + 1);
+                            setHeight(v);
+                            autoSaveTrigger({ ...getFormSnapshot(), height: v });
+                          }}
                         >
                           <svg
                             width="12"
@@ -797,11 +859,11 @@ const ProfileScreen = () => {
                         <button
                           type="button"
                           className="profile-spinner-button profile-spinner-down"
-                          onClick={() =>
-                            setHeight((prev) =>
-                              String(Math.max(0, (parseFloat(prev) || 0) - 1))
-                            )
-                          }
+                          onClick={() => {
+                            const v = String(Math.max(0, (parseFloat(height) || 0) - 1));
+                            setHeight(v);
+                            autoSaveTrigger({ ...getFormSnapshot(), height: v });
+                          }}
                         >
                           <svg
                             width="12"
@@ -829,15 +891,17 @@ const ProfileScreen = () => {
                         type="number"
                         placeholder="Peso"
                         value={weight}
-                        onChange={(e) => setWeight(e.target.value)}
+                        onChange={(e) => { setWeight(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), weight: e.target.value }); }}
                       />
                       <div className="profile-number-spinner">
                         <button
                           type="button"
                           className="profile-spinner-button profile-spinner-up"
-                          onClick={() =>
-                            setWeight((prev) => String((parseFloat(prev) || 0) + 1))
-                          }
+                          onClick={() => {
+                            const v = String((parseFloat(weight) || 0) + 1);
+                            setWeight(v);
+                            autoSaveTrigger({ ...getFormSnapshot(), weight: v });
+                          }}
                         >
                           <svg
                             width="12"
@@ -859,11 +923,11 @@ const ProfileScreen = () => {
                         <button
                           type="button"
                           className="profile-spinner-button profile-spinner-down"
-                          onClick={() =>
-                            setWeight((prev) =>
-                              String(Math.max(0, (parseFloat(prev) || 0) - 1))
-                            )
-                          }
+                          onClick={() => {
+                            const v = String(Math.max(0, (parseFloat(weight) || 0) - 1));
+                            setWeight(v);
+                            autoSaveTrigger({ ...getFormSnapshot(), weight: v });
+                          }}
                         >
                           <svg
                             width="12"
@@ -1022,13 +1086,16 @@ const ProfileScreen = () => {
                 </div>
 
                 {/* Primary save button — full width */}
+                {isAutoSaving && !hasChanges() && (
+                  <p className="profile-autosave-indicator">Guardando...</p>
+                )}
                 {hasChanges() && (
                   <button
                     className="profile-save-button"
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || isAutoSaving}
                   >
-                    {saving ? 'Guardando\u2026' : 'Guardar cambios'}
+                    {saving || isAutoSaving ? 'Guardando\u2026' : 'Guardar cambios'}
                   </button>
                 )}
               </div>

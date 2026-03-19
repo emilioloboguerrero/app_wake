@@ -46,7 +46,7 @@
   flex-direction: column;
   width: 100%;
   min-height: calc(100vh - 320px);
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
 }
 
 body.header-scrolled .program-page {
@@ -87,7 +87,7 @@ body.header-scrolled .program-page--compact-header {
   gap: 4px;
   padding: 0 32px;
   min-height: 52px;
-  background: #1a1a1a;
+  background: var(--canvas);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -141,7 +141,7 @@ body.header-scrolled .program-page--compact-header {
 /* ========== Low-ticket: tab bar in one-on-one style (sliding pill, text-only) ========== */
 /* Tab bar lives inside .program-page__main (overflow: auto), so sticky is relative to that scroll container. Use top: 0 so it sticks to the top of the content area (flush under the header). */
 .program-detail-tab-bar--client-style.program-detail-tab-bar {
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   padding: 16px 32px;
   position: sticky;
   top: 0;
@@ -304,7 +304,7 @@ body.header-scrolled .program-page--compact-header {
   width: 300px;
   min-width: 300px;
   flex-shrink: 0;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;
@@ -826,7 +826,7 @@ body.header-scrolled .program-page--compact-header {
 .program-tab-title {
   font-size: 2rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 24px 0;
 }
 
@@ -841,7 +841,7 @@ body.header-scrolled .program-page--compact-header {
 .program-detail-error {
   padding: 40px 20px;
   text-align: center;
-  color: #cccccc;
+  color: var(--text-secondary);
 }
 
 .program-detail-error {
@@ -2351,7 +2351,7 @@ body.header-scrolled .program-page--compact-header {
 }
 
 .anuncios-screens-container::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
 }
 
 .anuncios-screens-container::-webkit-scrollbar-thumb {
@@ -3127,13 +3127,13 @@ body.header-scrolled .program-page--compact-header {
 .module-card-title {
   font-size: 2rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 8px 0;
 }
 
 .module-card-description {
   font-size: 0.9rem;
-  color: #cccccc;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -3267,7 +3267,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 50%;
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 700;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -3378,13 +3378,13 @@ body.header-scrolled .program-page--compact-header {
 .session-card-title {
   font-size: 2rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 8px 0;
 }
 
 .session-card-description {
   font-size: 0.9rem;
-  color: #cccccc;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -3544,7 +3544,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 50%;
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 700;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -3675,7 +3675,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 50%;
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 700;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -3702,7 +3702,7 @@ body.header-scrolled .program-page--compact-header {
 .exercise-card-title {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   display: flex;
   align-items: center;
@@ -3710,7 +3710,7 @@ body.header-scrolled .program-page--compact-header {
 
 .exercise-card-description {
   font-size: 0.9rem;
-  color: #cccccc;
+  color: var(--text-secondary);
   margin: 0 0 16px 0;
   line-height: 1.5;
 }
@@ -3883,7 +3883,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 999px;
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -4036,7 +4036,7 @@ body.header-scrolled .program-page--compact-header {
 }
 
 .exercise-tab-content::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
 }
 
 .exercise-tab-content::-webkit-scrollbar-thumb {
@@ -4502,7 +4502,7 @@ body.header-scrolled .program-page--compact-header {
 }
 
 .library-exercise-selection-modal-content::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
 }
 
 .library-exercise-selection-modal-content::-webkit-scrollbar-thumb {
@@ -4519,7 +4519,7 @@ body.header-scrolled .program-page--compact-header {
 }
 
 .library-exercise-selection-list::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
 }
 
 .library-exercise-selection-list::-webkit-scrollbar-thumb {
@@ -4618,7 +4618,7 @@ body.header-scrolled .program-page--compact-header {
 .exercise-series-number {
   font-size: 18px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   min-width: 32px;
   text-align: center;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -4714,7 +4714,7 @@ body.header-scrolled .program-page--compact-header {
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   text-align: center;
@@ -5176,7 +5176,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  color: var(--text-primary);
 }
 .sets-panel-glass-input:focus,
 .sets-panel-glass-input-wrap .exercise-series-input:focus {
@@ -5234,7 +5234,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  color: var(--text-primary);
 }
 .sets-detail-input:focus { outline: none; border-color: rgba(255, 255, 255, 0.15); }
 .sets-detail-action-btn {
@@ -5250,7 +5250,7 @@ body.header-scrolled .program-page--compact-header {
 }
 .sets-detail-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.15);
 }
 .sets-detail-save { color: rgba(144, 202, 119, 0.95); }
@@ -5310,7 +5310,7 @@ body.header-scrolled .program-page--compact-header {
 
 .sets-panel-number-btn:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .sets-panel-number-input {
@@ -5372,7 +5372,7 @@ body.header-scrolled .program-page--compact-header {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
 }
 
@@ -5874,7 +5874,7 @@ body.header-scrolled .program-page--compact-header {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 14px;
   margin-bottom: 16px;
   box-sizing: border-box;
@@ -6267,7 +6267,7 @@ body.header-scrolled .program-page--compact-header {
 .lab-section-title {
   font-size: 1.75rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   padding: 0;
   border: none;
@@ -6637,7 +6637,7 @@ body.header-scrolled .program-page--compact-header {
 .lab-metric-value {
   font-size: 2rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   line-height: 1.2;
   flex: 1;
@@ -6719,7 +6719,7 @@ body.header-scrolled .program-page--compact-header {
 .lab-top-exercise-name {
   flex: 1;
   font-size: 0.9375rem;
-  color: #ffffff;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -6940,7 +6940,7 @@ body.header-scrolled .program-page--compact-header {
 
 .lab-profile-value {
   font-size: 1rem;
-  color: #ffffff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -6972,7 +6972,7 @@ body.header-scrolled .program-page--compact-header {
 
 .lab-profile-answer-value {
   font-size: 0.875rem;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .lab-profile-sample-size {
@@ -7004,7 +7004,7 @@ body.header-scrolled .program-page--compact-header {
   width: 160px;
   height: 160px;
   border-radius: 50%;
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -7015,7 +7015,7 @@ body.header-scrolled .program-page--compact-header {
 .lab-gauge-value {
   font-size: 2.5rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -7094,7 +7094,7 @@ body.header-scrolled .program-page--compact-header {
 
 .user-info-value {
   font-size: 1rem;
-  color: #ffffff;
+  color: var(--text-primary);
   font-weight: 400;
 }
 
@@ -7132,7 +7132,7 @@ body.header-scrolled .program-page--compact-header {
 }
 
 .copy-session-list::-webkit-scrollbar-track {
-  background-color: #2a2a2a;
+  background-color: var(--surface-3);
 }
 
 .copy-session-list::-webkit-scrollbar-thumb {
@@ -7211,5 +7211,246 @@ body.header-scrolled .program-page--compact-header {
 .copy-session-item-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ========== pd- utility classes (extracted from inline styles) ========== */
+
+/* Hides file inputs that are triggered by a wrapping label */
+.pd-hidden-input {
+  display: none;
+}
+
+/* One-on-one program notice banner */
+.pd-one-on-one-notice {
+  margin-bottom: 24px;
+}
+
+.pd-one-on-one-notice-text {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+}
+
+/* Content-plan linked box in Contenido tab */
+.pd-content-plan-box {
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+}
+
+.pd-content-plan-text {
+  margin: 0;
+  margin-bottom: 16px;
+}
+
+.pd-content-plan-link-btn {
+  align-self: flex-start;
+}
+
+/* Toggle label rows (weight suggestions, free trial) */
+.pd-toggle-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+/* Auxiliary library card content area */
+.pd-lib-card-content {
+  cursor: pointer;
+  flex: 1;
+}
+
+/* Auxiliary library toggle element */
+.pd-lib-toggle {
+  cursor: pointer;
+}
+
+/* Scrollable modal panel (create/copy module & session "crear" page) */
+.pd-modal-scroll-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Sticky footer inside modal panels */
+.pd-modal-footer-actions {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+/* Header row inside modal panels (library + session creation) */
+.pd-modal-section-header-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+/* "New item" button inside modal header rows */
+.pd-modal-new-btn {
+  min-width: auto;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Large icon inside modal new-item buttons and preset create button */
+.pd-modal-new-btn-icon {
+  font-size: 18px;
+}
+
+/* Small metadata text for library items (sessions, modules) */
+.pd-copy-item-meta {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Action group at end of copy-item rows */
+.pd-copy-item-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* "Editar" quick-action button on library copy items */
+.pd-copy-item-edit-btn {
+  min-width: auto;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+/* Image section inside copy-session create panel */
+.pd-session-image-edit {
+  flex: 0 1 auto;
+  min-height: 300px;
+  max-height: 400px;
+}
+
+/* Inline config inputs – specific widths */
+.pd-inline-input-min200 {
+  min-width: 200px;
+}
+
+.pd-inline-input-max140 {
+  max-width: 140px;
+}
+
+.pd-inline-input-w56 {
+  width: 56px;
+}
+
+.pd-inline-input-w64 {
+  width: 64px;
+}
+
+/* Exercise modal left-panel column stack */
+.pd-exercise-col-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Requirements summary box at top of exercise creation modal */
+.pd-requirements-box {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+}
+
+/* Small field note with top margin only */
+.pd-note-top {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+/* Section header row with space-between layout and bottom margin */
+.pd-section-spaced-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* Zero-margin note text */
+.pd-note-no-margin {
+  margin: 0;
+}
+
+/* Empty-state area with extra vertical padding */
+.pd-empty-state-padded {
+  padding: 24px 16px;
+}
+
+/* Faded icon inside empty states */
+.pd-empty-icon-faded {
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+/* Footer area inside sets/exercise panels – pushes to bottom */
+.pd-sets-footer {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Info box with subtle background (optional config section) */
+.pd-info-box {
+  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Icon inside info box */
+.pd-info-box-icon {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* Text inside info box */
+.pd-info-box-text {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.5;
+}
+
+/* Field note with only bottom margin */
+.pd-note-margin-bottom {
+  margin-bottom: 16px;
+}
+
+/* Help text at bottom of create-exercise footer */
+.pd-help-text-top {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+/* Required field marker (*) */
+.pd-required-marker {
+  color: rgba(255, 68, 68, 0.9);
+}
+
+/* Utility: hidden element */
+.pd-hidden {
+  display: none;
+}
+
+/* Utility: full-width element */
+.pd-full-width {
+  width: 100%;
+}
+
+/* Utility: large icon font size */
+.pd-icon-lg {
+  font-size: 18px;
 }
 

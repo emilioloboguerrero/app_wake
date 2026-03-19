@@ -48,7 +48,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #1a1a1a;
+  background: var(--canvas);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -162,7 +162,7 @@
 }
 
 .week-volume-drawer-content::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--canvas);
   border-radius: 4px;
 }
 
@@ -301,7 +301,7 @@
 }
 
 .week-volume-drawer-sets-card-scroll::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--canvas);
   border-radius: 3px;
 }
 
@@ -385,7 +385,7 @@
 }
 
 .week-volume-drawer-cards-row::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--canvas);
   border-radius: 3px;
 }
 

@@ -29,6 +29,7 @@ import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plan
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import useConfirm from '../hooks/useConfirm';
 import './ClientProgramScreen.css';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -90,6 +91,7 @@ const ClientProgramScreen = () => {
   const { clientId } = useParams();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
@@ -945,7 +947,8 @@ const ClientProgramScreen = () => {
 
   const handleDeleteSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId) return;
-    if (!window.confirm('¿Eliminar esta sesión del día?')) return;
+    const ok = await confirm('¿Eliminar esta sesión del día?');
+    if (!ok) return;
     setIsDeletingSessionAssignment(true);
     try {
       await clientSessionService.removeSessionFromDate(
@@ -1024,7 +1027,8 @@ const ClientProgramScreen = () => {
 
   const handleResetPlanWeek = async ({ assignment, weekKey }) => {
     if (!client?.clientUserId || !selectedProgramId || weekKey == null || !assignment?.planId) return;
-    if (!window.confirm('¿Restablecer esta semana al plan original? Se usará de nuevo el contenido del plan para todos.')) return;
+    const ok = await confirm('¿Restablecer esta semana al plan original? Se usará de nuevo el contenido del plan para todos.');
+    if (!ok) return;
     setIsResettingPlanWeek(true);
     try {
       await clientPlanContentService.deleteClientPlanContent(client.clientUserId, selectedProgramId, weekKey);
@@ -1093,7 +1097,8 @@ const ClientProgramScreen = () => {
 
   const handleDeletePlanSession = async ({ session, weekKey, weekContent }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id || !weekKey) return;
-    if (!window.confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.')) return;
+    const ok = await confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.');
+    if (!ok) return;
     setIsDeletingPlanSession(true);
     try {
       if (!weekContent?.fromClientCopy) {
@@ -2257,6 +2262,7 @@ const ClientProgramScreen = () => {
           historyOnlyData={performanceModalContext?.historyOnlyData ?? null}
         />
       </div>
+      {ConfirmModal}
     </DashboardLayout>
     </ErrorBoundary>
   );

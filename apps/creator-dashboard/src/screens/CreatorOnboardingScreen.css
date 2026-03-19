@@ -32,7 +32,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   color: var(--text-secondary);
   cursor: pointer;
@@ -208,7 +208,7 @@
   transition:
     border-color var(--duration-base) ease,
     background var(--duration-base) ease;
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
 }
 
 .ob-avatar-zone:hover,
@@ -278,7 +278,7 @@
   gap: 16px;
   padding: 16px 20px;
   border-radius: var(--radius-lg, 16px);
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   cursor: pointer;
   text-align: left;
@@ -356,7 +356,7 @@
   justify-content: space-between;
   padding: 13px 20px;
   border-radius: var(--radius-md, 10px);
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   cursor: pointer;
   text-align: left;
@@ -394,7 +394,7 @@
   max-width: 440px;
   padding: 14px 16px;
   border-radius: var(--radius-md, 10px);
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
   border: 1px solid var(--border-default, rgba(255,255,255,0.1));
   color: var(--text-primary);
   font-family: var(--font-sans, 'Inter', sans-serif);
@@ -421,7 +421,7 @@
 .ob-founder-card {
   width: 100%;
   max-width: 460px;
-  background: var(--surface-2, #2a2a2a);
+  background: var(--surface-2, #222);
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   border-radius: var(--radius-xl, 24px);
   padding: 32px 36px;

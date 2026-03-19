@@ -1,0 +1,147 @@
+/* ── LibraryModuleDetailScreen ────────────────────────────── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Page container */
+.lmd-page {
+  background: var(--canvas);
+  min-height: 100vh;
+  padding: 32px;
+  animation: fadeUp 0.35s var(--spring) both;
+}
+
+.lmd-inner {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Page header */
+.lmd-header {
+  margin-bottom: 32px;
+}
+
+.lmd-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.lmd-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 4px 0 0 0;
+}
+
+/* Section label */
+.lmd-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0 0 16px 0;
+}
+
+/* Action buttons row */
+.lmd-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.lmd-btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 150ms var(--spring), color 150ms var(--spring);
+}
+
+.lmd-btn-outline:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+
+.lmd-btn-primary {
+  background: var(--text-primary);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 150ms var(--spring);
+}
+
+.lmd-btn-primary:hover {
+  opacity: 0.88;
+}
+
+/* Sessions list */
+.lmd-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Session card */
+.lmd-session-card {
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: background 150ms var(--spring), border-color 150ms var(--spring);
+  border: 1px solid transparent;
+  animation: fadeUp 0.35s var(--spring) both;
+  animation-delay: calc(var(--index, 0) * 50ms);
+}
+
+.lmd-session-card:hover {
+  background: var(--surface-3);
+  border-color: var(--border-subtle);
+}
+
+/* Order number / drag handle */
+.lmd-session-order {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  min-width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+/* Session title */
+.lmd-session-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+}
+
+/* Session meta */
+.lmd-session-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Empty state */
+.lmd-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}

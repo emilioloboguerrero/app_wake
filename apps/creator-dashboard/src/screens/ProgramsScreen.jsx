@@ -564,8 +564,8 @@ const ProgramsScreen = () => {
                     </div>
                   )}
                   <div className="program-card-footer">
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div className="program-card-footer-meta">
+                      <div className="program-card-week-row">
                         {weekCount > 0 && (
                           <span className="program-card-count">
                             {weekCount} {weekCount === 1 ? 'semana' : 'semanas'}
@@ -592,7 +592,7 @@ const ProgramsScreen = () => {
       >
         <div className="one-on-one-modal-content">
           {deliveryType === 'one_on_one' && (
-            <p className="one-on-one-field-note" style={{ marginBottom: '16px', padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px' }}>
+            <p className="one-on-one-field-note one-on-one-info-note">
               Los programas generales son contenedores (metadata: título, imagen, descripción). El contenido (semanas y sesiones) se asigna por cliente en la ficha de cada cliente.
             </p>
           )}
@@ -605,7 +605,7 @@ const ProgramsScreen = () => {
             <div className="one-on-one-modal-section-content">
               <div className="edit-program-input-group">
                 <label className="edit-program-input-label">
-                  Nombre del Programa <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                  Nombre del Programa <span className="required-asterisk">*</span>
                 </label>
                 <Input
                   placeholder="Ej: Programa de Fuerza Avanzado"
@@ -630,7 +630,7 @@ const ProgramsScreen = () => {
               <div style={{ display: 'grid', gridTemplateColumns: deliveryType === 'one_on_one' ? '1fr' : '1fr 1fr', gap: '20px' }}>
                 <div className="edit-program-input-group">
                   <label className="edit-program-input-label">
-                    Disciplina <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                    Disciplina <span className="required-asterisk">*</span>
                   </label>
                   <select
                     className="program-config-dropdown"
@@ -647,7 +647,7 @@ const ProgramsScreen = () => {
                 {deliveryType !== 'one_on_one' && (
                   <div className="edit-program-input-group">
                     <label className="edit-program-input-label">
-                      Tipo <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span>
+                      Tipo <span className="required-asterisk">*</span>
                     </label>
                     <select
                       className="program-config-dropdown"
@@ -678,11 +678,11 @@ const ProgramsScreen = () => {
                 {programType === 'one-time' ? (
                   <div className="edit-program-input-group">
                     <label className="edit-program-input-label">Duración (semanas)</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                    <div className="programs-duration-row">
+                      <div className="programs-duration-input-group">
                         <input
                           type="number"
-                          className="duration-input"
+                          className="duration-input programs-duration-input"
                           value={duration}
                           onChange={(e) => {
                             const value = parseInt(e.target.value, 10) || 1;
@@ -691,34 +691,12 @@ const ProgramsScreen = () => {
                             }
                           }}
                           min="1"
-                          style={{
-                            width: '80px',
-                            padding: '12px 16px',
-                            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: '8px',
-                            color: 'rgba(255, 255, 255, 0.8)',
-                            fontSize: '14px',
-                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-                          }}
                         />
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div className="programs-duration-stepper">
                           <button
                             type="button"
                             onClick={handleDurationIncrement}
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              borderRadius: '4px',
-                              color: 'rgba(255, 255, 255, 0.8)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: 0
-                            }}
+                            className="programs-duration-stepper-btn"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                               <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/>
@@ -729,18 +707,11 @@ const ProgramsScreen = () => {
                             onClick={handleDurationDecrement}
                             disabled={duration <= 1}
                             style={{
-                              width: '24px',
-                              height: '24px',
                               backgroundColor: duration <= 1 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.08)',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              borderRadius: '4px',
                               color: duration <= 1 ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.8)',
                               cursor: duration <= 1 ? 'not-allowed' : 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: 0
                             }}
+                            className="programs-duration-stepper-btn"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                               <path d="M19 9L12 16L5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -748,7 +719,7 @@ const ProgramsScreen = () => {
                           </button>
                         </div>
                       </div>
-                      <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
+                      <span className="programs-duration-week-label">
                         {duration === 1 ? 'Semana' : 'Semanas'}
                       </span>
                     </div>
@@ -756,15 +727,7 @@ const ProgramsScreen = () => {
                 ) : (
                   <div className="edit-program-input-group">
                     <label className="edit-program-input-label">Duración</label>
-                    <div style={{ 
-                      padding: '12px 16px',
-                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      color: 'rgba(255, 255, 255, 0.6)',
-                      fontSize: '14px',
-                      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-                    }}>
+                    <div className="programs-subscription-duration">
                       Mensual
                     </div>
                     <p className="one-on-one-field-note">
@@ -801,7 +764,7 @@ const ProgramsScreen = () => {
               <span className="one-on-one-modal-section-badge-optional">Opcional</span>
             </div>
             <div className="one-on-one-modal-section-content">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="programs-visual-content-grid">
                 {/* Image Card */}
                 <div className="program-config-card">
                   <div className="program-config-card-header">
@@ -837,11 +800,11 @@ const ProgramsScreen = () => {
                     ) : (
                       <button
                         type="button"
-                        style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, width: '100%' }}
+                        className="programs-image-upload-btn"
                         onClick={() => setIsMediaPickerOpen(true)}
                       >
                         <div className="program-config-card-placeholder">
-                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '8px', opacity: 0.5 }}>
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="programs-placeholder-icon">
                             <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3M12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                           <span>Subir imagen</span>
@@ -866,7 +829,7 @@ const ProgramsScreen = () => {
                             className="program-config-card-video"
                           />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        <div className="programs-video-action-row">
                           <label className="edit-program-image-action-pill">
                             <input
                               type="file"
@@ -882,7 +845,7 @@ const ProgramsScreen = () => {
                                   reader.readAsDataURL(file);
                                 }
                               }}
-                              style={{ display: 'none' }}
+                              className="programs-file-input-hidden"
                               disabled={isUploadingIntroVideo}
                             />
                             <span className="edit-program-image-action-text">
@@ -915,7 +878,7 @@ const ProgramsScreen = () => {
                         </div>
                       </>
                     ) : (
-                      <label style={{ cursor: 'pointer' }}>
+                      <label className="programs-file-label">
                         <input
                           type="file"
                           accept="video/*"
@@ -930,11 +893,11 @@ const ProgramsScreen = () => {
                               reader.readAsDataURL(file);
                             }
                           }}
-                          style={{ display: 'none' }}
+                          className="programs-file-input-hidden"
                           disabled={isUploadingIntroVideo}
                         />
                         <div className="program-config-card-placeholder">
-                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '8px', opacity: 0.5 }}>
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="programs-placeholder-icon">
                             <path d="M15 10L19.553 7.276C19.834 7.107 20.181 7.107 20.462 7.276C20.743 7.445 21 7.796 21 8.118V15.882C21 16.204 20.743 16.555 20.462 16.724C20.181 16.893 19.834 16.893 19.553 16.724L15 14M5 18H13C13.5304 18 14.0391 17.7893 14.4142 17.4142C14.7893 17.0391 15 16.5304 15 16V8C15 7.46957 14.7893 6.96086 14.4142 6.58579C14.0391 6.21071 13.5304 6 13 6H5C4.46957 6 3.96086 6.21071 3.58579 6.58579C3.21071 6.96086 3 7.46957 3 8V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                           <span>Subir video</span>
@@ -956,7 +919,7 @@ const ProgramsScreen = () => {
             <div className="one-on-one-modal-section-content">
               {/* Free Trial */}
               <div className="one-on-one-config-item">
-                <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
+                <label className="edit-program-input-label programs-config-toggle-label">
                   <span>Prueba Gratis</span>
                   <label className="elegant-toggle">
                     <input
@@ -971,8 +934,8 @@ const ProgramsScreen = () => {
                   Permite a los usuarios probar el programa gratis antes de comprarlo
                 </p>
                 {freeTrialActive && (
-                  <div style={{ marginTop: '12px' }}>
-                    <label className="edit-program-input-label" style={{ marginBottom: '8px', display: 'block', fontSize: '13px' }}>
+                  <div className="programs-free-trial-sub">
+                    <label className="edit-program-input-label programs-free-trial-sub-label">
                       Duración de la prueba gratis (días)
                     </label>
                     <Input
@@ -989,10 +952,10 @@ const ProgramsScreen = () => {
                 )}
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '8px' }}>
+              <div className="programs-config-options-grid">
                 {/* Weight Suggestions */}
                 <div className="one-on-one-config-item">
-                  <label className="edit-program-input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}>
+                  <label className="edit-program-input-label programs-config-toggle-label">
                     <span>Sugerencias de Peso</span>
                     <label className="elegant-toggle">
                       <input
@@ -1010,18 +973,18 @@ const ProgramsScreen = () => {
               </div>
               
               {/* Available Libraries */}
-              <div className="edit-program-input-group" style={{ marginTop: '8px', gridColumn: '1 / -1' }}>
+              <div className="edit-program-input-group programs-libraries-group">
                 <label className="edit-program-input-label">Bibliotecas Disponibles</label>
-                <p className="one-on-one-field-note" style={{ marginBottom: '12px' }}>
+                <p className="one-on-one-field-note programs-library-field-note">
                   Selecciona las bibliotecas de ejercicios que estarán disponibles para construir este programa
                 </p>
                 {availableLibraries.length === 0 ? (
                   <div className="one-on-one-empty-state">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.4, marginBottom: '8px' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="programs-empty-state-icon">
                       <path d="M4 19.5C4 18.837 4.26339 18.2011 4.73223 17.7322C5.20107 17.2634 5.83696 17 6.5 17H20M4 19.5C4 20.163 4.26339 20.7989 4.73223 21.2678C5.20107 21.7366 5.83696 22 6.5 22H20M4 19.5V9.5M20 19.5V9.5M20 19.5L18 17M4 19.5L6 17M4 9.5C4 8.83696 4.26339 8.20107 4.73223 7.73223C5.20107 7.26339 5.83696 7 6.5 7H20C20.663 7 21.2989 7.26339 21.7678 7.73223C22.2366 8.20107 22.5 8.83696 22.5 9.5V19.5C22.5 20.163 22.2366 20.7989 21.7678 21.2678C21.2989 21.7366 20.663 22 20 22H6.5C5.83696 22 5.20107 21.7366 4.73223 21.2678C4.26339 20.7989 4 20.163 4 19.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     <p>No tienes bibliotecas disponibles</p>
-                    <p style={{ fontSize: '12px', marginTop: '4px', opacity: 0.6 }}>Crea una biblioteca primero desde la pestaña "Ejercicios"</p>
+                    <p className="programs-empty-state-subtext">Crea una biblioteca primero desde la pestaña "Ejercicios"</p>
                   </div>
                 ) : (
                   <div className="one-on-one-libraries-grid">
@@ -1044,7 +1007,7 @@ const ProgramsScreen = () => {
                           }}
                           className={`one-on-one-library-item ${isSelected ? 'one-on-one-library-item-selected' : ''}`}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                          <div className="programs-library-item-inner">
                             {isSelected && (
                               <div className="one-on-one-library-check">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1070,16 +1033,16 @@ const ProgramsScreen = () => {
               <span className="one-on-one-modal-section-badge-optional">Opcional</span>
             </div>
             <div className="one-on-one-modal-section-content">
-              <p className="one-on-one-config-description" style={{ marginBottom: 16 }}>
+              <p className="one-on-one-config-description programs-tutorials-description">
                 Videos que verán los usuarios la primera vez que entren a cada pantalla de la app (MP4, M4V o MOV).
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="programs-tutorials-list">
                 {TUTORIAL_SCREENS.map(({ key, label }) => (
-                  <div key={key} className="one-on-one-config-item" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <label className="edit-program-input-label" style={{ minWidth: 180, marginBottom: 0 }}>
+                  <div key={key} className="one-on-one-config-item programs-tutorial-item">
+                    <label className="edit-program-input-label programs-tutorial-label">
                       {label}
                     </label>
-                    <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="programs-tutorial-upload-label">
                       <input
                         type="file"
                         accept="video/mp4,video/x-m4v,video/quicktime,.mp4,.m4v,.mov"
@@ -1087,18 +1050,9 @@ const ProgramsScreen = () => {
                           const file = e.target.files?.[0];
                           setTutorialFiles((prev) => ({ ...prev, [key]: file || null }));
                         }}
-                        style={{ display: 'none' }}
+                        className="programs-file-input-hidden"
                       />
-                      <span
-                        className="edit-program-image-action-pill"
-                        style={{
-                          padding: '8px 14px',
-                          fontSize: 13,
-                          background: 'rgba(255,255,255,0.08)',
-                          border: '1px solid rgba(255,255,255,0.2)',
-                          borderRadius: 8,
-                        }}
-                      >
+                      <span className="edit-program-image-action-pill programs-tutorial-upload-pill">
                         {tutorialFiles[key] ? tutorialFiles[key].name : 'Subir video'}
                       </span>
                     </label>
@@ -1106,8 +1060,7 @@ const ProgramsScreen = () => {
                       <button
                         type="button"
                         onClick={() => setTutorialFiles((prev) => ({ ...prev, [key]: null }))}
-                        className="edit-program-image-action-pill edit-program-image-delete-pill"
-                        style={{ padding: '8px 12px', fontSize: 13 }}
+                        className="edit-program-image-action-pill edit-program-image-delete-pill programs-tutorial-remove-btn"
                       >
                         Quitar
                       </button>
@@ -1127,7 +1080,7 @@ const ProgramsScreen = () => {
               loading={createProgramMutation.isPending || isUploadingImage || isUploadingIntroVideo || isUploadingTutorials}
             />
             <p className="one-on-one-modal-help-text">
-              Los campos marcados con <span style={{ color: 'rgba(255, 68, 68, 0.9)' }}>*</span> son requeridos. Podrás agregar contenido después de crear el programa.
+              Los campos marcados con <span className="programs-required-star">*</span> son requeridos. Podrás agregar contenido después de crear el programa.
             </p>
           </div>
         </div>

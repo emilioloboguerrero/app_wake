@@ -208,7 +208,7 @@
 }
 
 .content-hub-card--session .content-hub-card-title--overlay {
-  color: #fff;
+  color: var(--text-primary);
   margin: 0;
   font-size: 16px;
   font-weight: 600;

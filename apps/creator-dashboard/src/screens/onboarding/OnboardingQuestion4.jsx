@@ -84,7 +84,7 @@ const OnboardingQuestion4 = ({ onAnswer, onNext, selectedAnswer: initialSelected
                   svgString={option.icon} 
                   width={32} 
                   height={32} 
-                  color={selectedAnswer === option.id ? '#ffffff' : '#ffffff'}
+                  color='var(--text-primary)'
                 />
               </div>
               <p className={`option-text ${selectedAnswer === option.id ? 'option-text-selected' : ''}`}>

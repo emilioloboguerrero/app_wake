@@ -123,7 +123,7 @@ const OnboardingQuestion2 = ({ onAnswer, onNext, selectedAnswers: initialSelecte
                   svgString={option.icon} 
                   width={option.id === 2 ? 40 : option.id === 3 ? 38 : 32} 
                   height={option.id === 2 ? 40 : option.id === 3 ? 38 : 32} 
-                  color={selectedAnswers.includes(option.id) ? '#ffffff' : '#ffffff'}
+                  color='var(--text-primary)'
                 />
               </div>
               <p className={`option-text ${selectedAnswers.includes(option.id) ? 'option-text-selected' : ''}`}>

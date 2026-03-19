@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import plansService from '../services/plansService';
-import './PlanningSidebar.css';
+import './PlansSidebar.css';
 
 const PlansSidebar = ({ 
   creatorId, 

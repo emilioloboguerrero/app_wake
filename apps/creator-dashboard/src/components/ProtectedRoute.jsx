@@ -13,8 +13,8 @@ const ProtectedRoute = ({ children, requireOnboarding = true, requireCreator = t
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff'
+        backgroundColor: 'var(--canvas)',
+        color: 'var(--text-primary)'
       }}>
         Cargando...
       </div>

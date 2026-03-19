@@ -11,6 +11,8 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import Modal from './Modal';
 import '../screens/ProgramDetailScreen.css';
+import '../screens/SharedScreenLayout.css';
+import './MeasuresObjectivesEditorModal.css';
 
 const getMeasureDisplayNameDefault = (measure, customMeasureLabels = {}) => {
   if (customMeasureLabels[measure]) return customMeasureLabels[measure];
