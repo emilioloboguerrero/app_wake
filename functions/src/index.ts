@@ -2044,8 +2044,16 @@ app.get("/api/v1/auth/me", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
     const userDoc = await db.collection("users").doc(auth.userId).get();
-    const data = userDoc.data();
-    res.json({ userId: auth.userId, role: auth.role, email: data?.email ?? "" });
+    const d = userDoc.data();
+    res.json({
+      data: {
+        uid: auth.userId,
+        email: d?.email ?? null,
+        displayName: d?.displayName ?? d?.name ?? null,
+        role: auth.role,
+        photoURL: d?.photoURL ?? d?.profilePictureUrl ?? null,
+      },
+    });
   } catch (err) { next(err); }
 });
 
@@ -9924,7 +9932,8 @@ app.patch("/api/v1/workout/client-programs/:programId/overrides", async (req, re
     const auth = await validateAuth(req);
     const { programId } = req.params;
     const { path, value } = req.body ?? {};
-    if (!path) throw apiError("VALIDATION_ERROR", "path is required", 400);
+    if (!path || typeof path !== "string") throw apiError("VALIDATION_ERROR", "path is required", 400, "path");
+    if (!path.startsWith("overrides.")) throw apiError("VALIDATION_ERROR", "path must start with 'overrides.'", 400, "path");
     const docId = `${auth.userId}_${programId}`;
     await db.collection("client_programs").doc(docId).update({
       [path]: value,
@@ -10175,26 +10184,24 @@ app.delete("/api/v1/users/me", async (req, res, next) => {
     await deleteSubcollection("exerciseHistory");
     await deleteSubcollection("sessionHistory");
 
-    const progressSnap = await db.collection("progress").get();
-    const userProgressDocs = progressSnap.docs.filter((d) => d.id.startsWith(userId + "_"));
-    if (userProgressDocs.length > 0) {
+    const progressSnap = await db.collection("progress")
+      .where("user_id", "==", userId).get();
+    if (!progressSnap.empty) {
       const batchSize = 500;
-      for (let i = 0; i < userProgressDocs.length; i += batchSize) {
+      for (let i = 0; i < progressSnap.docs.length; i += batchSize) {
         const b = db.batch();
-        userProgressDocs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
+        progressSnap.docs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
         await b.commit();
       }
     }
 
-    const userProgressSnap = await db.collection("user_progress").get();
-    const userProgressUserDocs = userProgressSnap.docs.filter(
-      (d) => d.id.startsWith(userId + "_") || d.id === userId
-    );
-    if (userProgressUserDocs.length > 0) {
+    const userProgressSnap = await db.collection("user_progress")
+      .where("user_id", "==", userId).get();
+    if (!userProgressSnap.empty) {
       const batchSize = 500;
-      for (let i = 0; i < userProgressUserDocs.length; i += batchSize) {
+      for (let i = 0; i < userProgressSnap.docs.length; i += batchSize) {
         const b = db.batch();
-        userProgressUserDocs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
+        userProgressSnap.docs.slice(i, i + batchSize).forEach((d) => b.delete(d.ref));
         await b.commit();
       }
     }
