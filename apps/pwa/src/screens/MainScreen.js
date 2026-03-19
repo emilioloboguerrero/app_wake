@@ -18,7 +18,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { getStorage, isWeb } from '../utils/platform';
 import { auth } from '../config/firebase';
-import purchaseService from '../services/purchaseService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import apiClient from '../utils/apiClient';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -37,6 +36,7 @@ import WakeLoader from '../components/WakeLoader';
 import { trackScreenView } from '../services/monitoringService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
+import { useUserCourses } from '../hooks/workout/useUserCourses';
 
 // Cards share no spacing — they overlap for the 3D carousel effect
 const CARD_SPACING = 0;
@@ -406,13 +406,7 @@ const MainScreen = ({ navigation, route }) => {
   const user = contextUser || auth.currentUser;
   const queryClientHook = useQueryClient();
 
-  // React Query: primary course data load
-  const { data: coursesQueryData, isLoading: coursesQueryLoading, isError: coursesQueryError, refetch: refetchCourses } = useQuery({
-    queryKey: queryKeys.user.courses(user?.uid),
-    queryFn: () => purchaseService.getUserPurchasedCourses(user.uid),
-    enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
-  });
+  const { courses: purchasedCoursesFromHook, isLoading: coursesQueryLoading, error: coursesQueryError, refetch: refetchCourses } = useUserCourses(user?.uid);
 
   // React Query: user profile
   const { data: profileQueryData } = useQuery({
@@ -446,12 +440,9 @@ const MainScreen = ({ navigation, route }) => {
   }, []);
 
   // Screen state
-  const purchasedCourses = useMemo(
-    () => (Array.isArray(coursesQueryData) ? coursesQueryData : []),
-    [coursesQueryData]
-  );
+  const purchasedCourses = purchasedCoursesFromHook;
   const loading = coursesQueryLoading;
-  const error = coursesQueryError ? 'Error al cargar tus cursos. Inténtalo de nuevo.' : null;
+  const error = coursesQueryError;
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,10 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -43,147 +45,62 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const { user: contextUser } = useAuth();
   // Fallback to Firebase auth when AuthContext user isn't ready yet (e.g. web/IndexedDB restore)
   const user = contextUser || auth.currentUser;
-  const [availableWeeks, setAvailableWeeks] = useState([]);
+  const userId = user?.uid;
+
   const [selectedWeek, setSelectedWeek] = useState(null);
-  const [currentWeek, setCurrentWeek] = useState(null);
-  const [weeklyVolumes, setWeeklyVolumes] = useState({});
-  const [weeklyMuscleVolume, setWeeklyMuscleVolume] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [loadingWeek, setLoadingWeek] = useState(false);
   const [isWeekSelectorVisible, setIsWeekSelectorVisible] = useState(false);
-  
+
   // Muscle volume info modal state
   const [isMuscleVolumeInfoModalVisible, setIsMuscleVolumeInfoModalVisible] = useState(false);
   const [selectedMuscleVolumeInfo, setSelectedMuscleVolumeInfo] = useState(null);
-  
+
   // Scroll tracking for pagination indicator
   const scrollX = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    const currentWeekKey = getMondayWeek();
-    setCurrentWeek(currentWeekKey);
-  }, []);
+  const currentWeek = getMondayWeek();
 
-  useEffect(() => {
-    if (!user?.uid) return;
-    loadAvailableWeeks();
-  }, [user?.uid]);
+  const { data: userData, isLoading: loading } = useQuery({
+    queryKey: queryKeys.user.detail(userId),
+    queryFn: () => apiClient.get('/users/me').then(r => r.data),
+    enabled: !!userId,
+    ...cacheConfig.userProfile,
+  });
 
-  useEffect(() => {
-    if (selectedWeek) {
-      loadWeeklyData(selectedWeek);
-    }
-  }, [selectedWeek]);
+  const weeklyMuscleVolume = useMemo(() => userData?.weeklyMuscleVolume ?? {}, [userData]);
 
-  // Log user/id when volume section is shown (to verify userId is passed correctly to WeeklyMuscleVolumeCard)
-  useEffect(() => {
-    if (selectedWeek && user) {
-      logger.log('[WeeklyVolumeHistoryScreen] User for volume card:', { hasUser: true, uid: user.uid });
-    } else if (selectedWeek) {
-      logger.warn('[WeeklyVolumeHistoryScreen] Volume section visible but no user:', { selectedWeek });
-    }
-  }, [selectedWeek, user]);
+  const availableWeeks = useMemo(() => {
+    const weeksWithData = Object.keys(weeklyMuscleVolume)
+      .filter(week => Object.keys(weeklyMuscleVolume[week]).length > 0);
 
-  const loadAvailableWeeks = async () => {
-    if (!user?.uid) {
-      logger.warn('[WeeklyVolumeHistoryScreen] loadAvailableWeeks skipped – no user');
-      return;
-    }
-    try {
-      setLoading(true);
-      const currentWeekKey = getMondayWeek();
-      const data = await firestoreService.getUser(user.uid);
-
-      if (data) {
-        const weeklyMuscleVolumeData = data.weeklyMuscleVolume || {};
-        setWeeklyMuscleVolume(weeklyMuscleVolumeData);
-        
-        // Get all weeks with data
-        const weeksWithData = Object.keys(weeklyMuscleVolumeData)
-          .filter(week => Object.keys(weeklyMuscleVolumeData[week]).length > 0);
-        
-        // Generate all weeks from the first week with data (or 12 weeks ago) to current week
-        let startDate;
-        if (weeksWithData.length > 0) {
-          // Find the earliest week with data
-          const sortedWeeksWithData = weeksWithData.sort((a, b) => a.localeCompare(b));
-          const firstWeekWithData = sortedWeeksWithData[0];
-          // Parse the first week to get its start date
-          const [year, weekWithW] = firstWeekWithData.split('-');
-          const week = weekWithW.replace('W', '');
-          const jan1 = new Date(year, 0, 1);
-          const jan1Day = jan1.getDay();
-          const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
-          const firstMonday = new Date(jan1);
-          firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
-          const weekStart = new Date(firstMonday);
-          weekStart.setDate(firstMonday.getDate() + (parseInt(week) - 1) * 7);
-          startDate = weekStart;
-        } else {
-          // If no data, show last 12 weeks
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - (12 * 7));
-        }
-        
-        // Generate all weeks from start date to current week
-        const allWeeks = getWeeksBetween(startDate, new Date());
-        
-        // Sort newest first so current week appears at top of week selector
-        const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
-        
-        setAvailableWeeks(weeks);
-        
-        // Set current week as default
-        setSelectedWeek(currentWeekKey);
-        
-        logger.log('✅ Available weeks loaded:', weeks.length, 'weeks');
-        logger.log('🔍 DEBUG: Weeks with data:', weeksWithData.length);
-        logger.log('🔍 DEBUG: Current week key:', currentWeekKey);
-      } else {
-        // Even if no data exists, show last 12 weeks
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - (12 * 7));
-        const allWeeks = getWeeksBetween(startDate, new Date());
-        const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
-        setAvailableWeeks(weeks);
-        setSelectedWeek(currentWeekKey);
-        logger.log('✅ No data found, showing last 12 weeks:', weeks.length);
-      }
-    } catch (error) {
-      logger.error('❌ Error loading available weeks:', error);
-      // Fallback: show last 12 weeks
-      const currentWeekKey = getMondayWeek();
-      const startDate = new Date();
+    let startDate;
+    if (weeksWithData.length > 0) {
+      const sortedWeeksWithData = weeksWithData.slice().sort((a, b) => a.localeCompare(b));
+      const firstWeekWithData = sortedWeeksWithData[0];
+      const [year, weekWithW] = firstWeekWithData.split('-');
+      const week = weekWithW.replace('W', '');
+      const jan1 = new Date(year, 0, 1);
+      const jan1Day = jan1.getDay();
+      const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
+      const firstMonday = new Date(jan1);
+      firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
+      const weekStart = new Date(firstMonday);
+      weekStart.setDate(firstMonday.getDate() + (parseInt(week) - 1) * 7);
+      startDate = weekStart;
+    } else {
+      startDate = new Date();
       startDate.setDate(startDate.getDate() - (12 * 7));
-      const allWeeks = getWeeksBetween(startDate, new Date());
-      const weeks = [...allWeeks].sort((a, b) => b.localeCompare(a));
-      setAvailableWeeks(weeks);
-      setSelectedWeek(currentWeekKey);
-      logger.log('✅ Error fallback, showing last 12 weeks:', weeks.length);
-    } finally {
-      setLoading(false);
     }
-  };
+    return getWeeksBetween(startDate, new Date()).slice().sort((a, b) => b.localeCompare(a));
+  }, [weeklyMuscleVolume]);
 
-  const loadWeeklyData = async (week) => {
-    try {
-      setLoadingWeek(true);
-      const data = await firestoreService.getUser(user.uid);
+  const resolvedSelectedWeek = selectedWeek ?? currentWeek;
 
-      if (data) {
-        const weekData = data.weeklyMuscleVolume?.[week] || {};
-        setWeeklyVolumes(weekData);
-        logger.log('✅ Weekly data loaded for week:', week, weekData);
-      } else {
-        setWeeklyVolumes({});
-      }
-    } catch (error) {
-      logger.error('❌ Error loading weekly data:', error);
-      setWeeklyVolumes({});
-    } finally {
-      setLoadingWeek(false);
-    }
-  };
+  const weeklyVolumes = useMemo(
+    () => weeklyMuscleVolume[resolvedSelectedWeek] ?? {},
+    [weeklyMuscleVolume, resolvedSelectedWeek],
+  );
+
+  const handleWeekChange = (week) => setSelectedWeek(week);
 
   // Scroll handler for pagination indicator
   const onMuscleScroll = Animated.event(
@@ -263,8 +180,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           <MuscleVolumeStats weeklyMuscleVolume={weeklyMuscleVolume} />
 
           {/* Muscle Volume Section */}
-          {selectedWeek && (
-            <View style={styles.muscleVolumeSectionWrapper}>
+          <View style={styles.muscleVolumeSectionWrapper}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -278,23 +194,23 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
               >
                 {/* CARD 1: Muscle Silhouette */}
                 <View style={styles.muscleCardFirst}>
-                  <MuscleSilhouette 
-                    muscleVolumes={weeklyVolumes} 
-                    weekDisplayName={selectedWeek ? formatWeekDisplay(selectedWeek) : formatWeekDisplay(currentWeek)}
+                  <MuscleSilhouette
+                    muscleVolumes={weeklyVolumes}
+                    weekDisplayName={formatWeekDisplay(resolvedSelectedWeek)}
                     availableWeeks={availableWeeks}
-                    selectedWeek={selectedWeek}
+                    selectedWeek={resolvedSelectedWeek}
                     currentWeek={currentWeek}
-                    onWeekChange={setSelectedWeek}
+                    onWeekChange={handleWeekChange}
                     onInfoPress={handleMuscleVolumeInfoPress}
                   />
                 </View>
-                
+
                 {/* CARD 2: Weekly Sets List */}
                 <View style={styles.muscleCardSecond}>
-                  <WeeklyMuscleVolumeCard 
-                    userId={user?.uid} 
-                    selectedWeek={selectedWeek}
-                    weekDisplayName={selectedWeek ? formatWeekDisplay(selectedWeek) : formatWeekDisplay(currentWeek)}
+                  <WeeklyMuscleVolumeCard
+                    userId={user?.uid}
+                    selectedWeek={resolvedSelectedWeek}
+                    weekDisplayName={formatWeekDisplay(resolvedSelectedWeek)}
                     onInfoPress={handleMuscleVolumeInfoPress}
                   />
                 </View>
@@ -341,12 +257,6 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
             </View>
           )}
 
-          {loadingWeek && (
-            <View style={styles.weekLoadingContainer}>
-              <WakeLoader size={40} />
-              <Text style={styles.weekLoadingText}>Cargando semana...</Text>
-            </View>
-          )}
           <BottomSpacer />
           </View>
         </View>

@@ -1,7 +1,6 @@
 // Course Download Service - Manages offline course content
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestoreService from '../services/firestoreService';
-import hybridDataService from '../services/hybridDataService';
 import updateEventManager from '../services/updateEventManager';
 import { getMondayWeek } from '../utils/weekCalculation';
 import logger from '../utils/logger';
@@ -122,12 +121,8 @@ class CourseDownloadService {
       logger.debug('📥 Starting course download (internal):', courseId);
       let courseData = null;
       try {
-        const courses = await hybridDataService.loadCourses();
-        courseData = courses.find(c => c.id === courseId);
-        if (!courseData) {
-          courseData = await firestoreService.getCourse(courseId);
-          if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
-        }
+        courseData = await firestoreService.getCourse(courseId);
+        if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
@@ -244,17 +239,13 @@ class CourseDownloadService {
       
       let courseData = null;
       try {
-        const courses = await hybridDataService.loadCourses();
-        courseData = courses.find(c => c.id === courseId);
-        if (!courseData) {
-          courseData = await firestoreService.getCourse(courseId);
-          if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
-        }
+        courseData = await firestoreService.getCourse(courseId);
+        if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
-      
+
       const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
       let isOneOnOne = false;
       if (userId) {

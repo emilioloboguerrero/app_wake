@@ -1,67 +1,45 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, ScrollView } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import WakeLoader from './WakeLoader';
 import apiClient from '../utils/apiClient';
+import { cacheConfig } from '../config/queryClient';
 import { getMuscleDisplayName } from '../constants/muscles';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { getMuscleColorForText } from '../utils/muscleColorUtils';
 import SvgInfo from '../components/icons/SvgInfo';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
-import logger from '../utils/logger';
+
+const toYMD = (d) => d.toISOString().split('T')[0];
 
 const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, weekDisplayName, showCurrentWeekLabel = false, onInfoPress }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const [weeklyVolumes, setWeeklyVolumes] = useState(null);
-  const [loading, setLoading] = useState(true);
-  
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
     () => createStyles(screenWidth, screenHeight),
     [screenWidth, screenHeight],
   );
 
-  // Log userId whenever props change (to verify it is passed correctly to this card)
-  useEffect(() => {
-    logger.log('[WeeklyMuscleVolumeCard] Props received:', {
-      hasUserId: !!userId,
-      userId: userId ?? 'null/undefined',
-      userIdType: typeof userId,
-      selectedWeek: selectedWeek ?? 'null',
-    });
-  }, [userId, selectedWeek]);
+  const targetWeek = selectedWeek || getMondayWeek();
+  const { start, end } = getWeekDates(targetWeek);
 
-  useEffect(() => {
-    loadWeeklyVolumes();
-  }, [userId, selectedWeek]);
-
-  const loadWeeklyVolumes = async () => {
-    try {
-      setLoading(true);
-      const targetWeek = selectedWeek || getMondayWeek();
-      logger.log('[WeeklyMuscleVolumeCard] loadWeeklyVolumes called with userId:', userId ?? 'null/undefined', 'targetWeek:', targetWeek);
-      if (!userId) {
-        logger.warn('[WeeklyMuscleVolumeCard] No userId – cannot load weekly volumes');
-        setWeeklyVolumes({});
-        setLoading(false);
-        return;
-      }
-      const { start, end } = getWeekDates(targetWeek);
-      const toYMD = (d) => d.toISOString().split('T')[0];
-      const response = await apiClient.get('/analytics/weekly-volume', {
+  const { data: volumeData, isLoading: loading } = useQuery({
+    queryKey: ['analytics', 'weekly-volume', userId, targetWeek],
+    queryFn: () =>
+      apiClient.get('/analytics/weekly-volume', {
         params: { startDate: toYMD(start), endDate: toYMD(end) },
-      });
-      const weeks = response?.data || [];
-      const weekEntry = weeks.find((w) => w.weekKey === targetWeek);
-      const weekData = weekEntry?.muscleVolumes || {};
-      setWeeklyVolumes(weekData);
-      logger.log('✅ Weekly muscle volumes loaded for week:', targetWeek, weekData);
-    } catch (error) {
-      logger.error('❌ Error loading weekly muscle volumes:', error);
-      setWeeklyVolumes({});
-    } finally {
-      setLoading(false);
-    }
-  };
+      }),
+    enabled: !!userId && !sessionMuscleVolumes,
+    ...cacheConfig.analytics,
+  });
+
+  const weeklyVolumes = useMemo(() => {
+    if (sessionMuscleVolumes) return sessionMuscleVolumes;
+    const weeks = volumeData?.data || [];
+    const weekEntry = weeks.find((w) => w.weekKey === targetWeek);
+    return weekEntry?.muscleBreakdown || {};
+  }, [sessionMuscleVolumes, volumeData, targetWeek]);
 
   const getSubtitle = () => {
     if (showCurrentWeekLabel) {
@@ -70,7 +48,7 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
     return weekDisplayName || "Semana del ...";
   };
 
-  if (loading) {
+  if (loading && !sessionMuscleVolumes) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Series efectivas</Text>
@@ -82,7 +60,7 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
     );
   }
 
-  if (!weeklyVolumes || Object.keys(weeklyVolumes).length === 0) {
+  if (Object.keys(weeklyVolumes).length === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Series efectivas</Text>

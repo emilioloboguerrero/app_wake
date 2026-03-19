@@ -533,16 +533,14 @@ class WorkoutProgressService {
         };
       }
       if (!courseData && effectiveUserId) {
-        logger.log('📥 Course not found locally, checking hybrid cache:', courseId);
+        logger.log('📥 Course not found locally, fetching from API:', courseId);
         try {
-          const hybridDataService = require('../services/hybridDataService').default;
-          const allCourses = await hybridDataService.loadCourses(effectiveUserId);
+          const allCourses = await firestoreService.getCourses();
           const hybridCourse = allCourses.find(c => c.id === courseId);
-          logger.log('📦 [getCourseDataForWorkout] hybrid lookup:', {
+          logger.log('📦 [getCourseDataForWorkout] API lookup:', {
             courseId,
-            hybridCount: allCourses?.length ?? 0,
-            hybridIds: allCourses?.map(c => c.id) ?? [],
-            foundInHybrid: !!hybridCourse
+            count: allCourses?.length ?? 0,
+            found: !!hybridCourse
           });
           
           if (hybridCourse) {

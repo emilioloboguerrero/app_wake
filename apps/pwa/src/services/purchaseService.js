@@ -1,7 +1,4 @@
-// Purchase service for Wake
-// Simple Epayco WebView integration
-
-import firestoreService from './firestoreService';
+import apiClient from '../utils/apiClient';
 import { createError } from '../utils/errorHandler';
 import { calculateExpirationDate } from '../utils/durationHelper';
 import logger from '../utils/logger';
@@ -15,16 +12,16 @@ class PurchaseService {
       expires_at: courseEntry?.expires_at,
       expires_at_parsed: courseEntry?.expires_at ? new Date(courseEntry.expires_at).toISOString() : null
     });
-    
+
     if (!courseEntry) {
       logger.log(`❌ [isCourseEntryActive] No course entry - returning false`);
       return false;
     }
-    
+
     const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
     const now = new Date();
     const isNotExpired = !expiresAt || expiresAt > now;
-    
+
     logger.log(`🔍 [isCourseEntryActive] Expiration check:`, {
       expiresAt: expiresAt ? expiresAt.toISOString() : null,
       now: now.toISOString(),
@@ -85,8 +82,7 @@ class PurchaseService {
         };
       }
 
-      // Get course details required for display metadata
-      const courseDetails = await firestoreService.getCourse(courseId);
+      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
       if (!courseDetails) {
         return {
           success: false,
@@ -95,14 +91,11 @@ class PurchaseService {
         };
       }
 
-      const result = await firestoreService.startTrialForCourse(
-        userId,
-        courseId,
+      const result = await apiClient.post(`/users/me/courses/${courseId}/trial`, {
         courseDetails,
-        durationDays
-      );
-
-      return result;
+        durationInDays: durationDays,
+      });
+      return result?.data ?? { success: false, error: 'Error al iniciar la prueba gratuita', code: 'TRIAL_ERROR' };
     } catch (error) {
       logger.error('❌ Error starting local trial:', error);
       return {
@@ -121,7 +114,7 @@ class PurchaseService {
    */
   async getUserCourseState(userId, courseId) {
     try {
-      const userDoc = await firestoreService.getUser(userId);
+      const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
       if (!userDoc) {
         return { ownsCourse: false, courseData: null, trialHistory: null };
       }
@@ -165,10 +158,9 @@ class PurchaseService {
   async grantFreeAccess(userId, courseId) {
     try {
       logger.debug(`🆓 Granting free access: User ${userId} → Course ${courseId}`);
-      
-      // Check if user already owns this course
+
       const existingPurchase = await this.checkUserOwnsCourse(userId, courseId);
-      
+
       if (existingPurchase) {
         return {
           success: false,
@@ -177,29 +169,24 @@ class PurchaseService {
         };
       }
 
-      // Get course details
-      const courseDetails = await firestoreService.getCourse(courseId);
-      
+      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
+
       if (!courseDetails) {
         throw createError('firebase/not-found', 'El programa no fue encontrado');
       }
-      
-      // Validate required fields
+
       if (!courseDetails.access_duration) {
         throw createError('validation/invalid-input', 'Programa sin duración de acceso');
       }
 
-      // Calculate expiration using helper
       const expirationDate = calculateExpirationDate(courseDetails.access_duration);
 
-      // Add course to user document
-      await firestoreService.addCourseToUser(
-        userId, 
-        courseId, 
-        expirationDate, 
-        courseDetails.access_duration,
-        courseDetails
-      );
+      await apiClient.post('/users/me/move-course', {
+        courseId,
+        expirationDate,
+        accessDuration: courseDetails.access_duration,
+        courseDetails,
+      });
 
       logger.debug('✅ Free access granted successfully');
 
@@ -265,7 +252,6 @@ class PurchaseService {
           responseText: responseText,
           status: response.status,
         });
-        // If response is not valid JSON, return error
         return {
           success: false,
           error: `Error del servidor (${response.status}): ${response.statusText}. Respuesta: ${responseText?.substring(0, 200)}`,
@@ -313,7 +299,7 @@ class PurchaseService {
         hasCourseId: !!courseId,
       });
 
-      const courseDetails = await firestoreService.getCourse(courseId);
+      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
 
       if (!courseDetails) {
         return {
@@ -323,7 +309,7 @@ class PurchaseService {
       }
 
       if (courseDetails.access_duration === "monthly") {
-        const userDoc = await firestoreService.getUser(userId);
+        const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
         const payerEmail = userDoc?.email || null;
         logger.log('💳 [preparePurchase] Calling purchase web function: createSubscriptionCheckout', {
           endpoint: 'createSubscriptionCheckout',
@@ -376,7 +362,44 @@ class PurchaseService {
    */
   async getUserActiveCourses(userId) {
     try {
-      return await firestoreService.getUserActiveCourses(userId);
+      const result = await apiClient.get('/users/me/full');
+      const userData = result?.data;
+      if (!userData?.courses) return [];
+      const now = new Date();
+      return Object.entries(userData.courses)
+        .filter(([, e]) => e.is_trial || (e.status === 'active' && (!e.expires_at || new Date(e.expires_at) > now)))
+        .map(([courseId, e]) => {
+          const isTrial = e.is_trial === true;
+          const expiresAt = e.expires_at || null;
+          const trialState = isTrial
+            ? (expiresAt && new Date(expiresAt) > now ? 'active' : 'expired')
+            : null;
+          return {
+            courseId,
+            courseData: {
+              status: e.status,
+              access_duration: e.access_duration,
+              expires_at: e.expires_at,
+              purchased_at: e.purchased_at,
+              deliveryType: e.deliveryType,
+              title: e.title,
+              image_url: e.image_url,
+              is_trial: e.is_trial,
+              trial_consumed: e.trial_consumed,
+            },
+            purchasedAt: e.purchased_at || null,
+            courseDetails: {
+              id: courseId,
+              title: e.title || 'Curso sin título',
+              image_url: e.image_url || '',
+              discipline: e.discipline || 'General',
+              creatorName: e.creatorName || null,
+            },
+            trialInfo: isTrial ? { state: trialState, expiresAt } : null,
+            trialHistory: null,
+            isTrialCourse: isTrial,
+          };
+        });
     } catch (error) {
       logger.error('Error getting active courses:', error);
       return [];
@@ -392,59 +415,54 @@ class PurchaseService {
   async getUserPurchasedCourses(userId, includeInactive = false) {
     try {
       if (!includeInactive) {
-        // For MainScreen, use the efficient active-only method (includes orphan fallback)
         return await this.getUserActiveCourses(userId);
       }
-      
-      // For AllPurchasedCoursesScreen, get all courses from user document
-      const userDoc = await firestoreService.getUser(userId);
+
+      const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
       if (!userDoc) {
         logger.debug('❌ getUserPurchasedCourses: User document not found for:', userId);
         return [];
       }
-      
+
       const userCourses = userDoc.courses || {};
       logger.debug('🔍 getUserPurchasedCourses: User courses object:', {
         userId,
         coursesCount: Object.keys(userCourses).length,
         courseIds: Object.keys(userCourses)
       });
-      
+
       const now = new Date();
-      
-      // Get all courses with status information
+
       let coursesWithDetails = [];
       if (Object.keys(userCourses).length > 0) {
         coursesWithDetails = await Promise.all(
           Object.entries(userCourses).map(async ([courseId, courseData]) => {
             logger.debug('🔍 Processing course:', courseId, courseData);
-            const courseDetails = await firestoreService.getCourse(courseId);
-            
-            // Determine status
+            const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
+
             const isActive = courseData.status === 'active';
             const isNotExpired = new Date(courseData.expires_at) > now;
             const isCancelled = courseData.status === 'cancelled';
-            
+
             return {
-              id: `${userId}-${courseId}`, // Create a unique ID
+              id: `${userId}-${courseId}`,
               courseId,
               courseData,
               courseDetails: courseDetails || { title: 'Curso no encontrado', id: courseId },
               isActive: isActive && isNotExpired,
               isExpired: !isNotExpired && !isCancelled,
-              isCompleted: false, // We can add completion logic later
+              isCompleted: false,
               status: courseData.status,
-              paid_at: { toDate: () => new Date(courseData.purchased_at) }, // Mock the old format
+              paid_at: { toDate: () => new Date(courseData.purchased_at) },
               expires_at: courseData.expires_at
             };
           })
         );
       }
 
-      // Merge orphaned one-on-one programs from client_programs (same fallback as getUserActiveCourses)
       const courseIdsFromUser = new Set(Object.keys(userCourses));
       try {
-        const orphaned = await firestoreService.getOrphanedOneOnOnePrograms(userId, courseIdsFromUser);
+        const orphaned = await apiClient.get('/workout/client-programs', { params: { orphaned: true } }).then(r => r?.data ?? []);
         if (orphaned.length > 0) {
           coursesWithDetails = [...coursesWithDetails, ...orphaned];
           logger.debug('📱 getUserPurchasedCourses: merged', orphaned.length, 'orphaned one-on-one programs');
@@ -452,7 +470,7 @@ class PurchaseService {
       } catch (err) {
         logger.warn('⚠️ getUserPurchasedCourses: orphan fallback failed:', err?.message);
       }
-      
+
       logger.debug('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
       return coursesWithDetails;
     } catch (error) {

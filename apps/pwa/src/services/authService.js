@@ -15,7 +15,6 @@ import {
 } from 'firebase/auth';
 import { authStorage } from '../utils/authStorage';
 import profilePictureService from './profilePictureService';
-import hybridDataService from './hybridDataService';
 import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
 import { handleError, handleNetworkOperation } from '../utils/errorHandler';
@@ -130,7 +129,6 @@ class AuthService {
       if (userId) {
         await Promise.all([
           profilePictureService.clearUserCache(userId),
-          hybridDataService.clearUserCache(userId),
           sessionManager.clearUserCache(userId)
         ]);
       }
@@ -211,7 +209,6 @@ class AuthService {
       // Clear all local caches before deleting account
       await Promise.all([
         profilePictureService.clearUserCache(userId),
-        hybridDataService.clearUserCache(userId),
         sessionManager.clearUserCache(userId),
         authStorage.clearAuthState()
       ]);
