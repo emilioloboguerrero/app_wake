@@ -193,9 +193,9 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
                 <SvgFire
                   width={32}
                   height={32}
-                  stroke="#D5C672"
+                  stroke="rgba(255,255,255,0.9)"
                   strokeWidth={0.5}
-                  fill="#D5C672"
+                  fill="rgba(255,255,255,0.9)"
                   style={[styles.fireMiddle, { transform: [{ scaleX: -1 }] }]}
                 />
               )}

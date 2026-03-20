@@ -52,7 +52,7 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
           <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity }]} />
         )}
         {showMiddle && (
-          <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity }]} />
+          <SvgFire width={20} height={20} stroke="rgba(255,255,255,0.9)" strokeWidth={0.5} fill="rgba(255,255,255,0.9)" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity }]} />
         )}
         {showInner && (
           <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity }]} />
@@ -60,7 +60,7 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
         {flameLevel === 0 && (
           <>
             <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity: opacityDead }]} />
-            <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: opacityDead }]} />
+            <SvgFire width={20} height={20} stroke="rgba(255,255,255,0.9)" strokeWidth={0.5} fill="rgba(255,255,255,0.9)" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: opacityDead }]} />
             <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity: opacityDead }]} />
           </>
         )}
@@ -1207,7 +1207,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 40,
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 16,
     fontWeight: '400',
     textAlign: 'center',

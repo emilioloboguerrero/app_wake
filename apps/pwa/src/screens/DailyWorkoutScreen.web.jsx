@@ -1,5 +1,5 @@
 // Web wrapper for DailyWorkoutScreen - provides React Router navigation and date selector
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -11,6 +11,8 @@ import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector.web';
+import RecoveryModal from '../components/workout/RecoveryModal';
+import { extractAccentColor, applyAccentToElement } from '../utils/accentExtractor';
 
 const DailyWorkoutScreenModule = require('./DailyWorkoutScreen.js');
 const DailyWorkoutScreenBase = DailyWorkoutScreenModule.default;
@@ -89,6 +91,8 @@ const DailyWorkoutScreen = () => {
   const initialEntriesDates = prefetchedDates?.entries ?? [];
   const initialDataMonthKey = prefetchedDates ? currentMonthMeta.key : null;
 
+  const wrapperRef = useRef(null);
+
   const courseFromState = location.state?.course;
 
   const { data: course, isLoading: loading } = useQuery({
@@ -117,6 +121,17 @@ const DailyWorkoutScreen = () => {
   });
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
+
+  // Extract accent color from course image
+  useEffect(() => {
+    const imageUrl = course?.image_url || course?.imageUrl;
+    if (!imageUrl || !wrapperRef.current) return;
+    extractAccentColor(imageUrl).then((color) => {
+      if (color && wrapperRef.current) {
+        applyAccentToElement(wrapperRef.current, color);
+      }
+    });
+  }, [course?.image_url, course?.imageUrl]);
 
   const fetchDatesWithEntries = useCallback(
     async (startDate, endDate) => {
@@ -161,6 +176,75 @@ const DailyWorkoutScreen = () => {
     },
     [isOneOnOne, user?.uid, courseId]
   );
+
+  // ─── Session recovery check (C4) ──────────────────────────────────────────
+  const [recoveryCheckpoint, setRecoveryCheckpoint] = useState(null);
+
+  useEffect(() => {
+    const currentUser = contextUser || auth?.currentUser;
+    if (!currentUser?.uid || !courseId) return;
+
+    // 1. Check localStorage
+    let cp = null;
+    try {
+      const raw = localStorage.getItem('wake_session_checkpoint');
+      if (raw) cp = JSON.parse(raw);
+    } catch { /* malformed → ignore */ }
+
+    if (cp) {
+      // Validate
+      if (cp.userId !== currentUser.uid) { try { localStorage.removeItem('wake_session_checkpoint'); } catch {} return; }
+      if (Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) { try { localStorage.removeItem('wake_session_checkpoint'); } catch {} return; }
+      if (cp.courseId !== courseId) return; // Different course — keep checkpoint but don't show
+      setRecoveryCheckpoint(cp);
+      return;
+    }
+
+    // 2. No local checkpoint → check server (cross-device)
+    import('../utils/apiClient.js').then(mod => {
+      const client = mod.default || mod.apiClient;
+      client.get('/workout/session/active').then(res => {
+        const serverCp = res?.checkpoint;
+        if (!serverCp) return;
+        if (serverCp.userId && serverCp.userId !== currentUser.uid) return;
+        if (Date.now() - new Date(serverCp.savedAt).getTime() > 24 * 60 * 60 * 1000) return;
+        if (serverCp.courseId !== courseId) return;
+        setRecoveryCheckpoint(serverCp);
+      }).catch(() => {});
+    }).catch(() => {});
+  }, [contextUser, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRecoveryResume = useCallback(() => {
+    if (!recoveryCheckpoint || !course) return;
+    const cId = course.courseId || course.id || courseId;
+    navigate(`/course/${cId}/workout/execution`, {
+      state: {
+        course,
+        workout: {
+          id: recoveryCheckpoint.sessionId,
+          name: recoveryCheckpoint.sessionName,
+          exercises: recoveryCheckpoint.exercises.map(ex => ({
+            id: ex.exerciseId,
+            exerciseId: ex.exerciseId,
+            name: ex.exerciseName,
+            sets: ex.sets,
+          })),
+        },
+        sessionId: recoveryCheckpoint.sessionId,
+        checkpoint: recoveryCheckpoint,
+      },
+    });
+    setRecoveryCheckpoint(null);
+  }, [recoveryCheckpoint, course, courseId, navigate]);
+
+  const handleRecoveryDiscard = useCallback(() => {
+    try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+    import('../utils/apiClient.js').then(mod => {
+      const client = mod.default || mod.apiClient;
+      client.delete('/workout/session/active').catch(() => {});
+    }).catch(() => {});
+    setRecoveryCheckpoint(null);
+  }, []);
 
   const navigation = {
     navigate: (routeName, params) => {
@@ -247,9 +331,20 @@ const DailyWorkoutScreen = () => {
 
   return (
     <div
+      ref={wrapperRef}
       className={dateTransitioning ? 'wake-date-transition' : undefined}
-      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}
     >
+      <div className="w-orb w-orb-1" />
+      <div className="w-orb w-orb-2" />
+      <div className="w-orb w-orb-3" />
+      {recoveryCheckpoint && (
+        <RecoveryModal
+          checkpoint={recoveryCheckpoint}
+          onResume={handleRecoveryResume}
+          onDiscard={handleRecoveryDiscard}
+        />
+      )}
       <DailyWorkoutScreenBase
         navigation={navigation}
         route={route}

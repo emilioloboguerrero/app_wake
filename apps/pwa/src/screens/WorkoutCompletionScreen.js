@@ -633,7 +633,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       paddingHorizontal: 24,
     },
     errorText: {
-      color: '#ff4444',
+      color: 'rgba(224, 84, 84, 0.9)',
       fontSize: 18,
       fontWeight: '600',
       textAlign: 'center',

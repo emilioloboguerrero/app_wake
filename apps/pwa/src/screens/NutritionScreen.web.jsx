@@ -46,7 +46,7 @@ import { NotFoundException } from '@zxing/library';
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
 const REMAINING_GRAY = 'rgba(255, 255, 255, 0.12)';
 const WHITE_FILL = 'rgba(255, 255, 255, 0.75)';
-const OVER_LIMIT_RED = 'rgba(255, 68, 68, 0.3)';
+const OVER_LIMIT_RED = 'rgba(224, 84, 84, 0.3)';
 
 const NUTRITION_SPACER_SAFE_TOP_FALLBACK = 59;
 const NUTRITION_SPACER_MIN_TOP = 40;

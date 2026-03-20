@@ -2053,7 +2053,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 40,
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 16,
@@ -2397,10 +2397,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: Math.max(8, screenHeight * 0.01),
   },
   emailModalInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
   },
   emailModalErrorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: Math.min(screenWidth * 0.035, 14),
     marginBottom: Math.max(12, screenHeight * 0.015),
     textAlign: 'center',

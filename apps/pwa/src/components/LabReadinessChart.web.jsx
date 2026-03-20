@@ -53,7 +53,7 @@ export default function LabReadinessChart({ data }) {
         <ReferenceLine y={7} stroke="rgba(255,255,255,0.12)" strokeDasharray="3 3" />
         <Line type="monotone" dataKey="energy" name="Energía" stroke="rgba(74,222,128,0.8)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
         <Line type="monotone" dataKey="sleep" name="Sueño" stroke="rgba(147,197,253,0.8)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
-        <Line type="monotone" dataKey="sorenessInverted" name="Frescura" stroke="rgba(251,191,36,0.8)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+        <Line type="monotone" dataKey="sorenessInverted" name="Frescura" stroke="rgba(255,255,255,0.7)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
       </LineChart>
     </ResponsiveContainer>
   );

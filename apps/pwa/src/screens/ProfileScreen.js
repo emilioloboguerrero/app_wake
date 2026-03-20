@@ -2155,7 +2155,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    backgroundColor: '#ff4444',
+    backgroundColor: 'rgba(224, 84, 84, 0.9)',
   },
   signOutConfirmButtonText: {
     color: '#ffffff',
@@ -2383,7 +2383,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   // Username validation styles
   textInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
     borderWidth: 1,
   },
   textInputChanged: {
@@ -2393,7 +2393,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     marginTop: 4,
   },
   successText: {

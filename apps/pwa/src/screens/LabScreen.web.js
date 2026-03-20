@@ -320,7 +320,7 @@ function PhotoLightbox({ photo, onClose, onDelete }) {
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           style={{
-            background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)',
+            background: 'rgba(224,84,84,0.15)', border: '1px solid rgba(224,84,84,0.3)',
             borderRadius: 20, color: 'rgba(255,100,100,0.9)', fontSize: 14, fontWeight: '600',
             padding: '8px 16px', cursor: 'pointer',
           }}
@@ -2606,7 +2606,7 @@ const LabScreen = () => {
           )}
           <LabReadinessChart data={readinessChartData} />
           <View style={styles.readinessLegend}>
-            {[{ color:'rgba(74,222,128,0.8)', label:'Energía' }, { color:'rgba(147,197,253,0.8)', label:'Sueño' }, { color:'rgba(251,191,36,0.8)', label:'Frescura' }].map(({ color, label })=>(
+            {[{ color:'rgba(74,222,128,0.8)', label:'Energía' }, { color:'rgba(147,197,253,0.8)', label:'Sueño' }, { color:'rgba(255,255,255,0.7)', label:'Frescura' }].map(({ color, label })=>(
               <View key={label} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor:color }]} />
                 <Text style={styles.legendLabel}>{label}</Text>

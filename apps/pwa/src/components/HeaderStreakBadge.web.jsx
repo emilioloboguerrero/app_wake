@@ -70,9 +70,9 @@ export function HeaderStreakBadge() {
           <SvgFire
             width={HEADER_ICON_SIZE * 0.55}
             height={HEADER_ICON_SIZE * 0.55}
-            stroke="#D5C672"
+            stroke="rgba(255,255,255,0.9)"
             strokeWidth={0.5}
-            fill="#D5C672"
+            fill="rgba(255,255,255,0.9)"
             style={[styles.fireMiddle, { opacity: useDimmed ? opacityDead : opacity }]}
           />
         )}

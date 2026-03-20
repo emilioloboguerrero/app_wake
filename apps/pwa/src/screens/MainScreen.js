@@ -224,7 +224,7 @@ const MainScreen = ({ navigation, route }) => {
       paddingVertical: 40,
     },
     errorText: {
-      color: '#ff4444',
+      color: 'rgba(224, 84, 84, 0.9)',
       fontSize: 16,
       textAlign: 'center',
       marginBottom: 16,
@@ -284,7 +284,7 @@ const MainScreen = ({ navigation, route }) => {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(255, 68, 68, 0.8)',
+      backgroundColor: 'rgba(224, 84, 84, 0.9)',
       justifyContent: 'center',
       alignItems: 'center',
       zIndex: 10,

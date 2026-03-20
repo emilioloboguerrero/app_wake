@@ -1326,7 +1326,7 @@ const s = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    backgroundColor: '#242424',
+    backgroundColor: '#1a1a1a',
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.12)',
     alignSelf: 'center',

@@ -13,7 +13,7 @@ import {
 
 function getDotColor(energy) {
   if (energy >= 7) return '#4ade80';
-  if (energy >= 5) return 'rgba(251,191,36,0.9)';
+  if (energy >= 5) return 'rgba(255,255,255,0.7)';
   return '#f87171';
 }
 

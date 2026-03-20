@@ -280,7 +280,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       // Preserve shadow effects from base input style
     },
     inputError: {
-      borderColor: '#ff4444',
+      borderColor: 'rgba(224, 84, 84, 0.9)',
       borderWidth: 1,
       shadowColor: 'transparent',
       shadowOpacity: 0,
@@ -296,7 +296,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       elevation: 0,
     },
     errorText: {
-      color: '#ff4444',
+      color: 'rgba(224, 84, 84, 0.9)',
       fontSize: 12,
       fontWeight: '400',
       marginTop: 5,

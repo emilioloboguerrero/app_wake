@@ -313,7 +313,7 @@ export const FixedWakeHeader = ({
           )}
           {(showAllThree || flameLevel >= 2) && (
             <span style={{ position: 'absolute', bottom: STREAK_BOTTOM_MIDDLE, left: '50%', transform: 'translateX(-50%)' }}>
-              <StreakFlameSvg size={STREAK_MIDDLE} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" opacity={streakOpacity} flipX />
+              <StreakFlameSvg size={STREAK_MIDDLE} stroke="rgba(255,255,255,0.9)" strokeWidth={0.5} fill="rgba(255,255,255,0.9)" opacity={streakOpacity} flipX />
             </span>
           )}
           {(showAllThree || flameLevel >= 1) && (
@@ -346,15 +346,15 @@ export const FixedWakeHeader = ({
             justifyContent: 'center',
             alignItems: 'center',
             padding: '8px 16px',
-            backgroundColor: 'rgba(255, 68, 68, 0.2)',
-            border: '1px solid rgba(255, 68, 68, 0.4)',
+            backgroundColor: 'rgba(224, 84, 84, 0.2)',
+            border: '1px solid rgba(224, 84, 84, 0.4)',
             borderRadius: 8,
             cursor: 'pointer',
             zIndex: 1001,
           }}
         >
           <span style={{
-            color: '#ff4444',
+            color: 'rgba(224, 84, 84, 0.9)',
             fontSize: 14,
             fontWeight: '600',
           }}>{resetButtonText}</span>

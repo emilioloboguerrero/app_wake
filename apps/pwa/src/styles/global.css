@@ -1474,7 +1474,7 @@ video::-webkit-media-controls-enclosure {
   border-radius: 4px;
   transition: width 0.6s var(--ease-material);
 }
-.macro-progress-fill--over { background: rgba(255,68,68,0.8); }
+.macro-progress-fill--over { background: rgba(224,84,84,0.8); }
 .nutrition-modal-panel {
   background: rgba(28,28,28,0.96);
   border: 1px solid rgba(255,255,255,0.15);

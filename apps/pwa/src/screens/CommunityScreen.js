@@ -140,7 +140,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
   },
   debugButton: {
-    backgroundColor: '#ff4444',
+    backgroundColor: 'rgba(224, 84, 84, 0.9)',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
