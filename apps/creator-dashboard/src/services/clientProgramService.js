@@ -94,13 +94,6 @@ class ClientProgramService {
     return weekKeysToRemove;
   }
 
-  async getPlanAssignments(programId, clientId) {
-    const clientProgramRes = await apiClient.get(`/creator/clients/${clientId}/programs`);
-    const programs = clientProgramRes.data || [];
-    const program = programs.find((p) => p.courseId === programId);
-    return program?.planAssignments || {};
-  }
-
   async getClientCompletedSessionIds(programId, clientId) {
     const res = await apiClient.get(`/creator/clients/${clientId}/sessions`, {
       params: { courseId: programId },

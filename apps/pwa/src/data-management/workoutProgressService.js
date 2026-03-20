@@ -1,8 +1,6 @@
 // Workout Progress Service - Main orchestrator for the workout progress system
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import courseDownloadService from './courseDownloadService';
-import workoutSessionService from './workoutSessionService';
-import uploadService from './uploadService';
 import sessionRecoveryService from './sessionRecoveryService';
 import progressQueryService from './progressQueryService';
 import storageManagementService from './storageManagementService';
@@ -70,93 +68,6 @@ class WorkoutProgressService {
       
     } catch (error) {
       logger.error('❌ Course cleanup failed:', error);
-    }
-  }
-  
-  /**
-   * Start a workout session
-   * @param {string} userId - User ID
-   * @param {string} courseId - Course ID
-   * @param {string} sessionId - Session ID from course structure
-   */
-  async startWorkout(userId, courseId, sessionId) {
-    try {
-      // Verify course is available locally
-      const isAvailable = await courseDownloadService.isCourseAvailable(courseId);
-      if (!isAvailable) {
-        throw new Error('Course not available offline. Please download first.');
-      }
-      
-      // Start session
-      const session = await workoutSessionService.startSession(courseId, sessionId, userId);
-      
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to start workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Record a completed set
-   * @param {Object} setData - Set performance data
-   */
-  async recordSet(setData) {
-    try {
-      // Add set to current session (includes auto-save)
-      const session = await workoutSessionService.addSetToSession(setData);
-      
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to record set:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Complete current workout session
-   */
-  async completeWorkout() {
-    try {
-      const session = await workoutSessionService.completeSession();
-
-      if (session) {
-        this.triggerBackgroundUpload();
-      }
-      
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to complete workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Cancel current workout session
-   */
-  async cancelWorkout() {
-    try {
-      const session = await workoutSessionService.cancelSession();
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to cancel workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Get current session progress
-   */
-  async getCurrentProgress() {
-    try {
-      return await workoutSessionService.getSessionProgress();
-    } catch (error) {
-      logger.error('❌ Failed to get current progress:', error);
-      return null;
     }
   }
   
@@ -266,63 +177,6 @@ class WorkoutProgressService {
     } catch (error) {
       logger.error('❌ Failed to get recent activity:', error);
       return [];
-    }
-  }
-  
-  /**
-   * Trigger background upload (non-blocking)
-   */
-  triggerBackgroundUpload() {
-    // Run upload in background without blocking UI
-    setTimeout(async () => {
-      try {
-        await uploadService.processUploadQueue();
-      } catch {
-        // Background upload will retry later
-      }
-    }, 1000); // 1 second delay to not block completion UI
-  }
-  
-  /**
-   * Get system status for debugging
-   */
-  async getSystemStatus() {
-    try {
-      const [storageUsage, queueStatus, recoveryStatus] = await Promise.all([
-        storageManagementService.getStorageUsage(),
-        uploadService.getUploadQueueStatus(),
-        sessionRecoveryService.getRecoveryStatus()
-      ]);
-      
-      return {
-        storage: storageUsage,
-        uploadQueue: queueStatus,
-        recovery: recoveryStatus,
-        timestamp: new Date().toISOString()
-      };
-      
-    } catch (error) {
-      logger.error('❌ Failed to get system status:', error);
-      return null;
-    }
-  }
-  
-  /**
-   * Perform maintenance operations
-   */
-  async performMaintenance() {
-    try {
-      const results = await Promise.all([
-        storageManagementService.optimizeStorage(),
-        uploadService.retryFailedUploads(),
-        this.cleanupExpiredCourses()
-      ]);
-      
-      return results;
-      
-    } catch (error) {
-      logger.error('❌ Maintenance failed:', error);
-      return [0, 0, 0];
     }
   }
   
@@ -508,39 +362,6 @@ class WorkoutProgressService {
     } catch (error) {
       logger.error('❌ Failed to get course data:', error);
       return null;
-    }
-  }
-
-  /**
-   * Get current active session
-   */
-  async getCurrentSession() {
-    try {
-      return await workoutSessionService.getCurrentSession();
-    } catch (error) {
-      logger.error('❌ Failed to get current session:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Complete current session
-   * @param {string} userId - User ID
-   * @param {string} sessionId - Session ID
-   */
-  async completeSession(userId, sessionId) {
-    try {
-      const completedSession = await workoutSessionService.completeSession();
-
-      if (completedSession) {
-        this.triggerBackgroundUpload();
-        return completedSession;
-      } else {
-        return null;
-      }
-    } catch (error) {
-      logger.error('❌ Failed to complete session:', error);
-      throw error;
     }
   }
 

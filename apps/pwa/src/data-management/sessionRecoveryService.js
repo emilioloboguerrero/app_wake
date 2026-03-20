@@ -1,22 +1,21 @@
 // Session Recovery Service - Handles crash recovery and session restoration
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SessionStates } from './workoutSessionService';
-import uploadService from './uploadService';
 
 import logger from '../utils/logger.js';
 import apiClient, { WakeApiError } from '../utils/apiClient.js';
 import { auth } from '../config/firebase';
+
+const SessionStates = {
+  ACTIVE: 'active',
+  COMPLETED: 'completed',
+};
 class SessionRecoveryService {
   /**
    * Initialize recovery system on app startup
    */
   async initializeRecovery() {
     try {
-      // Check for incomplete sessions
       await this.detectAndRecoverSessions();
-      
-      // Process any pending uploads
-      await uploadService.processUploadQueue();
       
     } catch (error) {
       logger.error('❌ Recovery initialization failed:', error);
@@ -119,13 +118,9 @@ class SessionRecoveryService {
       sessionData.completedAt = sessionData.lastSaved;
       sessionData.recovery_note = 'Auto-completed after app interruption';
       
-      // Calculate duration and summary
       sessionData.duration_minutes = this.calculateDuration(sessionData);
       sessionData.sessionSummary = this.calculateSessionSummary(sessionData);
-      
-      // Add to upload queue
-      await this.addToUploadQueue(sessionData);
-      
+
       // Clear active session
       await AsyncStorage.removeItem('current_session');
       
@@ -217,44 +212,6 @@ class SessionRecoveryService {
   }
   
   /**
-   * Add session to upload queue
-   */
-  async addToUploadQueue(sessionData) {
-    try {
-      // Get current queue
-      const queueData = await AsyncStorage.getItem('upload_queue');
-      const queue = queueData ? JSON.parse(queueData) : { sessions: [], queueMetadata: {} };
-      
-      // Add session to queue
-      queue.sessions.push({
-        sessionId: sessionData.sessionId,
-        status: 'pending',
-        attempts: 0,
-        lastAttempt: null,
-        priority: 1,
-        size_kb: this.estimateSessionSize(sessionData),
-        queuedAt: new Date().toISOString()
-      });
-      
-      // Update metadata
-      queue.queueMetadata = {
-        totalSessions: queue.sessions.length,
-        totalSize_kb: queue.sessions.reduce((sum, s) => sum + s.size_kb, 0),
-        lastUpdated: new Date().toISOString()
-      };
-      
-      // Save queue and session data
-      await Promise.all([
-        AsyncStorage.setItem('upload_queue', JSON.stringify(queue)),
-        AsyncStorage.setItem(`pending_session_${sessionData.sessionId}`, JSON.stringify(sessionData))
-      ]);
-      
-    } catch (error) {
-      logger.error('❌ Failed to add session to upload queue:', error);
-    }
-  }
-  
-  /**
    * Calculate session duration
    */
   calculateDuration(session) {
@@ -299,27 +256,16 @@ class SessionRecoveryService {
   }
   
   /**
-   * Estimate session size for queue management
-   */
-  estimateSessionSize(sessionData) {
-    const jsonString = JSON.stringify(sessionData);
-    const sizeInBytes = new Blob([jsonString]).size;
-    return Math.round(sizeInBytes / 1024); // KB
-  }
-  
-  /**
    * Get recovery status for debugging
    */
   async getRecoveryStatus() {
     try {
       const activeSession = await AsyncStorage.getItem('current_session');
       const metadata = await AsyncStorage.getItem('session_metadata');
-      const queueStatus = await uploadService.getUploadQueueStatus();
-      
+
       return {
         hasActiveSession: !!activeSession,
         hasMetadata: !!metadata,
-        uploadQueue: queueStatus,
         lastRecoveryCheck: new Date().toISOString()
       };
       

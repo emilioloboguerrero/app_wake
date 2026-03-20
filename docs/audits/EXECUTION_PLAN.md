@@ -558,10 +558,10 @@ These are the highest-impact fixes regardless of batch:
 |------|-------|--------|----------|
 | `offlineQueue.js` max queue size | A3/A8/A9 | Owned by "task A3" — already fixed in commit `9a0dff3` | ✅ Done |
 | `backgroundSync.js` storage key coupling | A8 | Owned by "task A3" | ✅ Done |
-| `workoutSessionService.js` disconnected subsystem | A8 | Needs architectural decision (connect to `POST /workout/complete` or delete) | TODO in code |
-| `uploadService.js` no-op upload path | A8 | Same — subsystem is disconnected from actual session persistence | TODO in code |
+| `workoutSessionService.js` disconnected subsystem | A8 | Needs architectural decision (connect to `POST /workout/complete` or delete) | ✅ Deleted |
+| `uploadService.js` no-op upload path | A8 | Same — subsystem is disconnected from actual session persistence | ✅ Deleted |
 | 6× `firestoreService` direct imports in PWA screens | A7 | Phase 3 migration targets — will be replaced when domains migrate to API | TODO comments in code |
-| `clientProgramService` server-side filtering | A5 | Needs `/creator/clients?programId=X` endpoint | TODO — Phase 3 |
+| `clientProgramService` server-side filtering | A5 | Needs `/creator/clients?programId=X` endpoint. `getPlanAssignments` deleted (zero callers). | TODO — Phase 3 |
 | `libraryService.getExercises()` batch endpoint | A5 | Needs `/creator/library/exercises` endpoint | TODO — Phase 3 |
 
 ### Summary Scorecard
