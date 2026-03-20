@@ -47,6 +47,7 @@ const WorkoutExecutionScreen = () => {
       course: location.state?.course || null,
       workout: location.state?.workout || null,
       sessionId: location.state?.sessionId || null,
+      checkpoint: location.state?.checkpoint || null,
     }
   }), [location.state]);
 
