@@ -36,6 +36,7 @@ class ApiClient {
   #clientId = 'pwa/1.0';
   #mode = 'firebase';
   #apiKey = null;
+  #refreshPromise = null;
 
   constructor(options = {}) {
     if (options.mode) this.#mode = options.mode;
@@ -56,6 +57,23 @@ class ApiClient {
     return token;
   }
 
+  async #refreshToken() {
+    if (this.#refreshPromise) return this.#refreshPromise;
+    this.#refreshPromise = (async () => {
+      try {
+        this.#tokenCache = null;
+        const user = auth.currentUser;
+        if (!user) throw new WakeApiError('UNAUTHENTICATED', 'Session expired', 401);
+        const fresh = await user.getIdToken(true);
+        this.#tokenCache = { value: fresh, expiresAt: Date.now() + 3600 * 1000 };
+        return fresh;
+      } finally {
+        this.#refreshPromise = null;
+      }
+    })();
+    return this.#refreshPromise;
+  }
+
   async #request(method, path, body, options = {}) {
     const { includeAuth = true, timeout = 15000, signal, params } = options;
 
@@ -68,7 +86,7 @@ class ApiClient {
         enqueue({ method, path, body, priority, ...(options.tempId ? { tempId: options.tempId } : {}) });
         return { queued: true };
       }
-      throw new WakeApiError('NETWORK_ERROR', 'No hay conexión', 0);
+      throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
     }
 
     let url = `${BASE_URL}${path}`;
@@ -103,11 +121,13 @@ class ApiClient {
       ? AbortSignal.any([controller.signal, signal])
       : controller.signal;
 
+    const serializedBody = body !== undefined ? JSON.stringify(body) : undefined;
+
     try {
       const res = await fetch(url, {
         method,
         headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: serializedBody,
         signal: mergedSignal,
       });
 
@@ -119,17 +139,23 @@ class ApiClient {
       }
 
       if (res.status === 401 && includeAuth && this.#mode === 'firebase') {
-        this.#tokenCache = null;
-        const user = auth.currentUser;
-        if (user) {
-          const fresh = await user.getIdToken(true);
-          this.#tokenCache = { value: fresh, expiresAt: Date.now() + 3600 * 1000 };
-          headers['Authorization'] = `Bearer ${fresh}`;
+        const fresh = await this.#refreshToken();
+        headers['Authorization'] = `Bearer ${fresh}`;
+
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), timeout);
+        const retrySignal = signal
+          ? AbortSignal.any([retryController.signal, signal])
+          : retryController.signal;
+
+        try {
           const retry = await fetch(url, {
             method,
             headers,
-            body: body !== undefined ? JSON.stringify(body) : undefined,
+            body: serializedBody,
+            signal: retrySignal,
           });
+          clearTimeout(retryTimeoutId);
           if (retry.ok) return retry.status === 204 ? null : await retry.json();
           const retryErr = await retry.json().catch(() => null);
           throw new WakeApiError(
@@ -138,8 +164,15 @@ class ApiClient {
             retry.status,
             retryErr?.error?.field ?? null
           );
+        } catch (retryFetchErr) {
+          clearTimeout(retryTimeoutId);
+          if (retryFetchErr instanceof WakeApiError) throw retryFetchErr;
+          if (retryFetchErr.name === 'AbortError') {
+            if (signal?.aborted) throw new WakeApiError('REQUEST_CANCELLED', 'Request was cancelled', 0);
+            throw new WakeApiError('REQUEST_TIMEOUT', 'Request timed out', 0);
+          }
+          throw new WakeApiError('NETWORK_ERROR', 'Network request failed', 0);
         }
-        throw new WakeApiError('UNAUTHENTICATED', 'Session expired', 401);
       }
 
       let errBody = null;
@@ -156,7 +189,10 @@ class ApiClient {
     } catch (err) {
       clearTimeout(timeoutId);
       if (err instanceof WakeApiError) throw err;
-      if (err.name === 'AbortError') throw new WakeApiError('REQUEST_TIMEOUT', 'Request timed out', 0);
+      if (err.name === 'AbortError') {
+        if (signal?.aborted) throw new WakeApiError('REQUEST_CANCELLED', 'Request was cancelled', 0);
+        throw new WakeApiError('REQUEST_TIMEOUT', 'Request timed out', 0);
+      }
       throw new WakeApiError('NETWORK_ERROR', 'Network request failed', 0);
     }
   }
@@ -173,10 +209,11 @@ class ApiClient {
         return await fn();
       } catch (err) {
         if (!(err instanceof WakeApiError)) throw err;
-        if (err.status === 429) {
-          if (!err.retryAfter) throw err;
+        if (err.status === 429 && err.retryAfter) {
+          if (i >= delays.length - 1) throw err;
           await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-          return await fn();
+          lastErr = err;
+          continue;
         }
         if (err.status >= 500 || err.status === 0) {
           lastErr = err;
@@ -195,5 +232,5 @@ class ApiClient {
   async delete(path, options)          { return this.#withRetry(() => this.#request('DELETE', path, undefined, options), true); }
 }
 
-export const apiClient = new ApiClient({ clientId: 'pwa/1.0' });
+export const apiClient = new ApiClient();
 export default apiClient;

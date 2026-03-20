@@ -1,3 +1,6 @@
+// Stripped-down public-only apiClient for landing (no auth, no token cache).
+// See docs/API_CLIENT_SPEC.md — this is a lightweight variant for unauthenticated requests only.
+
 const BASE_URL = '/api/v1';
 
 export class WakeApiError extends Error {
@@ -13,6 +16,10 @@ export class WakeApiError extends Error {
 
 async function request(method, path, body, options = {}) {
   const { timeout = 15000, signal, params } = options;
+
+  if (!navigator.onLine) {
+    throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
+  }
 
   let url = `${BASE_URL}${path}`;
   if (params) {
@@ -55,7 +62,7 @@ async function request(method, path, body, options = {}) {
     const retryAfterSec = retryAfterRaw ? Number(retryAfterRaw) : null;
     throw new WakeApiError(
       errBody?.error?.code ?? 'INTERNAL_ERROR',
-      errBody?.error?.message ?? 'Error desconocido',
+      errBody?.error?.message ?? 'Unknown error',
       res.status,
       errBody?.error?.field ?? null,
       Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec : null
@@ -63,8 +70,8 @@ async function request(method, path, body, options = {}) {
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof WakeApiError) throw err;
-    if (err.name === 'AbortError') throw new WakeApiError('REQUEST_TIMEOUT', 'La solicitud tardó demasiado', 0);
-    throw new WakeApiError('NETWORK_ERROR', 'Error de red', 0);
+    if (err.name === 'AbortError') throw new WakeApiError('REQUEST_TIMEOUT', 'Request timed out', 0);
+    throw new WakeApiError('NETWORK_ERROR', 'Network request failed', 0);
   }
 }
 
@@ -80,10 +87,11 @@ async function withRetry(fn, isIdempotent) {
       return await fn();
     } catch (err) {
       if (!(err instanceof WakeApiError)) throw err;
-      if (err.status === 429) {
-        if (!err.retryAfter) throw err;
+      if (err.status === 429 && err.retryAfter) {
+        if (i >= delays.length - 1) throw err;
         await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-        return await fn();
+        lastErr = err;
+        continue;
       }
       if (err.status >= 500 || err.status === 0) {
         lastErr = err;

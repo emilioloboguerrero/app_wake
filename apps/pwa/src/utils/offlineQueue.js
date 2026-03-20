@@ -1,6 +1,7 @@
 import logger from './logger';
 
 const STORAGE_KEY = 'wake_offline_queue';
+const MAX_QUEUE_SIZE = 50;
 
 // Allowed HTTP methods for queued operations.
 const ALLOWED_METHODS = ['POST', 'PATCH', 'PUT', 'DELETE'];
@@ -64,25 +65,19 @@ export function enqueue(operation) {
 
   const queue = readQueue();
 
-  // Trim string values in the body to avoid storing leading/trailing whitespace.
+  if (queue.length >= MAX_QUEUE_SIZE) {
+    logger.warn('[offlineQueue] cola llena — máximo', MAX_QUEUE_SIZE, 'entradas');
+    return null;
+  }
+
   // NOTE: Auth tokens must NOT be stored here — they will be stale by the time the
   // entry is replayed. The apiClient re-attaches a fresh token on every request;
   // never include Authorization headers or token fields in operation.body.
-  let sanitizedBody = null;
-  if (operation.body && typeof operation.body === 'object') {
-    sanitizedBody = Object.fromEntries(
-      Object.entries(operation.body).map(([k, v]) => [
-        k,
-        typeof v === 'string' ? v.trim() : v,
-      ])
-    );
-  }
-
   const entry = {
-    id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: crypto.randomUUID(),
     method: operation.method,
     path: operation.path.trim(),
-    body: sanitizedBody,
+    body: operation.body && typeof operation.body === 'object' ? operation.body : null,
     enqueuedAt: new Date().toISOString(),
     retryCount: 0,
     priority: operation.priority ?? 'normal',
