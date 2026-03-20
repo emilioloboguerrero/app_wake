@@ -153,18 +153,11 @@ class AppleAuthService {
         nonce: rawNonce, // Send RAW nonce - library hashes it internally
       });
       
-      logger.debug('[Apple Auth] Sent raw nonce to Apple:', rawNonce);
-      logger.debug('[Apple Auth] Expected hash (for verification):', hashedNonce.substring(0, 16) + '...');
-      
-      logger.debug('[Apple Auth] Apple request completed, received identity token');
-
       // Ensure Apple returned a user identityToken
       if (!appleAuthRequestResponse.identityToken) {
         throw new Error('Apple Sign-In failed - no identify token returned');
       }
 
-      logger.debug('Identity token received, signing in to Firebase...');
-      
       // Create a Firebase credential from the response
       const { identityToken } = appleAuthRequestResponse;
       const appleProvider = new OAuthProvider('apple.com');
@@ -191,8 +184,6 @@ class AppleAuthService {
           }
         }
       }
-      
-      logger.debug('Apple sign-in successful:', firebaseUser.uid);
       
       // Create or update user document in Firestore (same as Google — create if missing)
       await this.createOrUpdateUserDocument(firebaseUser);
@@ -251,12 +242,8 @@ class AppleAuthService {
   // Sign out from Apple and Firebase
   async signOut() {
     try {
-      logger.debug('Signing out from Apple and Firebase...');
-      
       // Apple Sign-In doesn't require explicit sign-out
       // The sign-out is handled by Firebase Auth
-      
-      logger.debug('Sign out successful');
       return { success: true };
       
     } catch (error) {
@@ -307,8 +294,6 @@ class AppleAuthService {
         return { success: false, error: 'Apple Sign-In not available' };
       }
 
-      logger.debug('Revoking Apple Sign-In token...');
-      
       // Dynamically load Apple Sign-In module
       const { appleAuth: appleAuthModule } = await this.loadAppleSignIn();
       
@@ -325,7 +310,6 @@ class AppleAuthService {
       // Revoke the token
       await appleAuthModule.revokeToken(auth, authorizationCode);
       
-      logger.debug('Apple Sign-In token revoked successfully');
       return { success: true };
       
     } catch (error) {

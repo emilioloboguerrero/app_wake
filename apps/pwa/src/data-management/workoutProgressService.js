@@ -408,7 +408,6 @@ class WorkoutProgressService {
               ...courseData,
               courseData: { ...courseData.courseData, modules: freshModules },
             };
-            logger.debug('📦 [getCourseDataForWorkout] merged fresh modules from Firestore:', freshModules.length);
           }
         } catch (e) {
           logger.warn('Could not refresh modules for workout, using cache:', e?.message);
@@ -423,10 +422,6 @@ class WorkoutProgressService {
             ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : effectiveTargetDate))}_${planned.session_id}`
             : planned.id)
           : null;
-        logger.debug('🔍 [getCourseDataForWorkout] one-on-one plannedSessionIdForToday:', {
-          date: effectiveTargetDate.toDateString(),
-          plannedId
-        });
         courseData = {
           ...courseData,
           courseData: {
@@ -436,18 +431,11 @@ class WorkoutProgressService {
         };
       }
       if (!courseData && effectiveUserId) {
-        logger.debug('📥 Course not found locally, fetching from API:', courseId);
         try {
           const allCourses = await apiService.getCourses();
           const hybridCourse = allCourses.find(c => c.id === courseId);
-          logger.debug('📦 [getCourseDataForWorkout] API lookup:', {
-            courseId,
-            count: allCourses?.length ?? 0,
-            found: !!hybridCourse
-          });
           
           if (hybridCourse) {
-            logger.debug('✅ Found course in hybrid cache, fetching modules...');
             const moduleOptsHybrid = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
             const modulesToUse = await apiService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
             const plannedHybrid = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);

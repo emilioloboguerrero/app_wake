@@ -424,10 +424,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }
       
       if (imageUrls.length > 0) {
-        logger.debug('🖼️ Preloading images in parallel...');
-        // Preload all images in parallel for maximum speed
         await Promise.all(imageUrls.map(url => ExpoImage.prefetch(url)));
-        logger.debug('✅ All images preloaded');
       }
     } catch (error) {
       logger.error('❌ Error preloading images:', error);
@@ -446,7 +443,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         sessionId,
         sessionState.workout.title
       );
-      logger.debug('✅ Workout session started:', session.sessionId);
       navigation.navigate('Warmup', {
         course: course,
         workout: sessionState.workout,
@@ -475,14 +471,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 // Handle session selection
   const handleSelectSession = async (session, sessionIndex) => {
     try {
-      logger.debug('🔄 Starting session selection for:', session.title);
       setIsChangingSession(true);
-      logger.debug('📍 User selected session:', session.title, 'at index:', sessionIndex);
-      
-      // DON'T clear preview state yet - keep it for loading overlay
-      // setPreviewSessionId(null);
-      logger.debug('🔄 Keeping previewSessionId for loading overlay:', previewSessionId);
-      
+
       // Show loading state immediately
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
       
@@ -513,8 +503,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         mainSwipeRef.current.scrollTo({ x: 0, animated: true });
       }
       
-      logger.debug('✅ Session selected successfully');
-      
     } catch (error) {
       logger.error('❌ Error selecting session:', error);
       setSessionState(prev => ({ 
@@ -532,18 +520,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 
   const handleNextWorkout = async () => {
     try {
-      logger.debug('⏭️ Moving to next workout...');
-      
-      // Use single service to move to next workout
       const newState = await sessionService.moveToNextWorkout(
         user.uid,
         course.courseId,
         sessionState.workout?.sessionId
       );
-      
+
       setSessionState(newState);
-      logger.debug('✅ Next workout loaded');
-      
     } catch (error) {
       logger.error('❌ Failed to move to next workout:', error);
       alert('Error al cargar el siguiente entrenamiento. Inténtalo de nuevo.');
