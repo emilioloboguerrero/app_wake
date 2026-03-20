@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
@@ -173,10 +174,13 @@ router.get("/nutrition/foods/search", async (req, res) => {
     const cacheData = cached.data()!;
     const expiresAt = cacheData.expires_at?.toDate?.() ?? new Date(0);
     if (expiresAt > new Date()) {
+      functions.logger.info("FatSecret cache hit", { query: q.trim().toLowerCase(), page, cacheKey });
       res.json({ data: cacheData.results, cached: true });
       return;
     }
   }
+
+  functions.logger.info("FatSecret cache miss", { query: q.trim().toLowerCase(), page, cacheKey });
 
   // Call FatSecret via the existing Gen1 function's token logic
   const { FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET } = process.env;

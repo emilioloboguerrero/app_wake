@@ -88,29 +88,13 @@ Acceptable at current scale. Need server-side endpoints when creators grow past 
 
 ---
 
-## 3. FatSecret Server-Side Cache (NOT IMPLEMENTED)
+## 3. FatSecret Server-Side Cache (DONE)
 
-**This is the #1 cost optimization.** At 1,000 users, FatSecret proxy calls cost ~$400/month. A server-side cache eliminates most of this.
-
-### What to build
-
-Cache FatSecret food search responses in Firestore:
-- Collection: `nutrition_food_cache/{md5(query)}`
+Implemented in `functions/src/api/routes/nutrition.ts` on the food search endpoint (`GET /nutrition/foods/search`):
+- Collection: `nutrition_food_cache/{md5(query + "_" + page)}`
 - TTL: 30 days
-- On search request: check cache first, return cached result if fresh, otherwise call FatSecret and cache the response
-- Common foods (chicken, rice, egg) get served from cache after the first search
-
-### Where to implement
-
-- `functions/src/api/routes/nutrition.ts` — the food search endpoint
-- Add cache check before the FatSecret API call
-- Add cache write after successful FatSecret response
-
-### Priority
-
-Implement before reaching 100 active users. Cost at scale without cache:
-- 1,000 users: ~$400/month (FatSecret alone)
-- 10,000 users: ~$4,000/month
+- Cache hit/miss logging via `functions.logger`
+- Common foods served from Firestore cache after first search
 
 ---
 
