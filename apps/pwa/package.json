@@ -42,6 +42,7 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "babel-preset-expo": "~54.0.0",
+    "dompurify": "^3.3.3",
     "expo": "~54.0.27",
     "expo-apple-authentication": "^8.0.7",
     "expo-asset": "^55.0.8",

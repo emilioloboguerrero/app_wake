@@ -3,11 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, useWindowDimensions
 import { saveReadiness, getTodayReadiness } from '../services/readinessService';
 import { auth } from '../config/firebase';
 import logger from '../utils/logger';
-
-function toYYYYMMDD(d) {
-  const x = new Date(d);
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-}
+import { toYYYYMMDD } from '../components/WeekDateSelector.web';
 
 const STEPS = [
   {
@@ -152,7 +148,7 @@ export default function ReadinessCheckModal({ onClose, mandatory = false }) {
       Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
       Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [slideAnim, fadeAnim]);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,7 +240,7 @@ export default function ReadinessCheckModal({ onClose, mandatory = false }) {
         <View style={styles.headerRow}>
           <TouchableOpacity
             style={[styles.backBtn, step === 0 && { opacity: 0 }]}
-            onPress={() => animateStep(step - 1, false)}
+            onPress={() => { if (step === 0) return; animateStep(step - 1, false); }}
             disabled={step === 0}
             activeOpacity={0.7}
           >

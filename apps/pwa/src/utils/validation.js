@@ -1,5 +1,4 @@
 // Input validation and sanitization utilities
-import { handleValidationError } from './errorHandler';
 import logger from './logger';
 
 // Validation rules
@@ -246,18 +245,6 @@ export const escapeHtml = (unsafe) => {
     .replace(/'/g, '&#039;');
 };
 
-// SQL injection protection (for future database queries)
-export const escapeSql = (unsafe) => {
-  if (typeof unsafe !== 'string') return unsafe;
-  
-  return unsafe
-    .replace(/'/g, "''")
-    .replace(/;/g, '')
-    .replace(/--/g, '')
-    .replace(/\/\*/g, '')
-    .replace(/\*\//g, '');
-};
-
 export default {
   sanitizeInput,
   validateInput,
@@ -265,6 +252,5 @@ export default {
   safeJsonParse,
   safeJsonStringify,
   escapeHtml,
-  escapeSql,
   VALIDATION_RULES
 };

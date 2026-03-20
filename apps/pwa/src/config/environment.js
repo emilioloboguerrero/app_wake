@@ -27,7 +27,7 @@ const getEnvironment = () => {
 const config = {
   [ENV.DEVELOPMENT]: {
     // Development settings
-    apiUrl: 'https://dev-api.wake.com',
+
     enableLogging: true,
     enableAnalytics: false,
     enableCrashReporting: false,
@@ -37,7 +37,7 @@ const config = {
   
   [ENV.PRODUCTION]: {
     // Production settings
-    apiUrl: 'https://api.wake.com',
+
     enableLogging: false,
     enableAnalytics: true,
     enableCrashReporting: true,
@@ -47,7 +47,7 @@ const config = {
   
   [ENV.STAGING]: {
     // Staging settings (for testing before production)
-    apiUrl: 'https://staging-api.wake.com',
+
     enableLogging: true,
     enableAnalytics: true,
     enableCrashReporting: true,

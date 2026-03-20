@@ -6,9 +6,6 @@ class SimpleCache {
     this.cache = new Map();
     this.defaultTTL = defaultTTL;
     this.cleanupInterval = null;
-    
-    // Start periodic cleanup (every 1 minute)
-    this.startCleanup();
   }
 
   /**
@@ -24,6 +21,7 @@ class SimpleCache {
       expiry,
       createdAt: Date.now()
     });
+    this.startCleanup();
   }
 
   /**
@@ -108,7 +106,13 @@ class SimpleCache {
     }
     
     keysToDelete.forEach(key => this.cache.delete(key));
-    
+
+    // Stop cleanup if cache is empty
+    if (this.cache.size === 0) {
+      this.stopCleanup();
+      return;
+    }
+
     // If cache is getting too large (>100 entries), remove oldest 20%
     if (this.cache.size > 100) {
       const entries = Array.from(this.cache.entries())

@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Asset } from 'expo-asset';
+import DOMPurify from 'dompurify';
 
 const svgModule = require('../assets/icons/vectors_fig/porfin.svg');
 
 const sanitizeSvg = (svg) => {
-  let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, '');
-  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
-  clean = clean.replace(/\bon\w+\s*=\s*\{[^}]*\}/gi, '');
-  clean = clean.replace(/javascript\s*:/gi, '');
-  return clean;
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['style'],
+  });
 };
 
 const MUSCLE_KEYS = [

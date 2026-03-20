@@ -14,11 +14,10 @@
   --color-primary: rgba(255, 255, 255, 1);
   --color-primary-dark: rgba(255, 255, 255, 0.8);
   --color-primary-light: rgba(255, 255, 255, 0.2);
-  --color-accent: #007AFF;
   --color-border: rgba(255, 255, 255, 0.2);
   --color-shadow: rgba(255, 255, 255, 0.4);
 
-  /* Wake Design System — Accent (Wake gold, overridable per-screen) */
+  /* Wake Design System — Accent (dynamic, extracted from content image at runtime) */
   --accent-r: 255;
   --accent-g: 255;
   --accent-b: 255;

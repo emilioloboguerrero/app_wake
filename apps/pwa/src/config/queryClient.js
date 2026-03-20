@@ -16,10 +16,10 @@ export const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      staleTime: STALE_TIMES.clientList,
-      gcTime: GC_TIMES.clientList,
+      staleTime: STALE_TIMES.userProfile,
+      gcTime: GC_TIMES.userProfile,
       retry: false,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       refetchOnReconnect: true,
       refetchOnMount: true,
     },

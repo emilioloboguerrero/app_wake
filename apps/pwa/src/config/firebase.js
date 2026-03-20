@@ -32,6 +32,10 @@ const stagingConfig = {
 const firebaseEnv = process.env.EXPO_PUBLIC_FIREBASE_ENV;
 const firebaseConfig = firebaseEnv === 'staging' ? stagingConfig : productionConfig;
 
+if (firebaseConfig.apiKey === 'TODO') {
+  throw new Error(`Firebase ${firebaseEnv} config has placeholder values. Fill in real values before using.`);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

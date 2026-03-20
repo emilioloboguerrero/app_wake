@@ -32,10 +32,14 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      // Check for debug mode
-      const isDebugMode = typeof window !== 'undefined' && 
-        (localStorage.getItem('WAKE_DEBUG') === 'true' || 
-         window.location.search.includes('debug=true'));
+      // Check for debug mode (unified: wake_debug param, sessionStorage auto-expires)
+      let isDebugMode = false;
+      if (typeof window !== 'undefined') {
+        try {
+          isDebugMode = sessionStorage.getItem('WAKE_DEBUG') === 'true' ||
+            window.location.search.includes('wake_debug=1');
+        } catch (_) {}
+      }
       
       // Fallback UI
       return (
@@ -69,11 +73,11 @@ class ErrorBoundary extends React.Component {
           </TouchableOpacity>
           
           {typeof window !== 'undefined' && (
-            <TouchableOpacity 
-              style={[styles.retryButton, { marginTop: 12, backgroundColor: '#333' }]} 
+            <TouchableOpacity
+              style={[styles.retryButton, { marginTop: 12, backgroundColor: '#333' }]}
               onPress={() => {
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('WAKE_DEBUG', 'true');
+                  try { sessionStorage.setItem('WAKE_DEBUG', 'true'); } catch (_) {}
                   window.location.reload();
                 }
               }}

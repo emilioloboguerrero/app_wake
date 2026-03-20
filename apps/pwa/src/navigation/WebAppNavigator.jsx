@@ -49,14 +49,27 @@ import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 import apiService from '../services/apiService';
 import logger from '../utils/logger';
 import { isSafariWeb } from '../utils/platform';
+import { isAdmin, isCreator } from '../utils/roleHelper';
+import { auth } from '../config/firebase';
 import BottomTabBar from '../components/BottomTabBar.web';
 import ReadinessCheckModal from '../components/ReadinessCheckModal.web';
 import { getTodayReadiness } from '../services/readinessService';
-import UserRoleContext from '../contexts/UserRoleContext';
+import UserRoleContext, { useUserRole } from '../contexts/UserRoleContext';
 
 export const RefreshProfileContext = createContext(null);
 export const OpenReadinessModalContext = createContext(null);
 
+// Role-based guard for creator-only routes
+const CreatorRouteGuard = ({ children }) => {
+  const { role } = useUserRole();
+  if (!isCreator(role) && !isAdmin(role)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
+
+// Memoized error boundary wrapper — avoids creating a new component type on every render
+const OnboardingFlowWithBoundary = withErrorBoundary(OnboardingFlow, 'OnboardingFlow');
 
 // Unified onboarding flow (profile + questions in one component)
 const OnboardingFlowRoute = ({ initialStep = 0 }) => {
@@ -70,9 +83,7 @@ const OnboardingFlowRoute = ({ initialStep = 0 }) => {
     }
     navigate('/', { replace: true });
   }, [refreshUserProfile, navigate]);
-  return React.createElement(
-    withErrorBoundary(() => <OnboardingFlow initialStep={initialStep} onComplete={onComplete} />, 'OnboardingFlow')
-  );
+  return <OnboardingFlowWithBoundary initialStep={initialStep} onComplete={onComplete} />;
 };
 
 // Derive the CSS transition class for a navigation event.
@@ -119,7 +130,7 @@ const AuthenticatedLayout = ({ children }) => {
   // Use useState to store Firebase user and update it when needed
   const [firebaseUser, setFirebaseUser] = React.useState(() => {
     try {
-      const { auth } = require('../config/firebase');
+
       return auth.currentUser;
     } catch (error) {
       logger.error('[AUTH LAYOUT] Error getting Firebase user:', error);
@@ -135,7 +146,7 @@ const AuthenticatedLayout = ({ children }) => {
     if (firebaseUserCheckedRef.current) return; // Only check once
     
     try {
-      const { auth } = require('../config/firebase');
+
       const currentUser = auth.currentUser;
       if (currentUser && currentUser !== firebaseUser) {
         setFirebaseUser(currentUser);
@@ -155,7 +166,7 @@ const AuthenticatedLayout = ({ children }) => {
       // Only set up interval if we don't have a Firebase user yet
       const interval = setInterval(() => {
         try {
-          const { auth } = require('../config/firebase');
+    
           const currentUser = auth.currentUser;
           if (currentUser && currentUser !== firebaseUser) {
             setFirebaseUser(currentUser);
@@ -260,21 +271,9 @@ const AuthenticatedLayout = ({ children }) => {
         } catch (error) {
           logger.warn('[AUTH LAYOUT] Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
           if (mounted) {
-            try {
-              let cached = null;
-              try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
-              if (cached) {
-                const status = JSON.parse(cached);
-                setUserProfile({
-                  profileCompleted: status.profileCompleted ?? false,
-                  onboardingCompleted: status.onboardingCompleted ?? false
-                });
-              } else {
-                setUserProfile({ profileCompleted: false, onboardingCompleted: false });
-              }
-            } catch {
-              setUserProfile({ profileCompleted: false, onboardingCompleted: false });
-            }
+            // localStorage cache is untrusted — use as hint only, default to incomplete
+            // This prevents a poisoned cache from letting users skip onboarding
+            setUserProfile({ profileCompleted: false, onboardingCompleted: false });
           }
         } finally {
           if (mounted) {
@@ -312,7 +311,7 @@ const AuthenticatedLayout = ({ children }) => {
   // Also check Firebase directly as a fallback
   const directFirebaseCheck = React.useMemo(() => {
     try {
-      const { auth } = require('../config/firebase');
+
       return auth.currentUser;
     } catch {
       return null;
@@ -502,7 +501,7 @@ const WebAppNavigator = () => {
   // Check Firebase user directly as fallback
   const [firebaseUserForLogin, setFirebaseUserForLogin] = React.useState(() => {
     try {
-      const { auth } = require('../config/firebase');
+
       return auth.currentUser;
     } catch {
       return null;
@@ -512,7 +511,7 @@ const WebAppNavigator = () => {
   // Update Firebase user check
   React.useEffect(() => {
     try {
-      const { auth } = require('../config/firebase');
+
       const currentUser = auth.currentUser;
       if (currentUser !== firebaseUserForLogin) {
         setFirebaseUserForLogin(currentUser);
@@ -542,7 +541,6 @@ const WebAppNavigator = () => {
   return (
     <div className="app-viewport" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <Routes>
-          <Route path="/login" element={React.createElement(withErrorBoundary(LoginScreen, 'Login'))} />
 
         {/* Onboarding Routes */}
       <Route
@@ -757,7 +755,9 @@ const WebAppNavigator = () => {
         path="/creator/events"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(EventsManagementScreen, 'EventsManagement'))}
+            <CreatorRouteGuard>
+              {React.createElement(withErrorBoundary(EventsManagementScreen, 'EventsManagement'))}
+            </CreatorRouteGuard>
           </AuthenticatedLayout>
         }
       />
@@ -766,7 +766,9 @@ const WebAppNavigator = () => {
         path="/creator/events/:eventId/checkin"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(EventCheckinScreen, 'EventCheckin'))}
+            <CreatorRouteGuard>
+              {React.createElement(withErrorBoundary(EventCheckinScreen, 'EventCheckin'))}
+            </CreatorRouteGuard>
           </AuthenticatedLayout>
         }
       />
@@ -775,7 +777,9 @@ const WebAppNavigator = () => {
         path="/creator/events/:eventId/registrations"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(EventRegistrationsScreen, 'EventRegistrations'))}
+            <CreatorRouteGuard>
+              {React.createElement(withErrorBoundary(EventRegistrationsScreen, 'EventRegistrations'))}
+            </CreatorRouteGuard>
           </AuthenticatedLayout>
         }
       />
