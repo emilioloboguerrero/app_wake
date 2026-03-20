@@ -1,0 +1,312 @@
+import { Router } from "express";
+import * as admin from "firebase-admin";
+import { validateAuth } from "../middleware/auth.js";
+import { validateBody } from "../middleware/validate.js";
+import { checkRateLimit } from "../middleware/rateLimit.js";
+import { WakeApiServerError } from "../errors.js";
+
+const router = Router();
+const db = admin.firestore();
+
+// GET /progress/body-log — cursor paginated, 30/page
+router.get("/progress/body-log", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const pageToken = req.query.pageToken as string | undefined;
+  const limit = 30;
+
+  let query: admin.firestore.Query = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .orderBy("date", "desc")
+    .limit(limit + 1);
+
+  if (pageToken) {
+    const cursorDoc = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("bodyLog")
+      .doc(pageToken)
+      .get();
+    if (cursorDoc.exists) {
+      query = query.startAfter(cursorDoc);
+    }
+  }
+
+  const snapshot = await query.get();
+  const docs = snapshot.docs.slice(0, limit);
+  const hasMore = snapshot.docs.length > limit;
+
+  res.json({
+    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    nextPageToken: hasMore ? docs[docs.length - 1].id : null,
+    hasMore,
+  });
+});
+
+// GET /progress/body-log/:date
+router.get("/progress/body-log/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .doc(req.params.date)
+    .get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+  }
+
+  res.json({ data: { id: doc.id, ...doc.data() } });
+});
+
+// PUT /progress/body-log/:date (idempotent)
+router.put("/progress/body-log/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const date = req.params.date;
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .doc(date);
+
+  await docRef.set(
+    {
+      ...req.body,
+      date,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  res.json({ data: { date, updated: true } });
+});
+
+// DELETE /progress/body-log/:date
+router.delete("/progress/body-log/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .doc(req.params.date);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+  }
+
+  await docRef.delete();
+  res.status(204).send();
+});
+
+// POST /progress/body-log/:date/photos/upload-url
+router.post("/progress/body-log/:date/photos/upload-url", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { contentType } = validateBody<{ contentType: string }>(
+    { contentType: "string" },
+    req.body
+  );
+
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(contentType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Tipo de imagen no soportado", "contentType"
+    );
+  }
+
+  const photoId = db.collection("_").doc().id;
+  const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
+  const storagePath = `body_log/${auth.userId}/${req.params.date}/${photoId}.${ext}`;
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(storagePath);
+
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType,
+  });
+
+  res.json({ data: { uploadUrl: url, storagePath, photoId } });
+});
+
+// POST /progress/body-log/:date/photos/confirm
+router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { storagePath, photoId } = validateBody<{
+    storagePath: string;
+    photoId: string;
+  }>({ storagePath: "string", photoId: "string" }, req.body);
+
+  const bucket = admin.storage().bucket();
+  const [exists] = await bucket.file(storagePath).exists();
+  if (!exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado en Storage");
+  }
+
+  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .doc(req.params.date);
+
+  await docRef.set(
+    {
+      photos: admin.firestore.FieldValue.arrayUnion({
+        photoId,
+        url: publicUrl,
+        storagePath,
+        uploaded_at: new Date().toISOString(),
+      }),
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  res.json({ data: { photoId, url: publicUrl } });
+});
+
+// DELETE /progress/body-log/:date/photos/:photoId
+router.delete("/progress/body-log/:date/photos/:photoId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("bodyLog")
+    .doc(req.params.date);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+  }
+
+  const photos = (doc.data()?.photos ?? []) as Array<{ photoId: string; storagePath?: string }>;
+  const photo = photos.find((p) => p.photoId === req.params.photoId);
+
+  if (!photo) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Foto no encontrada");
+  }
+
+  // Delete from Storage
+  if (photo.storagePath) {
+    const bucket = admin.storage().bucket();
+    await bucket.file(photo.storagePath).delete().catch(() => {});
+  }
+
+  // Remove from array
+  await docRef.update({
+    photos: admin.firestore.FieldValue.arrayRemove(photo),
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  res.status(204).send();
+});
+
+// GET /progress/readiness
+router.get("/progress/readiness", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { startDate, endDate } = req.query as Record<string, string>;
+
+  let query: admin.firestore.Query = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("readiness")
+    .orderBy("date", "desc");
+
+  if (startDate && endDate) {
+    query = query.where("date", ">=", startDate).where("date", "<=", endDate);
+  }
+
+  query = query.limit(30);
+  const snapshot = await query.get();
+
+  res.json({
+    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+  });
+});
+
+// GET /progress/readiness/:date
+router.get("/progress/readiness/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("readiness")
+    .doc(req.params.date)
+    .get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Registro de readiness no encontrado");
+  }
+
+  res.json({ data: { id: doc.id, ...doc.data() } });
+});
+
+// PUT /progress/readiness/:date (idempotent)
+router.put("/progress/readiness/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const date = req.params.date;
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("readiness")
+    .doc(date);
+
+  await docRef.set(
+    {
+      ...req.body,
+      date,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  res.json({ data: { date, updated: true } });
+});
+
+// DELETE /progress/readiness/:date
+router.delete("/progress/readiness/:date", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("readiness")
+    .doc(req.params.date);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+  }
+
+  await docRef.delete();
+  res.status(204).send();
+});
+
+export default router;

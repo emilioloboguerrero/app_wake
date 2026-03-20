@@ -734,7 +734,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const confirmEndWorkoutRef = useRef(null);
   const loadAvailableExercisesRef = useRef(null);
   const executeEndWorkoutRef = useRef(null);
-  
+
+  // ─── Checkpoint refs (session interruption recovery) ───────────────────────
+  const checkpointApiTimerRef = useRef(null);
+  const checkpointNotesTimerRef = useRef(null);
+
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
   
@@ -806,7 +810,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     logger.warn(`[TIMING] ⚠️ SLOW: Service loading took ${servicesDuration.toFixed(2)}ms (threshold: 500ms)`);
   }
   
-  const { course, workout: initialWorkout, sessionId } = route.params;
+  const { course, workout: initialWorkout, sessionId, checkpoint: routeCheckpoint } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
   
@@ -827,12 +831,29 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       : 'not-array-or-missing',
   });
   
+  // Build workout from checkpoint if restoring an interrupted session
+  const restoredWorkout = useMemo(() => {
+    if (!routeCheckpoint?.exercises) return null;
+    return {
+      ...initialWorkout,
+      id: routeCheckpoint.sessionId || initialWorkout?.id,
+      name: routeCheckpoint.sessionName || initialWorkout?.name,
+      exercises: routeCheckpoint.exercises.map(ex => ({
+        id: ex.exerciseId,
+        exerciseId: ex.exerciseId,
+        name: ex.exerciseName,
+        sets: ex.sets,
+        ...(initialWorkout?.exercises?.find(e => (e.id || e.exerciseId) === ex.exerciseId) || {}),
+      })),
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Local workout state that can be modified
   const useStateBatchStartTime = performance.now();
-  
-  const [workout, setWorkout] = useState(initialWorkout);
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [currentSetIndex, setCurrentSetIndex] = useState(0);
+
+  const [workout, setWorkout] = useState(restoredWorkout || initialWorkout);
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(routeCheckpoint?.currentExerciseIndex || 0);
+  const [currentSetIndex, setCurrentSetIndex] = useState(routeCheckpoint?.currentSetIndex || 0);
   const [loading, setLoading] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [currentView, setCurrentView] = useState(0); // 0 = exercise detail, 1 = exercise list
@@ -1153,6 +1174,88 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   
   // Video preloading cache
   const videoPreloadCache = useRef(new Set());
+
+  // ─── Session checkpoint (interruption recovery) ─────────────────────────
+  const buildCheckpoint = useCallback(() => {
+    const currentUser = user || auth.currentUser;
+    if (!currentUser || !course || !workout) return null;
+    const startTime = workoutStartTimeRef.current || Date.now();
+    return {
+      version: 1,
+      userId: currentUser.uid,
+      courseId: course.courseId || course.id,
+      sessionId: sessionId || workout.id || '',
+      sessionName: workout.name || workout.title || '',
+      startedAt: new Date(startTime).toISOString(),
+      savedAt: new Date().toISOString(),
+      currentExerciseIndex,
+      currentSetIndex,
+      exercises: (workout.exercises || []).map(ex => ({
+        exerciseId: ex.id || ex.exerciseId || '',
+        exerciseName: ex.name || '',
+        sets: (ex.sets || []).map(s => ({
+          reps: s.reps || null,
+          weight: s.weight || null,
+          intensity: s.intensity || null,
+        })),
+      })),
+      completedSets: { ...setData },
+      userNotes: sessionNotes,
+      elapsedSeconds: totalElapsedSeconds,
+    };
+  }, [user, course, workout, sessionId, currentExerciseIndex, currentSetIndex, setData, sessionNotes, totalElapsedSeconds]);
+
+  const saveCheckpointToLocalStorage = useCallback(() => {
+    try {
+      const cp = buildCheckpoint();
+      if (cp) localStorage.setItem('wake_session_checkpoint', JSON.stringify(cp));
+    } catch { /* fire-and-forget */ }
+  }, [buildCheckpoint]);
+
+  const debouncedApiCheckpoint = useCallback(() => {
+    if (checkpointApiTimerRef.current) clearTimeout(checkpointApiTimerRef.current);
+    checkpointApiTimerRef.current = setTimeout(() => {
+      const cp = buildCheckpoint();
+      if (!cp) return;
+      import('../utils/apiClient.js').then(mod => {
+        const client = mod.default || mod.apiClient;
+        client.post('/workout/session/checkpoint', cp, { idempotent: true }).catch(() => {});
+      }).catch(() => {});
+    }, 10_000);
+  }, [buildCheckpoint]);
+
+  // Write initial checkpoint on mount
+  useEffect(() => {
+    if (workout?.exercises?.length) {
+      saveCheckpointToLocalStorage();
+    }
+  }, [!!workout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Checkpoint on visibility change / pagehide (localStorage only, no API)
+  useEffect(() => {
+    if (!isWeb) return;
+    const onVisChange = () => {
+      if (document.visibilityState === 'hidden') saveCheckpointToLocalStorage();
+    };
+    const onPageHide = () => saveCheckpointToLocalStorage();
+    document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisChange);
+      window.removeEventListener('pagehide', onPageHide);
+      if (checkpointApiTimerRef.current) clearTimeout(checkpointApiTimerRef.current);
+      if (checkpointNotesTimerRef.current) clearTimeout(checkpointNotesTimerRef.current);
+    };
+  }, [saveCheckpointToLocalStorage]);
+
+  // Debounced checkpoint on notes change (2s)
+  useEffect(() => {
+    if (!sessionNotes) return;
+    if (checkpointNotesTimerRef.current) clearTimeout(checkpointNotesTimerRef.current);
+    checkpointNotesTimerRef.current = setTimeout(() => {
+      saveCheckpointToLocalStorage();
+    }, 2000);
+  }, [sessionNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Video preloading function
   const preloadNextVideo = useCallback(async () => {
@@ -2283,6 +2386,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           postSaveTimerRef.current = setTimeout(() => setShowPostSave(false), 1600);
         }
 
+        // Checkpoint after set saved (fire-and-forget, no debounce)
+        saveCheckpointToLocalStorage();
+        debouncedApiCheckpoint();
+
         // Automatically move to next set using ref
         if (handleNextSetRef.current) {
           handleNextSetRef.current();
@@ -2293,7 +2400,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       logger.error('❌ Error saving set data:', error);
       Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
     }
-  }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData]);
+  }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData, saveCheckpointToLocalStorage, debouncedApiCheckpoint]);
 
   const handleCancelSetInput = useCallback(() => {
     // Animate modal out
@@ -3862,8 +3969,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      });
                      
                      if (result) {
+                       // Clear checkpoint on successful completion
+                       try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+                       import('../utils/apiClient.js').then(mod => {
+                         const client = mod.default || mod.apiClient;
+                         client.delete('/workout/session/active').catch(() => {});
+                       }).catch(() => {});
+
                        const { sessionData, stats, sessionMuscleVolumes, personalRecords = [] } = result;
-                       
+
                          hasNavigation: !!navigation,
                          hasNavigate: !!(navigation && typeof navigation.navigate === 'function'),
                          navigationType: typeof navigation
@@ -4770,6 +4884,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (currentExerciseIndex < workout.exercises.length - 1) {
         setCurrentExerciseIndex(currentExerciseIndex + 1);
         setCurrentSetIndex(0);
+        saveCheckpointToLocalStorage();
       } else {
         // Workout completed - use ref to avoid temporal dead zone
         if (handleCompleteWorkoutRef.current) {

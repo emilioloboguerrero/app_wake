@@ -1,5 +1,5 @@
 /**
- * Firebase Cloud Functions v1
+ * Firebase Cloud Functions v1 + Gen2 API
  */
 
 import * as functions from "firebase-functions";
@@ -8,6 +8,9 @@ import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
 import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
 import {Resend} from "resend";
+import {onRequest} from "firebase-functions/v2/https";
+import {defineSecret} from "firebase-functions/params";
+import {app} from "./api/app.js";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -2396,3 +2399,30 @@ export const sendEventConfirmationEmail = functions
 
     return null;
   });
+
+// ─── Gen2 API ─────────────────────────────────────────────────────────────
+// Single Gen2 function export — Express routes live in src/api/routes/
+
+const fatSecretClientIdV2 = defineSecret("FATSECRET_CLIENT_ID");
+const fatSecretClientSecretV2 = defineSecret("FATSECRET_CLIENT_SECRET");
+const resendApiKeyV2 = defineSecret("RESEND_API_KEY");
+const mercadopagoAccessTokenV2 = defineSecret("MERCADOPAGO_ACCESS_TOKEN");
+const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
+
+export const api = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
+    concurrency: 80,
+    minInstances: 1,
+    secrets: [
+      fatSecretClientIdV2,
+      fatSecretClientSecretV2,
+      resendApiKeyV2,
+      mercadopagoAccessTokenV2,
+      mercadopagoWebhookSecretV2,
+    ],
+  },
+  app
+);

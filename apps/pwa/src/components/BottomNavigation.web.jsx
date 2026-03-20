@@ -1,5 +1,5 @@
 // Web version of Bottom Navigation Menu
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useWindowDimensions } from 'react-native';
 
@@ -37,12 +37,33 @@ const BottomNavigation = () => {
   const { height: screenHeight } = useWindowDimensions();
   const tabBarHeight = Math.max(60, (screenHeight || 667) * 0.1);
   const iconSize = 24;
-  
+
   const isMainActive = location.pathname === '/' || location.pathname.startsWith('/course');
   const isProfileActive = location.pathname === '/profile';
-  
+
+  // Queued write indicator — check offline queue periodically
+  const [hasPendingQueue, setHasPendingQueue] = useState(false);
+  useEffect(() => {
+    const checkQueue = () => {
+      try {
+        const raw = localStorage.getItem('wake_offline_queue');
+        const queue = raw ? JSON.parse(raw) : [];
+        setHasPendingQueue(Array.isArray(queue) && queue.length > 0);
+      } catch {
+        setHasPendingQueue(false);
+      }
+    };
+    checkQueue();
+    const interval = setInterval(checkQueue, 5000);
+    window.addEventListener('online', checkQueue);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', checkQueue);
+    };
+  }, []);
+
   // Determine if tab bar should be visible
-  const shouldShowTabBar = !location.pathname.startsWith('/login') && 
+  const shouldShowTabBar = !location.pathname.startsWith('/login') &&
                           !location.pathname.startsWith('/onboarding');
 
   if (!shouldShowTabBar) {
@@ -81,7 +102,7 @@ const BottomNavigation = () => {
           height: '100%',
         }}
       >
-        <div className={`tab-icon${isMainActive ? ' tab-icon--active' : ''}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+        <div className={`tab-icon${isMainActive ? ' tab-icon--active' : ''}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, position: 'relative' }}>
           <HouseIcon
             size={iconSize}
             stroke="#ffffff"
@@ -89,6 +110,17 @@ const BottomNavigation = () => {
             strokeWidth={isMainActive ? 2.8 : 2.5}
             opacity={isMainActive ? 1 : 0.6}
           />
+          {hasPendingQueue && (
+            <div style={{
+              position: 'absolute',
+              top: -2,
+              right: -6,
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              backgroundColor: '#f59e0b',
+            }} />
+          )}
           {isMainActive && <div className="tab-active-dot" />}
         </div>
       </button>
