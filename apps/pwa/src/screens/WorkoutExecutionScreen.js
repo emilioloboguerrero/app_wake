@@ -1226,7 +1226,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (!cp) return;
       import('../utils/apiClient.js').then(mod => {
         const client = mod.default || mod.apiClient;
-        client.post('/workout/session/checkpoint', cp, { idempotent: true }).catch(() => {});
+        const WakeApiError = mod.WakeApiError;
+        client.post('/workout/session/checkpoint', cp, { idempotent: true }).catch(err => {
+          if (WakeApiError && err instanceof WakeApiError && err.status === 0) {
+            import('../utils/offlineQueue.js').then(q => {
+              q.enqueue({ method: 'POST', path: '/workout/session/checkpoint', body: cp, priority: 'low' });
+            }).catch(() => {});
+          }
+        });
       }).catch(() => {});
     }, 10_000);
   }, [buildCheckpoint]);

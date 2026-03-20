@@ -1,6 +1,7 @@
 import { getAll, remove } from './offlineQueue';
 import apiClient, { WakeApiError } from './apiClient';
 import logger from './logger';
+import { queryClient } from '../config/queryClient';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_RETRIES = 3;
@@ -69,7 +70,18 @@ export async function processPendingQueue() {
 
       try {
         if (entry.method === 'POST') {
-          await apiClient.post(entry.path, entry.body);
+          const postResult = await apiClient.post(entry.path, entry.body);
+          if (entry.tempId && entry.path === '/nutrition/diary' && postResult?.data?.entryId) {
+            const realId = postResult.data.entryId;
+            const date = entry.body?.date;
+            if (date) {
+              queryClient.setQueryData(['nutrition', 'diary', date], (old) => {
+                if (!Array.isArray(old)) return old;
+                return old.map(e => e.id === entry.tempId ? { ...e, id: realId } : e);
+              });
+              queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', date] });
+            }
+          }
         } else if (entry.method === 'PATCH') {
           await apiClient.patch(entry.path, entry.body);
         } else if (entry.method === 'PUT') {

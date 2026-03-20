@@ -2,7 +2,8 @@
  * Nutrition API service — calls the Phase 3 REST API (FatSecret proxy endpoints).
  * Shapes responses back to the raw FatSecret format that callers expect.
  */
-import apiClient from '../utils/apiClient';
+import apiClient, { WakeApiError } from '../utils/apiClient';
+import { showOfflineError } from '../utils/offlineError';
 
 /**
  * Search foods by name.
@@ -10,10 +11,18 @@ import apiClient from '../utils/apiClient';
  * { foods_search: { results: { food: [...] }, total_results, page_number } }
  */
 export async function nutritionFoodSearch(searchExpression, pageNumber = 0, _maxResults = 20) {
-  const page = pageNumber + 1; // API is 1-indexed, old service was 0-indexed
-  const result = await apiClient.get('/nutrition/foods/search', {
-    params: { q: searchExpression, page: String(page) },
-  });
+  let result;
+  try {
+    const page = pageNumber + 1; // API is 1-indexed, old service was 0-indexed
+    result = await apiClient.get('/nutrition/foods/search', {
+      params: { q: searchExpression, page: String(page) },
+    });
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
+    throw err;
+  }
   const foods = (result?.data?.foods ?? []).map((f) => ({
     food_id: f.foodId,
     food_name: f.name,
@@ -42,7 +51,15 @@ export async function nutritionFoodSearch(searchExpression, pageNumber = 0, _max
  * { food: { food_id, food_name, servings: { serving: [...] } } }
  */
 export async function nutritionFoodGet(foodId) {
-  const result = await apiClient.get(`/nutrition/foods/${foodId}`);
+  let result;
+  try {
+    result = await apiClient.get(`/nutrition/foods/${foodId}`);
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
+    throw err;
+  }
   const d = result?.data ?? {};
   return {
     food: {
@@ -72,7 +89,15 @@ export async function nutritionFoodGet(foodId) {
  * { food: { food_id, food_name, food_category, servings: { serving: [...] } } }
  */
 export async function nutritionBarcodeLookup(barcode) {
-  const result = await apiClient.get(`/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
+  let result;
+  try {
+    result = await apiClient.get(`/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
+    throw err;
+  }
   const d = result?.data ?? {};
   return {
     food: {

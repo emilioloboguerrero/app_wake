@@ -86,6 +86,7 @@ export function enqueue(operation) {
     enqueuedAt: new Date().toISOString(),
     retryCount: 0,
     priority: operation.priority ?? 'normal',
+    ...(operation.tempId ? { tempId: operation.tempId } : {}),
   };
 
   queue.push(entry);

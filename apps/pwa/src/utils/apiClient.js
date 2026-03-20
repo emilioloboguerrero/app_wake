@@ -5,11 +5,12 @@ const BASE_URL = '/api/v1';
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 export class WakeApiError extends Error {
-  constructor(code, message, status, field = null) {
+  constructor(code, message, status, field = null, retryAfter = null) {
     super(message);
     this.code = code;
     this.status = status;
     this.field = field;
+    this.retryAfter = retryAfter;
     this.name = 'WakeApiError';
   }
 }
@@ -119,11 +120,14 @@ class ApiClient {
 
       let errBody = null;
       try { errBody = await res.json(); } catch { /* non-JSON */ }
+      const retryAfterRaw = res.status === 429 ? res.headers.get('Retry-After') : null;
+      const retryAfterSec = retryAfterRaw ? Number(retryAfterRaw) : null;
       throw new WakeApiError(
         errBody?.error?.code ?? 'INTERNAL_ERROR',
         errBody?.error?.message ?? 'Unknown error',
         res.status,
-        errBody?.error?.field ?? null
+        errBody?.error?.field ?? null,
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec : null
       );
     } catch (err) {
       clearTimeout(timeoutId);
@@ -145,7 +149,12 @@ class ApiClient {
         return await fn();
       } catch (err) {
         if (!(err instanceof WakeApiError)) throw err;
-        if (err.status === 429 || err.status >= 500 || err.status === 0) {
+        if (err.status === 429) {
+          if (!err.retryAfter) throw err;
+          await new Promise(r => setTimeout(r, err.retryAfter * 1000));
+          return await fn();
+        }
+        if (err.status >= 500 || err.status === 0) {
           lastErr = err;
           continue;
         }

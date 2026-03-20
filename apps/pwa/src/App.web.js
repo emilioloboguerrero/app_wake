@@ -10,6 +10,7 @@ import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
+import OfflineBanner from './components/ui/OfflineBanner';
 
 // Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
 const CONTENT_TOP_PADDING_NON_IOS = 0;
@@ -237,6 +238,12 @@ export default function App() {
     } else {
       loadHeavyComponents().then(() => {
         setComponentsLoaded(true);
+
+        // Register background sync listeners so the offline queue is processed on reconnect
+        try {
+          const { registerOnlineListener } = require('./utils/backgroundSync');
+          registerOnlineListener();
+        } catch (_) {}
 
         // Initialize Service Worker AFTER components are loaded (path respects base path e.g. /app/sw.js)
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -705,6 +712,7 @@ export default function App() {
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
+              <OfflineBanner />
               <FrozenBottomWrapper>
                 <View style={contentWrapperStyle}>
                   {content}
