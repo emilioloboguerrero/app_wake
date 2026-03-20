@@ -462,38 +462,14 @@ export default function App() {
       initializeApp().catch(err => {
         if (mounted) {
           safeLog('error', 'Unhandled initialization error:', err);
-          if (debugMode) {
-            logger.error('[DEBUG] Unhandled init error:', err);
-          }
           setInitError(err);
         }
       });
-    } else {
-      safeLog('log', '⏳ Waiting for fonts to load...');
     }
 
     return () => {
       mounted = false;
     };
-  }, [fontsLoaded, debugMode, isLoginPath]);
-
-  // Debug: Log render - Skip for login route
-  React.useEffect(() => {
-    if (isLoginPath) return;
-
-    if (fontsLoaded) {
-      safeLog('log', '🎨 App rendered, fonts loaded:', fontsLoaded);
-      if (debugMode) {
-        const root = document.getElementById('root');
-        logger.debug('[DEBUG] Root element:', root);
-        logger.debug('[DEBUG] Root children:', root?.children.length || 0);
-        logger.debug('[DEBUG] Window size:', {
-          width: window.innerWidth,
-          height: window.innerHeight
-        });
-        logger.debug('[DEBUG] React render count:', performance.now());
-      }
-    }
   }, [fontsLoaded, debugMode, isLoginPath]);
 
   // Safari video overlay debug: run when ?safari_video_debug=1 or __DEV__ + Safari (navigate to a screen with video, pause, then check console or on-screen panel).
@@ -544,15 +520,9 @@ export default function App() {
   // and on iOS PWA use screen.availHeight. If standalone isn't detected, still apply on iOS when viewport
   // is already near full height (innerHeight >= screen.availHeight - 2).
   React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.document) {
-      logger.debug(VIEWPORT_LOG, 'effect: skip (no window/document)');
-      return;
-    }
+    if (typeof window === 'undefined' || !window.document) return;
     const root = document.getElementById('root');
-    if (!root) {
-      logger.debug(VIEWPORT_LOG, 'effect: skip (no #root)');
-      return;
-    }
+    if (!root) return;
     const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
     const isAndroid = () => /Android/.test(navigator.userAgent || '');
     const getCurrentHeight = () =>
@@ -591,10 +561,7 @@ export default function App() {
       setLayoutViewportCSSVars();
       const apply = shouldApply();
       const h = getHeight();
-      if (!apply) {
-        logger.debug(VIEWPORT_LOG, 'effect setHeight: shouldApply=false, skip');
-        return;
-      }
+      if (!apply) return;
       document.documentElement.style.setProperty('height', `${h}px`, 'important');
       document.documentElement.style.setProperty('min-height', `${h}px`, 'important');
       document.body.style.setProperty('height', `${h}px`, 'important');
@@ -602,11 +569,7 @@ export default function App() {
       root.style.setProperty('height', `${h}px`, 'important');
       root.style.setProperty('min-height', `${h}px`, 'important');
       root.style.setProperty('max-height', `${h}px`, 'important');
-      logger.debug(VIEWPORT_LOG, 'effect setHeight: applied', { h, rootComputed: getComputedStyle(root).height });
     };
-    const h0 = getHeight();
-    const apply0 = shouldApply();
-    logger.debug(VIEWPORT_LOG, 'effect: mount', { shouldApply: apply0, getHeight: h0, innerHeight: window.innerHeight, rootComputed: getComputedStyle(root).height });
     setHeight();
     const t1 = setTimeout(setHeight, 100);
     const t2 = setTimeout(setHeight, 300);
@@ -637,7 +600,6 @@ export default function App() {
 
   // Ensure critical components are loaded before rendering main app
   if (!ErrorBoundary || !VideoProvider || !WebAppNavigator || !StatusBar) {
-    logger.debug('[APP] ⚠️ Some components not loaded, attempting synchronous load...');
     try {
       if (!ErrorBoundary) ErrorBoundary = require('./components/ErrorBoundary').default;
       if (!VideoProvider) VideoProvider = require('./contexts/VideoContext').VideoProvider;
@@ -646,9 +608,8 @@ export default function App() {
       if (!auth) auth = require('./config/firebase').auth;
       if (!logger) logger = require('./utils/logger').default;
       if (!webStorageService) webStorageService = require('./services/webStorageService').default;
-      logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
-      logger.error('[APP] ❌ Synchronous load failed:', syncError);
+      logger.error('[APP] Synchronous load failed:', syncError);
     }
   }
 
@@ -676,13 +637,10 @@ export default function App() {
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
   if (!shouldShowAppFlow()) {
-    logger.debug('[APP] Not in standalone mode (no bypass) - rendering InstallScreen');
     content = <InstallScreen />;
   } else if (isLoginPath) {
-    logger.debug('[APP] Login route - rendering LoginScreen');
     content = <LoginScreen />;
   } else if (!componentsLoaded || !fontsLoaded) {
-    logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded);
     content = loadingMarkup;
   } else if (initError && initError.message?.includes('critical')) {
     content = (
@@ -693,7 +651,6 @@ export default function App() {
       </div>
     );
   } else if (!ErrorBoundary || !VideoProvider || !WebAppNavigator) {
-    logger.error('[APP] ❌ Critical components failed to load');
     content = (
       <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
         <h1>Error Loading App</h1>

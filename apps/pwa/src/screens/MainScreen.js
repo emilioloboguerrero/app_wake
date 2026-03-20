@@ -28,8 +28,6 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import LoadingSpinner from '../components/LoadingSpinner';
 import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
-import assetBundleService from '../services/assetBundleService';
-
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
 import { trackScreenView } from '../services/monitoringService';
@@ -447,7 +445,6 @@ const MainScreen = ({ navigation, route }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [downloadedCourses, setDownloadedCourses] = useState({});
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
-  const [libraryImageUri, setLibraryImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
   const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
@@ -488,30 +485,6 @@ const MainScreen = ({ navigation, route }) => {
   const cardEntranceAnim = useRef(new Animated.Value(0)).current;
   const screenAnim = useRef(new Animated.Value(0)).current;
   const greetAnim = useRef(new Animated.Value(0)).current;
-
-  // Load library card image from local bundle (preferred) or Firestore URL (fallback)
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLibraryImage = async () => {
-      try {
-        // Prefer local file downloaded once per version; otherwise keep bundled fallback
-        const localPath = assetBundleService.getLibraryLocalPath();
-        if (isMounted && localPath) {
-          setLibraryImageUri(localPath);
-          return;
-        }
-      } catch (error) {
-        logger.error('❌ Error loading library image from app_resources:', error);
-      }
-    };
-
-    loadLibraryImage();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Save selected card index to storage
   // Scroll position persistence — saves and restores the active card index across navigations
@@ -1235,20 +1208,10 @@ const MainScreen = ({ navigation, route }) => {
                   recyclingKey={course.id || course.courseId || 'unknown'}
                   onLoad={() => {
                     const id = course.id || course.courseId;
-                    logger.debug('[CARD_IMAGE_LOAD]', {
-                      courseId: id,
-                      step: 'image-painted',
-                      message: 'Image on screen; calling setState to force re-render so blend repaints.',
-                    });
                     setCardImageLoadedIds((prev) => {
                       const next = new Set(prev);
                       if (next.has(id)) return prev;
                       next.add(id);
-                      logger.debug('[CARD_CONTRAST]', {
-                        courseId: id,
-                        step: 'state-update',
-                        message: 'Adding course to cardImageLoadedIds → re-render will follow with phase after-image-load',
-                      });
                       return next;
                     });
                   }}
@@ -1380,7 +1343,6 @@ const MainScreen = ({ navigation, route }) => {
         </Animated.View>
       );
     } else if (item.type === 'library') {
-      logger.debug('📚 Rendering library card with image:', libraryImageUri || libraryImage);
       return (
         <Animated.View style={[styles.swipeableCard, cardStyle]}>
           <View style={styles.cardContentWithImage}>

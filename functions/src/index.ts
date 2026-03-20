@@ -32,25 +32,22 @@ const fatSecretClientSecret = functions.params.defineSecret(
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
 // ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
-const gen1RateStore = new Map<string, {count: number; resetAt: number}>();
+const rateLimitStore = new Map<string, {count: number; resetAt: number}>();
 
-function checkGen1RateLimit(key: string, maxPerMinute = 10): void {
+function checkRateLimit(key: string): boolean {
   const now = Date.now();
-  const entry = gen1RateStore.get(key);
+  const window = 60_000;
+  const max = 10;
+  const entry = rateLimitStore.get(key);
   if (!entry || now >= entry.resetAt) {
-    gen1RateStore.set(key, {count: 1, resetAt: now + 60_000});
-    return;
+    rateLimitStore.set(key, {count: 1, resetAt: now + window});
+    return true;
   }
-  entry.count++;
-  if (entry.count > maxPerMinute) {
-    const err = new Error("Too many requests") as Error & {statusCode: number};
-    err.statusCode = 429;
-    throw err;
+  if (entry.count >= max) {
+    return false;
   }
-}
-
-function isGen1RateLimitError(err: unknown): boolean {
-  return err instanceof Error && (err as Error & {statusCode?: number}).statusCode === 429;
+  entry.count += 1;
+  return true;
 }
 
 // ─── Input validation helpers ────────────────────────────────────────────────
@@ -68,6 +65,67 @@ function isValidCourseId(v: unknown): v is string {
 
 function isValidBarcode(v: unknown): v is string {
   return typeof v === "string" && BARCODE_RE.test(v);
+}
+
+// ISO date formats: YYYY-MM-DD or full ISO 8601 (e.g. 2024-03-18T14:30:00.000Z)
+const DATE_YYYY_MM_DD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
+
+interface DateValidationError {
+  statusCode: number;
+  body: { error: { code: string; message: string; field: string } };
+}
+
+function validateDateParam(value: unknown, fieldName: string): string {
+  if (typeof value !== "string" || !value) {
+    throw {
+      statusCode: 400,
+      body: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `${fieldName} debe ser una fecha válida en formato YYYY-MM-DD o ISO 8601`,
+          field: fieldName,
+        },
+      },
+    } as DateValidationError;
+  }
+  const trimmed = value.trim();
+  if (!DATE_YYYY_MM_DD_RE.test(trimmed) && !ISO_8601_RE.test(trimmed)) {
+    throw {
+      statusCode: 400,
+      body: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `${fieldName} debe ser una fecha válida en formato YYYY-MM-DD o ISO 8601`,
+          field: fieldName,
+        },
+      },
+    } as DateValidationError;
+  }
+  const parsed = new Date(trimmed);
+  if (isNaN(parsed.getTime())) {
+    throw {
+      statusCode: 400,
+      body: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `${fieldName} contiene una fecha inválida`,
+          field: fieldName,
+        },
+      },
+    } as DateValidationError;
+  }
+  return trimmed;
+}
+
+function isDateValidationError(err: unknown): err is DateValidationError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "statusCode" in err &&
+    "body" in err &&
+    (err as DateValidationError).statusCode === 400
+  );
 }
 
 // ─── Gen1 auth helper ────────────────────────────────────────────────────────
@@ -220,7 +278,7 @@ function parseExternalReference(reference: string): ParsedReference {
 // Helper: Calculate expiration date from access duration (same as app)
 function calculateExpirationDate(
   accessDuration: string,
-  options: {from?: Date | string} = {}
+  options: {from?: string} = {}
 ): string {
   const durations: {[key: string]: number} = {
     "monthly": 30,
@@ -229,11 +287,17 @@ function calculateExpirationDate(
     "yearly": 365,
   };
 
-  const days = durations[accessDuration] || 30; // Default to 30 days
+  const days = durations[accessDuration] || 30;
   const now = new Date();
-  let base = options.from ? new Date(options.from) : now;
+  let base: Date;
 
-  if (Number.isNaN(base.getTime()) || base < now) {
+  if (options.from) {
+    validateDateParam(options.from, "from");
+    base = new Date(options.from);
+    if (base < now) {
+      base = now;
+    }
+  } else {
     base = now;
   }
 
@@ -328,24 +392,32 @@ export const createPaymentPreference = functions
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
+      return;
+    }
+
+    const {courseId} = request.body || {};
+
+    if (!isValidCourseId(courseId)) {
+      response.status(400).json({
+        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
+      });
       return;
     }
 
     try {
-      checkGen1RateLimit(`createPaymentPreference_${userId}`);
-
-      const {courseId} = request.body || {};
-      if (!courseId || !COURSE_ID_RE.test(courseId)) {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
-        return;
-      }
-
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
+        response.status(404).json({
+          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
+        });
         return;
       }
 
@@ -374,12 +446,10 @@ export const createPaymentPreference = functions
 
       response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      if (isGen1RateLimitError(error)) {
-        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
-        return;
-      }
       functions.logger.error("createPaymentPreference error", error);
-      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"}});
+      response.status(500).json({
+        error: {code: "INTERNAL_ERROR", message: toErrorMessage(error)},
+      });
     }
   });
 
@@ -398,43 +468,59 @@ export const createSubscriptionCheckout = functions
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
+      return;
+    }
+
+    const {courseId, payer_email: payerEmail} = request.body || {};
+
+    if (!isValidCourseId(courseId)) {
+      response.status(400).json({
+        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
+      });
+      return;
+    }
+
+    if (!payerEmail || !isValidEmail(payerEmail)) {
+      response.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Se requiere un email de pago válido",
+          field: "payer_email",
+        },
+      });
       return;
     }
 
     try {
-      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`);
-
-      const {courseId, payer_email: payerEmail} = request.body || {};
-
-      if (!courseId || !COURSE_ID_RE.test(courseId)) {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
-        return;
-      }
-
-      if (!payerEmail || !EMAIL_RE.test(payerEmail)) {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Formato de email inválido", field: "payer_email"}});
-        return;
-      }
-
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
+        response.status(404).json({
+          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
+        });
         return;
       }
 
       if (!course.price) {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Course price not found"}});
+        response.status(400).json({
+          error: {code: "VALIDATION_ERROR", message: "Precio del curso no encontrado"},
+        });
         return;
       }
 
       const userDoc = await db.collection("users").doc(userId).get();
-      const user = userDoc.data();
 
-      if (!user) {
-        response.status(404).json({error: {code: "NOT_FOUND", message: "User not found"}});
+      if (!userDoc.exists) {
+        response.status(404).json({
+          error: {code: "NOT_FOUND", message: "Usuario no encontrado"},
+        });
         return;
       }
 
@@ -463,12 +549,11 @@ export const createSubscriptionCheckout = functions
       });
 
       if (result.init_point && result.id) {
-        functions.logger.info(
-          "Subscription created dynamically with init_point:",
-          result.init_point
-        );
-        functions.logger.info("Subscription ID (preapproval_id):", result.id);
-        functions.logger.info("External reference:", externalRef);
+        functions.logger.info("Subscription created", {
+          init_point: result.init_point,
+          subscription_id: result.id,
+          external_reference: externalRef,
+        });
 
         let nextBillingDate: string | null = null;
 
@@ -520,12 +605,10 @@ export const createSubscriptionCheckout = functions
       }
 
       functions.logger.error("PreApproval API did not return init_point");
-      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Failed to create subscription checkout URL"}});
+      response.status(500).json({
+        error: {code: "INTERNAL_ERROR", message: "No se pudo crear el enlace de pago"},
+      });
     } catch (error: unknown) {
-      if (isGen1RateLimitError(error)) {
-        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
-        return;
-      }
       const message = toErrorMessage(error);
       functions.logger.error("Error creating subscription:", error);
 
@@ -538,11 +621,19 @@ export const createSubscriptionCheckout = functions
         normalizedMessage.includes("must belong to this site");
 
       if (requiresAlternateEmail) {
-        response.status(409).json({error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"}});
+        response.status(409).json({
+          error: {
+            code: "CONFLICT",
+            message: "Por favor ingresa tu correo de Mercado Pago",
+          },
+          requireAlternateEmail: true,
+        });
         return;
       }
 
-      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"}});
+      response.status(500).json({
+        error: {code: "INTERNAL_ERROR", message: message || "Error al crear la suscripción"},
+      });
     }
   });
 
@@ -1015,7 +1106,7 @@ export const processPaymentWebhook = functions
 
       // Payment is approved - now check for duplicates and mark as processing
       // Use Firestore transaction for atomic idempotency check
-      const alreadyProcessed = await db.runTransaction(async (transaction) => {
+      const alreadyProcessed = await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
         const processedDoc = await transaction.get(processedPaymentsRef);
 
         if (processedDoc.exists) {
@@ -1105,23 +1196,13 @@ export const processPaymentWebhook = functions
         });
       }
 
-      functions.logger.info("Parsed external reference", {
+      functions.logger.info("Processing approved payment", {
         paymentId,
-        externalReference,
-        paymentType,
-        version: parsedReference.version,
-      });
-
-      functions.logger.info(
-        "Processing approved payment:",
-        paymentId,
-        "User:",
         userId,
-        "Course:",
         courseId,
-        "Is Subscription:",
-        isSubscription
-      );
+        isSubscription,
+        paymentType: parsedReference.version,
+      });
 
       // Validate user exists - Fix #5: Return 200 to prevent retries
       const userDoc = await db.collection("users").doc(userId).get();
@@ -1173,46 +1254,51 @@ export const processPaymentWebhook = functions
       const isRenewal = existingPurchase && isSubscription;
 
       if (isRenewal) {
-        // Subscription renewal: extend expiration date
-        functions.logger.info(
-          "Subscription renewal detected:",
-          userId,
-          courseId
-        );
+        functions.logger.info("Subscription renewal detected:", userId, courseId);
 
-        const currentCourse = existingPurchase ? (userDoc.data()?.courses || {})[courseId] : null;
+        const currentCourse = existingPurchase ? (userData?.courses || {})[courseId] : null;
         const currentExpiration = currentCourse?.expires_at ?? null;
-        const expirationDate = calculateExpirationDate(courseAccessDuration, {
-          from: currentExpiration ?? undefined,
-        });
-        functions.logger.info(
-          "Using calculated expiration date for renewal:",
-          expirationDate,
-          "Base:",
-          currentExpiration
-        );
+        let expirationDate: string;
+        try {
+          expirationDate = calculateExpirationDate(courseAccessDuration, {
+            from: currentExpiration ?? undefined,
+          });
+        } catch (dateErr: unknown) {
+          if (isDateValidationError(dateErr)) {
+            functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
+              userId, courseId, currentExpiration,
+            });
+            expirationDate = calculateExpirationDate(courseAccessDuration);
+          } else {
+            throw dateErr;
+          }
+        }
 
-        // Update existing course with new expiration date
         const userRef = db.collection("users").doc(userId);
-        const courses = (userData?.courses || {});
+        const existingCourseData = (userData?.courses || {})[courseId] || {};
 
-        courses[courseId] = {
-          ...courses[courseId],
-          expires_at: expirationDate,
-          status: "active",
-          // Keep existing data
-        };
-
+        // Allowlist renewal fields — no spread of arbitrary data
         await userRef.update({
-          courses: courses,
+          [`courses.${courseId}`]: {
+            access_duration: existingCourseData.access_duration ?? courseAccessDuration,
+            expires_at: expirationDate,
+            status: "active",
+            purchased_at: existingCourseData.purchased_at ?? new Date().toISOString(),
+            deliveryType: existingCourseData.deliveryType ?? courseDetails?.deliveryType ?? "low_ticket",
+            title: existingCourseData.title ?? courseTitle,
+            image_url: existingCourseData.image_url ?? courseDetails?.image_url ?? null,
+            discipline: existingCourseData.discipline ?? courseDetails?.discipline ?? "General",
+            creatorName: existingCourseData.creatorName ?? courseDetails?.creatorName ?? courseDetails?.creator_name ?? "Unknown Creator",
+            completedTutorials: existingCourseData.completedTutorials ?? {
+              dailyWorkout: [],
+              warmup: [],
+              workoutExecution: [],
+              workoutCompletion: [],
+            },
+          },
         });
 
-        functions.logger.info(
-          "✅ Subscription renewed successfully:",
-          paymentId,
-          "New expiration:",
-          expirationDate
-        );
+        functions.logger.info("Subscription renewed successfully:", paymentId, "New expiration:", expirationDate);
 
         const subscriptionId =
           paymentData.subscription_id || paymentData.preapproval_id;
@@ -1301,8 +1387,6 @@ export const processPaymentWebhook = functions
           state: "failed",
           payment_type: paymentType,
         });
-        // Return 200 to prevent retries
-
         response.status(200).send("OK");
         return;
       }
@@ -1317,17 +1401,16 @@ export const processPaymentWebhook = functions
       );
 
       // Fix #3: Use Firestore transaction for atomic course assignment
-      await db.runTransaction(async (transaction) => {
-        // Get user document
+      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
         const userRef = db.collection("users").doc(userId);
-        const userDoc = await transaction.get(userRef);
+        const freshUserDoc = await transaction.get(userRef);
 
-        if (!userDoc.exists) {
+        if (!freshUserDoc.exists) {
           throw new Error("User not found");
         }
 
-        const userData = userDoc.data();
-        const courses = userData?.courses || {};
+        const freshUserData = freshUserDoc.data();
+        const courses = freshUserData?.courses || {};
 
         // Check if course already assigned (atomic check)
         if (courses[courseId]) {
@@ -1376,9 +1459,9 @@ export const processPaymentWebhook = functions
 
         // Update user document (atomic write)
         transaction.update(userRef, {
-          courses: courses,
+          courses,
           purchased_courses: [
-            ...new Set([...(userData?.purchased_courses || []), courseId]),
+            ...new Set([...(freshUserData?.purchased_courses || []), courseId]),
           ],
         });
 
@@ -1470,10 +1553,6 @@ export const processPaymentWebhook = functions
 
         response.status(200).send("OK");
         break;
-
-      default:
-        // Unknown errors - be safe and return 500
-        response.status(500).send("Error");
       }
     }
   });
@@ -1497,13 +1576,16 @@ export const updateSubscriptionStatus = functions
 
     const userId = await verifyGen1Auth(request);
     if (!userId) {
-      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
       return;
     }
 
     try {
-      checkGen1RateLimit(`updateSubscriptionStatus_${userId}`);
-
       const {
         subscriptionId,
         action,
@@ -1634,12 +1716,10 @@ export const updateSubscriptionStatus = functions
 
       response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      if (isGen1RateLimitError(error)) {
-        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
-        return;
-      }
       functions.logger.error("Error updating subscription status:", error);
-      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al actualizar el estado de la suscripción"}});
+      response.status(500).json({
+        error: {code: "INTERNAL_ERROR", message: toErrorMessage(error)},
+      });
     }
   });
 
@@ -1649,7 +1729,8 @@ export const updateSubscriptionStatus = functions
  * Only creators can call this. Returns user info for confirmation before enrollment.
  */
 export const lookupUserForCreatorInvite = functions.https.onCall(
-  async (data, context) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
@@ -1700,7 +1781,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
         userId = authUser.uid;
         email = authUser.email || trimmed;
         displayName = authUser.displayName || "";
-      } catch (_err) {
+      } catch {
         // User not found by email - fall through to username lookup
       }
     }
@@ -1724,8 +1805,8 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       }
     }
 
-    // Enrich from Firestore if we found by email (or to get full profile for any path)
-    if (userId) {
+    // Enrich from Firestore only if found via Auth email lookup (username path already has the doc)
+    if (userId && !userDocData) {
       const userDoc = await db.collection("users").doc(userId).get();
       if (userDoc.exists) {
         userDocData = userDoc.data() ?? null;
@@ -1811,9 +1892,6 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
 // ============================================
 // NUTRITION (FatSecret proxy) — Step 2
 // ============================================
-// Optional: set this only if FatSecret requires a single whitelisted IP (then use
-// Serverless VPC connector + Cloud NAT). With 0.0.0.0/0 and ::/0 in FatSecret, leave empty.
-const NUTRITION_VPC_CONNECTOR = "";
 
 const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
 const fatSecretTokenCache = new Map<
@@ -1882,12 +1960,6 @@ function setNutritionCors(res: Response): void {
 
 const nutritionRunOptions: functions.RuntimeOptions = {
   secrets: [fatSecretClientId, fatSecretClientSecret],
-  ...(NUTRITION_VPC_CONNECTOR
-    ? {
-        vpcConnector: NUTRITION_VPC_CONNECTOR,
-        vpcConnectorEgressSettings: "ALL_TRAFFIC" as const,
-      }
-    : {}),
 };
 
 export const nutritionFoodSearch = functions
@@ -2067,7 +2139,7 @@ export const nutritionBarcodeLookup = functions
         region = "ES",
         language = "es",
       } = request.body || {};
-      if (!barcode || typeof barcode !== "string" || !BARCODE_RE.test(barcode.trim())) {
+      if (!isValidBarcode(barcode)) {
         response.status(400).json({error: {code: "VALIDATION_ERROR", message: "El código de barras debe contener entre 8 y 14 dígitos", field: "barcode"}});
         return;
       }
@@ -2117,22 +2189,22 @@ export const nutritionBarcodeLookup = functions
 // ─── onUserCreated ────────────────────────────────────────────────────────────
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
-export const onUserCreated = functions.auth.user().onCreate(async (user) => {
+export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
   // Allowlisted fields only — never spread the Firebase Auth user object
   const userDoc: Record<string, unknown> = {
     role: "user",
+    email: user.email ?? null,
+    displayName: user.displayName ?? null,
     created_at: admin.firestore.FieldValue.serverTimestamp(),
   };
-  if (user.email) userDoc.email = user.email;
-  if (user.displayName) userDoc.displayName = user.displayName;
 
   try {
     await db.collection("users").doc(user.uid).set(userDoc, {merge: true});
-    functions.logger.info("onUserCreated: user doc created", {uid: user.uid});
-  } catch (err: unknown) {
-    functions.logger.error("onUserCreated: failed to create user doc", {
+    functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
+  } catch (error) {
+    functions.logger.error("onUserCreated: failed to bootstrap user doc", {
       uid: user.uid,
-      error: err instanceof Error ? err.message : String(err),
+      error: toErrorMessage(error),
     });
   }
 });
@@ -2146,7 +2218,7 @@ export const onUserCreated = functions.auth.user().onCreate(async (user) => {
 export const sendEventConfirmationEmail = functions
   .runWith({secrets: ["RESEND_API_KEY"]})
   .firestore.document("event_signups/{eventId}/registrations/{regId}")
-  .onCreate(async (snap, context) => {
+  .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
     const {eventId, regId} = context.params;
     const reg = snap.data() as Record<string, unknown>;
 

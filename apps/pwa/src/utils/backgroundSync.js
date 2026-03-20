@@ -10,15 +10,17 @@ const MAX_RETRIES = 3;
 let _processing = false;
 
 function updateRetryCount(id) {
+  if (!id) return;
   try {
     const raw = localStorage.getItem('wake_offline_queue');
     const queue = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(queue)) return;
     const updated = queue.map(entry =>
-      entry.id === id ? { ...entry, retryCount: entry.retryCount + 1 } : entry
+      entry?.id === id ? { ...entry, retryCount: (entry.retryCount ?? 0) + 1 } : entry
     );
     localStorage.setItem('wake_offline_queue', JSON.stringify(updated));
   } catch (err) {
-    logger.error('[backgroundSync] updateRetryCount failed:', err);
+    logger.error('[backgroundSync] Error al actualizar contador de reintentos:', err);
   }
 }
 
@@ -47,16 +49,24 @@ export async function processPendingQueue() {
     logger.debug('[backgroundSync] processing', sorted.length, 'queued operations');
 
     for (const entry of sorted) {
-      // Dead-letter after MAX_RETRIES so one bad entry never blocks the queue.
-      if (entry.retryCount >= MAX_RETRIES) {
-        remove(entry.id);
-        logger.warn('[backgroundSync] dropped (max retries):', entry.id);
+      if (!entry?.id || !entry.method || !entry.path) {
+        logger.warn('[backgroundSync] entrada inválida en la cola, omitiendo');
         continue;
       }
 
-      if (Date.now() - new Date(entry.enqueuedAt).getTime() > SEVEN_DAYS_MS) {
+      const retryCount = entry.retryCount ?? 0;
+
+      // Dead-letter after MAX_RETRIES so one bad entry never blocks the queue.
+      if (retryCount >= MAX_RETRIES) {
         remove(entry.id);
-        logger.warn('[backgroundSync] dropped (expired):', entry.id);
+        logger.warn('[backgroundSync] descartado (máximo de reintentos):', entry.id);
+        continue;
+      }
+
+      const enqueuedTime = entry.enqueuedAt ? new Date(entry.enqueuedAt).getTime() : 0;
+      if (Date.now() - enqueuedTime > SEVEN_DAYS_MS) {
+        remove(entry.id);
+        logger.warn('[backgroundSync] descartado (expirado):', entry.id);
         continue;
       }
 
@@ -72,34 +82,34 @@ export async function processPendingQueue() {
         } else {
           // Unknown method — remove to avoid queue blockage.
           remove(entry.id);
-          logger.warn('[backgroundSync] dropped (unknown method):', entry.method, entry.id);
+          logger.warn('[backgroundSync] descartado (método desconocido):', entry.method, entry.id);
           continue;
         }
 
         remove(entry.id);
-        logger.debug('[backgroundSync] replayed successfully:', entry.id);
+        logger.debug('[backgroundSync] reenviado exitosamente:', entry.id);
       } catch (err) {
         if (err instanceof WakeApiError) {
           if (entry.path === '/workout/complete' && err.status === 409) {
             remove(entry.id);
-            logger.debug('[backgroundSync] dropped (409 already saved):', entry.id);
+            logger.debug('[backgroundSync] descartado (409 ya guardado):', entry.id);
           } else if (err.status >= 400 && err.status < 500) {
             // Permanent client-side failure — retrying won't help.
             remove(entry.id);
-            logger.warn('[backgroundSync] dropped (4xx permanent failure):', entry.id, err.status);
+            logger.warn('[backgroundSync] descartado (error 4xx permanente):', entry.id, err.status);
           } else {
             // 5xx / network — increment retry counter and leave in queue.
             updateRetryCount(entry.id);
-            logger.warn('[backgroundSync] retry later (5xx/network):', entry.id, err.status);
+            logger.warn('[backgroundSync] reintentando después (5xx/red):', entry.id, err.status);
           }
         } else {
           updateRetryCount(entry.id);
-          logger.warn('[backgroundSync] retry later (unknown error):', entry.id, String(err));
+          logger.warn('[backgroundSync] reintentando después (error desconocido):', entry.id, String(err));
         }
       }
     }
   } catch (err) {
-    logger.error('[backgroundSync] processPendingQueue failed unexpectedly:', err);
+    logger.error('[backgroundSync] Error inesperado al procesar cola pendiente:', err);
   } finally {
     _processing = false;
   }
@@ -113,8 +123,8 @@ export function registerOnlineListener() {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') processPendingQueue();
     });
-    logger.debug('[backgroundSync] online listeners registered');
+    logger.debug('[backgroundSync] listeners de reconexión registrados');
   } catch (err) {
-    logger.error('[backgroundSync] registerOnlineListener failed:', err);
+    logger.error('[backgroundSync] Error al registrar listeners de reconexión:', err);
   }
 }

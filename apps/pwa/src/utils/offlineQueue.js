@@ -25,20 +25,20 @@ function readQueue() {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      logger.warn('[offlineQueue] corrupt queue — resetting');
+      logger.warn('[offlineQueue] cola corrupta — reiniciando');
       return [];
     }
     // Filter out any entries that don't match the expected shape.
     const valid = parsed.filter(entry => {
       if (!isValidEntry(entry)) {
-        logger.warn('[offlineQueue] dropping malformed entry:', entry?.id ?? '(no id)');
+        logger.warn('[offlineQueue] descartando entrada malformada:', entry?.id ?? '(sin id)');
         return false;
       }
       return true;
     });
     return valid;
   } catch (err) {
-    logger.error('[offlineQueue] readQueue failed:', err);
+    logger.error('[offlineQueue] Error al leer la cola:', err);
     return [];
   }
 }
@@ -47,7 +47,7 @@ function writeQueue(queue) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
   } catch (err) {
-    logger.error('[offlineQueue] writeQueue failed:', err);
+    logger.error('[offlineQueue] Error al escribir la cola:', err);
   }
 }
 
@@ -58,7 +58,7 @@ export function enqueue(operation) {
     typeof operation.path !== 'string' ||
     !operation.path.trim()
   ) {
-    logger.error('[offlineQueue] enqueue called with invalid operation:', operation);
+    logger.error('[offlineQueue] enqueue llamado con operación inválida:', operation);
     return null;
   }
 
@@ -90,19 +90,19 @@ export function enqueue(operation) {
 
   queue.push(entry);
   writeQueue(queue);
-  logger.debug('[offlineQueue] enqueued:', entry.id, entry.method, entry.path);
+  logger.debug('[offlineQueue] encolado:', entry.id, entry.method, entry.path);
   return entry.id;
 }
 
 export function dequeue() {
   try {
     const queue = readQueue();
-    if (queue.length === 0) return null;
+    if (!queue || queue.length === 0) return null;
     const [first, ...rest] = queue;
     writeQueue(rest);
-    return first;
+    return first ?? null;
   } catch (err) {
-    logger.error('[offlineQueue] dequeue failed:', err);
+    logger.error('[offlineQueue] Error al desencolar:', err);
     return null;
   }
 }
@@ -112,11 +112,15 @@ export function getAll() {
 }
 
 export function remove(id) {
+  if (!id) {
+    logger.warn('[offlineQueue] remove llamado sin id');
+    return;
+  }
   try {
     const queue = readQueue();
-    writeQueue(queue.filter(entry => entry.id !== id));
+    writeQueue(queue.filter(entry => entry?.id !== id));
   } catch (err) {
-    logger.error('[offlineQueue] remove failed:', err);
+    logger.error('[offlineQueue] Error al eliminar entrada:', err);
   }
 }
 
@@ -124,6 +128,6 @@ export function clear() {
   try {
     writeQueue([]);
   } catch (err) {
-    logger.error('[offlineQueue] clear failed:', err);
+    logger.error('[offlineQueue] Error al limpiar la cola:', err);
   }
 }

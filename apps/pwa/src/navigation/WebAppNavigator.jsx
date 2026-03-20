@@ -106,7 +106,6 @@ const AuthenticatedLayout = ({ children }) => {
   const prevPathRef = React.useRef(location.pathname);
 
   const refreshUserProfile = React.useCallback(() => {
-    logger.debug('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
     const promise = new Promise((resolve) => {
       refreshResolveRef.current = resolve;
     });
@@ -159,7 +158,6 @@ const AuthenticatedLayout = ({ children }) => {
           const { auth } = require('../config/firebase');
           const currentUser = auth.currentUser;
           if (currentUser && currentUser !== firebaseUser) {
-            logger.debug('[AUTH LAYOUT] Firebase user found but AuthContext still loading, updating firebaseUser');
             setFirebaseUser(currentUser);
             // Stop interval once we have a user
             clearInterval(interval);
@@ -187,7 +185,6 @@ const AuthenticatedLayout = ({ children }) => {
   React.useEffect(() => {
     // Skip if already checked for this user (refreshUserProfile clears ref to force refetch)
     if (effectiveUidForFetch && checkedUserIdRef.current === effectiveUidForFetch) {
-      logger.debug('[AUTH LAYOUT] checkUserProfile skipped (already checked for uid)', effectiveUidForFetch);
       return;
     }
 
@@ -204,13 +201,12 @@ const AuthenticatedLayout = ({ children }) => {
       // if AuthContext is still loading but we have firebaseUser/directFirebaseCheck we'd otherwise
       // show "Waiting for profile" forever without ever starting the fetch.
       if (effectiveUidForFetch) {
-        logger.debug('[AUTH LAYOUT] BREAKPOINT: Starting profile fetch for uid:', effectiveUidForFetch);
         setProfileLoading(true);
         checkedUserIdRef.current = effectiveUidForFetch;
         
         timeoutId = setTimeout(() => {
           if (mounted) {
-            logger.warn('[AUTH LAYOUT] BREAKPOINT: Profile fetch timeout (10s), assuming new user. uid:', effectiveUidForFetch);
+            logger.warn('[AUTH LAYOUT] Profile fetch timeout (10s), assuming new user. uid:', effectiveUidForFetch);
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             setProfileLoading(false);
           }
@@ -227,7 +223,6 @@ const AuthenticatedLayout = ({ children }) => {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
               if (cacheAge < 5 * 60 * 1000) {
-                logger.debug('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
                 if (mounted) {
                   setUserProfile({
                     profileCompleted: status.profileCompleted ?? false,
@@ -250,7 +245,6 @@ const AuthenticatedLayout = ({ children }) => {
           
           if (mounted) {
             if (profile) {
-              logger.debug('[AUTH LAYOUT] BREAKPOINT: Profile from Firestore. uid:', effectiveUidForFetch, 'onboardingCompleted:', profile.onboardingCompleted, 'profileCompleted:', profile.profileCompleted);
               setUserProfile(profile);
               try {
                 localStorage.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
@@ -260,25 +254,22 @@ const AuthenticatedLayout = ({ children }) => {
                 }));
               } catch (_) {}
             } else {
-              logger.debug('[AUTH LAYOUT] BREAKPOINT: No profile (new user). uid:', effectiveUidForFetch, '-> setting onboarding not completed');
               setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             }
           }
         } catch (error) {
-          logger.warn('[AUTH LAYOUT] BREAKPOINT: Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
+          logger.warn('[AUTH LAYOUT] Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
           if (mounted) {
             try {
               let cached = null;
               try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
               if (cached) {
                 const status = JSON.parse(cached);
-                logger.debug('[AUTH LAYOUT] Using cached onboarding status after error. uid:', effectiveUidForFetch, status);
                 setUserProfile({
                   profileCompleted: status.profileCompleted ?? false,
                   onboardingCompleted: status.onboardingCompleted ?? false
                 });
               } else {
-                logger.debug('[AUTH LAYOUT] No cache, assuming new user after error. uid:', effectiveUidForFetch);
                 setUserProfile({ profileCompleted: false, onboardingCompleted: false });
               }
             } catch {
@@ -295,7 +286,6 @@ const AuthenticatedLayout = ({ children }) => {
           if (resolve) resolve();
         }
       } else if (!effectiveUidForFetch) {
-        logger.debug('[AUTH LAYOUT] No user, clearing userProfile');
         setUserProfile(null);
         setProfileLoading(false);
         checkedUserIdRef.current = null;
@@ -342,24 +332,10 @@ const AuthenticatedLayout = ({ children }) => {
   const [loadingTimeout, setLoadingTimeout] = React.useState(false);
   
   logger.prod('LAYOUT', { loading, hasFirebaseUser: !!firebaseUser, finalHasUser: !!finalHasUser, shouldShowLoading, loadingTimeoutMs });
-  logger.debug('[AUTH LAYOUT] ========================================');
-  logger.debug('[AUTH LAYOUT] Auth state check:', {
-    userFromContext: user?.uid || 'none',
-    userFromContextEmail: user?.email || 'none',
-    firebaseUser: firebaseUser?.uid || 'none',
-    firebaseUserEmail: firebaseUser?.email || 'none',
-    directFirebaseCheck: directFirebaseCheck?.uid || 'none',
-    directFirebaseCheckEmail: directFirebaseCheck?.email || 'none',
-    loading,
-    hasUser: hasUser?.uid || 'none',
-    finalHasUser: finalHasUser?.uid || 'none'
-  });
-  logger.debug('[AUTH LAYOUT] ========================================');
   React.useEffect(() => {
     if (shouldShowLoading) {
       const timeout = setTimeout(() => {
         logger.prod('LAYOUT loading timeout fired', loadingTimeoutMs + 'ms', 'Safari:', isSafariWeb());
-        logger.debug(`[AUTH LAYOUT] Timeout: AuthContext loading too long (${loadingTimeoutMs}ms), proceeding anyway${isSafariWeb() ? ' [Safari]' : ''}`);
         setLoadingTimeout(true);
       }, loadingTimeoutMs);
       return () => clearTimeout(timeout);
@@ -407,7 +383,6 @@ const AuthenticatedLayout = ({ children }) => {
 
   if (shouldShowLoading && !loadingTimeout) {
     logger.prod('LAYOUT showing LoadingScreen', 'loading:', loading, 'loadingTimeout:', loadingTimeout);
-    logger.debug('[AUTH LAYOUT] Showing loading screen - loading:', loading, 'hasFirebaseUser:', hasFirebaseUser);
     return <LoadingScreen />;
   }
 
@@ -415,7 +390,6 @@ const AuthenticatedLayout = ({ children }) => {
   // Don't wait for AuthContext's fallback — Safari may never fire onAuthStateChanged.
   if (loadingTimeout && !finalHasUser) {
     logger.prod('LAYOUT redirect to /login (loading timeout, no user)');
-    logger.debug('[AUTH LAYOUT] Loading timeout fired with no user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
@@ -423,28 +397,20 @@ const AuthenticatedLayout = ({ children }) => {
   // Redirect to login if not authenticated (after checking both AuthContext and Firebase)
   if (!finalHasUser && !loading) {
     logger.prod('LAYOUT redirect to /login', 'no user');
-    logger.debug('[AUTH LAYOUT] ❌ No user found after all checks, redirecting to login');
-    logger.debug('[AUTH LAYOUT] Checked: AuthContext user, firebaseUser state, direct Firebase check');
     return <Navigate to="/login" replace />;
   }
   
   // If still loading and no user (and we haven't timed out yet), show loading screen
   if (!finalHasUser && loading) {
     logger.prod('LAYOUT LoadingScreen (no user, loading)', loading);
-    logger.debug('[AUTH LAYOUT] ⏳ Still loading auth state, showing loading screen');
     return <LoadingScreen />;
   }
   
   const effectiveUid = finalHasUser?.uid || hasUser?.uid;
-  if (finalHasUser) {
-    logger.debug('[AUTH LAYOUT] ✅ User authenticated. uid:', finalHasUser.uid);
-  }
-
   // Wait for profile when we have an authenticated user: either still loading or not yet known
   // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
   if (finalHasUser && (profileLoading || userProfile === null)) {
     logger.prod('LAYOUT LoadingScreen (waiting for profile)', { uid: effectiveUid, profileLoading, hasProfile: !!userProfile });
-    logger.debug('[AUTH LAYOUT] BREAKPOINT: Waiting for profile. uid:', effectiveUid, 'profileLoading:', profileLoading, 'userProfile:', userProfile ? 'set' : 'null');
     return <LoadingScreen />;
   }
 
@@ -460,35 +426,23 @@ const AuthenticatedLayout = ({ children }) => {
   if (isOnOnboardingPath) {
     // We're on /onboarding: only render onboarding screen if they still need it
     if (hasCompletedOnboarding) {
-      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding but profile complete, redirecting to /. uid:', effectiveUid);
       return <Navigate to="/" replace />;
     }
     // Profile already done but questions not: send to questions flow (e.g. after refresh)
     if (userProfile.profileCompleted && !userProfile.onboardingCompleted) {
-      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding, profile done, redirecting to questions. uid:', effectiveUid);
       return <Navigate to="/onboarding/questions" replace />;
     }
-    logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding, rendering children. uid:', effectiveUid);
   } else if (isOnOnboardingQuestionsPath) {
     // On questions flow: allow even if refetch hasn't updated profile yet
     if (hasCompletedOnboarding) {
-      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions but onboarding complete, redirecting to /. uid:', effectiveUid);
       return <Navigate to="/" replace />;
     }
-    logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions, rendering children. uid:', effectiveUid);
   } else {
     // We're on another route: redirect to onboarding only when profile explicitly says incomplete
     if (needsOnboarding) {
-      logger.debug('[AUTH LAYOUT] BREAKPOINT: Onboarding decision - redirecting to /onboarding.', {
-        uid: effectiveUid,
-        onboardingCompleted: userProfile.onboardingCompleted,
-        profileCompleted: userProfile.profileCompleted
-      });
       return <Navigate to="/onboarding" replace />;
     }
   }
-
-  logger.debug('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
   const userRole = userProfile?.role ?? null;
 
   // Render tab bar in a portal to document.body so position:fixed is relative to viewport
@@ -572,7 +526,6 @@ const WebAppNavigator = () => {
   if (isLoginRoute) {
     const hasUser = user || firebaseUserForLogin;
     if (!loading && hasUser) {
-      logger.debug('[WEB NAV] User already logged in, redirecting from /login to /');
       return <Navigate to="/" replace />;
     }
     

@@ -85,7 +85,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       import('../config/firebase').then(({ auth }) => {
         const firebaseUser = auth.currentUser;
         if (firebaseUser) {
-          logger.debug('⚠️ DailyWorkoutScreen: Using fallback Firebase user (AuthContext failed)');
           setFallbackUser(firebaseUser);
         }
       });
@@ -251,11 +250,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       if (user?.uid) {
         const opts = isOneOnOne && selectedDateProp ? { targetDate: selectedDateProp } : {};
         loadSessionState(opts);
-      } else {
-        logger.debug('⏭️ Waiting for user to be available before loading session state...');
       }
-    } else {
-      logger.debug('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
     }
   }, [user?.uid]); // Re-run when user becomes available
 
@@ -279,12 +274,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (route.params?.selectedSessionId && user?.uid) {
       const { selectedSessionId, selectedModuleId, selectedSessionIndex } = route.params;
       
-      logger.debug('📍 Session pre-selected from CourseStructure:', {
-        selectedSessionId,
-        selectedModuleId,
-        selectedSessionIndex
-      });
-      
       // Find the session object from allSessions or load it
       const handlePreSelectedSession = async () => {
         try {
@@ -292,8 +281,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           let allSessions = sessionState.allSessions;
           
           if (!allSessions || allSessions.length === 0) {
-            // Need to load session state first to get all sessions
-            logger.debug('📥 Loading session state to get all sessions...');
             const initialState = await sessionService.getCurrentSession(
               user.uid,
               course.courseId
@@ -313,7 +300,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           );
           
           if (selectedSession) {
-            logger.debug('✅ Found pre-selected session, selecting it...');
             await handleSelectSession(selectedSession, selectedSessionIndex);
             
             // Clear params after successful selection to prevent re-selection on back navigation
@@ -365,8 +351,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
-      logger.debug('🎯 Loading session state...');
-      
       // Safety check: ensure user and course are available
       if (!user?.uid) {
         logger.error('❌ Cannot load session state: user not available');
@@ -406,8 +390,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         await checkForTutorials();
       }
 
-      logger.debug('✅ Session state loaded successfully');
-      
     } catch (error) {
       logger.error('❌ Error loading session state:', error);
       setSessionState(prev => ({ 

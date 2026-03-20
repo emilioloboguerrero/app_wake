@@ -5,46 +5,16 @@ import logger from '../utils/logger';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
-    logger.debug(`🔍 [isCourseEntryActive] Checking course entry:`, {
-      hasEntry: !!courseEntry,
-      status: courseEntry?.status,
-      is_trial: courseEntry?.is_trial,
-      expires_at: courseEntry?.expires_at,
-      expires_at_parsed: courseEntry?.expires_at ? new Date(courseEntry.expires_at).toISOString() : null
-    });
-
-    if (!courseEntry) {
-      logger.debug(`❌ [isCourseEntryActive] No course entry - returning false`);
-      return false;
-    }
+    if (!courseEntry) return false;
 
     const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
     const now = new Date();
     const isNotExpired = !expiresAt || expiresAt > now;
 
-    logger.debug(`🔍 [isCourseEntryActive] Expiration check:`, {
-      expiresAt: expiresAt ? expiresAt.toISOString() : null,
-      now: now.toISOString(),
-      isNotExpired,
-      expiresAt_gt_now: expiresAt ? expiresAt > now : 'N/A (null)'
-    });
+    if (!isNotExpired) return false;
+    if (courseEntry.status === 'active') return true;
+    if (courseEntry.is_trial) return true;
 
-    if (!isNotExpired) {
-      logger.debug(`❌ [isCourseEntryActive] Course expired - returning false`);
-      return false;
-    }
-
-    if (courseEntry.status === 'active') {
-      logger.debug(`✅ [isCourseEntryActive] Course is active - returning true`);
-      return true;
-    }
-
-    if (courseEntry.is_trial) {
-      logger.debug(`✅ [isCourseEntryActive] Course is trial - returning true`);
-      return true;
-    }
-
-    logger.debug(`❌ [isCourseEntryActive] Course not active and not trial - returning false`);
     return false;
   }
 
@@ -157,8 +127,6 @@ class PurchaseService {
    */
   async grantFreeAccess(userId, courseId) {
     try {
-      logger.debug(`🆓 Granting free access: User ${userId} → Course ${courseId}`);
-
       const existingPurchase = await this.checkUserOwnsCourse(userId, courseId);
 
       if (existingPurchase) {
@@ -187,8 +155,6 @@ class PurchaseService {
         accessDuration: courseDetails.access_duration,
         courseDetails,
       });
-
-      logger.debug('✅ Free access granted successfully');
 
       return {
         success: true,
@@ -225,12 +191,6 @@ class PurchaseService {
       }
 
       const requestBody = { userId, courseId, payer_email: payerEmail };
-      logger.debug('💳 [prepareSubscription] Request to createSubscriptionCheckout', {
-        params: requestBody,
-        hasUserId: !!userId,
-        hasCourseId: !!courseId,
-        hasPayerEmail: !!payerEmail,
-      });
 
       const response = await fetch(
         "https://us-central1-wolf-20b8b.cloudfunctions.net/createSubscriptionCheckout",
@@ -292,13 +252,6 @@ class PurchaseService {
    */
   async preparePurchase(userId, courseId) {
     try {
-      logger.debug('💳 [preparePurchase] Input', {
-        userId: userId ?? null,
-        courseId: courseId ?? null,
-        hasUserId: !!userId,
-        hasCourseId: !!courseId,
-      });
-
       const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
 
       if (!courseDetails) {
@@ -311,22 +264,9 @@ class PurchaseService {
       if (courseDetails.access_duration === "monthly") {
         const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
         const payerEmail = userDoc?.email || null;
-        logger.debug('💳 [preparePurchase] Calling purchase web function: createSubscriptionCheckout', {
-          endpoint: 'createSubscriptionCheckout',
-          params: { userId, courseId, payer_email: payerEmail },
-          hasUserId: !!userId,
-          hasCourseId: !!courseId,
-          hasPayerEmail: !!payerEmail,
-        });
         return await this.prepareSubscription(userId, courseId, payerEmail);
       } else {
         const body = { userId, courseId };
-        logger.debug('💳 [preparePurchase] Calling purchase web function: createPaymentPreference', {
-          endpoint: 'createPaymentPreference',
-          params: body,
-          hasUserId: !!userId,
-          hasCourseId: !!courseId,
-        });
         const response = await fetch(
           "https://us-central1-wolf-20b8b.cloudfunctions.net/createPaymentPreference",
           {
@@ -420,16 +360,10 @@ class PurchaseService {
 
       const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
       if (!userDoc) {
-        logger.debug('❌ getUserPurchasedCourses: User document not found for:', userId);
         return [];
       }
 
       const userCourses = userDoc.courses || {};
-      logger.debug('🔍 getUserPurchasedCourses: User courses object:', {
-        userId,
-        coursesCount: Object.keys(userCourses).length,
-        courseIds: Object.keys(userCourses)
-      });
 
       const now = new Date();
 
@@ -437,7 +371,6 @@ class PurchaseService {
       if (Object.keys(userCourses).length > 0) {
         coursesWithDetails = await Promise.all(
           Object.entries(userCourses).map(async ([courseId, courseData]) => {
-            logger.debug('🔍 Processing course:', courseId, courseData);
             const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
 
             const isActive = courseData.status === 'active';
@@ -465,13 +398,11 @@ class PurchaseService {
         const orphaned = await apiClient.get('/workout/client-programs', { params: { orphaned: true } }).then(r => r?.data ?? []);
         if (orphaned.length > 0) {
           coursesWithDetails = [...coursesWithDetails, ...orphaned];
-          logger.debug('📱 getUserPurchasedCourses: merged', orphaned.length, 'orphaned one-on-one programs');
         }
       } catch (err) {
         logger.warn('⚠️ getUserPurchasedCourses: orphan fallback failed:', err?.message);
       }
 
-      logger.debug('✅ getUserPurchasedCourses: Returning', coursesWithDetails.length, 'courses');
       return coursesWithDetails;
     } catch (error) {
       logger.error('❌ Error getting user courses:', error);

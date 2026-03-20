@@ -29,9 +29,6 @@ export const AuthProvider = ({ children }) => {
     
     const safari = isSafariWeb();
     logger.prod('AUTH init', { safari, fallbackMs: safari ? 3000 : 10000 });
-    logger.debug('[WAKE] 🔐 ========================================');
-    logger.debug('[WAKE] 🔐 AuthProvider: Setting up auth listener');
-    logger.debug('[WAKE] 🔐 ========================================');
     setInitialized(true);
     
     let unsubscribe;
@@ -41,14 +38,10 @@ export const AuthProvider = ({ children }) => {
     // This helps us see if IndexedDB has restored auth state
     const immediateCheck = auth.currentUser;
     logger.prod('AUTH immediate auth.currentUser', immediateCheck ? immediateCheck.uid : null);
-    logger.debug('[WAKE] 🔐 [IMMEDIATE CHECK] auth.currentUser:', immediateCheck ? `User: ${immediateCheck.uid}` : 'null');
-    logger.debug('[WAKE] 🔐 [IMMEDIATE CHECK] auth.currentUser?.email:', immediateCheck?.email || 'N/A');
     
     // CRITICAL: Set up onAuthStateChanged listener FIRST
     // This listener fires immediately with the current user if one exists (after IndexedDB restore)
     // It also fires whenever auth state changes in the future
-    logger.debug('[WAKE] 🔐 Setting up onAuthStateChanged listener...');
-    
     // Set up the listener - this will fire immediately if user exists after IndexedDB restore
     // Use a ref to track if we've received the initial auth state
     let initialAuthStateReceived = false;
@@ -58,30 +51,21 @@ export const AuthProvider = ({ children }) => {
       initialAuthStateReceived = true;
       
       logger.prod('AUTH onAuthStateChanged', isInitialState ? 'INITIAL' : 'SUBSEQUENT', user ? user.uid : null);
-      logger.debug(`[WAKE] 🔐 [onAuthStateChanged] ${isInitialState ? 'INITIAL' : 'SUBSEQUENT'} Fired! User:`, user ? `User: ${user.uid}, Email: ${user.email}` : 'null');
-      
+
       if (isMounted) {
         setUser(user);
         setLoading(false);
-        logger.debug('[WAKE] 🔐 [onAuthStateChanged] ✅ AuthContext updated, loading set to false', {
-          userId: user?.uid,
-          email: user?.email
-        });
       } else {
-        logger.debug('[WAKE] 🔐 [onAuthStateChanged] Component unmounted, but updating anyway (auth state is critical)');
         // Even if unmounted, update state - auth state is critical
         setUser(user);
         setLoading(false);
       }
     }, (error) => {
       logger.prod('AUTH onAuthStateChanged ERROR', String(error?.message || error));
-      logger.error('[WAKE] 🔐 [onAuthStateChanged] ❌ Error in auth state listener:', error);
       if (isMounted) {
         setLoading(false);
       }
     });
-    logger.debug('[WAKE] 🔐 onAuthStateChanged listener set up successfully');
-    
     // CRITICAL: Also check currentUser after delays to catch IndexedDB restore
     // Sometimes onAuthStateChanged doesn't fire immediately on page reload
     // This ensures we catch the restored user even if the listener hasn't fired yet
@@ -91,37 +75,25 @@ export const AuthProvider = ({ children }) => {
     
     const checkAfterDelay = (delay, label) => {
       const timeoutId = setTimeout(() => {
-        // Check if component is still mounted before updating state
-        if (!isMounted) {
-          logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] Component unmounted, skipping state update`);
-          return;
-        }
-        
+        if (!isMounted) return;
+
         try {
           const currentUser = auth.currentUser;
-          logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] auth.currentUser after ${delay}ms:`, currentUser ? `User: ${currentUser.uid}, Email: ${currentUser.email}` : 'null');
-          
+
           if (currentUser) {
             logger.prod('AUTH delay check', label, 'user', currentUser.uid);
-            logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ Found user after delay check (IndexedDB restored)`);
-            // Update state only if still mounted
             if (isMounted) {
               setUser(currentUser);
               setLoading(false);
-              logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ✅ AuthContext initialized with restored user from IndexedDB`);
             }
           } else {
             if (delay >= 1000) logger.prod('AUTH delay check', label, 'no user');
-            logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ No user found after delay check`);
-            // Only set loading to false on later checks to avoid premature state updates
             if (delay >= 1000 && isMounted) {
               setLoading(false);
-              logger.debug(`[WAKE] 🔐 [DELAY CHECK ${label}] Set loading to false (no user)`);
             }
           }
         } catch (error) {
           logger.prod('AUTH delay check ERROR', label, String(error?.message || error));
-          logger.error(`[WAKE] 🔐 [DELAY CHECK ${label}] ❌ Error in delay check:`, error);
           if (delay >= 1000 && isMounted) {
             setLoading(false);
           }
@@ -150,13 +122,10 @@ export const AuthProvider = ({ children }) => {
         try {
           const currentUser = auth.currentUser;
           logger.prod('AUTH TIMEOUT FALLBACK currentUser', currentUser ? currentUser.uid : null);
-          logger.debug(`[WAKE] 🔐 [TIMEOUT FALLBACK] Auth timeout (${fallbackMs}ms) - checking currentUser directly as fallback${isSafariWeb() ? ' [Safari]' : ''}`);
           setUser(currentUser);
           setLoading(false);
-          logger.debug('[WAKE] 🔐 [TIMEOUT FALLBACK] ✅ Set user and loading to false');
         } catch (error) {
           logger.prod('AUTH TIMEOUT FALLBACK ERROR', String(error?.message || error));
-          logger.error('[WAKE] 🔐 [TIMEOUT FALLBACK] ❌ Error in timeout fallback:', error);
           setLoading(false);
         }
       } else {
@@ -176,7 +145,6 @@ export const AuthProvider = ({ children }) => {
       if (unsubscribe) {
         unsubscribe();
       }
-      logger.debug('[WAKE] 🔐 AuthProvider cleanup: All timers cleared and listener unsubscribed');
     };
   }, [initialized]); // Only depend on initialized, not loading (loading changes would cause re-runs)
   
@@ -184,7 +152,6 @@ export const AuthProvider = ({ children }) => {
   React.useEffect(() => {
     if (user && loading) {
       const safetyTimeout = setTimeout(() => {
-        logger.debug('[WAKE] 🔐 Safety timeout: User exists but loading is true, forcing loading to false');
         setLoading(false);
       }, 2000);
       return () => clearTimeout(safetyTimeout);

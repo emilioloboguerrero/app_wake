@@ -470,7 +470,6 @@ class CourseDownloadService {
           // Check if we're already handling an update for this course (prevent infinite loop)
           const updateKey = `${courseId}_${this.currentUserId}`;
           if (this._versionChecksInProgress?.has(updateKey)) {
-            logger.debug('⚠️ VERSION CHECK: Update already in progress for this course, skipping');
             const decompressedData = await this.decompressCourseData(courseData);
             return {
               ...decompressedData,
@@ -486,8 +485,6 @@ class CourseDownloadService {
           this._versionChecksInProgress.add(updateKey);
           
           try {
-            logger.debug('🔍 VERSION CHECK: Status is ready, checking for version mismatch');
-            
             // ✅ NEW: Check library versions first
             const decompressedData = await this.decompressCourseData(courseData);
             let libraryVersionCheck = null;
@@ -500,7 +497,6 @@ class CourseDownloadService {
                 );
                 
                 if (libraryVersionCheck.needsUpdate) {
-                  logger.debug('🔄 LIBRARY VERSION CHECK: Library items changed, triggering update');
                   this.handleLibraryVersionUpdate(courseId, libraryVersionCheck, this.currentUserId).catch(error => {
                     logger.error('❌ Error in handleLibraryVersionUpdate:', error);
                   });
@@ -527,7 +523,6 @@ class CourseDownloadService {
                   
                   // Compare versions (simple deep equality check)
                   if (JSON.stringify(currentVersion) !== JSON.stringify(storedVersion)) {
-                    logger.debug('🔄 CLIENT PROGRAM VERSION CHECK: Client overrides changed, triggering update');
                     // Trigger re-download to get updated client overrides
                     this.handleVersionUpdate(courseId, decompressedData.version, this.currentUserId).catch(error => {
                       logger.error('❌ Error in handleVersionUpdate:', error);
@@ -547,10 +542,8 @@ class CourseDownloadService {
             
             // ✅ EXISTING: Check course version
             const versionCheck = await this.checkVersionMismatch(courseId, courseData, this.currentUserId);
-            logger.debug('📊 VERSION CHECK: Version check result:', versionCheck);
-            
+
             if (versionCheck.needsUpdate) {
-              logger.debug('🔄 VERSION CHECK: Version mismatch detected, starting update process');
               
               // Mark as updating and start background download (non-blocking)
               this.handleVersionUpdate(courseId, versionCheck.newVersion, this.currentUserId).catch(error => {
@@ -567,7 +560,6 @@ class CourseDownloadService {
                 updateProgress: 0
               };
             } else {
-              logger.debug('✅ VERSION CHECK: No update needed, versions match');
               // Remove from in-progress if no update needed
               if (this._versionChecksInProgress) {
                 this._versionChecksInProgress.delete(updateKey);
@@ -582,15 +574,10 @@ class CourseDownloadService {
             throw error;
           }
         }
-      } else {
-        logger.debug('⚠️ VERSION CHECK: No currentUserId set, skipping version check');
       }
       
       // Decompress if needed
       const decompressedData = await this.decompressCourseData(courseData);
-      
-      logger.debug('✅ Course loaded from local storage:', courseId);
-      logger.debug('📚 Course has', decompressedData.courseData?.modules?.length || 0, 'modules');
       
       return {
         ...decompressedData,
@@ -599,7 +586,6 @@ class CourseDownloadService {
       
     } catch (error) {
       logger.error('❌ Failed to get course data:', error);
-      logger.error('❌ Error details:', error.message);
       return null;
     }
   }
@@ -627,7 +613,6 @@ class CourseDownloadService {
       // Update course index
       await this.removeCourseFromIndex(courseId);
       
-      logger.debug('🗑️ Course deleted from local storage:', courseId);
       return true;
       
     } catch (error) {
@@ -641,8 +626,6 @@ class CourseDownloadService {
    */
   async clearAllCourseData() {
     try {
-      logger.debug('🧹 Clearing all course data from local storage...');
-      
       // Get all AsyncStorage keys
       const keys = await AsyncStorage.getAllKeys();
       
@@ -652,13 +635,11 @@ class CourseDownloadService {
       // Remove all course data
       if (courseKeys.length > 0) {
         await AsyncStorage.multiRemove(courseKeys);
-        logger.debug('✅ Cleared', courseKeys.length, 'course data entries');
       }
       
       // Also clear course index
       await AsyncStorage.removeItem('course_index');
       
-      logger.debug('✅ All course data cleared from local storage');
     } catch (error) {
       logger.error('❌ Failed to clear all course data:', error);
       throw error;
@@ -670,7 +651,6 @@ class CourseDownloadService {
    */
   async cleanupExpiredCourses(userId) {
     try {
-      logger.debug('🧹 Cleaning up expired courses for user:', userId);
       
       // Get user's active courses from Firestore
       const userDoc = await apiService.getUser(userId);
@@ -695,7 +675,6 @@ class CourseDownloadService {
         await this.removeCourseFromCache(userId, courseId);
       }
       
-      logger.debug('✅ Cleanup completed. Removed courses:', expiredCourses.length);
       
     } catch (error) {
       logger.error('❌ Cleanup failed:', error);
@@ -724,7 +703,6 @@ class CourseDownloadService {
       }
     }
     
-    logger.debug('✅ Course data validation passed');
     return true;
   }
   
@@ -847,14 +825,11 @@ class CourseDownloadService {
    */
   async removeCourseFromCache(userId, courseId) {
     try {
-      logger.debug('➖ Removing course from cache:', courseId);
-      
       // Get current active course IDs
       const cacheKey = `active_courses_${userId}`;
       const cachedData = await AsyncStorage.getItem(cacheKey);
       
       if (!cachedData) {
-        logger.debug('ℹ️ No cache found to remove course from');
         return false;
       }
       
@@ -872,10 +847,8 @@ class CourseDownloadService {
         };
         
         await AsyncStorage.setItem(cacheKey, JSON.stringify(updatedCache));
-        logger.debug('✅ Course removed from cache');
         return true;
       } else {
-        logger.debug('ℹ️ Course not found in cache');
         return false;
       }
     } catch (error) {
@@ -911,14 +884,12 @@ class CourseDownloadService {
     
     // Prevent duplicate updates
     if (this._versionChecksInProgress?.has(updateKey)) {
-      logger.debug('⚠️ Library version update already in progress for:', courseId);
       return;
     }
-    
+
     this._versionChecksInProgress.add(updateKey);
-    
+
     try {
-      logger.debug('🔄 Handling library version update for course:', courseId);
       
       // Mark as updating
       await apiService.updateUserCourseVersionStatus(userId, courseId, {
@@ -942,7 +913,6 @@ class CourseDownloadService {
     const updateKey = `${courseId}_${userId}`;
     
     if (this._backgroundUpdatesInProgress.has(updateKey)) {
-      logger.debug('⚠️ Library background update already in progress for:', courseId);
       return;
     }
     
@@ -950,12 +920,7 @@ class CourseDownloadService {
     
     setTimeout(async () => {
       try {
-        logger.debug('🔄 LIBRARY BACKGROUND UPDATE: Starting for:', courseId);
-        
-        // Re-download course (will get updated library items)
         await this.downloadCourse(courseId, userId);
-        
-        logger.debug('✅ LIBRARY BACKGROUND UPDATE: Download completed');
         
         // Update status
         await apiService.updateUserCourseVersionStatus(userId, courseId, {
@@ -996,25 +961,15 @@ class CourseDownloadService {
    */
   async checkVersionMismatch(courseId, localCourseData, userId) {
     try {
-      logger.debug('🔍 Checking version mismatch for course:', courseId);
-      
       const latestCourseData = await apiService.getCourse(courseId);
       if (!latestCourseData) {
-        logger.debug('❌ Course not found in database:', courseId);
         return { needsUpdate: false };
       }
       const publishedVersion = latestCourseData.published_version ?? latestCourseData.version;
       const userCourse = await apiService.getUserCourseVersion(userId, courseId);
       const downloadedVersion = userCourse?.downloaded_version || localCourseData.publishedVersion || localCourseData.version || 'unknown';
       
-      logger.debug('📊 Version comparison (published_version):', {
-        courseId,
-        publishedVersion,
-        downloadedVersion
-      });
-      
       if (publishedVersion !== downloadedVersion) {
-        logger.debug('🔄 Version mismatch detected:', { publishedVersion, downloadedVersion });
         return {
           needsUpdate: true,
           newVersion: publishedVersion,
@@ -1022,7 +977,6 @@ class CourseDownloadService {
         };
       }
       
-      logger.debug('✅ Versions match, no update needed');
       return { needsUpdate: false };
       
     } catch (error) {
@@ -1043,7 +997,6 @@ class CourseDownloadService {
       try {
         const userCourse = await apiService.getUserCourseVersion(userId, courseId);
         if (userCourse?.update_status === 'updating') {
-          logger.debug('⚠️ handleVersionUpdate: Update already in progress, skipping duplicate call');
           return;
         }
       } catch (error) {
@@ -1052,8 +1005,6 @@ class CourseDownloadService {
     }
     
     try {
-      logger.debug('🔄 Handling version update for course:', courseId, 'to version:', newVersion);
-      
       // CRITICAL: Mark course as updating FIRST to prevent infinite loop
       // This must happen before any getCourseData() calls
       await apiService.updateUserCourseVersionStatus(userId, courseId, {
@@ -1070,8 +1021,6 @@ class CourseDownloadService {
       this.startBackgroundUpdate(courseId, newVersion, userId);
       
       // Program media downloads disabled
-      
-      logger.debug('✅ Version update process started');
       
     } catch (error) {
       logger.error('❌ Error handling version update:', error);
@@ -1090,43 +1039,23 @@ class CourseDownloadService {
     
     // Prevent duplicate background updates
     if (this._backgroundUpdatesInProgress.has(updateKey)) {
-      logger.debug('⚠️ Background update already in progress for:', courseId, 'skipping duplicate');
       return;
     }
-    
+
     // Mark as in progress
     this._backgroundUpdatesInProgress.add(updateKey);
-    
-    logger.debug('🚀 STARTING BACKGROUND UPDATE:', {
-      courseId,
-      newVersion,
-      userId,
-      timestamp: new Date().toISOString()
-    });
     
     // Run in background to not block UI
     setTimeout(async () => {
       try {
-        logger.debug('🔄 BACKGROUND UPDATE STEP 1: Starting download for:', courseId);
-        
-        // Download new content
         await this.downloadCourse(courseId, userId);
-        logger.debug('✅ BACKGROUND UPDATE STEP 2: Download completed for:', courseId);
-        
-        // Program media downloads disabled
-        
-        // Update user's version
+
         await apiService.updateUserCourseVersionStatus(userId, courseId, {
           downloaded_version: newVersion,
           update_status: 'ready'
         });
-        logger.debug('✅ BACKGROUND UPDATE STEP 3: Status updated to ready for:', courseId);
-        
-        // Notify UI that update is complete
+
         this.notifyUpdateComplete(courseId, newVersion);
-        logger.debug('✅ BACKGROUND UPDATE STEP 4: UI notification sent for:', courseId);
-        
-        logger.debug('🎉 BACKGROUND UPDATE COMPLETED SUCCESSFULLY:', courseId);
         
         // Clean up: remove from in-progress tracking
         this._backgroundUpdatesInProgress.delete(updateKey);
@@ -1146,11 +1075,8 @@ class CourseDownloadService {
         await apiService.updateUserCourseVersionStatus(userId, courseId, {
           update_status: 'failed'
         });
-        logger.debug('❌ BACKGROUND UPDATE: Status marked as failed for:', courseId);
-        
-        // Notify UI of failure
+
         this.notifyUpdateFailed(courseId, error);
-        logger.debug('❌ BACKGROUND UPDATE: UI failure notification sent for:', courseId);
         
         // Clean up: remove from in-progress tracking
         this._backgroundUpdatesInProgress.delete(updateKey);
@@ -1165,19 +1091,10 @@ class CourseDownloadService {
    * Notify UI of update completion
    */
   notifyUpdateComplete(courseId, newVersion) {
-    logger.debug('📢 Update complete notification for:', courseId, 'version:', newVersion);
-    logger.debug('🔍 CALLBACK DEBUG: onUpdateComplete exists?', !!this.onUpdateComplete);
-    
-    // Notify the update event manager
     updateEventManager.notifyUpdateComplete(courseId);
-    
-    // Direct UI update - Firestore status is already updated in startBackgroundUpdate
+
     if (this.onUpdateComplete) {
-      logger.debug('🔄 CALLBACK DEBUG: Calling onUpdateComplete callback...');
-      this.onUpdateComplete(courseId, newVersion, 'ready'); // Pass status
-      logger.debug('✅ CALLBACK DEBUG: onUpdateComplete callback called');
-    } else {
-      logger.debug('❌ CALLBACK DEBUG: onUpdateComplete callback not set!');
+      this.onUpdateComplete(courseId, newVersion, 'ready');
     }
   }
   
@@ -1185,9 +1102,6 @@ class CourseDownloadService {
    * Notify UI of update failure
    */
   notifyUpdateFailed(courseId, error) {
-    logger.debug('📢 Update failed notification for:', courseId, 'error:', error.message);
-    
-    // Direct UI update - simplest approach
     if (this.onUpdateFailed) {
       this.onUpdateFailed(courseId, error, 'failed'); // Pass status
     }
@@ -1197,14 +1111,8 @@ class CourseDownloadService {
    * Set UI refresh callbacks
    */
   setUIUpdateCallbacks(onUpdateComplete, onUpdateFailed) {
-    logger.debug('🔧 CALLBACK SETUP: Setting UI update callbacks...');
-    logger.debug('🔍 CALLBACK SETUP DEBUG: onUpdateComplete provided?', !!onUpdateComplete);
-    logger.debug('🔍 CALLBACK SETUP DEBUG: onUpdateFailed provided?', !!onUpdateFailed);
-    
     this.onUpdateComplete = onUpdateComplete;
     this.onUpdateFailed = onUpdateFailed;
-    
-    logger.debug('✅ CALLBACK SETUP: UI update callbacks set successfully');
   }
 }
 

@@ -26,9 +26,7 @@ async function generateSecureNonce(length = 32) {
 class AppleAuthService {
   constructor() {
     // Apple Sign-In will be loaded dynamically when needed
-    if (isExpoGo) {
-      logger.debug('Apple Sign-In disabled in Expo Go - will work in production builds');
-    }
+    // Apple Sign-In disabled in Expo Go - will work in production builds
   }
 
   // Dynamically load Apple Sign-In module
@@ -45,8 +43,6 @@ class AppleAuthService {
       const appleSignInModule = await import('@invertase/react-native-apple-authentication');
       appleAuth = appleSignInModule.appleAuth;
       AppleButton = appleSignInModule.AppleButton;
-      
-      logger.debug('Apple Sign-In loaded successfully');
       
       return { appleAuth, AppleButton };
     } catch (error) {
@@ -83,8 +79,6 @@ class AppleAuthService {
     }
 
     try {
-      logger.debug('Apple Sign-In initiated');
-      
       // Generate secure nonce required by Firebase to mitigate replay attacks
       const rawNonce = await generateSecureNonce();
       
@@ -143,16 +137,6 @@ class AppleAuthService {
         });
         throw new Error(`Nonce hash is invalid: expected 64 hex chars, got ${hashedNonce.length}`);
       }
-      
-      // Debug log
-      logger.debug('[Apple Auth] Nonce hash computed:', {
-        rawNonce: rawNonce,
-        rawNonceLength: rawNonce.length,
-        hashLength: hashedNonce.length,
-        hashFull: hashedNonce,
-        hashStart: hashedNonce.substring(0, 16),
-        hashEnd: hashedNonce.substring(48)
-      });
       
       // Dynamically load Apple Sign-In module
       const { appleAuth: appleAuthModule } = await this.loadAppleSignIn();

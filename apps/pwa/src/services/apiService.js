@@ -121,7 +121,6 @@ class FirestoreService {
    * Tries indexed query first; on failure (e.g. missing composite index) falls back to client_id+program_id then filter by date in memory.
    */
   async getDatesWithPlannedSessions(userId, courseId, startDate, endDate) {
-    logger.debug('[getDatesWithPlannedSessions] called', { userId, courseId, startDate, endDate });
     try {
       const result = await apiClient.get('/workout/calendar/planned', { params: { courseId, startDate, endDate } });
       return result?.data ?? [];
@@ -166,14 +165,6 @@ class FirestoreService {
       if (clientSessionId) {
         const copy = await this.getClientSessionContentCopy(clientSessionId, options);
         if (copy) {
-          if (!options.minimal) {
-            logger.debug('🔍 [resolvePlannedSessionContent] using client_session_content copy:', {
-              clientSessionDocId: clientSessionId,
-              copyId: copy.id,
-              planSessionId,
-              hasExercises: !!copy.exercises?.length
-            });
-          }
           return copy;
         }
       }
@@ -201,25 +192,11 @@ class FirestoreService {
             personalizedSession = clientCopy?.sessions?.find((s) => s.id === session_id) ?? null;
           }
           if (personalizedSession) {
-            if (!options.minimal) {
-              logger.debug('🔍 [resolvePlannedSessionContent] using client_plan_content session:', {
-                session_id,
-                resolvedId: personalizedSession.id,
-                hasExercises: !!personalizedSession.exercises?.length
-              });
-            }
             return personalizedSession;
           }
         }
         const fromPlan = await this._resolvePlannedSessionFromPlan(plan_id, module_id, session_id, creatorId, options);
         if (fromPlan) {
-          if (!options.minimal) {
-            logger.debug('🔍 [resolvePlannedSessionContent] using plan/library:', {
-              session_id,
-              resolvedId: fromPlan.id,
-              hasExercises: !!fromPlan.exercises?.length
-            });
-          }
           return fromPlan;
         }
       }
@@ -239,7 +216,6 @@ class FirestoreService {
         }
         logger.warn('resolvePlannedSessionContent: library_session_ref but no creator_id');
       }
-      logger.debug('🔍 [resolvePlannedSessionContent] no content resolved');
       return null;
     } catch (error) {
       logger.error('resolvePlannedSessionContent:', error);
@@ -258,10 +234,7 @@ class FirestoreService {
    */
   async getPlannedSessionContentForDate(userId, courseId, date, creatorIdFromCourse = null) {
     const planned = await this.getPlannedSessionForDate(userId, courseId, date);
-    if (!planned) {
-      logger.debug('🔍 [getPlannedSessionContentForDate] no planned session for date, returning null');
-      return null;
-    }
+    if (!planned) return null;
     let creatorId = creatorIdFromCourse ?? planned.creator_id ?? null;
     if (!creatorId && planned.program_id) {
       try {
@@ -273,14 +246,7 @@ class FirestoreService {
     }
     const resolved = await this.resolvePlannedSessionContent(planned, creatorId);
     // Slot id = client_sessions doc id so PWA matching and completion use the same id
-    const out = resolved ? { ...resolved, sessionIdForMatching: planned.id } : null;
-    logger.debug('🔍 [getPlannedSessionContentForDate] resolved content:', {
-      plannedDocId: planned.id,
-      plannedSessionId: planned.session_id,
-      sessionIdForMatching: out?.sessionIdForMatching,
-      resolvedId: resolved?.id
-    });
-    return out;
+    return resolved ? { ...resolved, sessionIdForMatching: planned.id } : null;
   }
 
   /**
@@ -388,7 +354,6 @@ class FirestoreService {
   async addCourseToUser(userId, courseId, expirationDate, accessDuration, courseDetails) {
     try {
       await apiClient.post('/users/me/move-course', { courseId, expirationDate, accessDuration, courseDetails });
-      logger.debug('✅ Course added to user document successfully');
     } catch (error) {
       logger.error('❌ Error in addCourseToUser:', error);
       throw error;
@@ -449,7 +414,6 @@ class FirestoreService {
   async backfillOneOnOneCourseInUserDocument(userId, programId, courseData) {
     try {
       await apiClient.post(`/users/me/courses/${programId}/backfill`, { courseData });
-      logger.debug('✅ Backfilled one-on-one course in users.courses:', programId);
     } catch (err) {
       logger.error('❌ Error backfilling one-on-one course:', err);
       throw err;
@@ -459,7 +423,6 @@ class FirestoreService {
   async removeCourseFromUser(userId, courseId) {
     try {
       await apiClient.delete(`/users/me/courses/${courseId}`);
-      logger.debug('✅ Course removed from user:', courseId);
     } catch (error) {
       logger.error('❌ Error removing course from user:', error);
       throw error;
@@ -515,7 +478,6 @@ class FirestoreService {
   async updateCourseStatus(userId, courseId, status, newExpirationDate = null) {
     try {
       await apiClient.patch(`/users/me/courses/${courseId}/status`, { status, expiresAt: newExpirationDate });
-      logger.debug(`✅ Updated course ${courseId} status to ${status}`);
       return true;
     } catch (error) {
       logger.error('Error updating course status:', error);
@@ -559,11 +521,8 @@ class FirestoreService {
 
   async createPurchaseLog(purchaseData) {
     try {
-      logger.debug('📝 Creating purchase log...', purchaseData);
       const result = await apiClient.post('/purchases', purchaseData);
-      const id = result?.data?.id ?? null;
-      logger.debug('✅ Purchase log created with ID:', id);
-      return id;
+      return result?.data?.id ?? null;
     } catch (error) {
       logger.error('❌ Error creating purchase log:', error);
       throw error;
@@ -586,7 +545,6 @@ class FirestoreService {
   async updateUserCourseVersionStatus(userId, courseId, statusData) {
     try {
       await apiClient.patch(`/users/me/courses/${courseId}/version`, statusData);
-      logger.debug('✅ User course version status updated');
     } catch (error) {
       logger.error('❌ Error updating user course version status:', error);
       throw error;
@@ -608,9 +566,7 @@ class FirestoreService {
 
   async saveAccountDeletionFeedback(userId, feedback) {
     try {
-      logger.debug('💬 Saving account deletion feedback for user:', userId);
       await apiClient.post('/users/me/delete-feedback', { feedback });
-      logger.debug('✅ Account deletion feedback saved');
       return true;
     } catch (error) {
       logger.error('❌ Error saving account deletion feedback:', error);
@@ -620,9 +576,7 @@ class FirestoreService {
 
   async deleteAllUserData(userId) {
     try {
-      logger.debug('🗑️ Starting deletion of all user data for:', userId);
       await apiClient.delete('/users/me');
-      logger.debug('✅ All user data deleted successfully');
     } catch (error) {
       logger.error('❌ Error deleting user data:', error);
       throw error;
