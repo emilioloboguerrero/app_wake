@@ -377,7 +377,6 @@ class CourseDownloadService {
         expiresAt: courseData.expiresAt
       });
       
-      logger.debug('💾 Course stored locally:', courseId);
       
     } catch (error) {
       logger.error('❌ Failed to store course locally:', error);
@@ -388,16 +387,12 @@ class CourseDownloadService {
   
   async getCourseData(courseId, skipVersionCheck = false) {
     try {
-      logger.debug('🔍 Looking for course in local storage:', courseId);
       const storageKey = `course_${courseId}`;
       const storedData = await AsyncStorage.getItem(storageKey);
       
       if (!storedData) {
-        logger.debug('❌ Course not found locally:', courseId);
         return null;
       }
-      
-      logger.debug('📦 Found course data in storage, parsing...');
       const courseData = JSON.parse(storedData);
       
       // Check if course has expired

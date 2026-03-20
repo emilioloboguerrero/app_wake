@@ -246,9 +246,7 @@ export default function App() {
             return Promise.all(
               registrations.map((reg) => {
                 if (reg.scope === rootScope && webBasePath === '/app') {
-                  return reg.unregister().then(() => {
-                    logger.debug('[APP] Unregistered old root-scoped service worker');
-                  });
+                  return reg.unregister();
                 }
                 return Promise.resolve();
               })
@@ -272,15 +270,13 @@ export default function App() {
             });
         }
       }).catch((error) => {
-        logger.error('[APP] ❌ Error loading components:', error);
-        logger.debug('[APP] Setting componentsLoaded to true anyway to continue...');
+        logger.error('[APP] Error loading components:', error);
         setComponentsLoaded(true); // Continue anyway
       });
 
       // Fallback: if components don't load within 3 seconds, set to true anyway
       // Use a ref to track if we've already set it
       const timeoutId = setTimeout(() => {
-        logger.debug('[APP] ⚠️ Components loading timeout (3s) - forcing componentsLoaded to true');
         setComponentsLoaded(true);
       }, 3000);
 
