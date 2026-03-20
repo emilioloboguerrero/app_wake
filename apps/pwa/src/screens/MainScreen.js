@@ -779,11 +779,10 @@ const MainScreen = ({ navigation, route }) => {
       const currentTutorial = tutorialData[currentTutorialIndex];
       if (currentTutorial) {
         await tutorialManager.markTutorialCompleted(
-          user.uid, 
-          'mainScreen', 
+          user.uid,
+          'mainScreen',
           currentTutorial.videoUrl
         );
-        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -922,12 +921,10 @@ const MainScreen = ({ navigation, route }) => {
       });
       
       if (preloadPromises.length > 0) {
-        Promise.all(preloadPromises).catch(error => {
-          logger.debug('⚠️ Image preload failed:', error);
-        });
+        Promise.all(preloadPromises).catch(() => {});
       }
     } catch (error) {
-      logger.debug('⚠️ Error in image preloading:', error);
+      // Image preloading is best-effort
     }
   };
 
