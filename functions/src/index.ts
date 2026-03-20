@@ -833,8 +833,6 @@ export const processPaymentWebhook = functions
 
       functions.logger.info("Processing payment:", paymentId);
 
-      // Fix #6: Check if payment.updated/subscription.updated and
-      // payment.created/subscription.created already processed
       const processedPaymentsRef = db
         .collection("processed_payments")
         .doc(paymentId);
@@ -1275,7 +1273,6 @@ export const processPaymentWebhook = functions
         expirationDate
       );
 
-      // Fix #3: Use Firestore transaction for atomic course assignment
       await db.runTransaction(async (transaction) => {
         // Get user document
         const userRef = db.collection("users").doc(userId);
@@ -1400,7 +1397,6 @@ export const processPaymentWebhook = functions
       const message = toErrorMessage(error);
       functions.logger.error("Error in webhook:", error);
 
-      // Fix #4: Classify errors and return appropriate status codes
       const errorType = classifyError(error);
 
       switch (errorType) {
@@ -4622,14 +4618,13 @@ app.get("/api/v1/creator/plans/:planId", async (req, res, next) => {
     const modules = await Promise.all(modulesSnap.docs.map(async (modDoc) => {
       const sessionsSnap = await modDoc.ref.collection("sessions").orderBy("order", "asc").get();
       const sessions = await Promise.all(sessionsSnap.docs.map(async (sDoc) => {
-        const exSnap = await sDoc.ref.collection("exercises").get();
         const s = sDoc.data();
         return {
           sessionId: sDoc.id,
           title: s.title ?? "",
           order: s.order ?? 0,
           librarySessionRef: s.librarySessionRef ?? null,
-          exerciseCount: exSnap.size,
+          exerciseCount: s.exerciseCount ?? 0,
         };
       }));
       const m = modDoc.data();
@@ -7705,9 +7700,8 @@ app.get("/api/v1/events/:eventId", async (req, res, next) => {
     if (e.status === "draft") throw apiError("NOT_FOUND", "Event not found", 404);
     let spotsRemaining: number | null = null;
     if (e.maxRegistrations != null) {
-      const regSnap = await db.collection("event_signups").doc(req.params.eventId)
-        .collection("registrations").get();
-      spotsRemaining = Math.max(0, (e.maxRegistrations as number) - regSnap.size);
+      const registrationCount = (e.registration_count as number | undefined) ?? 0;
+      spotsRemaining = Math.max(0, (e.maxRegistrations as number) - registrationCount);
     }
     res.json({
       data: {

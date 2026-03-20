@@ -392,7 +392,7 @@ const ClientProgramScreen = () => {
       } catch (e) {
         logger.warn('Could not delete client nutrition plan copy:', e?.message);
       }
-      await nutritionDb.deleteAssignment(assignmentId);
+      await nutritionDb.deleteAssignment(assignmentId, client?.clientUserId);
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
@@ -1325,7 +1325,6 @@ const ClientProgramScreen = () => {
     } catch (error) {
       logger.error('Error setting content plan:', error);
       showToast('Error al guardar el contenido del programa', 'error');
-    } finally {
     }
   };
 

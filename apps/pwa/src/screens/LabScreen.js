@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import oneRepMaxService from '../services/oneRepMaxService';
 import apiClient from '../utils/apiClient';
-import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -823,15 +823,16 @@ const LabScreen = ({ navigation }) => {
 
   // ─── React Query: user profile (weeklyMuscleVolume, goalWeight, weightUnit)
   const { data: userData } = useQuery({
-    queryKey: ['lab', 'userDoc', uid],
+    queryKey: ['user', uid],
     queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
     enabled: !!uid,
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
   });
 
   // ─── React Query: PRs (oneRepMaxEstimates shape)
   const { data: prsData } = useQuery({
-    queryKey: ['lab', 'prs', uid],
+    queryKey: ['workout', 'prs', uid],
     queryFn: () => apiClient.get('/workout/prs').then(r => {
       const estimates = {};
       (r?.data ?? []).forEach(pr => {
@@ -840,47 +841,53 @@ const LabScreen = ({ navigation }) => {
       return estimates;
     }),
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
   // ─── React Query: session history
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
-    queryKey: ['lab', 'sessions', uid],
+    queryKey: ['progress', 'sessions', uid],
     queryFn: () => exerciseHistoryService.getSessionHistoryPaginated(uid, 100).then(r => r?.sessions ?? {}),
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.sessionHistory,
+    gcTime: GC_TIMES.sessionHistory,
   });
 
   // ─── React Query: diary entries
   const { data: diaryEntriesData } = useQuery({
-    queryKey: ['lab', 'diary', uid, dateRange.start, dateRange.end],
+    queryKey: ['nutrition', 'diary', uid, dateRange.start, dateRange.end],
     queryFn: () => getDiaryEntriesInRange(uid, dateRange.start, dateRange.end),
     enabled: !!uid,
-    ...cacheConfig.nutrition,
+    staleTime: STALE_TIMES.nutritionDiary,
+    gcTime: GC_TIMES.nutritionDiary,
   });
 
   // ─── React Query: nutrition plan
   const { data: planData } = useQuery({
-    queryKey: ['lab', 'plan', uid],
+    queryKey: ['nutrition', 'plan', uid],
     queryFn: () => getEffectivePlanForUser(uid).then(r => r?.plan ?? null).catch(() => null),
     enabled: !!uid,
-    ...cacheConfig.nutrition,
+    staleTime: STALE_TIMES.nutritionDiary,
+    gcTime: GC_TIMES.nutritionDiary,
   });
 
   // ─── React Query: readiness entries
   const { data: readinessEntriesData } = useQuery({
-    queryKey: ['lab', 'readiness', uid, dateRange.start, dateRange.end],
+    queryKey: ['progress', 'readiness', uid, dateRange.start, dateRange.end],
     queryFn: () => getReadinessInRange(uid, dateRange.start, dateRange.end),
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.bodyLog,
+    gcTime: GC_TIMES.bodyLog,
   });
 
   // ─── React Query: body log (load lazily on cuerpo tab)
   const { data: bodyLogEntriesData, refetch: refetchBodyLog } = useQuery({
-    queryKey: ['lab', 'bodyLog', uid],
+    queryKey: ['progress', 'body-log', uid],
     queryFn: () => bodyProgressService.getEntries(uid),
     enabled: !!uid && activeTab === 'cuerpo',
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.bodyLog,
+    gcTime: GC_TIMES.bodyLog,
   });
 
   // ─── React Query: 1RM histories for top 5 exercises
@@ -894,7 +901,7 @@ const LabScreen = ({ navigation }) => {
   }, [prsData]);
 
   const { data: oneRepMaxHistoriesData } = useQuery({
-    queryKey: ['lab', '1rmHistories', uid, topPrKeys.join(',')],
+    queryKey: ['workout', '1rm-histories', uid, topPrKeys.join(',')],
     queryFn: async () => {
       const histories = await Promise.all(
         topPrKeys.map(async (key) => {
@@ -905,7 +912,8 @@ const LabScreen = ({ navigation }) => {
       return histories;
     },
     enabled: !!uid && topPrKeys.length > 0,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
   // Derived: normalise to component-expected shapes
@@ -2280,11 +2288,11 @@ const LabScreen = ({ navigation }) => {
   };
 
   const handleEntrySaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['lab', 'bodyLog', uid] });
+    queryClient.invalidateQueries({ queryKey: ['progress', 'body-log', uid] });
   };
 
   const handleWeightUnitChange = (u) => {
-    queryClient.setQueryData(['lab', 'userDoc', uid], (prev) => prev ? { ...prev, weightUnit: u } : prev);
+    queryClient.setQueryData(['user', uid], (prev) => prev ? { ...prev, weightUnit: u } : prev);
     if (uid) {
       apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
     }
@@ -2555,7 +2563,7 @@ const LabScreen = ({ navigation }) => {
           currentGoal={goalWeight}
           unit={weightUnit}
           userId={uid}
-          onSaved={(kg) => queryClient.setQueryData(['lab', 'userDoc', uid], (prev) => prev ? { ...prev, goalWeight: kg } : prev)}
+          onSaved={(kg) => queryClient.setQueryData(['user', uid], (prev) => prev ? { ...prev, goalWeight: kg } : prev)}
         />
       </>
     );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys, cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -151,16 +151,19 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   }, [!!userProfile]);
 
   const { data: profileQueryData, isLoading: profileQueryLoading } = useQuery({
-    queryKey: queryKeys.user.detail(user?.uid),
+    queryKey: ['profile', 'me'],
     queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!user?.uid,
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const profileUpdateMutation = useMutation({
     mutationFn: (updates) => apiClient.patch('/users/me', updates),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: ['profile', 'me'] });
     },
   });
 

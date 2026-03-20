@@ -33,7 +33,7 @@ import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
-import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/ShareIOsExport';
 import ViewShot from 'react-native-view-shot';
@@ -52,8 +52,8 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     queryKey: ['user', userId],
     queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
     enabled: !!userId,
-    staleTime: cacheConfig.userProfile.staleTime,
-    gcTime: cacheConfig.userProfile.gcTime,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
   });
 
   const userDisplayName = userData?.displayName || '';

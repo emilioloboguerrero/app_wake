@@ -43,7 +43,7 @@ import {
 import logger from '../utils/logger';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -1484,7 +1484,7 @@ const LabScreen = () => {
   // ─── data loading ──────────────────────────────────────────────────────────
 
   const mainQuery = useQuery({
-    queryKey: ['lab', 'main', uid],
+    queryKey: ['progress', 'lab-main', uid],
     queryFn: async () => {
       const end = toYYYYMMDD(new Date());
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
@@ -1505,7 +1505,8 @@ const LabScreen = () => {
       };
     },
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
   const topKeys = useMemo(() => {
@@ -1519,7 +1520,7 @@ const LabScreen = () => {
   }, [mainQuery.data?.userData?.oneRepMaxEstimates]);
 
   const oneRmQuery = useQuery({
-    queryKey: ['lab', '1rm', uid, topKeys],
+    queryKey: ['workout', '1rm-histories', uid, topKeys],
     queryFn: () =>
       Promise.all(
         topKeys.map(key =>
@@ -1527,14 +1528,16 @@ const LabScreen = () => {
         )
       ),
     enabled: !!uid && topKeys.length > 0,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
   const bodyQuery = useQuery({
-    queryKey: ['lab', 'body', uid],
+    queryKey: ['progress', 'body-log', uid],
     queryFn: () => bodyProgressService.getEntries(uid),
     enabled: !!uid,
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.bodyLog,
+    gcTime: GC_TIMES.bodyLog,
   });
 
   const loading = mainQuery.isLoading;
@@ -1576,7 +1579,7 @@ const LabScreen = () => {
   const openEditEntry = (entry) => { setEditingEntry(entry); setEntryModalVisible(true); };
 
   const handleEntrySaved = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['lab', 'body', uid] });
+    queryClient.invalidateQueries({ queryKey: ['progress', 'body-log', uid] });
   }, [queryClient, uid]);
 
   const handleWeightUnitChange = (u) => {

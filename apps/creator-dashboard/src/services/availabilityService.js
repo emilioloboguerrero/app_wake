@@ -42,10 +42,37 @@ export async function deleteDaySlots(_creatorId, dateStr, startUtc = null) {
   await apiClient.delete('/creator/availability/slots', { params });
 }
 
+/**
+ * Replace all slots for a day with the provided list.
+ * Deletes all existing slots for the day, then re-creates each slot individually.
+ */
+export async function setDaySlots(_creatorId, dateStr, slots, timezone) {
+  const tz = timezone || getCreatorTimezone();
+  await apiClient.delete('/creator/availability/slots', { params: { date: dateStr, startUtc: null } });
+  for (const slot of slots) {
+    const start = new Date(slot.startUtc);
+    const end = new Date(slot.endUtc);
+    const startH = start.getHours();
+    const startM = start.getMinutes();
+    const endH = end.getHours();
+    const endM = end.getMinutes();
+    const startTime = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+    const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    await apiClient.post('/creator/availability/slots', {
+      date: dateStr,
+      startTime,
+      endTime,
+      durationMinutes: slot.durationMinutes,
+      timezone: tz,
+    });
+  }
+}
+
 export default {
   getCreatorTimezone,
   getAvailability,
   getDaySlots,
   addSlotsForDay,
   deleteDaySlots,
+  setDaySlots,
 };

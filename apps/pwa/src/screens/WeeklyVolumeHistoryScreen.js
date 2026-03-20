@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import apiClient from '../utils/apiClient';
-import { cacheConfig, queryKeys } from '../config/queryClient';
+import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -63,7 +64,8 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
     queryKey: queryKeys.user.detail(userId),
     queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!userId,
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
   });
 
   const weeklyMuscleVolume = useMemo(() => userData?.weeklyMuscleVolume ?? {}, [userData]);

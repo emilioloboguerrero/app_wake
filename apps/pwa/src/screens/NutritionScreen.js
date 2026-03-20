@@ -12,10 +12,11 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import * as nutritionDb from '../services/nutritionFirestoreService';
+import apiClient from '../utils/apiClient';
 import * as nutritionApi from '../services/nutritionApiService';
 import activityStreakService from '../services/activityStreakService';
 import WakeLoader from '../components/WakeLoader';
@@ -132,7 +133,7 @@ export function NutritionScreenBase({ navigation }) {
 
   const { data: assignmentData, isLoading: loadingAssignment } = useQuery({
     queryKey: ['nutrition', 'assignment', userId],
-    queryFn: () => nutritionDb.getEffectivePlanForUser(userId),
+    queryFn: () => apiClient.get('/api/v1/nutrition/assignment').then((res) => res?.data ?? res),
     enabled: !!userId,
     staleTime: STALE_TIMES.programStructure,
     gcTime: GC_TIMES.programStructure,
@@ -143,31 +144,36 @@ export function NutritionScreenBase({ navigation }) {
 
   const { data: diaryEntries = [], isLoading: loadingDiary } = useQuery({
     queryKey: ['nutrition', 'diary', userId, diaryDate],
-    queryFn: () => nutritionDb.getDiaryEntries(userId, diaryDate),
+    queryFn: () =>
+      apiClient
+        .get('/api/v1/nutrition/diary', { params: { date: diaryDate } })
+        .then((res) => res?.data ?? res ?? []),
     enabled: !!userId && !!diaryDate,
     staleTime: STALE_TIMES.nutritionDiary,
     gcTime: GC_TIMES.nutritionDiary,
   });
 
   const addDiaryMutation = useMutation({
-    mutationFn: (entry) => nutritionDb.addDiaryEntry(userId, entry),
+    mutationFn: (entry) => apiClient.post('/api/v1/nutrition/diary', entry),
     onSuccess: () => {
       activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     },
     onError: (e) => {
-      logger.error(e);
+      logger.error('[NutritionScreen] addDiaryEntry error:', e);
+      Alert.alert('Error', 'No se pudo añadir el alimento. Inténtalo de nuevo.');
     },
   });
 
   const deleteDiaryMutation = useMutation({
-    mutationFn: (entryId) => nutritionDb.deleteDiaryEntry(userId, entryId),
+    mutationFn: (entryId) => apiClient.delete(`/api/v1/nutrition/diary/${entryId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     },
     onError: (e) => {
-      logger.error(e);
+      logger.error('[NutritionScreen] deleteDiaryEntry error:', e);
+      Alert.alert('Error', 'No se pudo eliminar el alimento. Inténtalo de nuevo.');
     },
   });
 
