@@ -138,7 +138,7 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { profile_picture_url: publicUrl } });
+  res.json({ data: { profilePictureUrl: publicUrl } });
 });
 
 // GET /users/:userId/public-profile
@@ -161,7 +161,7 @@ router.get("/users/:userId/public-profile", async (req, res) => {
       userId: req.params.userId,
       displayName: data.displayName ?? data.name ?? null,
       username: data.username ?? null,
-      profile_picture_url: data.profile_picture_url ?? null,
+      profilePictureUrl: data.profile_picture_url ?? null,
     },
   });
 });

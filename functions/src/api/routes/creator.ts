@@ -1411,6 +1411,215 @@ router.delete("/creator/library/modules/:moduleId", async (req, res) => {
   res.status(204).send();
 });
 
+// ─── Library Propagation ──────────────────────────────────────────────────
+
+// POST /creator/library/sessions/:sessionId/propagate
+router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const libSessionRef = db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .doc(req.params.sessionId);
+
+  const libSessionDoc = await libSessionRef.get();
+  if (!libSessionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión de librería no encontrada");
+  }
+
+  const libSessionData = libSessionDoc.data()!;
+
+  // Fetch exercises + sets from the library session
+  const exercisesSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+  const exercises = await Promise.all(
+    exercisesSnap.docs.map(async (eDoc) => {
+      const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return {
+        data: eDoc.data(),
+        sets: setsSnap.docs.map((s) => s.data()),
+      };
+    })
+  );
+
+  // Find all plan sessions that reference this library session
+  const plansSnap = await db
+    .collection("plans")
+    .where("creatorId", "==", auth.userId)
+    .get();
+
+  let updatedCount = 0;
+  const batchSize = 450;
+  let batch = db.batch();
+  let batchCount = 0;
+
+  for (const planDoc of plansSnap.docs) {
+    const modulesSnap = await planDoc.ref.collection("modules").get();
+    for (const moduleDoc of modulesSnap.docs) {
+      const sessionsSnap = await moduleDoc.ref.collection("sessions")
+        .where("libraryRef", "==", req.params.sessionId)
+        .get();
+
+      for (const sessionDoc of sessionsSnap.docs) {
+        // Update the session metadata from library
+        batch.update(sessionDoc.ref, {
+          title: libSessionData.title ?? sessionDoc.data().title,
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        batchCount++;
+        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+        // Delete existing exercises + sets, then recreate from library
+        const existingExSnap = await sessionDoc.ref.collection("exercises").get();
+        for (const exDoc of existingExSnap.docs) {
+          const existingSetsSnap = await exDoc.ref.collection("sets").get();
+          for (const setDoc of existingSetsSnap.docs) {
+            batch.delete(setDoc.ref);
+            batchCount++;
+            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          }
+          batch.delete(exDoc.ref);
+          batchCount++;
+          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        }
+
+        // Recreate exercises + sets from library
+        for (const ex of exercises) {
+          const newExRef = sessionDoc.ref.collection("exercises").doc();
+          batch.set(newExRef, { ...ex.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+          batchCount++;
+          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+          for (const setData of ex.sets) {
+            const newSetRef = newExRef.collection("sets").doc();
+            batch.set(newSetRef, { ...setData, created_at: admin.firestore.FieldValue.serverTimestamp() });
+            batchCount++;
+            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          }
+        }
+
+        updatedCount++;
+      }
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+
+  res.json({ data: { updatedCount } });
+});
+
+// POST /creator/library/modules/:moduleId/propagate
+router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const libModuleRef = db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("modules")
+    .doc(req.params.moduleId);
+
+  const libModuleDoc = await libModuleRef.get();
+  if (!libModuleDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Módulo de librería no encontrado");
+  }
+
+  const libModuleData = libModuleDoc.data()!;
+
+  // Fetch library module's sessions with exercises + sets
+  const libSessionsSnap = await libModuleRef.collection("sessions").orderBy("order", "asc").get();
+  const libSessions = await Promise.all(
+    libSessionsSnap.docs.map(async (sDoc) => {
+      const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
+      const exercises = await Promise.all(
+        exSnap.docs.map(async (eDoc) => {
+          const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+          return { data: eDoc.data(), sets: setsSnap.docs.map((s) => s.data()) };
+        })
+      );
+      return { data: sDoc.data(), exercises };
+    })
+  );
+
+  // Find all plan modules that reference this library module
+  const plansSnap = await db
+    .collection("plans")
+    .where("creatorId", "==", auth.userId)
+    .get();
+
+  let updatedCount = 0;
+  const batchSize = 450;
+  let batch = db.batch();
+  let batchCount = 0;
+
+  for (const planDoc of plansSnap.docs) {
+    const modulesSnap = await planDoc.ref.collection("modules")
+      .where("libraryRef", "==", req.params.moduleId)
+      .get();
+
+    for (const moduleDoc of modulesSnap.docs) {
+      // Update module metadata
+      batch.update(moduleDoc.ref, {
+        title: libModuleData.title ?? moduleDoc.data().title,
+        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      batchCount++;
+      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+      // Delete existing sessions + exercises + sets
+      const existingSessionsSnap = await moduleDoc.ref.collection("sessions").get();
+      for (const sDoc of existingSessionsSnap.docs) {
+        const exSnap = await sDoc.ref.collection("exercises").get();
+        for (const eDoc of exSnap.docs) {
+          const setsSnap = await eDoc.ref.collection("sets").get();
+          for (const setDoc of setsSnap.docs) {
+            batch.delete(setDoc.ref);
+            batchCount++;
+            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          }
+          batch.delete(eDoc.ref);
+          batchCount++;
+          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        }
+        batch.delete(sDoc.ref);
+        batchCount++;
+        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      }
+
+      // Recreate sessions + exercises + sets from library
+      for (const libSession of libSessions) {
+        const newSessionRef = moduleDoc.ref.collection("sessions").doc();
+        batch.set(newSessionRef, { ...libSession.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+        batchCount++;
+        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+        for (const ex of libSession.exercises) {
+          const newExRef = newSessionRef.collection("exercises").doc();
+          batch.set(newExRef, { ...ex.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+          batchCount++;
+          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+          for (const setData of ex.sets) {
+            const newSetRef = newExRef.collection("sets").doc();
+            batch.set(newSetRef, { ...setData, created_at: admin.firestore.FieldValue.serverTimestamp() });
+            batchCount++;
+            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          }
+        }
+      }
+
+      updatedCount++;
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+
+  res.json({ data: { updatedCount } });
+});
+
 // ─── Client Programs (One-on-One Scheduling) ──────────────────────────────
 
 // GET /creator/clients/:clientId/programs
