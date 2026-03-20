@@ -397,7 +397,6 @@ class CourseDownloadService {
       
       // Check if course has expired
       if (this.isCourseExpired(courseData)) {
-        logger.debug('⏰ Course expired, removing:', courseId);
         await this.deleteCourse(courseId);
         return null;
       }
@@ -408,11 +407,6 @@ class CourseDownloadService {
         const storedWeek = courseData.currentWeek;
         
         if (storedWeek && storedWeek !== currentWeek) {
-          logger.debug('🔄 Week changed detected during getCourseData!', {
-            storedWeek,
-            currentWeek
-          });
-          
           // Trigger background re-download
           this.checkWeekChange(courseId, this.currentUserId).catch(error => {
             logger.error('Error in background week check:', error);
@@ -434,7 +428,6 @@ class CourseDownloadService {
       
       const decompressedDataForCheck = await this.decompressCourseData(courseData);
       if (decompressedDataForCheck.courseData?.isOneOnOne === true) {
-        logger.debug('📱 One-on-one program: skipping version check, using cached minimal');
         return { ...decompressedDataForCheck, status: 'ready' };
       }
       

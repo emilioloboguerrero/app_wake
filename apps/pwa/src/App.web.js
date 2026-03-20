@@ -428,31 +428,13 @@ export default function App() {
       }
 
       try {
-        safeLog('log', '🚀 Starting web app initialization...');
-        if (debugMode) {
-          logger.debug('[DEBUG] Environment:', {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-            cookieEnabled: navigator.cookieEnabled,
-            onLine: navigator.onLine
-          });
-        }
-
         // Initialize web storage service first (critical for web)
         // Don't await - let it initialize in background with timeout
         Promise.race([
-          webStorageService.init().then(() => {
-            if (mounted) safeLog('log', '✅ Web storage initialized');
-          }),
+          webStorageService.init(),
           new Promise(resolve => setTimeout(resolve, 2000)) // 2 second timeout
         ]).catch((error) => {
-          if (mounted) {
-            safeLog('error', '⚠️ Web storage initialization failed (non-critical):', error);
-            if (debugMode) {
-              logger.error('[DEBUG] Storage error details:', error);
-            }
-          }
+          if (mounted) safeLog('warn', 'Web storage initialization failed (non-critical):', error);
         });
 
         // Check auth state (non-blocking)

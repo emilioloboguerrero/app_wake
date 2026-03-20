@@ -58,6 +58,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BARCODE_RE = /^\d{8,14}$/;
 const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 
+function isValidEmail(v: unknown): v is string {
+  return typeof v === "string" && EMAIL_RE.test(v);
+}
+
+function isValidCourseId(v: unknown): v is string {
+  return typeof v === "string" && COURSE_ID_RE.test(v);
+}
+
+function isValidBarcode(v: unknown): v is string {
+  return typeof v === "string" && BARCODE_RE.test(v);
+}
+
 // ─── Gen1 auth helper ────────────────────────────────────────────────────────
 async function verifyGen1Auth(request: Request): Promise<string | null> {
   const header = request.headers?.authorization;
@@ -68,6 +80,21 @@ async function verifyGen1Auth(request: Request): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function sendAuthError(res: Response): void {
+  res.status(401).json({
+    error: {code: "UNAUTHENTICATED", message: "Token de autenticación requerido"},
+  });
+}
+
+function sendRateLimitError(res: Response): void {
+  res.status(429).json({
+    error: {
+      code: "RATE_LIMITED",
+      message: "Demasiadas solicitudes. Intenta en un momento.",
+    },
+  });
 }
 
 // Simple Mercado Pago client
@@ -945,6 +972,14 @@ export const processPaymentWebhook = functions
         }
         return;
       }
+
+      functions.logger.info("Payment data", {
+        paymentId,
+        paymentSource,
+        status: paymentData.status,
+        external_reference: paymentData.external_reference,
+        preapproval_id: paymentData.preapproval_id,
+      });
 
       // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {
