@@ -16,11 +16,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
     
-    // Check user role (with safe fallback)
+    // Check user role — prefer custom claim (zero reads), fallback to Firestore lookup
     function getUserRole() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')
-        : 'user';
+      let tokenRole = isSignedIn() ? request.auth.token.get('role', null) : null;
+      return tokenRole != null
+        ? tokenRole
+        : (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')
+            : 'user');
     }
     
     // Check if user is admin
@@ -315,14 +318,20 @@ service cloud.firestore {
 
     // Client nutrition plan content: per-assignment copy (doc id = assignmentId).
     // Client can read their copy; creator (assignedBy) can read/write.
+    // Requires userId + assignedBy fields on the document itself (avoids get() on nutrition_assignments).
     match /client_nutrition_plan_content/{assignmentId} {
       allow read: if isSignedIn() && (
-        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.assignedBy == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.assignedBy == request.auth.uid ||
         isAdmin()
       );
-      allow create, update, delete: if isSignedIn() && (
-        get(/databases/$(database)/documents/nutrition_assignments/$(assignmentId)).data.assignedBy == request.auth.uid ||
+      allow create: if isSignedIn() && (
+        (isCreator() && request.resource.data.assignedBy == request.auth.uid
+          && request.resource.data.keys().hasAll(['userId', 'assignedBy']))
+        || isAdmin()
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.assignedBy == request.auth.uid ||
         isAdmin()
       );
     }
