@@ -361,29 +361,91 @@ router.get("/nutrition/assignment", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const snapshot = await db
+  const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+
+  let assignmentQuery: admin.firestore.Query = db
     .collection("nutrition_assignments")
     .where("userId", "==", auth.userId)
-    .where("status", "==", "active")
-    .limit(1)
-    .get();
+    .where("status", "==", "active");
 
-  if (snapshot.empty) {
-    res.json({ data: null });
-    return;
+  const snapshot = await assignmentQuery.limit(1).get();
+
+  // Filter by date range if assignment has startDate/endDate
+  const matchingDocs = snapshot.docs.filter((doc) => {
+    const d = doc.data();
+    if (d.startDate && date < d.startDate) return false;
+    if (d.endDate && date > d.endDate) return false;
+    return true;
+  });
+
+  if (matchingDocs.length === 0) {
+    throw new WakeApiServerError(
+      "NOT_FOUND", 404, "No hay plan de nutrición activo para esta fecha"
+    );
   }
 
-  const assignment = snapshot.docs[0];
+  const assignment = matchingDocs[0];
+  const assignmentData = assignment.data();
+
+  // Resolve plan content: client copy → assignment snapshot → library plan
   const contentDoc = await db
     .collection("client_nutrition_plan_content")
     .doc(assignment.id)
     .get();
 
+  const planContent = contentDoc.exists ? contentDoc.data() : assignmentData.planSnapshot ?? null;
+
+  // Build categories array from plan content
+  const categories: unknown[] = [];
+  if (planContent?.categories && Array.isArray(planContent.categories)) {
+    for (const cat of planContent.categories) {
+      const options: unknown[] = [];
+      if (cat.options && Array.isArray(cat.options)) {
+        for (const opt of cat.options) {
+          const items: unknown[] = [];
+          if (opt.items && Array.isArray(opt.items)) {
+            for (const item of opt.items) {
+              items.push({
+                foodId: item.foodId ?? null,
+                name: item.name ?? "",
+                numberOfUnits: item.numberOfUnits ?? 1,
+                servingUnit: item.servingUnit ?? null,
+                calories: item.calories ?? null,
+                protein: item.protein ?? null,
+                carbs: item.carbs ?? null,
+                fat: item.fat ?? null,
+              });
+            }
+          }
+          options.push({
+            id: opt.id ?? null,
+            label: opt.label ?? "",
+            items,
+          });
+        }
+      }
+      categories.push({
+        id: cat.id ?? null,
+        label: cat.label ?? "",
+        order: cat.order ?? 0,
+        options,
+      });
+    }
+  }
+
   res.json({
     data: {
-      id: assignment.id,
-      ...assignment.data(),
-      content: contentDoc.exists ? contentDoc.data() : null,
+      assignmentId: assignment.id,
+      startDate: assignmentData.startDate ?? null,
+      endDate: assignmentData.endDate ?? null,
+      plan: {
+        name: planContent?.name ?? assignmentData.planName ?? "",
+        dailyCalories: planContent?.dailyCalories ?? null,
+        dailyProteinG: planContent?.dailyProteinG ?? null,
+        dailyCarbsG: planContent?.dailyCarbsG ?? null,
+        dailyFatG: planContent?.dailyFatG ?? null,
+        categories,
+      },
     },
   });
 });

@@ -33,13 +33,14 @@ router.get("/users/me", async (req, res) => {
       country: data.country ?? null,
       city: data.city ?? null,
       gender: data.gender ?? null,
-      age: data.age ?? null,
       height: data.height ?? null,
-      bodyweight: data.bodyweight ?? null,
-      profile_picture_url: data.profile_picture_url ?? null,
-      courses: data.courses ?? {},
-      onboardingData: data.onboardingData ?? null,
-      created_at: data.created_at ?? null,
+      weight: data.bodyweight ?? data.weight ?? null,
+      birthDate: data.birthDate ?? null,
+      profilePictureUrl: data.profile_picture_url ?? null,
+      phoneNumber: data.phoneNumber ?? null,
+      pinnedTrainingCourseId: data.pinnedTrainingCourseId ?? null,
+      pinnedNutritionAssignmentId: data.pinnedNutritionAssignmentId ?? null,
+      createdAt: data.created_at ?? null,
     },
   });
 });
@@ -51,13 +52,18 @@ router.patch("/users/me", async (req, res) => {
 
   const allowedFields = [
     "displayName", "username", "country", "city", "gender",
-    "age", "height", "bodyweight", "onboardingData",
+    "height", "weight", "birthDate", "phoneNumber",
+    "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
   ];
 
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) {
-      updates[field] = req.body[field];
+      if (field === "weight") {
+        updates["bodyweight"] = req.body[field];
+      } else {
+        updates[field] = req.body[field];
+      }
     }
   }
 
@@ -70,7 +76,7 @@ router.patch("/users/me", async (req, res) => {
   updates.updated_at = admin.firestore.FieldValue.serverTimestamp();
   await db.collection("users").doc(auth.userId).update(updates);
 
-  res.json({ data: { updated: true } });
+  res.json({ data: { userId: auth.userId, updatedAt: new Date().toISOString() } });
 });
 
 // POST /users/me/profile-picture/upload-url
@@ -168,28 +174,26 @@ router.patch("/creator/profile", async (req, res) => {
   }
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const allowedFields = [
-    "bio", "specialties", "social_links", "banner_url",
-    "display_name", "contact_email",
-  ];
+  const { cards } = req.body;
 
-  const updates: Record<string, unknown> = {};
-  for (const field of allowedFields) {
-    if (req.body[field] !== undefined) {
-      updates[field] = req.body[field];
-    }
-  }
-
-  if (Object.keys(updates).length === 0) {
+  if (cards === undefined) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
     );
   }
 
-  updates.updated_at = admin.firestore.FieldValue.serverTimestamp();
-  await db.collection("users").doc(auth.userId).update(updates);
+  if (typeof cards !== "object" || cards === null || Array.isArray(cards)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards debe ser un objeto", "cards"
+    );
+  }
 
-  res.json({ data: { updated: true } });
+  await db.collection("users").doc(auth.userId).update({
+    cards,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updatedAt: new Date().toISOString() } });
 });
 
 export default router;
