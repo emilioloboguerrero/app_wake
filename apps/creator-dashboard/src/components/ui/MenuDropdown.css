@@ -35,7 +35,7 @@
   border: none;
   border-radius: var(--radius-sm, 6px);
   color: var(--text-secondary, rgba(255,255,255,0.55));
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: var(--font-sans, 'Inter', sans-serif);
   cursor: pointer;
@@ -60,7 +60,7 @@
 .menu-dropdown-item-icon {
   display: flex;
   align-items: center;
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   flex-shrink: 0;
 }
 

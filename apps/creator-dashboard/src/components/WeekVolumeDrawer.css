@@ -76,7 +76,7 @@
 }
 
 .week-volume-drawer-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -111,7 +111,7 @@
 }
 
 .week-volume-drawer-week-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
 }
@@ -120,7 +120,7 @@
   flex: 1;
   min-width: 0;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -141,7 +141,7 @@
 }
 
 .week-volume-drawer-subtitle {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 10px 0 0 0;
   font-family: inherit;
@@ -180,7 +180,7 @@
   padding: 24px 16px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .week-volume-drawer-svg-wrap {
@@ -255,7 +255,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -274,7 +274,7 @@
 
 .week-volume-drawer-pie-legend-sets {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   flex-shrink: 0;
 }
 
@@ -325,13 +325,13 @@
 }
 
 .week-volume-drawer-muscle-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
 }
 
 .week-volume-drawer-muscle-sets {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
 }
@@ -339,7 +339,7 @@
 .week-volume-drawer-desliza {
   flex-shrink: 0;
   text-align: center;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.4);
   padding: 8px 12px;
 }
@@ -369,13 +369,13 @@
 }
 
 .week-volume-drawer-pie-tooltip-name {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
 }
 
 .week-volume-drawer-pie-tooltip-sets {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
 }
@@ -407,7 +407,7 @@
 }
 
 .week-volume-drawer-replica-title {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
   margin: 0 0 12px 0;
@@ -425,7 +425,7 @@
   width: 100%;
   padding: 10px 12px;
   text-align: left;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.06);
@@ -464,7 +464,7 @@
 }
 
 .week-volume-drawer-mini-calendar-month {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   flex: 1;
@@ -519,7 +519,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.5);
   background: transparent;

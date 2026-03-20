@@ -60,7 +60,7 @@
 }
 
 .button-text {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 700;
 }
 

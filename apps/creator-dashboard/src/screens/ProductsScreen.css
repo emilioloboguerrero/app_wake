@@ -75,7 +75,7 @@
 }
 
 .products-type-tab-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0 0 4px 0;
@@ -87,7 +87,7 @@
 }
 
 .products-type-tab-description {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   line-height: 1.4;
   margin: 0;
@@ -98,7 +98,7 @@
 }
 
 .products-type-tab-count {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
@@ -125,7 +125,7 @@
 }
 
 .products-title {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -142,7 +142,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
@@ -222,7 +222,7 @@
 }
 
 .products-card-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -248,7 +248,7 @@
 }
 
 .products-card-description {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0;
   line-height: 1.5;
@@ -266,7 +266,7 @@
 }
 
 .products-card-meta-item {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   padding: 3px 8px;
   background: var(--surface-3, #2a2a2a);
@@ -274,7 +274,7 @@
 }
 
 .products-card-status {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   padding: 3px 10px;
   border-radius: var(--radius-pill, 999px);
@@ -301,7 +301,7 @@
 }
 
 .products-card-action {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   font-weight: 500;
 }
@@ -339,7 +339,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);

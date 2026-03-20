@@ -9,7 +9,7 @@
 }
 
 .find-user-modal-label {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 10px 0;
@@ -39,7 +39,7 @@
 }
 
 .find-user-modal-hint {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
   line-height: 1.5;
@@ -50,7 +50,7 @@
 }
 
 .find-user-modal-success-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0 0 6px 0;
 }
@@ -72,7 +72,7 @@
 }
 
 .find-user-modal-already-exists-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0 0 6px 0;
 }
@@ -90,7 +90,7 @@
 }
 
 .find-user-modal-already-exists-message {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.75);
   margin: 0;
@@ -106,7 +106,7 @@
   border: 1px solid rgba(255, 107, 107, 0.35);
   border-radius: 10px;
   color: #FF6B6B;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.4;
   margin: 0 24px 16px 24px;
 }

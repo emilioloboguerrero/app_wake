@@ -10,7 +10,7 @@ export const getMuscleColor = (setCount) => {
     // 1-6 sets: More opaque white with increasing opacity
     return { color: '#FFFFFF', opacity: 0.3 + ((setCount / 6) * 0.4) }; // 0.3 to 0.7 opacity
   } else if (setCount <= 18) {
-    // 6-18 sets: Golden color (app color)
+    // 6-18 sets: White at medium opacity
     return { color: '#FFFFFF', opacity: 0.6 };
   } else {
     // 18+ sets: Dark red
@@ -30,7 +30,7 @@ export const getMuscleColorForText = (setCount) => {
     // 1-6 sets: More opaque white for text
     return { color: '#FFFFFF', opacity: 0.6 };
   } else if (setCount <= 18) {
-    // 6-18 sets: Golden color (app color)
+    // 6-18 sets: White at full opacity
     return { color: '#FFFFFF', opacity: 1.0 };
   } else {
     // 18+ sets: Same color as muscle silhouette (fully lit up)
@@ -50,8 +50,8 @@ export const getMuscleColorEnhanced = (setCount) => {
     // 1-6 sets: Lighter white with higher opacity
     return { color: '#FFFFFF', opacity: 0.5 + ((setCount / 6) * 0.4) }; // 0.5 to 0.9 (was 0.3 to 0.7)
   } else if (setCount <= 18) {
-    // 6-18 sets: Lighter, more vibrant golden color
-    return { color: '#FFFFFF', opacity: 0.85 }; // Lighter gold, higher opacity (was #FFFFFF, 0.6)
+    // 6-18 sets: White at high opacity (enhanced for share card)
+    return { color: '#FFFFFF', opacity: 0.85 }; // Higher opacity (was 0.6)
   } else {
     // 18+ sets: Brighter red
     return { color: '#B00000', opacity: 1.0 }; // Brighter red, full opacity (was #8B0000, 0.8)

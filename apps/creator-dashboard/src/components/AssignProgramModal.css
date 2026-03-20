@@ -165,7 +165,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.2);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.8);
 }
@@ -202,7 +202,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 700;
 }
 
@@ -230,7 +230,7 @@
 }
 
 .assign-program-item-new-icon {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -246,13 +246,13 @@
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .assign-program-empty {
   flex: 1;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   margin: 0;
   padding: 16px 0;
 }
@@ -264,6 +264,6 @@
   border: 1px solid rgba(255, 107, 107, 0.35);
   border-radius: 10px;
   color: #FF6B6B;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.4;
 }

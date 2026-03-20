@@ -37,7 +37,7 @@
 }
 
 .library-exercises-sidebar-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 16px 0;
@@ -56,7 +56,7 @@
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -82,13 +82,13 @@
 }
 
 .library-exercises-sidebar-pill-icon {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
 }
 
 .library-exercises-sidebar-pill-text {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .library-exercises-search-container {
@@ -123,7 +123,7 @@
   border: none;
   outline: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -155,7 +155,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -170,7 +170,7 @@
   color: rgba(255, 255, 255, 0.8);
   padding: 6px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -213,7 +213,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .library-exercises-sidebar-list {
@@ -232,7 +232,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -280,7 +280,7 @@
   border: 1px solid rgba(255, 68, 68, 0.4);
   border-radius: 8px;
   color: rgba(255, 68, 68, 1);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -333,7 +333,7 @@
 }
 
 .library-exercises-main-empty-text {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0 0 24px 0;
   max-width: 360px;
@@ -347,7 +347,7 @@
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -379,7 +379,7 @@
 }
 
 .library-exercises-main-title {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   margin: 0;
@@ -396,7 +396,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.75);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
 }
 
@@ -554,7 +554,7 @@
 }
 
 .library-exercises-legend-text {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.7);
   font-weight: 400;
 }
@@ -574,7 +574,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -591,13 +591,13 @@
 }
 
 .library-action-icon {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
 }
 
 .library-action-text {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .library-action-pill-disabled {
@@ -629,7 +629,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -796,7 +796,7 @@
   z-index: 10;
   pointer-events: auto;
   box-shadow: 0 0 2px rgba(255, 68, 68, 0.4);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -808,7 +808,7 @@
 }
 
 .exercise-delete-icon {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
 }
@@ -892,7 +892,7 @@
 }
 
 .filter-card-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 12px 0;
@@ -930,14 +930,14 @@
 
 .filter-card-empty {
   color: rgba(255, 255, 255, 0.4);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   margin: 0;
   padding: 8px 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 .filter-section-title {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -980,7 +980,7 @@
   border-radius: 8px;
   border: 1px solid var(--text-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1001,7 +1001,7 @@
 
 .filter-chip-remove {
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: bold;
   line-height: 1;
 }
@@ -1014,7 +1014,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   text-align: left;
   width: 100%;
@@ -1050,7 +1050,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1080,7 +1080,7 @@
   color: var(--text-secondary);
   text-align: center;
   padding: 20px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .filter-modal-actions {
@@ -1100,7 +1100,7 @@
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1125,7 +1125,7 @@
   background-color: rgba(255, 255, 255, 0.2);
   border: 1px solid var(--text-primary);
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1167,7 +1167,7 @@
 
 .exercise-name-warning-text {
   color: rgba(255, 255, 255, 0.75);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.5;
   margin-top: 12px;
   margin-bottom: 0;
@@ -1194,7 +1194,7 @@
   padding: 0 40px;
   height: 56px;
   color: rgba(255, 68, 68, 0.8);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1274,7 +1274,7 @@
 
 .exercise-input-label {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
@@ -1356,7 +1356,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   background-color: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1395,7 +1395,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   background-color: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.95);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .exercise-implements-custom-input::placeholder {
@@ -1414,7 +1414,7 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   background-color: rgba(255, 255, 255, 0.07);
   color: rgba(255, 255, 255, 0.95);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1454,13 +1454,13 @@
   transition: all 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
 .exercise-implements-empty {
   color: rgba(255, 255, 255, 0.4);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-style: italic;
   text-align: center;
   padding: 20px;
@@ -1484,7 +1484,7 @@
 
 .exercise-section-title {
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   letter-spacing: 0.3px;
   text-transform: uppercase;
@@ -1553,7 +1553,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1680,7 +1680,7 @@
 .exercise-effective-sets-info-modal-content {
   padding: 20px 0;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.6;
 }
 
@@ -1738,7 +1738,7 @@
 
 .exercise-effective-sets-muscle-name {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   flex: 1;
 }
@@ -1749,7 +1749,7 @@
 
 .exercise-effective-sets-value-readonly {
   color: rgba(255, 255, 255, 0.65);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   min-width: 32px;
   text-align: right;
@@ -1777,7 +1777,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   text-align: center;
@@ -1852,7 +1852,7 @@
   border-radius: 8px;
   padding: 12px 16px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   resize: vertical;
   min-height: 200px;
@@ -1921,7 +1921,7 @@
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: color 0.2s ease;
@@ -2064,7 +2064,7 @@
 
 .exercise-muscle-label-name {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
@@ -2073,7 +2073,7 @@
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   cursor: pointer;
   padding: 0;
@@ -2111,7 +2111,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2135,7 +2135,7 @@
   height: 100%;
   gap: 16px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .exercise-no-muscles-selected {
@@ -2144,7 +2144,7 @@
   align-items: center;
   padding: 20px;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-style: italic;
 }
 
@@ -2156,7 +2156,7 @@
   height: 100%;
   gap: 16px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .exercise-video-view {
@@ -2236,7 +2236,7 @@
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2317,7 +2317,7 @@
 
 .exercise-video-progress-text {
   color: rgba(255, 255, 255, 1);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -2338,7 +2338,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;

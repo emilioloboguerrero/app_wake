@@ -18,7 +18,7 @@
   padding: 9px 16px 9px 12px;
   border-radius: var(--radius-pill, 999px);
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.4;

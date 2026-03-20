@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-secondary, rgba(255,255,255,0.6));
@@ -47,7 +47,7 @@
 }
 
 .cp-profile-name {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary, #fff);
@@ -58,7 +58,7 @@
 }
 
 .cp-profile-email {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   margin: 0;
   white-space: nowrap;
@@ -80,7 +80,7 @@
 }
 
 .cp-stat-value {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 700;
   letter-spacing: -0.04em;
   color: var(--text-primary, #fff);
@@ -89,7 +89,7 @@
 }
 
 .cp-stat-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   text-transform: uppercase;
@@ -201,7 +201,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-tab-title-text {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   transition: color var(--duration-fast, 120ms) ease, font-weight var(--duration-fast, 120ms) ease;
@@ -274,7 +274,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-planning-hint {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
   line-height: 1.4;
@@ -287,7 +287,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-planning-program-label {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.8);
 }
@@ -299,7 +299,7 @@ body.header-scrolled .client-program-tab-bar {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -354,7 +354,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-tab-content {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
@@ -369,14 +369,14 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-tab-empty-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 8px 0;
 }
 
 .client-program-tab-empty-message {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
 }
@@ -416,7 +416,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-sidebar-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   margin: 0;
@@ -450,7 +450,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-sidebar-current-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
@@ -458,7 +458,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-sidebar-current-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.95);
 }
@@ -467,7 +467,7 @@ body.header-scrolled .client-program-tab-bar {
 .client-program-nutricion-sidebar-empty {
   padding: 24px 16px;
   text-align: center;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
 }
@@ -521,7 +521,7 @@ body.header-scrolled .client-program-tab-bar {
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -532,7 +532,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-plan-item-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
@@ -593,7 +593,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-empty-text {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0 0 8px 0;
   max-width: 360px;
@@ -602,7 +602,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-empty-hint {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.45);
   margin: 0;
   font-family: inherit;
@@ -628,7 +628,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-nutricion-summary-loading {
   margin: 0;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
 }
 
@@ -655,13 +655,13 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-summary-hero-value {
-  font-size: 22px;
+  font-size: clamp(20px, 5vw, 26px);
   font-weight: 700;
   color: rgba(255, 255, 255, 0.95);
 }
 
 .client-program-nutricion-summary-hero-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.45);
   margin-top: 2px;
 }
@@ -700,13 +700,13 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-summary-macro-name {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.5);
 }
 
 .client-program-nutricion-summary-macro-value {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -770,7 +770,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-modal-calendar-label {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.8);
 }
@@ -780,7 +780,7 @@ body.header-scrolled .client-program-tab-bar {
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -835,7 +835,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-modal-date-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
@@ -843,7 +843,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-modal-date-value {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -853,7 +853,7 @@ body.header-scrolled .client-program-tab-bar {
   background: none;
   border: none;
   padding: 0;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   text-decoration: underline;
@@ -899,7 +899,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .nutrition-modal-calendar-month {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   flex: 1;
@@ -935,7 +935,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .nutrition-modal-calendar-weekday {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
   text-align: center;
@@ -955,7 +955,7 @@ body.header-scrolled .client-program-tab-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
   background: transparent;
@@ -1046,7 +1046,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-title {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   margin: 0 0 8px 0;
@@ -1054,7 +1054,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-desc {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
   line-height: 1.5;
@@ -1067,7 +1067,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-loading {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0;
 }
@@ -1111,7 +1111,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-current-name {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   white-space: nowrap;
@@ -1160,7 +1160,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-current-pill-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
   text-transform: uppercase;
@@ -1168,7 +1168,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-current-pill-value {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -1223,7 +1223,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 100%;
   padding: 10px 16px;
   text-align: left;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   background: none;
@@ -1243,7 +1243,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-card-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 16px 0;
@@ -1272,14 +1272,14 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-current-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
 }
 
 .client-program-nutricion-current-value {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   text-align: right;
   min-width: 0;
@@ -1295,7 +1295,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-nutricion-btn {
   padding: 10px 20px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   border-radius: 8px;
   cursor: pointer;
@@ -1344,7 +1344,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-field-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.75);
 }
@@ -1355,7 +1355,7 @@ body.header-scrolled .client-program-tab-bar {
   width: 100%;
   max-width: 320px;
   padding: 10px 14px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.06);
@@ -1401,7 +1401,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-nutricion-checkbox-label {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
 }
@@ -1429,7 +1429,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-historial-empty,
 .client-program-historial-loading {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
   padding: 24px;
@@ -1464,19 +1464,19 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-historial-item-name {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
 }
 
 .client-program-historial-item-date {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
 }
 
 .client-program-historial-item-btn {
   padding: 8px 16px;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   background: rgba(255, 255, 255, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1571,21 +1571,21 @@ body.header-scrolled .client-program-tab-bar {
   border-radius: 50%;
   background: rgba(229, 115, 115, 0.2);
   color: #e57373;
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 700;
   margin-bottom: 16px;
 }
 
 .client-program-info-error {
   margin: 0;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: #e57373;
   line-height: 1.5;
 }
 
 .client-program-info-empty-icon {
   display: block;
-  font-size: 32px;
+  font-size: clamp(24px, 6vw, 32px);
   color: rgba(255, 255, 255, 0.4);
   margin-bottom: 16px;
   line-height: 1;
@@ -1601,7 +1601,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-empty-hint {
   margin: 0;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   line-height: 1.5;
   max-width: 320px;
@@ -1644,7 +1644,7 @@ body.header-scrolled .client-program-tab-bar {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1659,7 +1659,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-profile-name {
   margin: 0 0 4px 0;
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   letter-spacing: -0.02em;
@@ -1667,7 +1667,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-profile-email {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.82);
   text-decoration: none;
   display: inline-block;
@@ -1696,7 +1696,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-profile-field-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1704,7 +1704,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-profile-field-value {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
 }
@@ -1739,7 +1739,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-access-card-label {
   display: block;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1774,7 +1774,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-access-empty-hint {
   margin: 0;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.45);
   line-height: 1.5;
 }
@@ -1849,7 +1849,7 @@ body.header-scrolled .client-program-tab-bar {
 .client-program-info-program-name {
   flex: 1;
   min-width: 0;
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.92);
   overflow: hidden;
@@ -1863,7 +1863,7 @@ body.header-scrolled .client-program-tab-bar {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.75);
   color: rgba(26, 26, 26, 0.95);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -1882,7 +1882,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-status-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1890,7 +1890,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-status-value {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -1902,7 +1902,7 @@ body.header-scrolled .client-program-tab-bar {
 }
 
 .client-program-info-access-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.6);
 }
@@ -1916,7 +1916,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-access-btn {
   padding: 12px 20px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.65);
   background: rgba(255, 255, 255, 0.06);
@@ -1946,7 +1946,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-date {
   padding: 12px 16px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1962,7 +1962,7 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-info-msg {
   margin: 0;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .client-program-info-msg--error {
@@ -2020,7 +2020,7 @@ body.header-scrolled .client-program-tab-bar {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2056,13 +2056,13 @@ body.header-scrolled .client-program-tab-bar {
 
 .client-program-add-plan-session-modal h3 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .client-program-add-plan-session-hint {
   margin: 0 0 16px;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.6);
 }
 
@@ -2083,7 +2083,7 @@ body.header-scrolled .client-program-tab-bar {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
 }
 
@@ -2122,7 +2122,7 @@ body.header-scrolled .client-program-tab-bar {
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
 }
 

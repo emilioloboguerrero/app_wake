@@ -449,7 +449,7 @@
 }
 
 .ob-choice-label {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-secondary, rgba(255,255,255,0.5));
   letter-spacing: -0.01em;
@@ -462,7 +462,7 @@
 }
 
 .ob-choice-sub {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255,255,255,0.25));
   line-height: 1.4;
   font-weight: 400;
@@ -502,7 +502,7 @@
   background: rgba(255,255,255,0.05);
   border: 1.5px solid rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.70);
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
@@ -685,7 +685,7 @@
   background: none;
   border: none;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   padding: 4px 8px;

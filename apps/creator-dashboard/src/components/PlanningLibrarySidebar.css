@@ -24,7 +24,7 @@
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
@@ -65,7 +65,7 @@
 }
 
 .planning-sidebar-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -105,7 +105,7 @@
   text-align: center;
   padding: 32px 16px;
   color: var(--text-tertiary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .planning-sidebar-loading p,
@@ -122,7 +122,7 @@
 }
 
 .planning-sidebar-section-title {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -199,7 +199,7 @@
 }
 
 .planning-sidebar-program-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: inherit;
   white-space: nowrap;

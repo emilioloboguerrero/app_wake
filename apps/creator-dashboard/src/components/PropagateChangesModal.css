@@ -141,7 +141,7 @@
 .propagate-modal-btn {
   padding: 12px 24px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   cursor: pointer;

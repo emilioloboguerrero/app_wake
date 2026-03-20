@@ -14,7 +14,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   text-align: center;
@@ -48,7 +48,7 @@
   gap: 8px;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
@@ -65,7 +65,7 @@
 }
 
 .session-creation-image-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.02em;
@@ -73,7 +73,7 @@
 
 .session-creation-recommended-tag {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   text-transform: uppercase;
@@ -114,7 +114,7 @@
   border: none;
   background: rgba(255, 255, 255, 0.2);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
 }
 
@@ -135,7 +135,7 @@
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -147,7 +147,7 @@
 }
 
 .session-creation-image-upload-icon {
-  font-size: 28px;
+  font-size: clamp(24px, 6vw, 32px);
   line-height: 1;
   color: rgba(255, 255, 255, 0.5);
 }
@@ -227,7 +227,7 @@
 .session-creation-exercises-title {
   margin: 0;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -245,7 +245,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -289,7 +289,7 @@
 }
 
 .session-creation-add-exercise-icon {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
   display: flex;
@@ -309,7 +309,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
@@ -367,7 +367,7 @@
   transition: all 0.2s ease;
   z-index: 10;
   pointer-events: auto;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -379,7 +379,7 @@
 }
 
 .session-creation-exercise-delete-icon {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
 }
@@ -394,7 +394,7 @@
   background-color: rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -407,7 +407,7 @@
 .session-creation-exercise-title {
   margin: 0;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -425,7 +425,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;

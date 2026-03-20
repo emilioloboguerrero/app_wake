@@ -313,7 +313,7 @@
 
 .sticky-header-purchase-button-container .course-detail-purchase-button-text {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 700;
   text-align: center;
   line-height: 1.2;
@@ -322,7 +322,7 @@
 .sticky-header-purchase-button-container .course-detail-button-price-text,
 .sticky-header-purchase-button-container .course-detail-trial-price-text {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   text-align: center;
   margin-top: 2px;

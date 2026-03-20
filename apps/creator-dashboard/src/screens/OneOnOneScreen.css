@@ -47,7 +47,7 @@
 }
 
 .one-on-one-sidebar-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -64,7 +64,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #fff);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
@@ -78,7 +78,7 @@
 }
 
 .one-on-one-sidebar-add-icon {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   line-height: 1;
 }
@@ -124,7 +124,7 @@
 .one-on-one-sidebar-empty {
   padding: 32px 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0;
   line-height: 1.5;
@@ -186,7 +186,7 @@
   align-items: center;
   justify-content: center;
   color: var(--text-primary, #fff);
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   flex-shrink: 0;
   text-transform: uppercase;
@@ -206,7 +206,7 @@
 }
 
 .one-on-one-client-item-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   white-space: nowrap;
@@ -215,13 +215,13 @@
 }
 
 .one-on-one-client-item-meta {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
 }
 
 /* Status pill for active clients */
 .one-on-one-client-status-pill {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-pill, 999px);
@@ -263,7 +263,7 @@
 }
 
 .one-on-one-main-empty-title {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0 0 10px 0;
@@ -271,7 +271,7 @@
 }
 
 .one-on-one-main-empty-desc {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   line-height: 1.6;
   margin: 0 0 24px 0;
@@ -287,7 +287,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
@@ -301,7 +301,7 @@
 }
 
 .one-on-one-main-empty-btn-icon {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   line-height: 1;
 }
@@ -328,7 +328,7 @@
 }
 
 .one-on-one-main-client-name {
-  font-size: 22px;
+  font-size: clamp(20px, 5vw, 26px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0 0 4px 0;
@@ -336,7 +336,7 @@
 }
 
 .one-on-one-main-client-meta {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   margin: 0;
 }
@@ -355,7 +355,7 @@
   gap: 8px;
   padding: 9px 18px;
   border-radius: var(--radius-pill, 999px);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1),
@@ -399,7 +399,7 @@
 }
 
 .one-on-one-main-programs-title {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: var(--text-tertiary, rgba(255, 255, 255, 0.36));
   text-transform: uppercase;
@@ -412,7 +412,7 @@
 .one-on-one-main-programs-empty {
   padding: 24px;
   text-align: center;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
@@ -451,7 +451,7 @@
 }
 
 .one-on-one-main-program-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: var(--text-primary, #fff);
 }
@@ -462,7 +462,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #fff);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
@@ -544,14 +544,14 @@
 
 .client-detail-label {
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
 .client-detail-value {
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 400;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   text-align: right;
@@ -564,6 +564,6 @@
   border: 1px solid rgba(255, 68, 68, 0.2);
   border-radius: var(--radius-md, 10px);
   color: rgba(255, 107, 107, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }

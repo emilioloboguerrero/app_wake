@@ -35,7 +35,7 @@
   background: rgba(255, 255, 255, 0.92);
   color: var(--canvas, #1a1a1a);
   border: none;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   cursor: pointer;
@@ -49,7 +49,7 @@
 .ns-add-btn:active { opacity: 0.75; transform: translateY(0); }
 
 .ns-add-btn-plus {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 400;
   line-height: 1;
   margin-top: -1px;
@@ -103,7 +103,7 @@
   border: none;
   outline: none;
   color: var(--text-primary, #fff);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   min-width: 0;
 }
@@ -117,7 +117,7 @@
   border: none;
   color: rgba(255, 255, 255, 0.35);
   cursor: pointer;
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   line-height: 1;
   padding: 0;
   flex-shrink: 0;
@@ -155,7 +155,7 @@
 }
 
 .ns-list-empty p {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.35);
   margin: 0;
   line-height: 1.5;
@@ -197,7 +197,7 @@
 }
 
 .ns-list-card-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   white-space: nowrap;
@@ -206,13 +206,13 @@
 }
 
 .ns-list-card-kcal {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.5);
 }
 
 .ns-list-card-meta {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.3);
   white-space: nowrap;
   overflow: hidden;
@@ -252,7 +252,7 @@
 }
 
 .ns-detail-empty-text {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.3);
   text-align: center;
   margin: 0;
@@ -289,7 +289,7 @@
 }
 
 .ns-detail-title {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 700;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -297,7 +297,7 @@
 }
 
 .ns-detail-desc {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
 }
@@ -310,7 +310,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.75);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
@@ -330,7 +330,7 @@
 }
 
 .ns-detail-no-items {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.3);
   margin: 0;
   padding: 12px 0;
@@ -349,7 +349,7 @@
 }
 
 .ns-detail-item-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: var(--text-primary, #fff);
   flex: 1;
@@ -360,7 +360,7 @@
 }
 
 .ns-detail-item-kcal {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
@@ -393,13 +393,13 @@
 }
 
 .ns-detail-category-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: var(--text-primary, #fff);
 }
 
 .ns-detail-category-count {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.35);
 }
 
@@ -456,7 +456,7 @@
 }
 
 .ns-delta-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.45);
   flex-shrink: 0;
 }
@@ -468,7 +468,7 @@
 }
 
 .ns-delta-actual {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: var(--text-primary, #fff);
 }
@@ -479,7 +479,7 @@
 }
 
 .ns-delta-target {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.4);
 }
 
@@ -510,7 +510,7 @@
 }
 
 .ns-macros-empty {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.25);
   text-align: center;
   margin: auto;
@@ -530,7 +530,7 @@
 }
 
 .ns-calories-value {
-  font-size: 28px;
+  font-size: clamp(24px, 6vw, 32px);
   font-weight: 800;
   color: var(--text-primary, #fff);
   letter-spacing: -1px;
@@ -538,7 +538,7 @@
 }
 
 .ns-calories-unit {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.4);
 }
@@ -571,7 +571,7 @@
 }
 
 .ns-macro-ring-grams {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
 }
@@ -603,13 +603,13 @@
 .ns-macro-total-dot--fat     { background: rgba(240, 160, 80, 0.85);  }
 
 .ns-macro-total-name {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   flex: 1;
 }
 
 .ns-macro-total-val {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: var(--text-primary, #fff);
 }

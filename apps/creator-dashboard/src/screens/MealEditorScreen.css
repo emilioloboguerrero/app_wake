@@ -17,7 +17,7 @@
 }
 
 .meal-editor-calories-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   margin-top: 4px;
 }
@@ -58,13 +58,13 @@
 }
 
 .meal-editor-macro-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.85);
   font-weight: 500;
 }
 
 .meal-editor-macro-grams {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
 }
@@ -93,14 +93,14 @@
 }
 
 .meal-editor-food-card-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   display: block;
 }
 
 .meal-editor-food-card-per100 {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.55);
   margin-top: 4px;
   display: block;
@@ -177,7 +177,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
@@ -244,7 +244,7 @@
   border-radius: 6px;
   background: transparent;
   color: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   text-align: left;
   cursor: pointer;
 }
@@ -300,14 +300,14 @@
 }
 
 .meal-editor-video-card-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 8px 0;
 }
 
 .meal-editor-video-card-hint {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0 0 14px 0;
   line-height: 1.4;
@@ -321,7 +321,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -356,7 +356,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
@@ -381,7 +381,7 @@
 }
 
 .meal-editor-video-link {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.95);
   text-decoration: none;
 }
@@ -395,7 +395,7 @@
   padding: 32px 24px;
   text-align: center;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .meal-editor-items-container.empty.meal-editor-dropzone-active {
@@ -432,7 +432,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   box-sizing: border-box;
 }
 
@@ -454,7 +454,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   margin-bottom: 8px;
 }
 
@@ -487,7 +487,7 @@
 }
 
 .meal-editor-manual-card-title {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
   display: flex;
@@ -511,7 +511,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   box-sizing: border-box;
 }
 
@@ -529,7 +529,7 @@
 }
 
 .meal-editor-item-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   flex: 1;
@@ -537,7 +537,7 @@
 }
 
 .meal-editor-item-meta {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
 }
@@ -550,7 +550,7 @@
   height: 32px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   line-height: 1;
   display: flex;
   align-items: center;
@@ -583,7 +583,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   font-family: inherit;
 }
@@ -599,7 +599,7 @@
 
 .meal-editor-attribution {
   margin-top: 16px;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.6);
   opacity: 0.6;
 }

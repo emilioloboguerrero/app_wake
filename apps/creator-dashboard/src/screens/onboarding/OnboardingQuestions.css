@@ -34,7 +34,7 @@
 }
 
 .question-title {
-  font-size: 28px;
+  font-size: clamp(24px, 6vw, 32px);
   font-weight: bold;
   color: var(--text-primary);
   text-align: center;
@@ -86,12 +86,12 @@
 }
 
 .option-icon {
-  font-size: 32px;
+  font-size: clamp(24px, 6vw, 32px);
   margin-bottom: 12px;
 }
 
 .option-text {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-primary);
   line-height: 20px;
   text-align: center;
@@ -100,7 +100,7 @@
 }
 
 .option-text-full {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   line-height: 22px;
 }
 
@@ -111,7 +111,7 @@
 
 .selection-info {
   color: #666;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 400;
   text-align: center;
   margin: 0;
@@ -151,7 +151,7 @@
 
 .question-button-text {
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
 }
 
@@ -161,7 +161,7 @@
 
 .question-progress {
   margin-top: 6px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-primary);
   text-align: center;
   font-weight: 500;
@@ -207,7 +207,7 @@
 }
 
 .complete-message {
-  font-size: 28px;
+  font-size: clamp(24px, 6vw, 32px);
   color: var(--text-primary);
   text-align: center;
   line-height: 36px;
@@ -237,7 +237,7 @@
 
 .complete-button-text {
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
 }
 

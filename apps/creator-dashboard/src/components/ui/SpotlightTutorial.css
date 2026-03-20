@@ -9,7 +9,7 @@
   background: var(--surface-2, #2a2a2a);
   border: 1px solid var(--border-default, rgba(255,255,255,0.10));
   color: var(--text-secondary, rgba(255,255,255,0.55));
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 700;
   cursor: pointer;
   z-index: 8800;
@@ -75,7 +75,7 @@
 }
 
 .spt-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 700;
   color: var(--text-primary, rgba(255,255,255,0.95));
   margin-bottom: 8px;
@@ -83,7 +83,7 @@
 }
 
 .spt-body {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255,255,255,0.55));
   line-height: 1.5;
   margin-bottom: 16px;
@@ -98,7 +98,7 @@
 .spt-btn {
   padding: 8px 16px;
   border-radius: var(--radius-sm, 6px);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   cursor: pointer;
   transition: opacity 150ms ease;

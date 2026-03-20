@@ -21,7 +21,7 @@
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -140,7 +140,7 @@
 
 .plan-editor-option-item-card .meal-editor-item-meta {
   display: block;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -175,7 +175,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-family: inherit;
   box-sizing: border-box;
   text-align: center;
@@ -246,14 +246,14 @@
 }
 
 .plan-editor-sidebar-section-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 8px 0;
 }
 
 .plan-editor-sidebar-section-hint {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0 0 8px 0;
 }
@@ -266,7 +266,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -279,7 +279,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -328,7 +328,7 @@
 }
 
 .plan-editor-macros-objectives-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 14px 0;
@@ -347,7 +347,7 @@
 }
 
 .plan-editor-macro-input-wrap label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.6);
 }
 
@@ -357,7 +357,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -366,7 +366,7 @@
 }
 
 .plan-editor-macros-objectives-hint {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   margin: -8px 0 12px 0;
 }
@@ -386,7 +386,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
   width: 100%;
   cursor: pointer;
@@ -406,7 +406,7 @@
   flex-wrap: wrap;
   gap: 12px 20px;
   margin-top: 12px;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.75);
 }
 
@@ -446,7 +446,7 @@
 }
 
 .plan-editor-categories-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -458,7 +458,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
@@ -514,7 +514,7 @@
 }
 
 .plan-editor-category-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   margin: 0;
@@ -577,7 +577,7 @@
   border: none;
   border-radius: 0;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
   cursor: pointer;
   text-align: left;
@@ -605,7 +605,7 @@
   border: none;
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   line-height: 1;
   cursor: pointer;
   transition: color 0.2s, background 0.2s;
@@ -627,7 +627,7 @@
   border: 1px dashed rgba(255, 255, 255, 0.3);
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   line-height: 1;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
@@ -677,7 +677,7 @@
 }
 
 .plan-editor-add-hint {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.4);
   margin: 0;
 }
@@ -691,7 +691,7 @@
 }
 
 .plan-editor-category-edit-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -701,7 +701,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -722,7 +722,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
 }
 
@@ -732,7 +732,7 @@
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 8px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
 }
@@ -743,7 +743,7 @@
 
 .plan-editor-category-edit-confirm-text {
   margin: 0;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   line-height: 1.4;
 }
@@ -761,7 +761,7 @@
   border: 1px solid rgba(220, 80, 80, 0.5);
   border-radius: 8px;
   color: rgba(255, 200, 200, 0.95);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
 }
@@ -777,7 +777,7 @@
   border: 1px solid rgba(220, 80, 80, 0.6);
   border-radius: 8px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
 }
@@ -832,7 +832,7 @@
 }
 
 .library-session-client-edit-banner-text {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -853,7 +853,7 @@
 
 .plan-editor-propagate-text {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .plan-editor-propagate-btn {
@@ -861,7 +861,7 @@
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 1);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   border-radius: 8px;

@@ -21,7 +21,7 @@
 
 .delete-instruction-text {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height: 1.5;
   margin: 0;
 }
@@ -44,7 +44,7 @@
   padding: 0 24px;
   height: 52px;
   color: rgba(255, 68, 68, 0.85);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: var(--font-sans), sans-serif;
   cursor: pointer;
@@ -75,7 +75,7 @@
 
 .delete-warning-text {
   color: rgba(255, 68, 68, 0.8);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   line-height: 1.5;
   margin: 0;
@@ -109,7 +109,7 @@
   padding: 60px 20px;
   text-align: center;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .copy-session-modal-session-list {
@@ -136,7 +136,7 @@
 .copy-session-modal-session-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
 }
 

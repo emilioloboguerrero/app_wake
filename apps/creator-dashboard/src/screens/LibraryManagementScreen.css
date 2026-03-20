@@ -43,7 +43,7 @@
 }
 
 .lib-title {
-  font-size: 26px;
+  font-size: clamp(20px, 5vw, 26px);
   font-weight: 700;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -52,7 +52,7 @@
 }
 
 .lib-subtitle {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.5));
   margin: 0;
 }
@@ -68,7 +68,7 @@
   background: var(--text-primary, #fff);
   color: var(--canvas, #1a1a1a);
   border: none;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   cursor: pointer;
@@ -134,7 +134,7 @@
   border: none;
   outline: none;
   color: var(--text-primary, #fff);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
 }
 
@@ -211,7 +211,7 @@
 .lib-completeness-dot:hover { transform: scale(1.35); }
 
 .lib-exercise-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: var(--text-primary, #fff);
   flex: 1;
@@ -224,7 +224,7 @@
   align-items: center;
   padding: 3px 9px;
   border-radius: var(--radius-pill, 999px);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.55);
@@ -257,7 +257,7 @@
 }
 
 .lib-callout-title {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
   text-transform: uppercase;
@@ -276,7 +276,7 @@
 }
 
 .lib-callout-item {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(251, 191, 36, 0.85);
   display: flex;
   align-items: center;
@@ -357,7 +357,7 @@
 .lib-drag-handle:active { cursor: grabbing; }
 
 .lib-session-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -377,7 +377,7 @@
   align-items: center;
   padding: 2px 9px;
   border-radius: var(--radius-pill, 999px);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.5);
@@ -421,7 +421,7 @@
 }
 
 .lib-module-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -449,7 +449,7 @@
 }
 
 .lib-empty-sub {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255, 255, 255, 0.5));
   margin: 0;
   max-width: 380px;
@@ -466,7 +466,7 @@
   background: var(--text-primary, #fff);
   color: var(--canvas, #1a1a1a);
   border: none;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   cursor: pointer;

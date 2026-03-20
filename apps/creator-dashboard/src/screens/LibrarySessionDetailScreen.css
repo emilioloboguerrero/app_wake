@@ -34,13 +34,13 @@
 }
 
 .library-session-client-edit-banner-text {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
 }
 
 .library-session-client-edit-revert {
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   background: rgba(0, 0, 0, 0.3);
@@ -75,7 +75,7 @@
 }
 
 .library-session-sidebar-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 16px 0;
@@ -89,7 +89,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -139,7 +139,7 @@
   border: none;
   outline: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -160,7 +160,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -221,7 +221,7 @@
 
 .library-session-active-filter-chip-text {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -243,7 +243,7 @@
 
 .library-session-clear-all-filters-text {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -260,7 +260,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 /* Main Area Styles */
@@ -286,7 +286,7 @@
 }
 
 .library-session-main-title {
-  font-size: 24px;
+  font-size: clamp(20px, 5vw, 26px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 8px 0;
@@ -294,7 +294,7 @@
 }
 
 .library-session-main-subtitle {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -316,7 +316,7 @@
   border: 1px solid rgba(34, 197, 94, 0.35);
   border-radius: 8px;
   color: rgba(34, 197, 94, 1);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -335,7 +335,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -395,7 +395,7 @@
 
 .library-session-dropzone p {
   margin: 16px 0 0 0;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
@@ -505,7 +505,7 @@
 }
 
 .draggable-exercise-name {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 4px 0;
@@ -514,7 +514,7 @@
 }
 
 .draggable-exercise-meta {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -590,7 +590,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -653,7 +653,7 @@
 }
 
 .library-session-sidebar-right-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -661,7 +661,7 @@
 }
 
 .library-session-sidebar-right-subtitle {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 6px 0 0 0;
   font-family: inherit;
@@ -800,7 +800,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -819,7 +819,7 @@
 
 .library-session-pie-legend-sets {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   flex-shrink: 0;
 }
 
@@ -852,13 +852,13 @@
 }
 
 .library-session-volume-muscle-name {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
 }
 
 .library-session-volume-muscle-sets {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
 }
@@ -866,7 +866,7 @@
 .library-session-volume-desliza {
   flex-shrink: 0;
   text-align: center;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.4);
   padding: 8px 12px;
 }
@@ -901,13 +901,13 @@
 }
 
 .library-session-pie-tooltip-name {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
 }
 
 .library-session-pie-tooltip-sets {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
 }
@@ -935,7 +935,7 @@
   padding: 24px 16px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 /* Filter Modal Styles */
@@ -950,7 +950,7 @@
 }
 
 .filter-section-title {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0 0 15px 0;
@@ -992,13 +992,13 @@
 
 .filter-chip-text {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
 .filter-chip-remove {
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: bold;
   line-height: 1;
 }
@@ -1030,7 +1030,7 @@
 
 .implement-chip-text {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
@@ -1069,7 +1069,7 @@
 
 .filter-clear-button-text {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
 }
 
@@ -1094,7 +1094,7 @@
 
 .filter-apply-button-text {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
 }
 
@@ -1147,7 +1147,7 @@
 }
 
 .sets-panel-glass-card-series .sets-panel-glass-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   text-transform: none;
@@ -1168,7 +1168,7 @@
 }
 
 .sets-panel-glass-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1192,7 +1192,7 @@
   max-width: 110px;
   min-width: 0;
   padding: 8px 14px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.2);
@@ -1219,7 +1219,7 @@
 }
 
 .sets-panel-toggle-detail {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.02);
@@ -1243,7 +1243,7 @@
 }
 
 .sets-panel-empty-compact p {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
 }
@@ -1262,7 +1262,7 @@
 .sets-detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .sets-detail-th,
@@ -1274,7 +1274,7 @@
 }
 
 .sets-detail-th {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1299,7 +1299,7 @@
   max-width: 96px;
   min-width: 56px;
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
@@ -1314,7 +1314,7 @@
 .sets-detail-action-btn {
   padding: 6px 10px;
   margin-left: 4px;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.75);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1339,7 +1339,7 @@
 }
 
 .sets-detail-drag-hint {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.45);
   margin: 0 0 8px 0;
 }
@@ -1403,7 +1403,7 @@
 }
 
 .sets-panel-default-label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -1428,7 +1428,7 @@
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease;
@@ -1445,7 +1445,7 @@
   width: 48px;
   height: 32px;
   text-align: center;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   background: transparent;
@@ -1471,7 +1471,7 @@
 }
 
 .sets-panel-default-row-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.55);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -1490,13 +1490,13 @@
 
 .sets-panel-default-field .create-exercise-set-label {
   margin: 0;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.6);
 }
 
 .sets-panel-default-input {
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.25);
@@ -1517,7 +1517,7 @@
 .sets-panel-apply-btn {
   width: 100%;
   padding: 10px 16px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.1);
@@ -1546,7 +1546,7 @@
 }
 
 .sets-panel-apply-to-all-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.55);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -1581,7 +1581,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.95);
   background: rgba(255, 255, 255, 0.08);
@@ -1598,7 +1598,7 @@
 }
 
 .exercise-alternatives-add-btn-icon {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 300;
   line-height: 1;
 }
@@ -1663,7 +1663,7 @@
 
 .library-picker-saving-text {
   margin: 0;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.95);
 }
@@ -1713,7 +1713,7 @@
 }
 
 .library-picker-modal-left-title {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.75);
   margin: 0;
@@ -1749,7 +1749,7 @@
   border: none;
   outline: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
@@ -1793,7 +1793,7 @@
 }
 
 .library-picker-library-item-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: inherit;
 }
@@ -1816,14 +1816,14 @@
 }
 
 .library-picker-modal-right-title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   margin: 0 0 0 0;
 }
 
 .library-picker-modal-right-hint {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
 }
@@ -1859,7 +1859,7 @@
 }
 
 .library-picker-exercise-item-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -1874,7 +1874,7 @@
   padding: 32px 24px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .library-picker-empty p,

@@ -9,7 +9,7 @@
   background-color: var(--surface-3);
   border-radius: 12px;
   padding: 0 20px;
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 400;
   color: var(--text-primary);
   border: 1px solid var(--border-default);
@@ -54,7 +54,7 @@
 
 .input-error-text {
   color: #FF6B6B;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 400;
   margin-top: 4px;
   margin-left: 4px;

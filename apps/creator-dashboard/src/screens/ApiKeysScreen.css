@@ -36,7 +36,7 @@
 }
 
 .apikeys-section-label {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -45,7 +45,7 @@
 }
 
 .apikeys-header__sub {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255,255,255,0.5));
   margin: 0;
   line-height: 1.5;
@@ -117,14 +117,14 @@
 }
 
 .apikeys-empty__title {
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
 }
 
 .apikeys-empty__sub {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   margin: 0 0 12px;
   line-height: 1.55;
@@ -133,7 +133,7 @@
 
 /* ─── Error message ─────────────────────────────────────────────── */
 .apikeys-error-msg {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(239,68,68,0.85);
   margin: 0;
   padding: 4px 0;
@@ -181,7 +181,7 @@
 }
 
 .apikeys-row__name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   white-space: nowrap;
@@ -191,7 +191,7 @@
 
 .apikeys-row__id {
   font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Mono', monospace;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   letter-spacing: 0.03em;
 }
@@ -205,13 +205,13 @@
 }
 
 .apikeys-row__meta span {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-tertiary, rgba(255,255,255,0.36));
 }
 
 .apikeys-row__dot {
   color: var(--text-tertiary, rgba(255,255,255,0.2));
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   line-height: 1;
 }
 
@@ -223,7 +223,7 @@
   color: #111;
   border: none;
   border-radius: var(--radius-md, 10px);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
@@ -245,7 +245,7 @@
   border: 1px solid rgba(239,68,68,0.2);
   border-radius: var(--radius-md, 10px);
   color: rgba(239,68,68,0.75);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
@@ -276,7 +276,7 @@
   color: #111;
   border: none;
   border-radius: var(--radius-md, 10px);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
@@ -303,7 +303,7 @@
   border: 1px solid var(--border-default, rgba(255,255,255,0.1));
   border-radius: var(--radius-md, 10px);
   color: var(--text-secondary, rgba(255,255,255,0.6));
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
@@ -324,7 +324,7 @@
   border: 1px solid rgba(239,68,68,0.22);
   border-radius: var(--radius-md, 10px);
   color: rgba(239,68,68,0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
@@ -354,7 +354,7 @@
 }
 
 .apikeys-modal-label {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   color: var(--text-tertiary, rgba(255,255,255,0.36));
   letter-spacing: 0.02em;
@@ -368,7 +368,7 @@
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   border-radius: var(--radius-md, 10px);
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   outline: none;
   box-sizing: border-box;
@@ -395,7 +395,7 @@
 }
 
 .apikeys-error-inline {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(239,68,68,0.85);
   margin: 0;
   padding: 10px 14px;
@@ -406,14 +406,14 @@
 
 /* ─── Revoke modal copy ─────────────────────────────────────────── */
 .apikeys-revoke-desc {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   color: var(--text-secondary, rgba(255,255,255,0.6));
   margin: 0;
   line-height: 1.55;
 }
 
 .apikeys-revoke-keyname {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: var(--text-primary, #fff);
   margin: 0;
@@ -438,7 +438,7 @@
   background: rgba(251,191,36,0.06);
   border: 1px solid rgba(251,191,36,0.18);
   border-radius: var(--radius-md, 10px);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(251,191,36,0.9);
   line-height: 1.5;
 }
@@ -453,7 +453,7 @@
 
 .apikeys-reveal-code {
   font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Mono', monospace;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: var(--text-primary, #fff);
   word-break: break-all;
   line-height: 1.6;
@@ -466,7 +466,7 @@
   border: none;
   border-radius: var(--radius-md, 10px);
   color: #111;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   cursor: pointer;
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);

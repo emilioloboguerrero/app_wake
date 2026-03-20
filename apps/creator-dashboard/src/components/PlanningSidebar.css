@@ -18,7 +18,7 @@
 }
 
 .planning-sidebar-title {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -27,7 +27,7 @@
 
 .planning-sidebar-loading-indicator {
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .planning-sidebar-content {
@@ -41,7 +41,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 
@@ -54,7 +54,7 @@
 }
 
 .planning-sidebar-section-title {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
@@ -159,7 +159,7 @@
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 1);
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -173,7 +173,7 @@
 }
 
 .planning-sidebar-program-name {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
@@ -183,7 +183,7 @@
 }
 
 .planning-sidebar-program-selected-indicator {
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.8);
   font-weight: 500;
   text-transform: uppercase;
@@ -230,7 +230,7 @@
 }
 
 .planning-sidebar-program-assign-button {
-  font-size: 20px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 300;
   line-height: 1;
 }
@@ -307,7 +307,7 @@
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -357,7 +357,7 @@
 }
 
 .plan-structure-week-title {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
@@ -367,7 +367,7 @@
 }
 
 .plan-structure-week-empty {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.4);
   margin: 0 0 8px 0;
   padding-left: 4px;

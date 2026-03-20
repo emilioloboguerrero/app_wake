@@ -65,7 +65,7 @@
 /* ─── Base ───────────────────────────────────────────────────── */
 body {
   font-family:              var(--font-sans);
-  font-size:                14px;
+  font-size: clamp(13px, 3vw, 14px);
   line-height:              1.5;
   -webkit-font-smoothing:   antialiased;
   -moz-osx-font-smoothing:  grayscale;
