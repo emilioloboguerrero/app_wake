@@ -1,8 +1,24 @@
 import { getToken } from 'firebase/app-check';
 import { auth, appCheck } from '../config/firebase';
+import { enqueue } from './offlineQueue';
 
 const BASE_URL = '/api/v1';
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+const QUEUEABLE_PATTERNS = [
+  { pattern: /^\/nutrition\/diary/, priority: 'normal' },
+  { pattern: /^\/progress\/readiness/, priority: 'normal' },
+  { pattern: /^\/progress\/body-log/, priority: 'normal' },
+  { pattern: /^\/workout\/session\/checkpoint/, priority: 'low' },
+  { pattern: /^\/workout\/complete$/, priority: 'high' },
+];
+
+function getQueuePriority(path) {
+  for (const { pattern, priority } of QUEUEABLE_PATTERNS) {
+    if (pattern.test(path)) return priority;
+  }
+  return null;
+}
 
 export class WakeApiError extends Error {
   constructor(code, message, status, field = null, retryAfter = null) {
@@ -43,8 +59,16 @@ class ApiClient {
   async #request(method, path, body, options = {}) {
     const { includeAuth = true, timeout = 15000, signal, params } = options;
 
-    if (!navigator.onLine && method === 'GET') {
-      throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
+    if (!navigator.onLine) {
+      if (method === 'GET') {
+        throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
+      }
+      const priority = getQueuePriority(path);
+      if (priority) {
+        enqueue({ method, path, body, priority, ...(options.tempId ? { tempId: options.tempId } : {}) });
+        return { queued: true };
+      }
+      throw new WakeApiError('NETWORK_ERROR', 'No hay conexión', 0);
     }
 
     let url = `${BASE_URL}${path}`;

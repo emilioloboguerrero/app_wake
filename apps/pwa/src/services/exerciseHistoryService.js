@@ -1,7 +1,6 @@
 // Exercise History Service - Manages exercise and session history subcollections
 import logger from '../utils/logger.js';
-import apiClient, { WakeApiError } from '../utils/apiClient';
-import { enqueue } from '../utils/offlineQueue';
+import apiClient from '../utils/apiClient';
 
 class ExerciseHistoryService {
   /**
@@ -9,46 +8,26 @@ class ExerciseHistoryService {
    * All writes are handled server-side by POST /workout/complete.
    */
   async addSessionData(userId, sessionData, plannedSnapshot = null) {
-    try {
-      if (!sessionData || !sessionData.exercises || !Array.isArray(sessionData.exercises)) {
-        throw new Error('Invalid session data structure');
-      }
-
-      const body = {
-        sessionId: sessionData.sessionId,
-        courseId: sessionData.courseId,
-        courseName: sessionData.courseName,
-        sessionName: sessionData.sessionName,
-        completedAt: sessionData.completedAt,
-        duration: sessionData.duration,
-        userNotes: sessionData.userNotes,
-        exercises: sessionData.exercises,
-        planned: plannedSnapshot ? {
-          exercises: plannedSnapshot.exercises,
-        } : undefined,
-      };
-
-      const res = await apiClient.post('/workout/complete', body);
-
-      return res?.data ?? null;
-    } catch (error) {
-      if (error instanceof WakeApiError && error.status === 0) {
-        enqueue({ method: 'POST', path: '/workout/complete', body: {
-          sessionId: sessionData.sessionId,
-          courseId: sessionData.courseId,
-          courseName: sessionData.courseName,
-          sessionName: sessionData.sessionName,
-          completedAt: sessionData.completedAt,
-          duration: sessionData.duration,
-          userNotes: sessionData.userNotes,
-          exercises: sessionData.exercises,
-          planned: plannedSnapshot ? { exercises: plannedSnapshot.exercises } : undefined,
-        }, priority: 'high' });
-        return { queued: true };
-      }
-      logger.error('❌ Error adding session data to exercise history:', error);
-      throw error;
+    if (!sessionData || !sessionData.exercises || !Array.isArray(sessionData.exercises)) {
+      throw new Error('Invalid session data structure');
     }
+
+    const body = {
+      sessionId: sessionData.sessionId,
+      courseId: sessionData.courseId,
+      courseName: sessionData.courseName,
+      sessionName: sessionData.sessionName,
+      completedAt: sessionData.completedAt,
+      duration: sessionData.duration,
+      userNotes: sessionData.userNotes,
+      exercises: sessionData.exercises,
+      planned: plannedSnapshot ? {
+        exercises: plannedSnapshot.exercises,
+      } : undefined,
+    };
+
+    const res = await apiClient.post('/workout/complete', body);
+    return res?.queued ? { queued: true } : (res?.data ?? null);
   }
 
   /**

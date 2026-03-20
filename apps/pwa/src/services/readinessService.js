@@ -1,6 +1,5 @@
-import apiClient, { WakeApiError } from '../utils/apiClient';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-import { enqueue } from '../utils/offlineQueue';
 
 /**
  * Get today's readiness doc. Returns null if none logged yet.
@@ -25,15 +24,7 @@ export async function saveReadiness(userId, dateStr, { energy, soreness, sleep }
     soreness: Number(soreness),
     sleep: Number(sleep),
   };
-  try {
-    await apiClient.put(`/progress/readiness/${dateStr}`, body);
-  } catch (err) {
-    if (err instanceof WakeApiError && err.status === 0) {
-      enqueue({ method: 'PUT', path: `/progress/readiness/${dateStr}`, body });
-      return { queued: true };
-    }
-    throw err;
-  }
+  return apiClient.put(`/progress/readiness/${dateStr}`, body);
 }
 
 /**

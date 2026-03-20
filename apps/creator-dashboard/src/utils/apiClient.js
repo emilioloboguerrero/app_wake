@@ -43,8 +43,8 @@ class ApiClient {
   async #request(method, path, body, options = {}) {
     const { includeAuth = true, timeout = 15000, signal, params } = options;
 
-    if (!navigator.onLine && method === 'GET') {
-      throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
+    if (!navigator.onLine) {
+      throw new WakeApiError('NETWORK_ERROR', 'No hay conexión', 0);
     }
 
     let url = `${BASE_URL}${path}`;

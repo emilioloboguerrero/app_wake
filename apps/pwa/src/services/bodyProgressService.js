@@ -1,6 +1,5 @@
-import apiClient, { WakeApiError } from '../utils/apiClient';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-import { enqueue } from '../utils/offlineQueue';
 
 async function compressProgressPhoto(file) {
   return new Promise((resolve, reject) => {
@@ -35,15 +34,7 @@ class BodyProgressService {
     const body = {};
     if (weight !== undefined) body.weight = weight;
     if (note !== undefined) body.note = note;
-    try {
-      await apiClient.put(`/progress/body-log/${dateStr}`, body);
-    } catch (err) {
-      if (err instanceof WakeApiError && err.status === 0) {
-        enqueue({ method: 'PUT', path: `/progress/body-log/${dateStr}`, body });
-        return { queued: true };
-      }
-      throw err;
-    }
+    return apiClient.put(`/progress/body-log/${dateStr}`, body);
   }
 
   async getEntry(userId, dateStr) {

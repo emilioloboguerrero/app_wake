@@ -2,9 +2,8 @@
  * Nutrition Firestore service — user diary, assignments, plan (read).
  * Phase 3: fully migrated to API.
  */
-import apiClient, { WakeApiError } from '../utils/apiClient';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-import { enqueue } from '../utils/offlineQueue';
 import { queryClient } from '../config/queryClient';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -174,37 +173,32 @@ export async function addDiaryEntry(_userId, data) {
     gramsPerUnit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
   };
-  try {
-    const result = await apiClient.post('/nutrition/diary', body, { idempotent: false });
-    return result?.data?.entryId;
-  } catch (err) {
-    if (err instanceof WakeApiError && err.status === 0) {
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      enqueue({ method: 'POST', path: '/nutrition/diary', body, tempId });
-      const optimisticEntry = {
-        id: tempId,
-        date: body.date,
-        meal: body.meal,
-        food_id: body.foodId,
-        serving_id: body.servingId,
-        number_of_units: body.numberOfUnits,
-        name: body.name,
-        food_category: body.foodCategory,
-        calories: body.calories,
-        protein: body.protein,
-        carbs: body.carbs,
-        fat: body.fat,
-        serving_unit: body.servingUnit,
-        grams_per_unit: body.gramsPerUnit,
-        createdAt: new Date().toISOString(),
-      };
-      queryClient.setQueryData(['nutrition', 'diary', body.date], (old) =>
-        [...(old ?? []), optimisticEntry]
-      );
-      return tempId;
-    }
-    throw err;
+  const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const result = await apiClient.post('/nutrition/diary', body, { idempotent: false, tempId });
+  if (result?.queued) {
+    const optimisticEntry = {
+      id: tempId,
+      date: body.date,
+      meal: body.meal,
+      food_id: body.foodId,
+      serving_id: body.servingId,
+      number_of_units: body.numberOfUnits,
+      name: body.name,
+      food_category: body.foodCategory,
+      calories: body.calories,
+      protein: body.protein,
+      carbs: body.carbs,
+      fat: body.fat,
+      serving_unit: body.servingUnit,
+      grams_per_unit: body.gramsPerUnit,
+      createdAt: new Date().toISOString(),
+    };
+    queryClient.setQueryData(['nutrition', 'diary', body.date], (old) =>
+      [...(old ?? []), optimisticEntry]
+    );
+    return tempId;
   }
+  return result?.data?.entryId;
 }
 
 export async function updateDiaryEntry(_userId, entryId, data) {
@@ -215,27 +209,11 @@ export async function updateDiaryEntry(_userId, entryId, data) {
   if (data.protein != null) update.protein = data.protein;
   if (data.carbs != null) update.carbs = data.carbs;
   if (data.fat != null) update.fat = data.fat;
-  try {
-    await apiClient.patch(`/nutrition/diary/${entryId}`, update);
-  } catch (err) {
-    if (err instanceof WakeApiError && err.status === 0) {
-      enqueue({ method: 'PATCH', path: `/nutrition/diary/${entryId}`, body: update });
-      return { queued: true };
-    }
-    throw err;
-  }
+  return apiClient.patch(`/nutrition/diary/${entryId}`, update);
 }
 
 export async function deleteDiaryEntry(_userId, entryId) {
-  try {
-    await apiClient.delete(`/nutrition/diary/${entryId}`);
-  } catch (err) {
-    if (err instanceof WakeApiError && err.status === 0) {
-      enqueue({ method: 'DELETE', path: `/nutrition/diary/${entryId}` });
-      return { queued: true };
-    }
-    throw err;
-  }
+  return apiClient.delete(`/nutrition/diary/${entryId}`);
 }
 
 // ─── Saved foods ──────────────────────────────────────────────────────────────
