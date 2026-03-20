@@ -1,4 +1,6 @@
 export class WakeApiServerError extends Error {
+  retryAfter?: number;
+
   constructor(
     public code: string,
     public status: number,

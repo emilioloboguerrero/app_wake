@@ -35,6 +35,13 @@ const fatSecretClientSecret = functions.params.defineSecret(
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
 // ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
+// Accepted gap: in-memory rate limiting is ineffective in Cloud Functions
+// because each instance has its own empty Map, instances cold-start frequently,
+// and horizontal scaling means requests hit different instances. This provides
+// minimal protection. A Firestore-based rate limiter (like api/middleware/rateLimit.ts)
+// would be correct, but these Gen1 functions are being retired in Phase 3
+// migration, so the effort is not justified. The Gen2 API already uses
+// Firestore-based rate limiting.
 const rateLimitStore = new Map<string, {count: number; resetAt: number}>();
 
 function checkRateLimit(key: string): boolean {
@@ -132,6 +139,12 @@ function isDateValidationError(err: unknown): err is DateValidationError {
 }
 
 // ─── App Check helper ─────────────────────────────────────────────────────────
+// Note: Gen1 functions **require** App Check (verifyAppCheck returns false when
+// header is missing, causing 401). Gen2 auth middleware treats App Check as
+// **optional** (only verified if header is present). This inconsistency is
+// intentional during migration — Gen1 clients always send the header, while
+// Gen2 also serves third-party API-key clients that never will. Align behavior
+// when Gen1 functions are retired.
 async function verifyAppCheck(request: Request): Promise<boolean> {
   const token = request.headers["x-firebase-appcheck"] as string | undefined;
   if (!token) return false;
@@ -474,7 +487,7 @@ export const createPaymentPreference = functions
     } catch (error: unknown) {
       functions.logger.error("createPaymentPreference error", error);
       response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: toErrorMessage(error)},
+        error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"},
       });
     }
   });
@@ -663,7 +676,7 @@ export const createSubscriptionCheckout = functions
       }
 
       response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: message || "Error al crear la suscripción"},
+        error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"},
       });
     }
   });
@@ -765,6 +778,16 @@ export const processPaymentWebhook = functions
             signaturePresent: Boolean(signature),
             requestIdPresent: Boolean(requestId),
             dataIdPresent: Boolean(dataId),
+          });
+          return false;
+        }
+
+        // Reject replayed webhooks: timestamp must be within 5 minutes of now
+        const tsMs = Number(timestamp) * 1000;
+        if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
+          functions.logger.warn("Webhook timestamp too old or invalid", {
+            timestamp,
+            ageMs: isNaN(tsMs) ? "NaN" : Date.now() - tsMs,
           });
           return false;
         }
@@ -1751,7 +1774,7 @@ export const updateSubscriptionStatus = functions
     } catch (error: unknown) {
       functions.logger.error("Error updating subscription status:", error);
       response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: toErrorMessage(error)},
+        error: {code: "INTERNAL_ERROR", message: "Error al actualizar la suscripción"},
       });
     }
   });
@@ -1925,6 +1948,12 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
 // ============================================
 // NUTRITION (FatSecret proxy) — Step 2
 // ============================================
+// Accepted risk: Nutrition proxies only require App Check — no Firebase Auth.
+// Any client with a valid App Check token can query FatSecret without being
+// logged in. The only abuse protection is the in-memory rate limiter, which
+// is ineffective (see note above). Adding Firebase Auth would break the
+// current client flow. These Gen1 functions will be retired when the Gen2
+// /nutrition/* API routes are fully migrated — those require Firebase Auth.
 
 const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
 const fatSecretTokenCache = new Map<
@@ -2257,6 +2286,15 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
   }
 });
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ─── sendEventConfirmationEmail ────────────────────────────────────────────
 // Fires on every new registration and sends an HTML email with the event
 // title, a personalised greeting, and a QR code the attendee can use for
@@ -2302,11 +2340,14 @@ export const sendEventConfirmationEmail = functions
     }
 
     const fromAddress = "Wake Eventos <eventos@wakelab.co>";
-    const eventTitle = (event.title as string) ?? "Evento Wake";
-    const confirmationMsg = ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
-      ?? "¡Tu lugar está confirmado! Nos vemos en el evento.";
+    const eventTitleRaw = (event.title as string) ?? "Evento Wake";
+    const eventTitle = escapeHtml(eventTitleRaw);
+    const confirmationMsg = escapeHtml(
+      ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
+        ?? "¡Tu lugar está confirmado! Nos vemos en el evento."
+    );
     const checkInToken = reg.check_in_token as string | undefined;
-    const eventImageUrl = (event.image_url as string | undefined) ?? "";
+    const eventImageUrl = escapeHtml((event.image_url as string | undefined) ?? "");
 
     // Resolve first name
     let firstName = "";
@@ -2320,7 +2361,7 @@ export const sendEventConfirmationEmail = functions
       if (nameEntry && typeof nameEntry[1] === "string") firstName = (nameEntry[1] as string).split(" ")[0];
     }
 
-    const greeting = firstName ? `¡Hola, ${firstName}!` : "¡Hola!";
+    const greeting = firstName ? `¡Hola, ${escapeHtml(firstName)}!` : "¡Hola!";
 
     // QR code image URL (api.qrserver.com, no server-side dependency)
     const qrData = checkInToken
@@ -2378,7 +2419,7 @@ export const sendEventConfirmationEmail = functions
       const {error: resendError} = await resend.emails.send({
         from: fromAddress,
         to: toEmail,
-        subject: `Confirmación: ${eventTitle}`,
+        subject: `Confirmación: ${eventTitleRaw}`,
         html,
         headers: {
           "List-Unsubscribe": "<mailto:eventos@wakelab.co?subject=unsubscribe>",

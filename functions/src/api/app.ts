@@ -23,12 +23,33 @@ export const app = express();
 // ─── Body parsing ──────────────────────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
 
+// ─── Security headers ─────────────────────────────────────────────────────
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 // ─── CORS ──────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = new Set([
+  "https://wakelab.co",
+  "https://www.wakelab.co",
+]);
+const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+
 app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    req.headers.origin || "*"
-  );
+  const origin = req.headers.origin;
+
+  if (isEmulator) {
+    // In emulator, allow any origin for local development
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  } else if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  // If origin is not allowed, omit the header — browser will block the request
+
+  res.setHeader("Vary", "Origin");
   res.setHeader(
     "Access-Control-Allow-Methods",
     "GET,POST,PATCH,PUT,DELETE,OPTIONS"
@@ -51,8 +72,10 @@ app.get("/v1/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// ─── Swagger UI ────────────────────────────────────────────────────────────
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(generateOpenApiSpec()));
+// ─── Swagger UI (emulator only — not exposed in production) ───────────────
+if (isEmulator) {
+  app.use("/docs", swaggerUi.serve, swaggerUi.setup(generateOpenApiSpec()));
+}
 
 // ─── Auth + Scope enforcement + Daily rate limit (all /v1/* except health) ─
 app.use("/v1", async (req: Request, _res: Response, next: NextFunction) => {
@@ -103,7 +126,7 @@ app.use((_req: Request, res: Response) => {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof WakeApiServerError) {
     if (err.status === 429) {
-      const retryAfter = (err as WakeApiServerError & { retryAfter?: number }).retryAfter;
+      const retryAfter = err.retryAfter;
       if (retryAfter) {
         res.setHeader("Retry-After", String(retryAfter));
       }

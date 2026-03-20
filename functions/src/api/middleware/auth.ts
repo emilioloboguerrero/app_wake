@@ -23,7 +23,8 @@ declare global {
 const db = admin.firestore();
 
 export async function validateAuth(req: Request): Promise<AuthResult> {
-  // Return cached result if already validated in this request
+  // Return cached result if already validated in this request.
+  // Safe: no preceding middleware sets req.auth — only this function does.
   if (req.auth) {
     return req.auth;
   }
@@ -120,7 +121,7 @@ async function validateFirebaseToken(
 ): Promise<AuthResult> {
   let decoded: admin.auth.DecodedIdToken;
   try {
-    decoded = await admin.auth().verifyIdToken(token);
+    decoded = await admin.auth().verifyIdToken(token, true);
   } catch {
     throw new WakeApiServerError(
       "UNAUTHENTICATED",
@@ -129,7 +130,11 @@ async function validateFirebaseToken(
     );
   }
 
-  // Optional App Check verification (skip in emulator)
+  // Optional App Check verification (skip in emulator).
+  // Accepted risk: App Check is only validated when the header is present.
+  // An attacker can omit it entirely to bypass verification. This is
+  // intentional until enforcement is enabled across all clients. When ready,
+  // reject requests missing the header outside emulator mode.
   const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
   if (!isEmulator) {
     const appCheckToken = req.headers["x-firebase-appcheck"] as

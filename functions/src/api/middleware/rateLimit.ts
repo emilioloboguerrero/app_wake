@@ -3,6 +3,11 @@ import { WakeApiServerError } from "../errors.js";
 
 const db = admin.firestore();
 
+// TODO: Configure Firestore TTL policies on `rate_limit_windows` and
+// `rate_limit_first_party` collections using the `expires_at` field.
+// Without TTL, rate-limit documents accumulate indefinitely.
+// See: https://firebase.google.com/docs/firestore/ttl
+
 export async function checkRateLimit(
   id: string,
   limitRpm: number,
@@ -37,8 +42,7 @@ export async function checkRateLimit(
       429,
       "Demasiadas solicitudes. Intenta en un momento."
     );
-    (err as WakeApiServerError & { retryAfter: number }).retryAfter =
-      secondsRemaining;
+    err.retryAfter = secondsRemaining;
     throw err;
   }
 }
@@ -77,8 +81,7 @@ export async function checkDailyRateLimit(
       429,
       "Límite diario de solicitudes excedido. Intenta mañana."
     );
-    (err as WakeApiServerError & { retryAfter: number }).retryAfter =
-      secondsRemaining;
+    err.retryAfter = secondsRemaining;
     throw err;
   }
 }
