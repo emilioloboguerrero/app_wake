@@ -1063,11 +1063,8 @@ const MainScreen = ({ navigation, route }) => {
         imageUrl = downloadedCourse.courseData.imageUrl;
       }
       
-      // FIX: Log when image is missing for debugging
       if (!imageUrl) {
         logger.warn(`⚠️ No image URL found for course ${course.id || course.courseId || 'unknown'}`);
-      } else {
-        logger.debug(`🖼️ Course ${course.id || course.courseId || 'unknown'} has image URL:`, imageUrl);
       }
 
       // Web: per-pixel text color from image behind (mix-blend-mode: difference).
@@ -1078,27 +1075,7 @@ const MainScreen = ({ navigation, route }) => {
       const imageLoadedForBlend = isWeb && cardImageLoadedIds.has(courseIdForCard);
       const textOverImageStyle =
         imageUrl && isWeb && imageLoadedForBlend ? { mixBlendMode: 'difference' } : null;
-      const contrastPhase = imageLoadedForBlend ? 'after-image-load' : 'before-image-load';
       const blendKey = imageLoadedForBlend ? 'blend-loaded' : 'blend-pending';
-      const textColorFromStyles = '#ffffff';
-      logger.debug('[CARD_CONTRAST]', {
-        courseId: courseIdForCard,
-        phase: contrastPhase,
-        blendKey,
-        blendStyleApplied: !!textOverImageStyle,
-        colorBeforeChange: contrastPhase === 'before-image-load' ? textColorFromStyles : '(was ' + textColorFromStyles + ' before image load)',
-        colorAfterChange:
-          contrastPhase === 'after-image-load'
-            ? 'computed by browser (mix-blend-mode: difference over image); getComputedStyle(el).color will still be ' + textColorFromStyles
-            : 'N/A (blend not applied yet)',
-        message:
-          contrastPhase === 'after-image-load'
-            ? 'Blend applied (first paint over image — color should reflect image)'
-            : 'No blend yet (solid white until image loads)',
-      });
-
-      // Render based on status
-      logger.debug('🎨 RENDERING CARD:', course.id, 'status:', courseStatus, 'downloadedData:', !!downloadedCourse);
       
       if (courseStatus === 'updating') {
         logger.debug('🔄 RENDERING UPDATING CARD:', course.id, 'status:', courseStatus);
