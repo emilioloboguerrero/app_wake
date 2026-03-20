@@ -444,6 +444,14 @@ export default function App() {
           if (mounted) safeLog('warn', 'Web storage initialization failed (non-critical):', error);
         });
 
+        // Initialize React Query IndexedDB persistence (non-blocking)
+        try {
+          const { initQueryPersistence } = require('./config/queryPersistence.web');
+          initQueryPersistence(queryClient);
+        } catch (persistError) {
+          safeLog('warn', 'React Query IndexedDB persistence failed to initialize (non-critical):', persistError);
+        }
+
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
           // Use Promise.race to prevent hanging

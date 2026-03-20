@@ -6,7 +6,7 @@ importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.3.0/workbox
 
 const { precacheAndRoute } = workbox.precaching;
 const { registerRoute } = workbox.routing;
-const { CacheFirst, NetworkFirst, NetworkOnly } = workbox.strategies;
+const { CacheFirst, NetworkOnly } = workbox.strategies;
 const { ExpirationPlugin } = workbox.expiration;
 const { CacheableResponsePlugin } = workbox.cacheableResponse;
 
@@ -36,20 +36,18 @@ registerRoute(
   })
 );
 
-// API responses — network-first (React Query cache handles offline reads)
+// API responses — network-only (React Query + IndexedDB persistence handles caching)
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/v1/'),
-  new NetworkFirst({
-    cacheName: 'wake-api',
-    networkTimeoutSeconds: 10,
-    plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
-      new ExpirationPlugin({
-        maxEntries: 50,
-        maxAgeSeconds: 5 * 60, // 5 minutes
-      }),
-    ],
-  })
+  new NetworkOnly()
+);
+
+// Cloud Function proxies (MercadoPago payments) — network-only, never cache
+registerRoute(
+  ({ url }) =>
+    url.hostname.includes('cloudfunctions.net') &&
+    url.hostname.includes('wolf-20b8b'),
+  new NetworkOnly()
 );
 
 // Firebase Auth — network-only, never cache
@@ -84,8 +82,7 @@ self.addEventListener('activate', (event) => {
         keys
           .filter((key) =>
             !key.startsWith('workbox-') &&
-            key !== 'wake-storage-images' &&
-            key !== 'wake-api'
+            key !== 'wake-storage-images'
           )
           .map((key) => caches.delete(key))
       )
