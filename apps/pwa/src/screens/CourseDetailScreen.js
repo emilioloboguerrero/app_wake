@@ -25,8 +25,7 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
-// TODO: Phase 3 migration target — replace direct firestoreService import with API client
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import courseDownloadService from '../data-management/courseDownloadService';

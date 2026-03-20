@@ -6,8 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
-// TODO: Phase 3 migration target — replace direct firestoreService import with API client
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';

@@ -4,7 +4,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
 const CourseStructureScreenBase = CourseStructureScreenModule.default;
