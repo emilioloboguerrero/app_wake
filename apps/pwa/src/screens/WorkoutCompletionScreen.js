@@ -39,6 +39,7 @@ import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/Sha
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
+import exerciseHistoryService from '../services/exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import WakeLoader from '../components/WakeLoader';
 
@@ -555,7 +556,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     setNotesSaving(true);
     setNotesSaved(false);
     try {
-      await apiClient.patch(`/workout/sessions/${sessionData.sessionId}/notes`, { userNotes: completionNotes });
+      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionData.sessionId, completionNotes);
       setNotesSaved(true);
       setInitialNotes(completionNotes);
       setTimeout(() => setNotesSaved(false), 2500);

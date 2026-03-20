@@ -88,17 +88,7 @@ Acceptable at current scale. Need server-side endpoints when creators grow past 
 
 ---
 
-## 3. FatSecret Server-Side Cache (DONE)
-
-Implemented in `functions/src/api/routes/nutrition.ts` on the food search endpoint (`GET /nutrition/foods/search`):
-- Collection: `nutrition_food_cache/{md5(query + "_" + page)}`
-- TTL: 30 days
-- Cache hit/miss logging via `functions.logger`
-- Common foods served from Firestore cache after first search
-
----
-
-## 4. Offline Architecture — Remaining Gaps
+## 3. Offline Architecture — Remaining Gaps
 
 The core offline system is implemented (offlineQueue, backgroundSync, apiClient offline detection). These items are not yet confirmed complete:
 
@@ -124,7 +114,7 @@ For programs to survive app close/reopen without network, React Query should use
 
 ---
 
-## 5. Web Notification System (NOT IMPLEMENTED)
+## 4. Web Notification System (NOT IMPLEMENTED)
 
 Entire system is specced but not started. No code exists. Required pieces:
 
@@ -156,31 +146,21 @@ Entire system is specced but not started. No code exists. Required pieces:
 
 ---
 
-## 6. Session Notes (NOT IMPLEMENTED)
+## 5. Session Notes (IMPLEMENTED)
 
-Session-level notes for completed workouts. No code exists yet.
+Session-level notes for completed workouts. Fully implemented.
 
-### Data Model
-- Add `userNotes` (string, optional) to `users/{userId}/sessionHistory/{sessionId}` documents
-- No new collections. No Firestore rules change needed (owner already has write).
-
-### Implementation Steps
-
-1. **`exerciseHistoryService.js`**: Add `userNotes: sessionData.userNotes ?? ''` to `sessionHistoryData` in `updateSessionHistory()`. Add new method `updateSessionNotes(userId, sessionId, userNotes)` using `updateDoc`.
-
-2. **`sessionService.js`**: In `completeSession()`, set `actualSessionData.userNotes = options.userNotes ?? ''` before calling `addSessionData`.
-
-3. **`WorkoutExecutionScreen.js`**: Add `sessionNotes` state. Add collapsible "Notas de la sesion" section with text area. Pass `userNotes: sessionNotes` in options to `sessionService.completeSession`.
-
-4. **`WorkoutCompletionScreen.js`**: Add notes text area, pre-fill from `sessionData.userNotes`. "Guardar notas" button calls `exerciseHistoryService.updateSessionNotes()`.
-
-5. **`SessionsScreen.js`**: Show `item.userNotes` for each session. Add "Editar notas" / "Anadir notas" control.
-
-6. **`SessionPerformanceModal.jsx`** (creator dashboard): Show `historyDoc.userNotes` in a read-only "Notas del usuario" section.
+- `userNotes` field on `users/{userId}/sessionHistory/{sessionId}` documents
+- `PATCH /workout/sessions/:completionId/notes` API endpoint
+- `exerciseHistoryService.updateSessionNotes()` for client-side updates
+- WorkoutExecutionScreen: collapsible notes section, persisted in checkpoints
+- WorkoutCompletionScreen: notes textarea with save-on-blur
+- SessionsScreen: notes preview in session cards
+- SessionPerformanceModal (creator dashboard): read-only "Notas del usuario" section
 
 ---
 
-## 7. Video Exchange System (NOT IMPLEMENTED — Future)
+## 6. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -197,7 +177,7 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 8. Developer Portal (NOT BUILT)
+## 7. Developer Portal (NOT BUILT)
 
 API key management backend is complete (CRUD, SHA-256 storage, scope enforcement, rate limiting). But the developer portal UI is not built.
 
@@ -215,7 +195,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 9. Staging Environment — Incomplete Setup
+## 8. Staging Environment — Incomplete Setup
 
 `.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
 
@@ -227,7 +207,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 10. hybridDataService Deletion
+## 9. hybridDataService Deletion
 
 `hybridDataService` is the legacy offline cache. It stays intact until ALL domains are migrated (after section 1 is complete). Once all 7 domains are confirmed stable:
 
@@ -240,7 +220,7 @@ firebase deploy --only hosting
 
 ---
 
-## 11. Audit Findings — Deferred Architectural Items
+## 10. Audit Findings — Deferred Architectural Items
 
 All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
 

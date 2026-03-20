@@ -729,6 +729,32 @@ router.get("/workout/sessions/:completionId", async (req, res) => {
   res.json({ data: { id: doc.id, ...doc.data() } });
 });
 
+// PATCH /workout/sessions/:completionId/notes
+router.patch("/workout/sessions/:completionId/notes", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 100, "rate_limit_first_party");
+
+  const body = validateBody<{ userNotes: string }>(
+    { userNotes: "string" },
+    req.body
+  );
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("sessionHistory")
+    .doc(req.params.completionId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  await docRef.update({ userNotes: body.userNotes });
+
+  res.json({ data: { updated: true } });
+});
+
 // GET /workout/exercises/:exerciseKey/history
 router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
   const auth = await validateAuth(req);

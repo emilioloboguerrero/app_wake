@@ -127,6 +127,19 @@ class ExerciseHistoryService {
   }
 
   /**
+   * Update userNotes on an existing session history document.
+   */
+  async updateSessionNotes(userId, sessionId, userNotes) {
+    try {
+      await apiClient.patch(`/workout/sessions/${sessionId}/notes`, { userNotes });
+      return true;
+    } catch (error) {
+      logger.error('Error updating session notes:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get dates (YYYY-MM-DD) that have a completed session for a course within a date range.
    * Used by DailyWorkoutScreen calendar to show green days.
    */
