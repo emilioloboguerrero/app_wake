@@ -3,10 +3,30 @@ import apiClient from '../utils/apiClient';
 const CLIENT_SESSION_BASE = (clientId, sessionId) =>
   `/creator/clients/${clientId}/client-sessions/${sessionId}`;
 
+// Simple mutex to prevent concurrent read-modify-write operations
+const mutexes = new Map();
+async function withMutex(key, fn) {
+  while (mutexes.get(key)) {
+    await mutexes.get(key);
+  }
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  mutexes.set(key, promise);
+  try {
+    return await fn();
+  } finally {
+    mutexes.delete(key);
+    resolve();
+  }
+}
+
 class ClientSessionContentService {
   // clientSessionId format: clientId_dateStr_sessionId
   // We extract clientId from the composite id
   #clientIdFromSessionId(clientSessionId) {
+    if (!clientSessionId || !clientSessionId.includes('_')) {
+      throw new Error('Invalid session ID format');
+    }
     return clientSessionId.split('_')[0];
   }
 
@@ -63,41 +83,47 @@ class ClientSessionContentService {
   }
 
   async createExercise(clientSessionId, exerciseData, order = 0) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    const exercises = content?.exercises ?? [];
-    const newExercise = { ...exerciseData, order };
-    const updated = [...exercises, newExercise];
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...(content ?? {}), exercises: updated }
-    );
-    return newExercise;
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      const exercises = content?.exercises ?? [];
+      const newExercise = { ...exerciseData, order };
+      const updated = [...exercises, newExercise];
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...(content ?? {}), exercises: updated }
+      );
+      return newExercise;
+    });
   }
 
   async deleteExercise(clientSessionId, exerciseId) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    if (!content) return;
-    const exercises = (content.exercises ?? []).filter((e) => e.id !== exerciseId);
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...content, exercises }
-    );
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      if (!content) return;
+      const exercises = (content.exercises ?? []).filter((e) => e.id !== exerciseId);
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...content, exercises }
+      );
+    });
   }
 
   async updateExerciseOrder(clientSessionId, exerciseOrders) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    if (!content) return;
-    const orderMap = new Map(exerciseOrders.map(({ exerciseId, order }) => [exerciseId, order]));
-    const exercises = (content.exercises ?? []).map((ex) =>
-      orderMap.has(ex.id) ? { ...ex, order: orderMap.get(ex.id) } : ex
-    );
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...content, exercises }
-    );
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      if (!content) return;
+      const orderMap = new Map(exerciseOrders.map(({ exerciseId, order }) => [exerciseId, order]));
+      const exercises = (content.exercises ?? []).map((ex) =>
+        orderMap.has(ex.id) ? { ...ex, order: orderMap.get(ex.id) } : ex
+      );
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...content, exercises }
+      );
+    });
   }
 
   async getSetsForExercise(clientSessionId, exerciseId) {
@@ -108,47 +134,53 @@ class ClientSessionContentService {
   }
 
   async updateSetInExercise(clientSessionId, exerciseId, setId, updates) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    if (!content) return;
-    const exercises = (content.exercises ?? []).map((ex) => {
-      if (ex.id !== exerciseId) return ex;
-      const sets = (ex.sets ?? []).map((s) => (s.id === setId ? { ...s, ...updates } : s));
-      return { ...ex, sets };
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      if (!content) return;
+      const exercises = (content.exercises ?? []).map((ex) => {
+        if (ex.id !== exerciseId) return ex;
+        const sets = (ex.sets ?? []).map((s) => (s.id === setId ? { ...s, ...updates } : s));
+        return { ...ex, sets };
+      });
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...content, exercises }
+      );
     });
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...content, exercises }
-    );
   }
 
   async addSetToExercise(clientSessionId, exerciseId, setData) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    if (!content) return;
-    const exercises = (content.exercises ?? []).map((ex) => {
-      if (ex.id !== exerciseId) return ex;
-      const newSet = { ...setData, order: setData.order ?? (ex.sets ?? []).length };
-      return { ...ex, sets: [...(ex.sets ?? []), newSet] };
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      if (!content) return;
+      const exercises = (content.exercises ?? []).map((ex) => {
+        if (ex.id !== exerciseId) return ex;
+        const newSet = { ...setData, order: setData.order ?? (ex.sets ?? []).length };
+        return { ...ex, sets: [...(ex.sets ?? []), newSet] };
+      });
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...content, exercises }
+      );
     });
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...content, exercises }
-    );
   }
 
   async deleteSet(clientSessionId, exerciseId, setId) {
-    const clientId = this.#clientIdFromSessionId(clientSessionId);
-    const content = await this.getClientSessionContent(clientSessionId);
-    if (!content) return;
-    const exercises = (content.exercises ?? []).map((ex) => {
-      if (ex.id !== exerciseId) return ex;
-      return { ...ex, sets: (ex.sets ?? []).filter((s) => s.id !== setId) };
+    return withMutex(`session:${clientSessionId}`, async () => {
+      const clientId = this.#clientIdFromSessionId(clientSessionId);
+      const content = await this.getClientSessionContent(clientSessionId);
+      if (!content) return;
+      const exercises = (content.exercises ?? []).map((ex) => {
+        if (ex.id !== exerciseId) return ex;
+        return { ...ex, sets: (ex.sets ?? []).filter((s) => s.id !== setId) };
+      });
+      await apiClient.put(
+        `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
+        { ...content, exercises }
+      );
     });
-    await apiClient.put(
-      `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
-      { ...content, exercises }
-    );
   }
 
   async deleteClientSessionContent(clientSessionId) {

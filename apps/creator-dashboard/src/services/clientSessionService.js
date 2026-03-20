@@ -9,8 +9,13 @@ class ClientSessionService {
     endOfDay.setHours(23, 59, 59, 999);
     const sessions = await this.getClientSessions(clientId, startOfDay, endOfDay);
     const toDelete = sessions.filter((s) => s.program_id === programId);
-    for (const s of toDelete) {
-      await apiClient.delete(`/creator/clients/${clientId}/client-sessions/${s.id}`);
+    const results = await Promise.allSettled(
+      toDelete.map((s) => apiClient.delete(`/creator/clients/${clientId}/client-sessions/${s.id}`))
+    );
+    const failures = results.filter((r) => r.status === 'rejected');
+    if (failures.length > 0) {
+      console.error(`[clientSessionService] removeSessionsForDateAndProgram: ${failures.length}/${toDelete.length} deletions failed`);
+      if (failures.length === toDelete.length) throw failures[0].reason;
     }
   }
 
@@ -60,7 +65,9 @@ class ClientSessionService {
   }
 
   async getClientSessionById(clientSessionId) {
-    // clientId is embedded in the id; extract it for the route
+    if (!clientSessionId || !clientSessionId.includes('_')) {
+      throw new Error('Invalid session ID format');
+    }
     const parts = clientSessionId.split('_');
     const clientId = parts[0];
     try {
@@ -79,6 +86,8 @@ class ClientSessionService {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
+    startDate = new Date(startDate);
+    endDate = new Date(endDate);
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
 

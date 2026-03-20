@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
   const [profileCompleted, setProfileCompleted] = useState(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authenticating, setAuthenticating] = useState(false);
 
   const fetchUserData = async (firebaseUser) => {
       if (firebaseUser) {
@@ -38,16 +39,22 @@ export const AuthProvider = ({ children }) => {
         }
       } else {
         setUserRole(null);
-      setWebOnboardingCompleted(null);
-      setProfileCompleted(null);
-      setOnboardingCompleted(null);
+        setWebOnboardingCompleted(null);
+        setProfileCompleted(null);
+        setOnboardingCompleted(null);
       }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      await fetchUserData(firebaseUser);
       setUser(firebaseUser);
+      if (firebaseUser) {
+        setAuthenticating(true);
+        await fetchUserData(firebaseUser);
+        setAuthenticating(false);
+      } else {
+        await fetchUserData(null);
+      }
       setLoading(false);
     });
 
@@ -55,8 +62,9 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const refreshUserData = async () => {
-    if (user) {
-      await fetchUserData(user);
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      await fetchUserData(currentUser);
     }
   };
 
@@ -67,6 +75,7 @@ export const AuthProvider = ({ children }) => {
     user,
     userRole,
     loading,
+    authenticating,
     webOnboardingCompleted,
     profileCompleted,
     onboardingCompleted,

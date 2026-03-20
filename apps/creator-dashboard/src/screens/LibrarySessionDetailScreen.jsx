@@ -924,7 +924,7 @@ const LibrarySessionDetailScreen = () => {
       } else if (effectiveIsClientEdit) {
         await clientSessionContentService.deleteExercise(effectiveClientSessionId, deletedId);
       } else {
-        await libraryService.deleteExerciseFromLibrarySession(user.uid, sessionId, deletedId);
+        await libraryService.deleteLibrarySessionExercise(user.uid, sessionId, deletedId);
         setHasMadeChanges(true);
       }
 

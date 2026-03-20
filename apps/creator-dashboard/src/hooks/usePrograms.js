@@ -40,17 +40,12 @@ export const useProgram = (programId, options = {}) => {
 
 // Hook to get modules for a program
 export const useModules = (programId, options = {}) => {
-  const { isActive = false, useCounts = false, ...queryOptions } = options;
+  const { isActive = false, ...queryOptions } = options;
 
   return useQuery({
-    queryKey: useCounts 
-      ? queryKeys.modules.withCounts(programId)
-      : queryKeys.modules.all(programId),
+    queryKey: queryKeys.modules.all(programId),
     queryFn: async () => {
       if (!programId) return [];
-      if (useCounts) {
-        return await programService.getModulesWithCounts(programId);
-      }
       return await programService.getModulesByProgram(programId);
     },
     enabled: !!programId,

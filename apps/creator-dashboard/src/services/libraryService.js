@@ -75,7 +75,7 @@ class LibraryService {
 
   // Deletes an exercise from a library.
   async deleteExercise(libraryId, exerciseName) {
-    await apiClient.delete(`/creator/exercises/libraries/${libraryId}/exercises/${exerciseName}`);
+    await apiClient.delete(`/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}`);
   }
 
   async getSessionLibrary() {
@@ -146,10 +146,6 @@ class LibraryService {
 
   async deleteLibrarySessionExercise(_creatorId, sessionId, exerciseId) {
     await apiClient.delete(`/creator/library/sessions/${sessionId}/exercises/${exerciseId}`);
-  }
-
-  async deleteExerciseFromLibrarySession(_creatorId, sessionId, exerciseId) {
-    return this.deleteLibrarySessionExercise(_creatorId, sessionId, exerciseId);
   }
 
   async updateLibrarySessionExerciseOrder(_creatorId, sessionId, exerciseOrders) {

@@ -12,9 +12,14 @@ class EventService {
   }
 
   async getEvent(eventId) {
-    const events = await this.getEventsByCreator();
-    const found = events.find((e) => e.eventId === eventId || e.id === eventId);
-    return found ?? null;
+    try {
+      const result = await apiClient.get(`/creator/events/${eventId}`);
+      if (!result?.data) return null;
+      return { id: result.data.eventId, ...result.data };
+    } catch (error) {
+      if (error?.status === 404) return null;
+      throw error;
+    }
   }
 
   async createEvent(_clientGeneratedId, eventData) {

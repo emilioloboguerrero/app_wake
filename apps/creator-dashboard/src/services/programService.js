@@ -253,19 +253,14 @@ class ProgramService {
     return clientProgramService.getClientProgram(programId, userId);
   }
 
-  async updateClientOverride(programId, userId, path, value) {
-    const { default: clientProgramService } = await import('./clientProgramService');
-    return clientProgramService.updateClientOverride(programId, userId, path, value);
-  }
-
   async getClientProgramsForProgram(programId) {
     const { default: clientProgramService } = await import('./clientProgramService');
     return clientProgramService.getClientProgramsForProgram(programId);
   }
 
-  async bulkUpdateClientPrograms(programId, userIds, path, value) {
+  async bulkReassignPrograms(programId, clientIds) {
     const { default: clientProgramService } = await import('./clientProgramService');
-    return clientProgramService.bulkUpdateClientPrograms(programId, userIds, path, value);
+    return clientProgramService.bulkReassignPrograms(programId, clientIds);
   }
 }
 

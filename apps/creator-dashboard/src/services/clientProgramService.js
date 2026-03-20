@@ -15,6 +15,7 @@ class ClientProgramService {
     return programs.find((p) => p.courseId === programId) ?? null;
   }
 
+  // TODO: Replace with server-side filtering (?programId=X) when endpoint supports it
   async getClientProgramsForProgram(programId) {
     const res = await apiClient.get('/creator/clients');
     const clients = res.data || [];
@@ -115,7 +116,7 @@ class ClientProgramService {
     return res.data || [];
   }
 
-  async bulkUpdateClientPrograms(programId, clientIds, _path, _value) {
+  async bulkReassignPrograms(programId, clientIds) {
     await Promise.all(
       clientIds.map((clientId) =>
         apiClient.post(`/creator/clients/${clientId}/programs/${programId}`, { expiresAt: null })

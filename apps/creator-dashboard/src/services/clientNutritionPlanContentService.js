@@ -3,7 +3,8 @@ import apiClient from '../utils/apiClient';
 const BASE = (clientId, assignmentId) =>
   `/creator/clients/${clientId}/nutrition/assignments/${assignmentId}/content`;
 
-// Cache assignment → clientId to avoid repeated lookups
+// Cache assignment → clientId to avoid repeated lookups (max 100 entries)
+const CACHE_MAX_SIZE = 100;
 const assignmentClientCache = new Map();
 
 async function resolveClientId(assignmentId) {
@@ -16,7 +17,13 @@ async function resolveClientId(assignmentId) {
   // The assignment has userId which is the clientId
   const res = await apiClient.get(`/creator/nutrition/assignments/${assignmentId}`);
   const clientId = res.data?.clientId ?? res.data?.userId ?? null;
-  if (clientId) assignmentClientCache.set(assignmentId, clientId);
+  if (clientId) {
+    if (assignmentClientCache.size >= CACHE_MAX_SIZE) {
+      const firstKey = assignmentClientCache.keys().next().value;
+      assignmentClientCache.delete(firstKey);
+    }
+    assignmentClientCache.set(assignmentId, clientId);
+  }
   return clientId;
 }
 

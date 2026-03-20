@@ -2,6 +2,23 @@ import apiClient from '../utils/apiClient';
 
 const BASE = (clientId, weekKey) => `/creator/clients/${clientId}/plan-content/${weekKey}`;
 
+// Simple mutex to prevent concurrent read-modify-write operations
+const mutexes = new Map();
+async function withMutex(key, fn) {
+  while (mutexes.get(key)) {
+    await mutexes.get(key);
+  }
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  mutexes.set(key, promise);
+  try {
+    return await fn();
+  } finally {
+    mutexes.delete(key);
+    resolve();
+  }
+}
+
 class ClientPlanContentService {
   async getClientPlanContent(clientId, programId, weekKey) {
     try {
@@ -15,12 +32,50 @@ class ClientPlanContentService {
   }
 
   async copyFromPlan(clientId, programId, weekKey, planId, moduleId, creatorId = null) {
-    // Fetch plan module data and write it via the PUT endpoint
     const plansService = (await import('./plansService')).default;
-    const sessions = await plansService.getSessionsByModule(planId, moduleId);
+    let sessions;
+    try {
+      sessions = await plansService.getSessionsByModule(planId, moduleId);
+    } catch (err) {
+      console.error('[clientPlanContentService] copyFromPlan: failed to fetch sessions', err);
+      throw new Error('No se pudieron obtener las sesiones del plan');
+    }
     const sessionsWithExercises = await Promise.all(
       sessions.map(async (session) => {
-        if (session.useLocalContent) {
+        try {
+          if (session.useLocalContent) {
+            const exercises = await plansService.getExercisesBySession(planId, moduleId, session.id);
+            const exercisesWithSets = await Promise.all(
+              exercises.map(async (ex) => {
+                const sets = await plansService.getSetsByExercise(planId, moduleId, session.id, ex.id);
+                return { ...ex, sets };
+              })
+            );
+            return { ...session, exercises: exercisesWithSets };
+          }
+          const librarySessionRef = session.librarySessionRef;
+          let mergedSession = session;
+          if (creatorId && librarySessionRef) {
+            try {
+              const libraryService = (await import('./libraryService')).default;
+              const libSession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
+              if (libSession) {
+                mergedSession = {
+                  ...session,
+                  image_url: session.image_url ?? libSession.image_url ?? null,
+                  title: session.title ?? libSession.title ?? null,
+                };
+                if (libSession?.exercises?.length) {
+                  return {
+                    ...mergedSession,
+                    exercises: (libSession.exercises || []).map((ex) => ({ ...ex, sets: ex.sets || [] })),
+                  };
+                }
+              }
+            } catch (err) {
+              console.error('[clientPlanContentService] copyFromPlan: could not resolve library session', librarySessionRef, err);
+            }
+          }
           const exercises = await plansService.getExercisesBySession(planId, moduleId, session.id);
           const exercisesWithSets = await Promise.all(
             exercises.map(async (ex) => {
@@ -28,39 +83,11 @@ class ClientPlanContentService {
               return { ...ex, sets };
             })
           );
-          return { ...session, exercises: exercisesWithSets };
+          return { ...mergedSession, exercises: exercisesWithSets };
+        } catch (err) {
+          console.error('[clientPlanContentService] copyFromPlan: failed to fetch data for session', session.id, err);
+          return { ...session, exercises: [] };
         }
-        const librarySessionRef = session.librarySessionRef;
-        let mergedSession = session;
-        if (creatorId && librarySessionRef) {
-          try {
-            const libraryService = (await import('./libraryService')).default;
-            const libSession = await libraryService.getLibrarySessionById(creatorId, librarySessionRef);
-            if (libSession) {
-              mergedSession = {
-                ...session,
-                image_url: session.image_url ?? libSession.image_url ?? null,
-                title: session.title ?? libSession.title ?? null,
-              };
-              if (libSession?.exercises?.length) {
-                return {
-                  ...mergedSession,
-                  exercises: (libSession.exercises || []).map((ex) => ({ ...ex, sets: ex.sets || [] })),
-                };
-              }
-            }
-          } catch (err) {
-            console.error('[clientPlanContentService] copyFromPlan: could not resolve library session', librarySessionRef, err);
-          }
-        }
-        const exercises = await plansService.getExercisesBySession(planId, moduleId, session.id);
-        const exercisesWithSets = await Promise.all(
-          exercises.map(async (ex) => {
-            const sets = await plansService.getSetsByExercise(planId, moduleId, session.id, ex.id);
-            return { ...ex, sets };
-          })
-        );
-        return { ...mergedSession, exercises: exercisesWithSets };
       })
     );
 
@@ -96,16 +123,18 @@ class ClientPlanContentService {
   }
 
   async updateExercise(clientId, programId, weekKey, sessionId, exerciseId, updates) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) =>
-        e.id === exerciseId ? { ...e, ...updates } : e
-      );
-      return { ...s, exercises };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) =>
+          e.id === exerciseId ? { ...e, ...updates } : e
+        );
+        return { ...s, exercises };
+      });
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async getSetsByExercise(clientId, programId, weekKey, sessionId, exerciseId) {
@@ -115,80 +144,92 @@ class ClientPlanContentService {
   }
 
   async createExercise(clientId, programId, weekKey, sessionId, title, order = null) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const existing = s.exercises ?? [];
-      const orderVal = order != null ? order : existing.length;
-      const titleVal = title || 'Ejercicio';
-      return {
-        ...s,
-        exercises: [...existing, { title: titleVal, name: titleVal, order: orderVal }],
-      };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const existing = s.exercises ?? [];
+        const orderVal = order != null ? order : existing.length;
+        const titleVal = title || 'Ejercicio';
+        return {
+          ...s,
+          exercises: [...existing, { title: titleVal, name: titleVal, order: orderVal }],
+        };
+      });
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async deleteExercise(clientId, programId, weekKey, sessionId, exerciseId) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) return;
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      return { ...s, exercises: (s.exercises ?? []).filter((e) => e.id !== exerciseId) };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) return;
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        return { ...s, exercises: (s.exercises ?? []).filter((e) => e.id !== exerciseId) };
+      });
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async updateSet(clientId, programId, weekKey, sessionId, exerciseId, setId, updates) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        return { ...e, sets: (e.sets ?? []).map((set) => (set.id === setId ? { ...set, ...updates } : set)) };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          return { ...e, sets: (e.sets ?? []).map((set) => (set.id === setId ? { ...set, ...updates } : set)) };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async addSetToExercise(clientId, programId, weekKey, sessionId, exerciseId, order = null) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        const existing = e.sets ?? [];
-        const orderVal = order != null ? order : existing.length;
-        return { ...e, sets: [...existing, { title: `Serie ${orderVal + 1}`, order: orderVal }] };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          const existing = e.sets ?? [];
+          const orderVal = order != null ? order : existing.length;
+          return { ...e, sets: [...existing, { title: `Serie ${orderVal + 1}`, order: orderVal }] };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async deleteSet(clientId, programId, weekKey, sessionId, exerciseId, setId) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content) return;
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        return { ...e, sets: (e.sets ?? []).filter((set) => set.id !== setId) };
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content) return;
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          return { ...e, sets: (e.sets ?? []).filter((set) => set.id !== setId) };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     });
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
   }
 
   async deleteSession(clientId, programId, weekKey, sessionId) {
-    const content = await this.getClientPlanContent(clientId, programId, weekKey);
-    if (!content?.sessions) return;
-    const sessions = content.sessions.filter((s) => s.id !== sessionId);
-    await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
+      const content = await this.getClientPlanContent(clientId, programId, weekKey);
+      if (!content?.sessions) return;
+      const sessions = content.sessions.filter((s) => s.id !== sessionId);
+      await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
+    });
   }
 
   async ensureClientPlanContentForWeek(clientId, programId, weekKey, options = {}) {
@@ -210,6 +251,7 @@ class ClientPlanContentService {
   }
 
   async addSession(clientId, programId, weekKey, sessionPayload) {
+    return withMutex(`plan:${clientId}:${weekKey}`, async () => {
     const content = await this.getClientPlanContent(clientId, programId, weekKey) ?? { sessions: [] };
     const existing = content.sessions ?? [];
     const order = sessionPayload.order != null ? sessionPayload.order : existing.length;
@@ -232,6 +274,7 @@ class ClientPlanContentService {
     const sessions = [...existing, newSession];
     const res = await apiClient.put(BASE(clientId, weekKey), { ...content, programId, sessions });
     return res?.data?.id;
+    });
   }
 
   async moveSessionToWeek(clientId, programId, sourceWeekKey, targetWeekKey, sessionId, targetDayIndex, targetPlanAssignment = null) {

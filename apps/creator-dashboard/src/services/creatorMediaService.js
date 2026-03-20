@@ -5,7 +5,12 @@ export async function listFiles(_creatorId) {
   return (result?.data ?? []).map((f) => ({ ...f, id: f.fileId }));
 }
 
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
+
 export async function uploadFile(_creatorId, _file, _onProgress = null) {
+  if (_file.size > MAX_UPLOAD_SIZE) {
+    throw new Error('El archivo es demasiado grande. El tamaño máximo es 50MB');
+  }
   const result = await apiClient.post('/creator/media/upload-url', {
     filename: _file.name,
     contentType: _file.type,

@@ -171,54 +171,63 @@ class PlansService {
     const newModule = await this.createModule(planId, newTitle, nextOrder);
     const newModuleId = newModule.moduleId ?? newModule.id;
 
-    const sessions = await this.getSessionsByModule(planId, sourceModuleId);
-    for (const session of sessions) {
-      const createdSession = await this.createSession(
-        planId,
-        newModuleId,
-        session.title || 'Sesión',
-        session.order ?? null,
-        null,
-        session.librarySessionRef ?? null
-      );
-      const newSessionId = createdSession.sessionId ?? createdSession.id;
-
-      const sourceSession = await this.getSessionById(planId, sourceModuleId, session.sessionId ?? session.id);
-      const exercises = sourceSession?.exercises ?? [];
-      for (const exercise of exercises) {
-        const createdEx = await this.createExercise(
-          planId, newModuleId, newSessionId,
-          exercise.name || 'Ejercicio',
-          exercise.order ?? null
+    try {
+      const sessions = await this.getSessionsByModule(planId, sourceModuleId);
+      for (const session of sessions) {
+        const createdSession = await this.createSession(
+          planId,
+          newModuleId,
+          session.title || 'Sesión',
+          session.order ?? null,
+          null,
+          session.librarySessionRef ?? null
         );
-        const newExerciseId = createdEx.exerciseId ?? createdEx.id;
+        const newSessionId = createdSession.sessionId ?? createdSession.id;
 
-        const exerciseUpdates = {};
-        for (const [key, value] of Object.entries(exercise)) {
-          if (['exerciseId', 'id', 'sets'].includes(key) || value === undefined) continue;
-          exerciseUpdates[key] = value;
-        }
-        if (Object.keys(exerciseUpdates).length > 0) {
-          await this.updateExercise(planId, newModuleId, newSessionId, newExerciseId, exerciseUpdates);
-        }
-
-        const sets = exercise.sets ?? [];
-        for (let j = 0; j < sets.length; j++) {
-          const set = sets[j];
-          const createdSet = await this.createSet(
-            planId, newModuleId, newSessionId, newExerciseId, set.order ?? j
+        const sourceSession = await this.getSessionById(planId, sourceModuleId, session.sessionId ?? session.id);
+        const exercises = sourceSession?.exercises ?? [];
+        for (const exercise of exercises) {
+          const createdEx = await this.createExercise(
+            planId, newModuleId, newSessionId,
+            exercise.name || 'Ejercicio',
+            exercise.order ?? null
           );
-          const newSetId = createdSet.setId ?? createdSet.id;
-          const setUpdates = {};
-          for (const [key, value] of Object.entries(set)) {
-            if (['setId', 'id'].includes(key) || value === undefined) continue;
-            setUpdates[key] = value;
+          const newExerciseId = createdEx.exerciseId ?? createdEx.id;
+
+          const exerciseUpdates = {};
+          for (const [key, value] of Object.entries(exercise)) {
+            if (['exerciseId', 'id', 'sets'].includes(key) || value === undefined) continue;
+            exerciseUpdates[key] = value;
           }
-          if (Object.keys(setUpdates).length > 0) {
-            await this.updateSet(planId, newModuleId, newSessionId, newExerciseId, newSetId, setUpdates);
+          if (Object.keys(exerciseUpdates).length > 0) {
+            await this.updateExercise(planId, newModuleId, newSessionId, newExerciseId, exerciseUpdates);
+          }
+
+          const sets = exercise.sets ?? [];
+          for (let j = 0; j < sets.length; j++) {
+            const set = sets[j];
+            const createdSet = await this.createSet(
+              planId, newModuleId, newSessionId, newExerciseId, set.order ?? j
+            );
+            const newSetId = createdSet.setId ?? createdSet.id;
+            const setUpdates = {};
+            for (const [key, value] of Object.entries(set)) {
+              if (['setId', 'id'].includes(key) || value === undefined) continue;
+              setUpdates[key] = value;
+            }
+            if (Object.keys(setUpdates).length > 0) {
+              await this.updateSet(planId, newModuleId, newSessionId, newExerciseId, newSetId, setUpdates);
+            }
           }
         }
       }
+    } catch (error) {
+      try {
+        await this.deleteModule(planId, newModuleId);
+      } catch (rollbackError) {
+        console.error('[plansService] duplicateModule rollback failed:', rollbackError);
+      }
+      throw error;
     }
 
     return { id: newModuleId, moduleId: newModuleId, title: newTitle };

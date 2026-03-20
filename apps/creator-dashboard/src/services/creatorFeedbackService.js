@@ -1,6 +1,14 @@
 import apiClient from '../utils/apiClient';
 
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
 export async function uploadFeedbackImage(_creatorId, file, _onProgress = null) {
+  if (file.size > MAX_IMAGE_SIZE) {
+    throw new Error('La imagen es demasiado grande. El tamaño máximo es 10MB');
+  }
+  if (file.type && !file.type.startsWith('image/')) {
+    throw new Error('El archivo debe ser una imagen');
+  }
   const result = await apiClient.post('/creator/feedback/upload-url', {
     filename: file.name,
     contentType: file.type,

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
 
 /**
@@ -29,6 +29,8 @@ const useAutoSave = (saveFn, options = {}) => {
   const timerRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const save = useCallback(async (data) => {
     setIsSaving(true);

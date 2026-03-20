@@ -32,23 +32,6 @@ class PropagationService {
     };
   }
 
-  async getAffectedUsersWithDetailsByLibrarySession(_creatorId, librarySessionId) {
-    throw new Error(
-      `getAffectedUsersWithDetailsByLibrarySession: no API endpoint available yet for session ${librarySessionId}`
-    );
-  }
-
-  async getAffectedUsersWithDetailsByPlan(planId) {
-    throw new Error(
-      `getAffectedUsersWithDetailsByPlan: no API endpoint available yet for plan ${planId}`
-    );
-  }
-
-  async getAffectedUsersWithDetailsByNutritionPlan(planId) {
-    throw new Error(
-      `getAffectedUsersWithDetailsByNutritionPlan: no API endpoint available yet for plan ${planId}`
-    );
-  }
 }
 
 export default new PropagationService();
