@@ -88,33 +88,7 @@ Acceptable at current scale. Need server-side endpoints when creators grow past 
 
 ---
 
-## 3. Offline Architecture — Remaining Gaps
-
-The core offline system is implemented (offlineQueue, backgroundSync, apiClient offline detection). These items are not yet confirmed complete:
-
-### Service Worker Caching (Unverified)
-
-Per the original spec, the service worker at `/app/sw.js` should implement:
-
-| Resource | Strategy |
-|---|---|
-| App shell (JS, CSS, fonts) | Cache-first, update in background (Workbox precache) |
-| Static images from Storage | Cache-first, 30-day TTL |
-| API responses (`/api/v1/**`) | Network-first, no SW cache (React Query handles this) |
-| Firebase Auth requests | Network-only |
-| FatSecret/MercadoPago proxies | Network-only |
-
-**Action:** Verify the current `sw.js` implements Workbox precaching and image caching. If not, this needs to be built.
-
-### React Query IndexedDB Persistence (Unverified)
-
-For programs to survive app close/reopen without network, React Query should use `@tanstack/query-persist-client-core` with IndexedDB storage. This replaces the old `courseDownloadService` for web.
-
-**Action:** Check if `persistQueryClient` is configured in the PWA's QueryClient setup. If not, add it.
-
----
-
-## 4. Web Notification System (NOT IMPLEMENTED)
+## 3. Web Notification System (NOT IMPLEMENTED)
 
 Entire system is specced but not started. No code exists. Required pieces:
 
@@ -146,21 +120,7 @@ Entire system is specced but not started. No code exists. Required pieces:
 
 ---
 
-## 5. Session Notes (IMPLEMENTED)
-
-Session-level notes for completed workouts. Fully implemented.
-
-- `userNotes` field on `users/{userId}/sessionHistory/{sessionId}` documents
-- `PATCH /workout/sessions/:completionId/notes` API endpoint
-- `exerciseHistoryService.updateSessionNotes()` for client-side updates
-- WorkoutExecutionScreen: collapsible notes section, persisted in checkpoints
-- WorkoutCompletionScreen: notes textarea with save-on-blur
-- SessionsScreen: notes preview in session cards
-- SessionPerformanceModal (creator dashboard): read-only "Notas del usuario" section
-
----
-
-## 6. Video Exchange System (NOT IMPLEMENTED — Future)
+## 4. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -177,7 +137,7 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 7. Developer Portal (NOT BUILT)
+## 5. Developer Portal (NOT BUILT)
 
 API key management backend is complete (CRUD, SHA-256 storage, scope enforcement, rate limiting). But the developer portal UI is not built.
 
@@ -195,7 +155,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 8. Staging Environment — Incomplete Setup
+## 6. Staging Environment — Incomplete Setup
 
 `.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
 
@@ -207,7 +167,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 9. hybridDataService Deletion
+## 7. hybridDataService Deletion
 
 `hybridDataService` is the legacy offline cache. It stays intact until ALL domains are migrated (after section 1 is complete). Once all 7 domains are confirmed stable:
 
@@ -220,7 +180,7 @@ firebase deploy --only hosting
 
 ---
 
-## 10. Audit Findings — Deferred Architectural Items
+## 8. Audit Findings — Deferred Architectural Items
 
 All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
 
@@ -234,12 +194,9 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 ## Priority Order
 
-1. **Section 3** — FatSecret cache (highest cost impact, implement before 100 users)
-2. **Section 1** — Continue domain migrations (Progress/Lab → Workout → Creator → Payments)
-3. **Section 6** — Session notes (high user value, well-scoped)
-4. **Section 4** — Verify offline gaps (service worker, IndexedDB persistence)
-5. **Section 9** — Complete staging setup (needed before production migrations)
-6. **Section 5** — Web notifications (nice-to-have, not blocking)
-7. **Section 10** — Delete hybridDataService (after all migrations)
-8. **Section 8** — Developer portal (when third-party devs need it)
-9. **Section 7** — Video exchange (future feature)
+1. **Section 1** — Continue domain migrations (Progress/Lab → Workout → Creator → Payments)
+2. **Section 6** — Complete staging setup (needed before production migrations)
+3. **Section 3** — Web notifications (nice-to-have, not blocking)
+4. **Section 7** — Delete hybridDataService (after all migrations)
+5. **Section 5** — Developer portal (when third-party devs need it)
+6. **Section 4** — Video exchange (future feature)
