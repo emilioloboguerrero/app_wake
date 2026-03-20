@@ -4,20 +4,17 @@ Single source of truth for everything that has been designed/specified but not y
 
 ---
 
-## 1. API Migration — Remaining Screen Migrations
+## 1. API Migration — Complete
 
-The Phase 3 API infrastructure is complete (Express app, all routes, middleware, API clients, offline queue). Auth, Profile, and Nutrition domains are migrated. These screens still bypass the API with direct `firestoreService` calls:
+The Phase 3 API infrastructure is complete (Express app, all routes, middleware, API clients, offline queue). **All seven domains are fully migrated.** Codebase audit (2026-03-20) confirmed zero direct Firestore SDK calls in PWA or creator dashboard services/screens/components (only `firebase/auth` and config imports remain, as expected). Zero `onSnapshot` listeners remain.
 
 ### PWA Screens
 
+All screens migrated. No direct Firestore calls remain.
+
 | Screen | Direct Calls | API Domain | Status |
 |---|---|---|---|
-| `CourseDetailScreen.js` | `getCourse()` | Workout | Pending |
-| `CourseDetailScreen.web.js` | `getCourse()` | Workout | Pending |
-| `CourseStructureScreen.web.js` | `getCourse()` | Workout | Pending |
-| `DailyWorkoutScreen.web.jsx` | `getCourse()`, `getDatesWithPlannedSessions()`, `getDatesWithCompletedPlannedSessions()` | Workout | Pending |
-| `SubscriptionsScreen.js` | subscription reads | Payments | Pending |
-| `UpcomingCallDetailScreen.js` | booking reads | Creator/Bookings | Pending |
+| `UpcomingCallDetailScreen.js` | booking reads | Creator/Bookings | Done |
 
 ### Migration Domain Status
 
@@ -26,10 +23,10 @@ The Phase 3 API infrastructure is complete (Express app, all routes, middleware,
 | 1 | Auth | Done |
 | 2 | Profile | Done |
 | 3 | Nutrition | Done |
-| 4 | Progress/Lab | Pending |
-| 5 | Workout | Pending — CourseDetail, CourseStructure, DailyWorkout screens migrate here |
-| 6 | Creator | Pending — UpcomingCallDetail migrates here |
-| 7 | Payments | Pending — SubscriptionsScreen migrates here |
+| 4 | Progress/Lab | Done |
+| 5 | Workout | Done |
+| 6 | Creator | Done |
+| 7 | Payments | Done |
 
 ### Migration Procedure (per domain)
 
@@ -43,24 +40,6 @@ For each remaining domain, follow this sequence:
 7. Verify in production
 
 ### Staging Validation Checklists
-
-**Progress / Lab:**
-- [ ] `PUT /progress/readiness/{date}` creates or updates entry
-- [ ] `GET /progress/readiness/{date}` returns entry
-- [ ] Body weight log: create, list, paginate
-- [ ] PR history: `GET /progress/prs` returns correct PRs
-- [ ] Offline body log: go offline, log weight, reconnect, verify sync
-
-**Workout:**
-- [ ] `GET /workout/daily` returns today's session with full exercise/set tree
-- [ ] Session checkpoint: complete a set, verify localStorage is written
-- [ ] Session checkpoint: quit app mid-session, reopen, verify recovery modal
-- [ ] `POST /workout/complete` completes session atomically
-- [ ] Session appears in `GET /workout/history` after completion
-- [ ] Streak updated correctly after completion
-- [ ] `GET /analytics/weekly-volume` returns correct data
-- [ ] Offline completion: complete workout offline, reconnect, verify sync
-- [ ] Cross-device checkpoint: complete sets on device A, open on device B, verify recovery
 
 **Creator:**
 - [ ] Client list: `GET /creator/clients`
@@ -169,7 +148,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ## 7. hybridDataService Deletion
 
-`hybridDataService` is the legacy offline cache. It stays intact until ALL domains are migrated (after section 1 is complete). Once all 7 domains are confirmed stable:
+`hybridDataService` is the legacy offline cache. **Ready to execute** — all 7 domains are confirmed migrated (section 1 complete). Deletion steps:
 
 ```bash
 rm apps/pwa/src/services/hybridDataService.js
@@ -186,7 +165,7 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 | Item | Current State | Resolves When |
 |---|---|---|
-| 6 PWA screens with direct `firestoreService` imports | TODO comments in code | Section 1 migrations complete |
+| ~~PWA screens with direct `firestoreService` imports~~ | Resolved — zero direct Firestore calls remain | Section 1 complete |
 | `clientProgramService` server-side filtering | Client-side filtering works at current scale | Section 2 endpoints built |
 | `libraryService.getExercises()` batch endpoint | Client-side extraction works at current scale | Section 2 endpoints built |
 
@@ -194,9 +173,9 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 ## Priority Order
 
-1. **Section 1** — Continue domain migrations (Progress/Lab → Workout → Creator → Payments)
-2. **Section 6** — Complete staging setup (needed before production migrations)
-3. **Section 3** — Web notifications (nice-to-have, not blocking)
-4. **Section 7** — Delete hybridDataService (after all migrations)
+1. **Section 7** — Delete hybridDataService (ready to execute now that all migrations are complete)
+2. **Section 6** — Complete staging setup (needed for QA validation)
+3. **Section 2** — Server-side filtering (when creators hit scale thresholds)
+4. **Section 3** — Web notifications (nice-to-have, not blocking)
 5. **Section 5** — Developer portal (when third-party devs need it)
 6. **Section 4** — Video exchange (future feature)
