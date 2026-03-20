@@ -30,6 +30,8 @@
       { "source": "/app/**", "destination": "/app/index.html" },
       { "source": "/creators", "destination": "/creators/index.html" },
       { "source": "/creators/**", "destination": "/creators/index.html" },
+      { "source": "/developers", "destination": "/developers/index.html" },
+      { "source": "/developers/**", "destination": "/developers/index.html" },
       { "source": "/landing", "destination": "/index.html" },
       { "source": "/landing/**", "destination": "/index.html" },
       { "source": "**", "destination": "/index.html" }
