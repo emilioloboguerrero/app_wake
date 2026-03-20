@@ -16,6 +16,7 @@ import paymentsRouter from "./routes/payments.js";
 import analyticsRouter from "./routes/analytics.js";
 import apiKeysRouter from "./routes/apiKeys.js";
 import appResourcesRouter from "./routes/appResources.js";
+import bookingsRouter from "./routes/bookings.js";
 
 export const app = express();
 
@@ -89,6 +90,7 @@ app.use("/v1", paymentsRouter);
 app.use("/v1", analyticsRouter);
 app.use("/v1", apiKeysRouter);
 app.use("/v1", appResourcesRouter);
+app.use("/v1", bookingsRouter);
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
