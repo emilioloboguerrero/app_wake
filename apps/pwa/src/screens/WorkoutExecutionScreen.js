@@ -811,7 +811,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const { isMuted, toggleMute } = useVideo();
   
   // Debug: Log the workout object received
-  logger.debug('🔍 WorkoutExecutionScreen: Received workout object:', {
     hasWorkout: !!initialWorkout,
     hasExercises: !!initialWorkout?.exercises,
     exercisesLength: initialWorkout?.exercises?.length,
@@ -1099,7 +1098,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       player.loop = false;
       player.muted = isMuted;
       player.volume = 1.0;
-      logger.debug('Video player initialized with volume');
         }
       }, 0);
       // Store timeout ID for cleanup (though callback cleanup is limited)
@@ -1118,7 +1116,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const lx = lastScrollXRef.current;
     const expectedListX = screenWidth;
     const isAtList = Math.abs(lx - expectedListX) < 20;
-    logger.debug('[LIST-INPUT-DEBUG] 📊 RENDER', { currentView, lastScrollX: lx, screenWidth, expectedListX, isAtList, listViewInputJustFocused: listViewInputJustFocusedRef.current });
   }
   // Animation values for set input modal
   const modalOpacity = useRef(new Animated.Value(0)).current;
@@ -1168,10 +1165,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       if (videoUrl && !videoPreloadCache.current.has(videoUrl)) {
         try {
-          logger.debug('🎬 Preloading next exercise video:', nextExercise.name);
           await videoCacheService.preloadVideo(videoUrl);
           videoPreloadCache.current.add(videoUrl);
-          logger.debug('✅ Video preloaded successfully:', videoUrl);
         } catch (error) {
           logger.error('❌ Error preloading video:', error);
         }
@@ -1274,7 +1269,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${asyncDuration.toFixed(2)}ms:`, error);
       });
     
-    logger.debug('🚀 WorkoutExecutionScreen initialized, screenWidth:', screenWidth);
     const effectDuration = performance.now() - effectStartTime;
     if (effectDuration > 200) {
       logger.warn(`[EFFECT] ⚠️ SLOW: useEffect(initializeWorkout) setup took ${effectDuration.toFixed(2)}ms (threshold: 200ms)`);
@@ -1289,7 +1283,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     useEffect(() => {
       const effectStartTime = performance.now();
       // Screen is focused
-      logger.debug('🎬 WorkoutExecution screen focused (web)');
       
       return () => {
         const cleanupStartTime = performance.now();
@@ -1304,7 +1297,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         const timeoutId1 = setTimeout(() => {
           if (!isMounted) return;
           const deferredStartTime = performance.now();
-          logger.debug('🛑 WorkoutExecution screen lost focus - pausing all videos (web)');
           try {
             if (videoPlayer) {
               // Only pause if video is actually playing to avoid unnecessary operations
@@ -1312,7 +1304,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 videoPlayer.pause();
               } catch (error) {
                 // Ignore pause errors - video might already be paused
-                logger.debug('⚠️ Error pausing main video player (safe to ignore):', error.message);
               }
               videoPlayer.muted = true; // Mute as extra safety
               // Defer state update to avoid blocking
@@ -1326,7 +1317,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               focusTimeoutIdsRef.current.push(timeoutId2);
             }
           } catch (error) {
-            logger.debug('⚠️ Error accessing video player:', error.message);
           }
           
           try {
@@ -1335,7 +1325,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               swapModalVideoPlayer.muted = true; // Mute as extra safety
             }
           } catch (error) {
-            logger.debug('⚠️ Error pausing swap modal video player:', error.message);
           }
           
           try {
@@ -1344,7 +1333,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               addExerciseModalVideoPlayer.muted = true; // Mute as extra safety
             }
           } catch (error) {
-            logger.debug('⚠️ Error pausing add exercise modal video player:', error.message);
           }
           const deferredDuration = performance.now() - deferredStartTime;
           if (deferredDuration > 50) {
@@ -1370,13 +1358,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useFocusEffect(
     useCallback(() => {
       // Screen is focused
-      logger.debug('🎬 WorkoutExecution screen focused');
       
       return () => {
         // Screen loses focus - pause all videos
           // CRITICAL: Defer video operations to avoid blocking React commit phase
           setTimeout(() => {
-        logger.debug('🛑 WorkoutExecution screen lost focus - pausing all videos');
         try {
           if (videoPlayer) {
             videoPlayer.pause();
@@ -1389,7 +1375,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               }, 0);
           }
         } catch (error) {
-          logger.debug('⚠️ Error pausing main video player:', error.message);
         }
         
         try {
@@ -1398,7 +1383,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             swapModalVideoPlayer.muted = true; // Mute as extra safety
           }
         } catch (error) {
-          logger.debug('⚠️ Error pausing swap modal video player:', error.message);
         }
         
         try {
@@ -1407,7 +1391,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             addExerciseModalVideoPlayer.muted = true; // Mute as extra safety
           }
         } catch (error) {
-          logger.debug('⚠️ Error pausing add exercise modal video player:', error.message);
         }
           }, 0);
       };
@@ -1424,7 +1407,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (!user?.uid || !course?.courseId) {
       // No user/course, allow video to start immediately
       // CRITICAL: Defer state updates to prevent blocking re-renders
-      logger.debug('🎬 No user/course data, allowing video to start immediately');
       const timeoutId = setTimeout(() => {
         if (isMountedRef.current) {
           startTransition(() => {
@@ -1438,17 +1420,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
 
     try {
-      logger.debug('🎬 Checking for workout execution screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
         user.uid, 
         'workoutExecution',
         course.courseId  // Pass programId for program-specific tutorials
       );
       
-      logger.debug('🎬 Tutorials from manager:', tutorials);
       
       if (tutorials.length > 0) {
-        logger.debug('📚 Found tutorials to show:', tutorials.length);
         // Defer state updates to prevent blocking re-renders
         const timeoutId = setTimeout(() => {
           if (isMountedRef.current) {
@@ -1462,7 +1441,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         tutorialTimeoutIdsRef.current.push(timeoutId);
         // Keep video paused while tutorial is showing
       } else {
-        logger.debug('✅ No tutorials to show for workout execution screen - bypassing tutorial system');
         // No tutorials - bypass tutorial system entirely
         // Defer state updates to prevent blocking re-renders
         const timeoutId = setTimeout(() => {
@@ -1474,7 +1452,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           }
         }, 0);
         tutorialTimeoutIdsRef.current.push(timeoutId);
-        logger.debug('🎬 Set video states after no tutorials:', { canStartVideo: true, isVideoPaused: false });
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -1513,7 +1490,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
-        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -1528,7 +1504,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         startTransition(() => {
     setTutorialVisible(false);
     // Allow video to start after tutorial is closed
-    logger.debug('🎬 Tutorial closed, allowing exercise video to start...');
     setCanStartVideo(true);
     setIsVideoPaused(false);
         });
@@ -1619,7 +1594,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           try {
       videoPlayer.muted = isMuted;
           } catch (error) {
-            logger.debug('⚠️ Error setting video mute state:', error.message);
           }
           const deferredDuration = performance.now() - deferredStartTime;
           if (deferredDuration > 50) {
@@ -1669,7 +1643,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             }, 300);
             timeoutIds.push(retryTimeoutId);
           });
-          logger.debug('🎬 Intensity video auto-played:', selectedIntensity);
         }
       } catch (error) {
         logger.error('❌ Error auto-playing intensity video:', error);
@@ -1695,19 +1668,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const effectStartTime = performance.now();
       // Skip if video URI is not set yet (video is still loading)
       if (!videoUri) {
-        logger.debug('🎬 Video sync effect skipped: no video URI');
         const effectDuration = performance.now() - effectStartTime;
         return;
       }
 
       // Skip if video player is not ready
       if (!videoPlayer) {
-        logger.debug('🎬 Video sync effect skipped: no video player');
         const effectDuration = performance.now() - effectStartTime;
         return;
       }
 
-    logger.debug('🎬 Video sync effect triggered:', { 
       hasVideoPlayer: !!videoPlayer, 
       canStartVideo, 
       isVideoPaused,
@@ -1741,7 +1711,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           
           if (isVideoPaused && isCurrentlyPlaying) {
             const pauseStartTime = performance.now();
-            logger.debug('🎬 Pausing video (was playing)');
         videoPlayer.pause();
             const pauseDuration = performance.now() - pauseStartTime;
             if (pauseDuration > 50) {
@@ -1749,7 +1718,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             }
           } else if (!isVideoPaused && !isCurrentlyPlaying) {
             const playStartTime = performance.now();
-            logger.debug('🎬 Playing video (was paused)');
             // Use async play() with error handling to prevent AbortError from breaking the app
             const playPromise = videoPlayer.play();
             if (playPromise !== undefined) {
@@ -1763,7 +1731,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   // AbortError is expected when play() is interrupted by pause()
                   // This is normal behavior and shouldn't break the app
                   if (error.name === 'AbortError') {
-                    logger.debug('ℹ️ Video play() was interrupted (expected behavior)');
       } else {
                     logger.error('❌ Error playing video:', error.message);
                   }
@@ -1771,7 +1738,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             }
             const playInitDuration = performance.now() - playStartTime;
           } else {
-            logger.debug('🎬 Video already in desired state:', { 
               isVideoPaused, 
               isCurrentlyPlaying 
             });
@@ -1779,12 +1745,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         } catch (error) {
           const errorTime = performance.now();
           logger.error(`[VIDEO] [ERROR] Video sync error at ${errorTime.toFixed(2)}ms:`, error);
-          logger.debug('⚠️ Error syncing video state (safe to ignore):', error.message);
         }
       }, 150); // Small delay to let video player initialize and avoid race conditions
 
     } else {
-      logger.debug('🎬 Video not ready:', { 
           reason: !canStartVideo ? 'tutorial blocking' : 'unknown'
         });
         const effectDuration = performance.now() - effectStartTime;
@@ -1813,7 +1777,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const viewIndex = screenWidth > 0 ? Math.round(x / screenWidth) : -1;
     const isListVisible = viewIndex === 1;
     if (Math.abs(x - prev) > 5 || listViewInputJustFocusedRef.current) {
-      logger.debug('[LIST-INPUT-DEBUG] 📐 onScroll (horizontal)', { x, prev, screenWidth, viewIndex, isListVisible });
     }
   }, [screenWidth]);
   const onScroll = Animated.event(
@@ -1830,7 +1793,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const onMomentumScrollEnd = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const newView = Math.round(offsetX / screenWidth);
-    logger.debug('[LIST-INPUT-DEBUG] 📜 onMomentumScrollEnd', { offsetX, screenWidth, newView, viewLabel: newView === 0 ? 'DETAIL' : 'LIST', timestamp: Date.now() });
     setCurrentView(newView);
   };
 
@@ -1999,7 +1961,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               currentExercise.name,
               allSets
             );
-            logger.debug('✅ Exercise data debounced-saved:', allSets);
           }
         }
       } catch (error) {
@@ -2043,7 +2004,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   const toggleExerciseExpansion = useCallback((exerciseIndex) => {
-    logger.debug('[LIST-INPUT-DEBUG] 🟡 toggleExerciseExpansion CALLED', { exerciseIndex, timestamp: Date.now() });
     setExpandedExercises(prev => ({
       ...prev,
       [exerciseIndex]: !prev[exerciseIndex]
@@ -2051,7 +2011,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   const handleSelectSet = useCallback((exerciseIndex, setIndex) => {
-    logger.debug('[LIST-INPUT-DEBUG] 🟢 handleSelectSet CALLED (will scroll to detail view)', { exerciseIndex, setIndex, timestamp: Date.now(), stack: new Error().stack?.split('\n').slice(1, 6).join(' <- ') });
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(setIndex);
     // Switch back to exercise detail view
@@ -2159,12 +2118,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setConfirmModalVisible(false);
           setConfirmModalConfig(null);
           try {
-            logger.debug('🗑️ Discarding workout...');
             
             // Cancel the current session and clear local data
             await sessionManager.cancelSession();
             
-            logger.debug('✅ Workout discarded successfully');
             
             // Navigate back to daily workout screen
             navigation.goBack();
@@ -2202,12 +2159,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             style: 'destructive',
             onPress: async () => {
               try {
-                logger.debug('🗑️ Discarding workout...');
                 
                 // Cancel the current session and clear local data
                 await sessionManager.cancelSession();
                 
-                logger.debug('✅ Workout discarded successfully');
                 
                 // Navigate back to daily workout screen
                 navigation.goBack();
@@ -2299,7 +2254,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
       // Add exercise data to session manager
       await sessionManager.addExerciseData(currentExercise.id, currentExercise.name, allSets);
-      logger.debug('✅ Exercise data saved to session:', allSets);
 
       // Animate modal out, then trigger the saved-row sweep once it's gone
       Animated.parallel([
@@ -2558,7 +2512,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     if (isCached) {
       // Data is cached - show modal with data immediately (no loading state)
-      logger.debug('⚡ Cache hit! Showing swap modal with cached data');
       setAlternativeExercises(cached.data);
       setCreatorName(cached.creatorName);
       setLoadingAlternatives(false);
@@ -2576,7 +2529,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     } else {
       // Not cached - show loading state
-      logger.debug('📥 Cache miss - loading alternatives...');
       setLoadingAlternatives(true);
       setAlternativeExercises([]);
     }
@@ -2616,7 +2568,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const now = Date.now();
       
       if (cached && (now - cached.timestamp) < serviceCache.current.ttl) {
-        logger.debug('✅ Using cached alternatives for exercise:', exerciseIndex);
         setAlternativeExercises(cached.data);
         setCreatorName(cached.creatorName);
         
@@ -2655,7 +2606,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         for (const exerciseName of exerciseNames) {
           // Skip empty or invalid exercise names
           if (!exerciseName || exerciseName.trim() === '') {
-            logger.debug('⏭️ Skipping empty exercise name in library:', libraryId);
             continue;
           }
           
@@ -2679,14 +2629,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
       
       // Execute all fetches in parallel
-      logger.debug('🔄 Loading', alternativeExercisePromises.length, 'alternatives in parallel...');
       const loadStartTime = Date.now();
       const alternativeExercisesRaw = await Promise.all(alternativeExercisePromises);
       const loadTime = Date.now() - loadStartTime;
       
       // Filter out null values (failed exercises)
       const alternativeExercisesList = alternativeExercisesRaw.filter(ex => ex !== null);
-      logger.debug(`✅ All alternatives loaded in ${loadTime}ms (${alternativeExercisesList.length} valid out of ${alternativeExercisesRaw.length})`);
       
       // Cache the results
       serviceCache.current.alternatives.set(cacheKey, {
@@ -2773,7 +2721,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // Expand the clicked card immediately (same as swap modal handleCardTap)
     setExpandedAddExerciseIndex(index);
     if (exercise?.video_url) {
-      logger.debug('🎬 Lazy loading video for expanded add exercise card:', exercise.name);
       setAddExerciseModalVideoUri(exercise.video_url);
       const timeoutId = setTimeout(() => {
         if (isMountedRef.current && exercise?.video_url) {
@@ -2866,7 +2813,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     // OPTIMIZED: Only load video when card is actually expanded (lazy loading)
     if (exercise?.video_url) {
-      logger.debug('🎬 Lazy loading video for expanded card:', exercise.name);
       setSwapModalVideoUri(exercise.video_url);
       
       // Load video completely in background without blocking UI
@@ -2883,7 +2829,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Objective info modal handlers
   const handleObjectiveCardPress = useCallback((objective) => {
     try {
-      logger.debug('🔍 handleObjectiveCardPress called with objective:', objective);
       // Show the objective info modal (same pop-up as Repeticiones, etc.). "Anterior" has its own
       // title/description in objectivesInfoService, so no special-case — use the shared info modal.
       const info = objectivesInfoService.getObjectiveInfo(objective);
@@ -2914,7 +2859,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   const handleViewExerciseProgress = useCallback(async () => {
     try {
-      logger.debug('🔍 handleViewExerciseProgress called');
       const currentExercise = workout?.exercises?.[currentExerciseIndex];
       if (!currentExercise) {
         logger.error('❌ Cannot show exercise progress - no current exercise');
@@ -2925,7 +2869,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const libraryId = currentExercise.primary ? Object.keys(currentExercise.primary)[0] : '';
       const exerciseName = currentExercise.name;
       
-      logger.debug('🔍 Exercise data:', { libraryId, exerciseName, currentExercise });
       
       if (!libraryId || !exerciseName) {
         logger.error('❌ Missing exercise data for exercise progress:', { libraryId, exerciseName });
@@ -2934,7 +2877,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
       // Create exercise key
       const exerciseKey = `${libraryId}_${exerciseName}`;
-      logger.debug('🔍 Exercise key:', exerciseKey);
       
       // Store basic exercise data first (needed for modal)
       const basicExerciseData = {
@@ -2948,10 +2890,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Fetch current estimate for this exercise if user is available
       if (user?.uid) {
         try {
-          logger.debug('🔍 Fetching estimates for user:', user.uid);
           const estimates = await oneRepMaxService.getEstimatesForUser(user.uid);
           const estimate = estimates[exerciseKey];
-          logger.debug('🔍 Estimate data:', estimate);
           
           // Update with estimate data if available
           basicExerciseData.currentEstimate = estimate?.current || null;
@@ -2964,11 +2904,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.warn('⚠️ Cannot fetch estimates - user not available');
       }
       
-      logger.debug('🔍 Setting modal exercise data:', basicExerciseData);
       // Store the exercise data for the modal
       setModalExerciseData(basicExerciseData);
       
-      logger.debug('🔍 Opening ExerciseDetailModal');
       // Show the modal with exercise data
       setIsExerciseDetailModalVisible(true);
     } catch (error) {
@@ -3041,7 +2979,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             if (playPromise !== undefined) {
               playPromise.catch(error => {
                 if (error.name === 'AbortError') {
-                  logger.debug('ℹ️ Video play() was interrupted (expected behavior)');
                 } else {
                   logger.error('❌ Error playing video after swap:', error.message);
                 }
@@ -3051,7 +2988,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       }
 
-      logger.debug('✅ Exercise swapped successfully:', {
         from: currentExercise.name,
         to: selectedExercise.name
       });
@@ -3127,7 +3063,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       [newSetKey]: newSetFields
     }));
     
-    logger.debug('✅ Set added to exercise:', exerciseIndex);
   }, [workout, setData]);
 
   const removeSet = useCallback((exerciseIndex) => {
@@ -3163,7 +3098,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setCurrentSetIndex(Math.max(0, lastSetIndex - 1));
     }
 
-    logger.debug('✅ Set removed from exercise:', exerciseIndex);
   }, [workout, currentExerciseIndex, currentSetIndex, setData]);
 
   // Edit mode system functions
@@ -3192,12 +3126,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       });
       
-      logger.debug('✅ Exited edit mode');
     } else {
       // Enter edit mode
       setEditingExercises([...workout.exercises]);
       setIsEditMode(true);
-      logger.debug('✅ Entered edit mode');
     }
   }, [isEditMode, workout, dragAnimatedValues]);
 
@@ -3244,7 +3176,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             }
           });
       
-      logger.debug('✅ Edit mode saved successfully');
     } catch (error) {
       logger.error('❌ Error saving edit mode:', error);
       // Force exit edit mode even if there's an error
@@ -3280,12 +3211,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     });
     
-    logger.debug('✅ Edit mode cancelled');
   }, [dragAnimatedValues]);
 
   const handleOpenAddExerciseModal = useCallback(() => {
     try {
-      logger.debug('➕ Opening add exercise modal');
       setIsAddExerciseModalVisible(true);
       if (loadAvailableExercisesRef.current) {
         loadAvailableExercisesRef.current();
@@ -3383,7 +3312,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       });
       
       setSetData(newSetData);
-      logger.debug('✅ Set data order updated successfully');
     } catch (error) {
       logger.error('❌ Error updating set data order:', error);
       // Don't update setData if there's an error
@@ -3429,14 +3357,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         
       case State.END:
       case State.CANCELLED:
-        logger.debug('🎯 Drag ended:', { index, translationY });
         // Calculate drop position and reorder
         const dropIndex = calculateDropIndex(translationY, index);
         if (dropIndex !== null && dropIndex !== index) {
-          logger.debug('🔄 Triggering reorder:', { from: index, to: dropIndex });
           reorderExercises(index, dropIndex);
         } else {
-          logger.debug('❌ No reorder needed:', { dropIndex, index });
         }
         
         // Reset drag state
@@ -3462,7 +3387,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const dragDistance = Math.abs(translationY);
     const direction = translationY > 0 ? 1 : -1;
     
-    logger.debug('🔍 Drag calculation:', {
       translationY,
       dragDistance,
       direction,
@@ -3471,7 +3395,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
     
     if (dragDistance < cardHeight * 0.3) {
-      logger.debug('❌ Not enough movement for reorder');
       return null; // Not enough movement
     }
     
@@ -3484,21 +3407,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     // Don't allow dropping at the same position
     if (targetIndex === currentIndex) {
-      logger.debug('❌ Cannot drop at same position');
       return null;
     }
     
-    logger.debug('✅ Valid drop index:', targetIndex, 'positions moved:', positionsToMove);
     return targetIndex;
   };
 
   const reorderExercises = (fromIndex, toIndex) => {
-    logger.debug('🔄 Reordering exercises:', { fromIndex, toIndex });
     setEditingExercises(prev => {
       const newExercises = [...prev];
       const [movedExercise] = newExercises.splice(fromIndex, 1);
       newExercises.splice(toIndex, 0, movedExercise);
-      logger.debug('✅ Exercise reordered:', {
         movedExercise: movedExercise.name,
         newOrder: newExercises.map(ex => ex.name)
       });
@@ -3551,12 +3470,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         const newIndex = editingExercises.findIndex(ex => ex.id === currentExercise.id);
         if (newIndex !== -1) {
           setCurrentExerciseIndex(newIndex);
-          logger.debug('✅ Current exercise index updated to:', newIndex);
         } else {
           // Current exercise was removed, go to first exercise
           setCurrentExerciseIndex(0);
           setCurrentSetIndex(0);
-          logger.debug('✅ Current exercise was removed, reset to first exercise');
         }
       }
     } catch (error) {
@@ -3573,10 +3490,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Get available libraries from course
       const availableLibraries = course.availableLibraries || [];
-      logger.debug('📚 Loading exercises from libraries:', availableLibraries);
       
       if (availableLibraries.length === 0) {
-        logger.debug('📚 No available libraries found, setting empty exercises array');
         setAvailableExercises([]);
         setLoadingAvailableExercises(false);
         return;
@@ -3611,12 +3526,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Log first exercise to debug
       if (availableExercises.length > 0) {
-        logger.debug('🔍 First exercise data:', availableExercises[0]);
       }
       
       setAvailableExercises(availableExercises);
       
-      logger.debug('✅ Loaded available exercises:', availableExercises.length);
     } catch (error) {
       logger.error('❌ Error loading available exercises:', error);
       setAvailableExercises([]);
@@ -3753,11 +3666,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const handleEndWorkout = useCallback(async () => {
-    logger.debug('🔍 handleEndWorkout called');
     
     // Check for validation errors first
     if (hasValidationErrors()) {
-      logger.debug('❌ Validation errors detected');
       Alert.alert(
         'Datos Inválidos',
         'Hay campos con datos inválidos. Por favor corrige los errores antes de finalizar el entrenamiento.',
@@ -3767,11 +3678,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
 
     const isCompleted = checkAllExercisesCompleted();
-    logger.debug('🔍 Workout completion status:', { isCompleted, hasValidationErrors: hasValidationErrors() });
     
     if (!isCompleted) {
       // Show warning for incomplete workout
-      logger.debug('⚠️ Workout incomplete - showing confirmation dialog');
       
       // Use web-compatible confirmation on web, Alert.alert on native
       if (isWeb) {
@@ -3779,12 +3688,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           title: 'Entrenamiento Incompleto',
           message: '¿Finalizar aunque no esté completo?',
           onConfirm: () => {
-            logger.debug('✅ User confirmed incomplete workout - proceeding');
             setConfirmModalVisible(false);
             confirmEndWorkout();
           },
           onCancel: () => {
-            logger.debug('❌ User cancelled incomplete workout');
             setConfirmModalVisible(false);
           },
           confirmText: 'Finalizar',
@@ -3803,13 +3710,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           {
             text: 'Cancelar',
             style: 'cancel',
-            onPress: () => logger.debug('❌ User cancelled incomplete workout'),
+            onPress: () => {},
           },
           {
             text: 'Finalizar de Todas Formas',
             style: 'destructive',
             onPress: () => {
-              logger.debug('✅ User confirmed incomplete workout - proceeding');
               confirmEndWorkout();
             },
           },
@@ -3817,7 +3723,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       );
     } else {
       // Workout is complete, proceed normally
-      logger.debug('✅ Workout complete - proceeding to confirmation');
       if (confirmEndWorkoutRef.current) {
         confirmEndWorkoutRef.current();
       }
@@ -3825,7 +3730,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [workout, setData, user, course, navigation]);
 
   const confirmEndWorkout = useCallback(() => {
-    logger.debug('🔍 confirmEndWorkout called - showing confirmation dialog');
     
       // Use web-compatible confirmation on web, Alert.alert on native
       if (isWeb) {
@@ -3833,14 +3737,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           title: 'Finalizar Entrenamiento',
           message: '¿Guardar y finalizar?',
           onConfirm: async () => {
-            logger.debug('✅ User confirmed workout completion - starting save process');
             setConfirmModalVisible(false);
             if (executeEndWorkoutRef.current) {
               await executeEndWorkoutRef.current();
             }
           },
           onCancel: () => {
-            logger.debug('❌ User cancelled workout completion');
             setConfirmModalVisible(false);
           },
           confirmText: 'Finalizar',
@@ -3858,12 +3760,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         {
           text: 'Cancelar',
           style: 'cancel',
-          onPress: () => logger.debug('❌ User cancelled workout completion'),
+          onPress: () => {},
         },
         {
           text: 'Finalizar',
           onPress: async () => {
-            logger.debug('✅ User confirmed workout completion - starting save process');
             if (executeEndWorkoutRef.current) {
               await executeEndWorkoutRef.current();
             }
@@ -3881,11 +3782,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const executeEndWorkout = useCallback(async () => {
                  try {
                    setIsSavingWorkout(true);
-                   logger.debug('🏁 Ending workout...');
                    
                    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
                    const currentUser = user || auth.currentUser;
-                   logger.debug('🔍 User check:', {
                      userFromHook: !!user,
                      userUidFromHook: user?.uid,
                      firebaseCurrentUser: !!auth.currentUser,
@@ -3896,7 +3795,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                    
                    if (currentUser?.uid && course?.courseId) {
                      // Save all current exercise data before completing
-                     logger.debug('💾 Saving all current exercise data...');
                      for (let exerciseIndex = 0; exerciseIndex < workout.exercises.length; exerciseIndex++) {
                        const exercise = workout.exercises[exerciseIndex];
                        const allSets = [];
@@ -3909,13 +3807,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                        
                        await sessionManager.addExerciseData(exercise.id, exercise.name, allSets);
                      }
-                     logger.debug('✅ All exercise data saved');
                      
                      // Complete the session using new session manager
                     // Update workout with actual set data for muscle volume calculation
                     
                     // 🔍 VOLUME DEBUG: Log complete setData before creating workoutWithSetData
-                    logger.debug('🔍 VOLUME DEBUG: Complete setData before workout completion:', {
                       setDataKeys: Object.keys(setData),
                       setDataValues: Object.entries(setData).map(([key, value]) => ({
                         key,
@@ -3953,7 +3849,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       }))
                     };
                     
-                    logger.debug('💪 Passing workout with actual set data to session service');
                     const result = await sessionService.completeSession(
                       currentUser.uid,
                       course.courseId,
@@ -3961,7 +3856,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       { plannedWorkout: workout, userNotes: sessionNotes }
                     );
                      
-                     logger.debug('🔍 Session completion result:', { 
                        hasResult: !!result,
                        resultKeys: result ? Object.keys(result) : null,
                        resultType: typeof result
@@ -3970,16 +3864,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      if (result) {
                        const { sessionData, stats, sessionMuscleVolumes, personalRecords = [] } = result;
                        
-                       logger.debug('✅ Workout completed successfully!');
-                       logger.debug('💪 Session muscle volumes:', sessionMuscleVolumes);
-                       logger.debug('🔍 Navigation object:', {
                          hasNavigation: !!navigation,
                          hasNavigate: !!(navigation && typeof navigation.navigate === 'function'),
                          navigationType: typeof navigation
                        });
                        
                        // Navigate to completion screen with session data
-                       logger.debug('🧭 Navigating to WorkoutCompletion with data:', {
                          hasCourse: !!course,
                          hasWorkout: !!workout,
                          hasSessionData: !!sessionData,
@@ -3999,7 +3889,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                            personalRecords: personalRecords,
                            sessionMuscleVolumes: sessionMuscleVolumes
                          });
-                         logger.debug('✅ Navigation.navigate() called successfully');
                        } catch (navError) {
                          logger.error('❌ Navigation error:', navError);
                          Alert.alert('Error', 'No se pudo navegar a la pantalla de finalización.');
@@ -4305,7 +4194,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       {...(checkAllExercisesCompleted() && Platform.OS === 'web' ? { className: 'wake-finalizar-glow' } : {})}
       onPress={() => {
         if (!isEditMode) {
-          logger.debug('🏋️ End workout button pressed');
           handleEndWorkout();
         }
       }}
@@ -4485,7 +4373,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
       const currentUser = user || auth.currentUser;
-      logger.debug('🔍 [WorkoutExecution] initializeWorkout user snapshot:', {
         userFromHook: !!user,
         userUidFromHook: user?.uid,
         firebaseCurrentUser: !!auth.currentUser,
@@ -4493,8 +4380,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         effectiveUserUid: currentUser?.uid
       });
       
-      logger.debug('🏋️ Initializing workout with params:', { course: course?.courseId, workout: workout?.id, sessionId });
-      logger.debug('🏋️ Workout exercises:', workout?.exercises?.length || 0);
       
       // Load previous session data
       const loadDataStartTime = performance.now();
@@ -4504,14 +4389,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Load 1RM estimates for weight suggestions
       if (currentUser?.uid) {
         const oneRmStartTime = performance.now();
-        logger.debug('💪 Loading 1RM estimates for user:', currentUser.uid);
         const estimates = await oneRepMaxService.getEstimatesForUser(currentUser.uid);
         const oneRmDuration = performance.now() - oneRmStartTime;
         if (oneRmDuration > 2000) {
           logger.warn(`[ASYNC] ⚠️ SLOW: 1RM estimates took ${oneRmDuration.toFixed(2)}ms (threshold: 2000ms)`);
         }
         setOneRepMaxEstimates(estimates);
-        logger.debug('✅ 1RM estimates loaded:', Object.keys(estimates).length, 'exercises');
       }
       
       // Start workout session
@@ -4528,7 +4411,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
         if (!session) {
         // Start a new workout session if none exists
-        logger.debug('🏋️ Starting new workout session...');
           const currentUserForSession = currentUser || user || auth.currentUser;
           if (!currentUserForSession?.uid) {
             logger.warn('⚠️ [WorkoutExecution] Cannot start workout session: no resolved user (hook/auth.currentUser both missing)');
@@ -4542,9 +4424,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             sessionIdValue,
             workout.title || 'Workout Session'
         );
-        logger.debug('✅ New workout session started:', session.sessionId);
       } else {
-        logger.debug('✅ Using existing active session:', session.sessionId);
       }
       
       setSessionData(session);
@@ -4569,11 +4449,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const loadPreviousSessionData = async (resolvedUser = null) => {
     const asyncStartTime = performance.now();
     try {
-      logger.debug('📖 Loading previous session data from exercise history...');
       
       // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
       const currentUser = resolvedUser || user || auth.currentUser;
-      logger.debug('🔍 [WorkoutExecution] loadPreviousSessionData user snapshot:', {
         userFromHook: !!user,
         userUidFromHook: user?.uid,
         firebaseCurrentUser: !!auth.currentUser,
@@ -4584,13 +4462,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Check if user exists before proceeding
       if (!currentUser?.uid) {
-        logger.debug('⚠️ No resolved user found, skipping exercise history loading');
         const duration = performance.now() - asyncStartTime;
         return;
       }
       
       if (!workout?.exercises || workout.exercises.length === 0) {
-        logger.debug('⚠️ No exercises found in workout');
         const duration = performance.now() - asyncStartTime;
         return;
       }
@@ -4606,7 +4482,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           const exerciseName = exercise.primary[libraryId];
           const exerciseKey = `${libraryId}_${exerciseName}`;
           
-          logger.debug(`📊 Loading last exercise performance for: ${exerciseKey}`);
           
           // Double-check user exists before making the call
           if (!currentUser?.uid) {
@@ -4637,7 +4512,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           const historyDuration = performance.now() - historyStartTime;
 
           if (lastPerformanceData && lastPerformanceData.bestSet) {
-            logger.debug(`✅ Found last performance for ${exerciseKey}:`, {
               lastPerformedAt: lastPerformanceData.lastPerformedAt,
               totalSets: lastPerformanceData.totalSets,
               bestSet: lastPerformanceData.bestSet
@@ -4651,7 +4525,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               lastPerformed: lastPerformanceData.lastPerformedAt
             };
           } else {
-            logger.debug(`ℹ️ No last performance found for ${exerciseKey}`);
           }
           
           const exerciseDuration = performance.now() - exerciseStartTime;
@@ -4673,9 +4546,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.warn(`[ASYNC] ⚠️ SLOW: Promise.all() took ${promiseAllDuration.toFixed(2)}ms (threshold: 5000ms)`);
       }
       
-      logger.debug('✅ Last performance loading completed');
       try {
-        logger.debug('📊 [Objectives] PreviousData snapshot after loadPreviousSessionData:', {
           exercisesCount: workout?.exercises?.length || 0,
           exercises: (workout?.exercises || []).map((ex, idx) => ({
             index: idx,
@@ -4750,7 +4621,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const prevSetData = previousData?.bestSet || previousData?.sets?.[currentSetIndex];
 
       try {
-        logger.debug('📊 [Objectives] previous metric debug:', {
           metricName,
           exerciseIndex: currentExerciseIndex,
           setIndex: currentSetIndex,
@@ -4808,29 +4678,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Get weight suggestion for current set (if available)
   const getWeightSuggestion = () => {
-    logger.debug('💪 getWeightSuggestion: Checking availability...');
 
     // Check 1: Program has weight suggestions enabled
     if (!course.weight_suggestions) {
-      logger.debug('  ⏭️ weight_suggestions not enabled in course');
       return null;
     }
 
     // Defensive checks for workout/indices
     const exercise = workout?.exercises?.[currentExerciseIndex];
     if (!exercise || !exercise.sets || exercise.sets.length === 0) {
-      logger.debug('  ⏭️ No current exercise or sets available for suggestion');
       return null;
     }
     const set = exercise.sets[currentSetIndex];
 
-    logger.debug('  📋 Current exercise for suggestion:', {
       name: exercise.name,
       index: currentExerciseIndex,
       hasPrimary: !!exercise.primary,
       primaryKeys: exercise.primary ? Object.keys(exercise.primary) : [],
     });
-    logger.debug('  📋 Current set for suggestion:', {
       setIndex: currentSetIndex,
       reps: set?.reps,
       intensity: set?.intensity,
@@ -4838,7 +4703,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
     // Check 2: Set has reps and intensity objectives
     if (!set?.reps || !set?.intensity) {
-      logger.debug('  ⏭️ Set missing reps or intensity:', {
         reps: set?.reps,
         intensity: set?.intensity,
       });
@@ -4849,26 +4713,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const objectiveReps = oneRepMaxService.parseReps(set.reps);
     const objectiveIntensity = oneRepMaxService.parseIntensity(set.intensity);
 
-    logger.debug('  🔢 Parsed objectives for suggestion:', {
       objectiveReps,
       objectiveIntensity,
     });
 
     if (!objectiveIntensity) {
-      logger.debug('  ⏭️ Invalid intensity format for suggestion');
       return null;
     }
 
     // Get 1RM estimate for this exercise
     if (!exercise.primary || Object.keys(exercise.primary).length === 0) {
-      logger.debug('  ⏭️ Exercise has no primary reference - cannot build exerciseKey');
       return null;
     }
     const libraryId = Object.keys(exercise.primary)[0];
     const exerciseName = exercise.primary[libraryId];
     const exerciseKey = `${libraryId}_${exerciseName}`;
 
-    logger.debug('  🔑 Exercise key for suggestion:', {
       exerciseKey,
       libraryId,
       exerciseName,
@@ -4876,10 +4736,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
     const estimate = oneRepMaxEstimates?.[exerciseKey]?.current;
 
-    logger.debug('  💾 1RM estimate from user document:', estimate);
 
     if (!estimate) {
-      logger.debug('  ⏭️ No 1RM estimate found for this exerciseKey in oneRepMaxEstimates');
       return null;
     }
 
@@ -4891,7 +4749,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       exercise.muscle_activation
     );
 
-    logger.debug('  ✅ Weight suggestion calculated:', suggestion);
     return suggestion;
   };
 
@@ -4942,7 +4799,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // session history, exercise history, last performance and 1RM updates
     // all go through the same pipeline as the explicit "Finalizar" button.
     try {
-      logger.debug('🏁 handleCompleteWorkout: delegating to executeEndWorkoutRef');
       if (executeEndWorkoutRef.current) {
         await executeEndWorkoutRef.current();
       } else {
@@ -5015,7 +4871,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         if (playPromise !== undefined) {
           playPromise.catch(error => {
             if (error.name === 'AbortError') {
-              logger.debug('ℹ️ Video play() was interrupted (expected behavior)');
             } else {
               logger.error('❌ Error playing video on restart:', error.message);
             }
@@ -5089,7 +4944,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const currentSet = getCurrentSet();
 
   // Debug: log implements for current exercise
-  logger.debug('🔧 WorkoutExecutionScreen current exercise implements:', {
     index: currentExerciseIndex,
     name: currentExercise?.name,
     rawImplements: currentExercise?.implements ?? null,
@@ -5117,7 +4971,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [currentExercise]);
 
 
-  logger.debug('🏋️ Render check:', { 
     loading, 
     currentExercise: currentExercise?.name, 
     currentSet: currentSet?.id,
@@ -5129,7 +4982,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST VERSION 2: Early returns re-enabled (simple conditionals, shouldn't block)
   // Early returns after all hooks
   if (loading) {
-    logger.debug('🔄 WorkoutExecutionScreen: Loading state');
     return (
       <View style={styles.container}>
         <FixedWakeHeader />
@@ -5141,7 +4993,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }
 
   if (!currentExercise || !currentSet) {
-    logger.debug('❌ WorkoutExecutionScreen: No exercise or set available');
     return (
       <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
         <FixedWakeHeader />
@@ -5185,10 +5036,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             justifyContent: 'center',
           }}
         onPress={() => {
-            logger.debug(`[TEST BUTTON] ✅ Button cadl: ${TEST_VERSION}`);
-            logger.debug(`[TEST BUTTON] Current time: ${performance.now().toFixed(2)}ms`);
             Alert.alert('Test Version', `Version ${TEST_VERSION}`);
-            logger.debug(`[TEST BUTTON] ✅ Alert.alert called`);
           }}
         >
           <Text style={{ color: '#1a1a1a', fontSize: 18, fontWeight: 'bold' }}>
@@ -5223,7 +5071,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       <FixedWakeHeader
         showMenuButton={true}
         onMenuPress={() => {
-          logger.debug('🏋️ Three-dot menu pressed');
           setIsMenuVisible(true);
         }}
       />
@@ -5915,13 +5762,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   const suggestion = getWeightSuggestion();
                   const hasWeightSuggestion = suggestion !== null;
                   
-                  logger.debug('DEBUG: Objectives array:', workout?.exercises?.[currentExerciseIndex]?.objectives);
-                  logger.debug('DEBUG: Measures array:', workout?.exercises?.[currentExerciseIndex]?.measures);
-                  logger.debug('DEBUG: Has weight suggestion:', hasWeightSuggestion);
                   try {
                     const currentExercise = workout?.exercises?.[currentExerciseIndex];
                     const previousData = currentExercise?.previousData;
-                    logger.debug('📊 [Objectives] Current exercise snapshot:', {
                       index: currentExerciseIndex,
                       name: currentExercise?.name,
                       objectives: currentExercise?.objectives || [],
@@ -5953,7 +5796,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     return 0;
                   });
                   
-                  logger.debug('DEBUG: Sorted objectives:', sortedObjectives);
                   
                   let _cardIdx = 0;
                   return (

@@ -19,7 +19,7 @@ import './OneOnOneScreen.css';
 const OneOnOneScreen = ({ noLayout = false }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClientHook = useQueryClient();
+  const queryClient = useQueryClient();
 
   const { data: clients = [], isLoading: loading, isError: isClientsError } = useQuery({
     queryKey: queryKeys.clients.byCreator(user?.uid),
@@ -139,8 +139,8 @@ const OneOnOneScreen = ({ noLayout = false }) => {
       setIsAssigning(true);
       setAssignError(null);
       await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
-      await queryClientHook.invalidateQueries({ queryKey: queryKeys.clients.byCreator(user.uid) });
-      await queryClientHook.invalidateQueries({ queryKey: queryKeys.clients.programs(clientUserId, user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.clients.byCreator(user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.clients.programs(clientUserId, user.uid) });
       setSelectedClientId(clientUserId);
       handleCloseAssignProgramModal();
     } catch (err) {

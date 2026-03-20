@@ -846,6 +846,7 @@ const LibrarySessionDetailScreen = () => {
             setHasMadeChanges(true);
           } catch (err) {
             logger.error('Error updating exercise order:', err);
+            showToast('Error al guardar el orden', 'error');
           }
         }
       }
@@ -2085,7 +2086,7 @@ const LibrarySessionDetailScreen = () => {
       window.addEventListener('beforeunload', handler);
     }
     return () => window.removeEventListener('beforeunload', handler);
-  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, hasMadeChanges, propagateAffectedCount]);
+  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit, hasMadeChanges, propagateAffectedCount]);
 
   const handleBack = () => {
     if (effectiveIsClientEdit || effectiveIsClientPlanEdit) {

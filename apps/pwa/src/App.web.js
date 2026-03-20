@@ -50,10 +50,6 @@ const useMontserratFontsWeb = () => {
   // DO NOT call any other hooks here - this must match the hook structure exactly
 
   // Unique identifier to verify this version is being used
-  if (typeof window !== 'undefined') {
-    logger.debug('[APP] ✅ Using INLINED useMontserratFontsWeb (web version)');
-  }
-
   // CRITICAL: Always call useState in the same order
   // This must be called unconditionally to maintain hook order
   const [fontsLoaded] = React.useState(true);
@@ -97,15 +93,9 @@ ensureMontserratLoaded();
 // This ensures the fix runs in Expo dev and in production before React mounts.
 const VIEWPORT_LOG = '[VIEWPORT]';
 function applyViewportHeightOnce() {
-  if (typeof window === 'undefined' || !window.document) {
-    logger.debug(VIEWPORT_LOG, 'once: skip (no window/document)');
-    return;
-  }
+  if (typeof window === 'undefined' || !window.document) return;
   const root = document.getElementById('root');
-  if (!root) {
-    logger.debug(VIEWPORT_LOG, 'once: skip (no #root)');
-    return;
-  }
+  if (!root) return;
   const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
   const isAndroid = () => /Android/.test(navigator.userAgent || '');
   const isPWAHere = () => {
@@ -141,7 +131,6 @@ function applyViewportHeightOnce() {
   const curH = getCurrentHeight();
   const w = getWidth();
   const h = getHeight();
-  logger.debug(VIEWPORT_LOG, 'once: run', { pwa, ios, android, innerHeight: window.innerHeight, visualViewportH: window.visualViewport?.height, screenAvailH: window.screen?.availHeight, curH, getHeight: h, width: w });
   if (w > 0 && h > 0 && window.document.documentElement) {
     window.document.documentElement.style.setProperty('--layout-width-px', `${w}px`);
     window.document.documentElement.style.setProperty('--layout-height-px', `${h}px`);
@@ -154,9 +143,6 @@ function applyViewportHeightOnce() {
     root.style.setProperty('height', `${h}px`, 'important');
     root.style.setProperty('min-height', `${h}px`, 'important');
     root.style.setProperty('max-height', `${h}px`, 'important');
-    logger.debug(VIEWPORT_LOG, 'once: applied', { height: h, rootComputed: root ? getComputedStyle(root).height : null });
-  } else {
-    logger.debug(VIEWPORT_LOG, 'once: not applied (w or h invalid)', { w, h });
   }
 }
 applyViewportHeightOnce();
@@ -170,23 +156,16 @@ let auth, webStorageService;
 // Made async to prevent blocking the main thread
 const loadHeavyComponents = async () => {
   if (!StatusBar) {
-    logger.debug('[APP] Loading heavy components...');
     // Load components asynchronously to prevent blocking
     await new Promise(resolve => {
       requestAnimationFrame(() => {
         try {
-          logger.debug('[APP] Loading StatusBar...');
           StatusBar = require('expo-status-bar').StatusBar;
-          logger.debug('[APP] Loading VideoProvider...');
           VideoProvider = require('./contexts/VideoContext').VideoProvider;
-          logger.debug('[APP] Loading WebAppNavigator...');
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
-          logger.debug('[APP] Loading ErrorBoundary...');
           ErrorBoundary = require('./components/ErrorBoundary').default;
-          logger.debug('[APP] Loading auth, webStorageService...');
           auth = require('./config/firebase').auth;
           webStorageService = require('./services/webStorageService').default;
-          logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
           logger.error('[APP] ❌ Error loading heavy components:', error);
           // Don't throw - let the app continue with partial loading
@@ -194,8 +173,6 @@ const loadHeavyComponents = async () => {
         resolve();
       });
     });
-  } else {
-    logger.debug('[APP] Heavy components already loaded');
   }
 };
 
@@ -230,8 +207,6 @@ export default function App() {
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
-  logger.debug('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
-
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
 

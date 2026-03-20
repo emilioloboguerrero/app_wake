@@ -427,12 +427,10 @@ const MainScreen = ({ navigation, route }) => {
 
   // Log auth state on mount for diagnostics
   useEffect(() => {
-    const uid = user?.uid;
-    logger.debug('[MAIN_SCREEN] Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
-    if (!uid) {
+    if (!user?.uid) {
       logger.warn('[MAIN_SCREEN] No uid available on MainScreen mount');
     }
-  }, [user?.uid, contextUser]);
+  }, [user?.uid]);
 
   useEffect(() => {
     Animated.timing(screenAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
@@ -454,45 +452,6 @@ const MainScreen = ({ navigation, route }) => {
   // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
   const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
 
-  // Web: after cards with blend paint, read DOM to log computed style and diagnose why text may stay white
-  useEffect(() => {
-    if (!isWeb || cardImageLoadedIds.size === 0) return;
-    const id = setTimeout(() => {
-      const blendEls = typeof document !== 'undefined' ? document.querySelectorAll('[data-card-blend="true"]') : [];
-      blendEls.forEach((el, i) => {
-        const cs = el && window.getComputedStyle(el);
-        const courseId = el.getAttribute?.('data-card-course-id') || 'unknown';
-        if (!cs) return;
-        const mixBlend = cs.mixBlendMode || cs.getPropertyValue('mix-blend-mode');
-        const color = cs.color;
-        const parent = el.parentElement;
-        const parentCs = parent && window.getComputedStyle(parent);
-        const parentIsolation = parentCs ? parentCs.isolation || parentCs.getPropertyValue('isolation') : '';
-        const cardContainer = el.closest?.('[class*="cardContentWithImage"]') || el.parentElement?.parentElement;
-        const firstChildOfCard = cardContainer?.children?.[0];
-        logger.debug('[CARD_CONTRAST] DOM after paint', {
-          courseId,
-          index: i,
-          mixBlendMode: mixBlend,
-          textColorComputed: color,
-          note: 'With blend, visual color is composited; computed color stays fill (#fff).',
-          parentIsolation: parentIsolation,
-          imageIsFirstChildOfCard: !!firstChildOfCard && (firstChildOfCard.tagName === 'IMG' || !!firstChildOfCard.querySelector?.('img')),
-          nextStep:
-            mixBlend !== 'difference'
-              ? 'mix-blend-mode not applied: check global.css [data-card-blend] or RN Web style override.'
-              : 'Blend is applied; if text still looks white, backdrop may not be the image (stacking/layer). Try ensuring image is direct sibling before overlay in DOM.',
-        });
-      });
-      if (blendEls.length === 0) {
-        logger.debug('[CARD_CONTRAST] DOM after paint', {
-          noElementsFound: true,
-          nextStep: 'No [data-card-blend="true"] in DOM. Check that dataSet is set and selector in global.css matches.',
-        });
-      }
-    }, 100);
-    return () => clearTimeout(id);
-  }, [cardImageLoadedIds, isWeb]);
 
   // Derive user profile from React Query data, falling back to auth state
   const userProfile = useMemo(() => {
@@ -540,10 +499,8 @@ const MainScreen = ({ navigation, route }) => {
         const localPath = assetBundleService.getLibraryLocalPath();
         if (isMounted && localPath) {
           setLibraryImageUri(localPath);
-          logger.debug('✅ Loaded library image from local asset bundle:', localPath);
           return;
         }
-        logger.debug('ℹ️ Using bundled library image fallback (no local asset yet)');
       } catch (error) {
         logger.error('❌ Error loading library image from app_resources:', error);
       }
@@ -606,9 +563,7 @@ const MainScreen = ({ navigation, route }) => {
 
   // Handle refresh parameter from navigation (e.g., after purchase)
   useEffect(() => {
-    logger.debug('🔍 MainScreen route params:', route?.params);
     if (route?.params?.refresh && user?.uid) {
-      logger.debug('🔄 Refresh requested after purchase, reloading courses...');
       refreshCoursesFromDatabase();
       navigation.setParams({ refresh: undefined });
     }
@@ -641,7 +596,6 @@ const MainScreen = ({ navigation, route }) => {
   // Debounced so rapid back-to-back events only trigger one refresh
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribe((courseId) => {
-      logger.debug('🛒 Purchase event received for course:', courseId);
       if (user?.uid) {
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
@@ -652,7 +606,6 @@ const MainScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribeReady((courseId) => {
-      logger.debug('🎉 Purchase ready event received for course:', courseId);
       if (user?.uid) {
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
@@ -663,8 +616,7 @@ const MainScreen = ({ navigation, route }) => {
 
   // Listen for update completion events
   useEffect(() => {
-    const unsubscribe = updateEventManager.subscribe((courseId) => {
-      logger.debug('🔄 Update completed for course:', courseId);
+    const unsubscribe = updateEventManager.subscribe(() => {
       setHasPendingUpdates(true);
     });
 

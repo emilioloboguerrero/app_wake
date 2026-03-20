@@ -43,7 +43,6 @@ class CourseDownloadService {
       if (storedCourse) {
         storedCourse.currentWeek = week;
         await this.storeCourseLocally(courseId, storedCourse);
-        logger.debug('✅ Stored week updated:', week);
       }
     } catch (error) {
       logger.error('Error updating stored week:', error);
@@ -58,7 +57,6 @@ class CourseDownloadService {
       // Prevent recursion - if already checking, skip
       const checkKey = `${courseId}_${userId}`;
       if (this._weekChecksInProgress.has(checkKey)) {
-        logger.debug('⚠️ Week check already in progress for:', courseId);
         return false;
       }
 
@@ -77,12 +75,6 @@ class CourseDownloadService {
         
         // If week changed, re-download (unless skipDownload is true)
         if (storedWeek && storedWeek !== currentWeek && !skipDownload) {
-          logger.debug('🔄 Week changed detected!', {
-            storedWeek,
-            currentWeek,
-            courseId
-          });
-          
           // Clear local cache to force fresh download
           await this.deleteCourse(courseId);
           
@@ -118,7 +110,6 @@ class CourseDownloadService {
    */
   async downloadCourseInternal(courseId, userId) {
     try {
-      logger.debug('📥 Starting course download (internal):', courseId);
       let courseData = null;
       try {
         courseData = await apiService.getCourse(courseId);
@@ -208,8 +199,6 @@ class CourseDownloadService {
    */
   async downloadCourse(courseId, userId) {
     try {
-      logger.debug('📥 Starting course download:', courseId);
-      
       // ✅ NEW: Check if week changed (only for weekly programs)
       // Check without downloading first to see if week changed
       let courseMetadata = await apiService.getCourse(courseId);
@@ -218,11 +207,6 @@ class CourseDownloadService {
         const storedWeek = await this.getStoredWeek(courseId);
         
         if (storedWeek && storedWeek !== currentWeek) {
-          logger.debug('🔄 Week changed detected during download!', {
-            storedWeek,
-            currentWeek
-          });
-          
           // Clear local cache to force fresh download
           await this.deleteCourse(courseId);
           
@@ -232,7 +216,6 @@ class CourseDownloadService {
           // Update stored week
           await this.updateStoredWeek(courseId, currentWeek);
           
-          logger.debug('✅ Week changed, course re-downloaded with new week content');
           return true;
         }
       }
@@ -258,7 +241,6 @@ class CourseDownloadService {
       }
       
       if (isOneOnOne) {
-        logger.debug('📱 One-on-one program: storing minimal (no modules), per-session fetch will load content');
         const minimalCourseData = {
           courseId,
           downloadedAt: new Date().toISOString(),
@@ -286,14 +268,12 @@ class CourseDownloadService {
         } catch (storeError) {
           logger.error('❌ Failed to store one-on-one minimal:', storeError);
         }
-        logger.debug('✅ One-on-one minimal stored:', courseId);
         return true;
       }
       
       let modules = [];
       try {
         modules = await apiService.getCourseModules(courseId, userId);
-        logger.debug('📚 Course modules loaded from DB:', modules.length);
       } catch (error) {
         logger.warn('⚠️ Error getting modules:', error.message);
         throw error;
@@ -345,7 +325,6 @@ class CourseDownloadService {
             lastUpdated: Date.now()
           });
         }
-        logger.debug('✅ Basic course data stored locally');
       } catch (storeError) {
         logger.error('❌ Failed to store basic course data:', storeError);
       }

@@ -253,7 +253,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     if (!currentUser?.uid || !course?.courseId) return;
 
     try {
-      logger.debug('Checking for workout completion screen tutorials');
       const tutorials = await tutorialManager.getTutorialsForScreen(
         currentUser.uid,
         'workoutCompletion',
