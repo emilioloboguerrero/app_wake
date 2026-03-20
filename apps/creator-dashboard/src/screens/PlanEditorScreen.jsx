@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { cacheConfig } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -221,6 +222,7 @@ export default function PlanEditorScreen() {
     queryKey: ['nutrition', 'meals', creatorId],
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
+    ...cacheConfig.otherPrograms,
   });
 
   const { data: planData, isLoading: planLoading } = useQuery({
@@ -237,6 +239,7 @@ export default function PlanEditorScreen() {
       return nutritionDb.getPlanById(creatorId, planId);
     },
     enabled: !!planId && !!creatorId && (!isAssignmentScope || !!assignmentId),
+    ...cacheConfig.activeProgram,
   });
 
   useEffect(() => {

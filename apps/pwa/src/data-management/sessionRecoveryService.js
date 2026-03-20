@@ -4,6 +4,8 @@ import { SessionStates } from './workoutSessionService';
 import uploadService from './uploadService';
 
 import logger from '../utils/logger.js';
+import apiClient, { WakeApiError } from '../utils/apiClient.js';
+import { auth } from '../config/firebase';
 class SessionRecoveryService {
   /**
    * Initialize recovery system on app startup
@@ -36,19 +38,58 @@ class SessionRecoveryService {
         const sessionData = JSON.parse(activeSessionData);
         await this.handleIncompleteSession(sessionData);
       }
-      
+
       // Check for session metadata (backup recovery)
       const metadataData = await AsyncStorage.getItem('session_metadata');
       if (metadataData && !activeSessionData) {
         const metadata = JSON.parse(metadataData);
         await this.handleOrphanedMetadata(metadata);
       }
-      
+
       // Check for backup sessions
       await this.checkBackupSessions();
-      
+
+      // If no local session was found, check the server for a persisted checkpoint
+      if (!activeSessionData && auth.currentUser) {
+        await this.recoverFromServerCheckpoint();
+      }
+
     } catch (error) {
       logger.error('❌ Session detection failed:', error);
+    }
+  }
+
+  /**
+   * Attempt to recover an in-progress workout from the server checkpoint.
+   * Called only when no local active_session was found and the user is authenticated.
+   */
+  async recoverFromServerCheckpoint() {
+    try {
+      const response = await apiClient.get('/workout/session/active');
+      if (!response || !response.data) {
+        return;
+      }
+
+      const checkpoint = response.data;
+      logger.warn('🔄 Sesión de entrenamiento activa encontrada en el servidor, restaurando...');
+
+      // Write the server checkpoint into AsyncStorage under the key that the
+      // existing localStorage recovery path already watches.
+      await AsyncStorage.setItem('active_session', JSON.stringify(checkpoint));
+
+      // Re-run recovery now that the data is present locally.
+      const restored = await AsyncStorage.getItem('active_session');
+      if (restored) {
+        const sessionData = JSON.parse(restored);
+        await this.handleIncompleteSession(sessionData);
+      }
+
+    } catch (error) {
+      if (error instanceof WakeApiError && error.status === 404) {
+        // No active checkpoint on the server — expected case, ignore silently.
+        return;
+      }
+      logger.error('❌ Error al recuperar sesión del servidor:', error);
     }
   }
   

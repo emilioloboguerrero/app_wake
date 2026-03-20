@@ -249,55 +249,49 @@ export const EncryptionUtils = {
 // Security monitoring
 export const SecurityMonitor = {
   suspiciousActivities: new Map(),
-  
+
   // Log suspicious activity
-  logSuspiciousActivity: (activity, details = {}) => {
+  logSuspiciousActivity(activity, details = {}) {
     const timestamp = Date.now();
     const key = `${activity}_${timestamp}`;
-    
-    this.suspiciousActivities.set(key, {
+
+    SecurityMonitor.suspiciousActivities.set(key, {
       activity,
       details,
       timestamp,
       count: 1
     });
-    
+
     logger.warn('Suspicious activity detected:', activity, details);
-    
-    // Report to security service in production
-    if (currentConfig.enableCrashReporting) {
-      // TODO: Send to security monitoring service
-      logger.log('Security event reported to monitoring service');
-    }
   },
 
   // Check for repeated suspicious activities
-  checkRepeatedActivity: (activity, threshold = 5) => {
+  checkRepeatedActivity(activity, threshold = 5) {
     const now = Date.now();
     const windowMs = 300000; // 5 minutes
-    
-    const recentActivities = Array.from(this.suspiciousActivities.values())
-      .filter(item => 
-        item.activity === activity && 
+
+    const recentActivities = Array.from(SecurityMonitor.suspiciousActivities.values())
+      .filter(item =>
+        item.activity === activity &&
         (now - item.timestamp) < windowMs
       );
-    
+
     if (recentActivities.length >= threshold) {
       logger.error('Repeated suspicious activity detected:', activity);
       return true;
     }
-    
+
     return false;
   },
 
   // Clear old activities
-  cleanup: () => {
+  cleanup() {
     const now = Date.now();
     const maxAge = 3600000; // 1 hour
-    
-    for (const [key, activity] of this.suspiciousActivities.entries()) {
+
+    for (const [key, activity] of SecurityMonitor.suspiciousActivities.entries()) {
       if ((now - activity.timestamp) > maxAge) {
-        this.suspiciousActivities.delete(key);
+        SecurityMonitor.suspiciousActivities.delete(key);
       }
     }
   }

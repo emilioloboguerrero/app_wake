@@ -1,5 +1,6 @@
 import React from 'react';
 import Modal from './Modal';
+import logger from '../utils/logger';
 import './PlanningModal.css';
 
 const PlanningModal = ({ isOpen, onClose, selectedDate, onWorkoutClick }) => {
@@ -26,7 +27,7 @@ const PlanningModal = ({ isOpen, onClose, selectedDate, onWorkoutClick }) => {
     if (onWorkoutClick) {
       onWorkoutClick(selectedDate);
     } else {
-      console.warn('PlanningModal: onWorkoutClick prop is not provided');
+      logger.warn('PlanningModal: onWorkoutClick prop is not provided');
     }
   };
 

@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
 import { GlowingEffect } from '../components/ui';
@@ -16,6 +17,7 @@ import './EventCheckinScreen.css';
 export default function EventCheckinScreen() {
   const { eventId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [scannerState, setScannerState] = useState('idle'); // idle | scanning | processing
@@ -63,40 +65,6 @@ export default function EventCheckinScreen() {
     img.src = event.image_url;
   }, [event?.image_url]);
 
-  // ─── Scanner lifecycle ───
-  useEffect(() => {
-    if (scannerState !== 'scanning') return;
-
-    processingRef.current = false;
-    let isMounted = true;
-    const reader = new BrowserMultiFormatReader({ delayBetweenScanAttempts: 150 });
-
-    reader.decodeFromVideoDevice(undefined, videoRef.current, (res) => {
-      if (!isMounted || processingRef.current) return;
-      if (res) {
-        const text = typeof res.getText === 'function' ? res.getText() : res.text;
-        if (text) {
-          processingRef.current = true;
-          onQrSuccess(text);
-        }
-      }
-    }).then(controls => {
-      if (!isMounted) { try { controls.stop(); } catch {} return; }
-      controlsRef.current = controls;
-    }).catch(err => {
-      logger.error('[Checkin] camera error', err);
-      if (isMounted) setScannerState('idle');
-    });
-
-    return () => {
-      isMounted = false;
-      if (controlsRef.current) {
-        try { controlsRef.current.stop(); } catch {}
-        controlsRef.current = null;
-      }
-    };
-  }, [scannerState]);
-
   // ─── Event handlers ───
   function startScanner() {
     setScannerState('scanning');
@@ -110,16 +78,12 @@ export default function EventCheckinScreen() {
     }
   }
 
-  useEffect(() => {
-    return () => {
-      stopScanner();
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    };
-  }, []);
-
-  async function onQrSuccess(raw) {
+  const onQrSuccess = useCallback(async (raw) => {
     setScannerState('processing');
-    stopScanner();
+    if (controlsRef.current) {
+      try { controlsRef.current.stop(); } catch {}
+      controlsRef.current = null;
+    }
 
     let token = raw.trim();
     try {
@@ -147,7 +111,51 @@ export default function EventCheckinScreen() {
     resetTimerRef.current = setTimeout(() => {
       setResult(null);
     }, 3500);
-  }
+  }, [eventId]);
+
+  // ─── Scanner lifecycle ───
+  useEffect(() => {
+    if (scannerState !== 'scanning') return;
+
+    processingRef.current = false;
+    let isMounted = true;
+    const reader = new BrowserMultiFormatReader({ delayBetweenScanAttempts: 150 });
+
+    reader.decodeFromVideoDevice(undefined, videoRef.current, (res) => {
+      if (!isMounted || processingRef.current) return;
+      if (res) {
+        const text = typeof res.getText === 'function' ? res.getText() : res.text;
+        if (text) {
+          processingRef.current = true;
+          onQrSuccess(text);
+        }
+      }
+    }).then(controls => {
+      if (!isMounted) { try { controls.stop(); } catch {} return; }
+      controlsRef.current = controls;
+    }).catch(err => {
+      logger.error('[Checkin] camera error', err);
+      if (isMounted) {
+        setScannerState('idle');
+        showToast('No se pudo acceder a la cámara. Verifica los permisos.', 'error');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+    };
+  }, [scannerState, onQrSuccess, showToast]);
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
   function handleReset() {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);

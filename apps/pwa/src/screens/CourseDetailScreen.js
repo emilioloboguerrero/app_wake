@@ -25,11 +25,13 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
-import firestoreService from '../services/apiService';
+import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
+import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
+import consolidatedDataService from '../services/consolidatedDataService';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -248,7 +250,18 @@ const CourseDetailScreen = ({ navigation, route }) => {
 
       pendingPostPurchaseRef.current = false;
       
-      // Wait a moment before downloading
+      // FIX: Clear ALL caches before syncing to ensure fresh data
+      consolidatedDataService.clearUserCache(effectiveUser.uid);
+      consolidatedDataService.clearAllCache();
+      
+      // Sync courses to update cache with new purchase
+      logger.log('📦 Force syncing courses...');
+      await hybridDataService.syncCourses(effectiveUser.uid);
+      
+      // FIX: Also clear consolidated cache again after sync
+      consolidatedDataService.clearUserCache(effectiveUser.uid);
+      
+      // FIX: Wait a moment for cache to update, then download
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Notify MainScreen about the purchase
@@ -813,6 +826,9 @@ useEffect(() => {
           // Do the same operations as the old purchase system
           logger.debug('✅ Processing free access, syncing data...');
           
+          // Sync courses to update cache with new purchase
+          await hybridDataService.syncCourses(effectiveUser.uid);
+          
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
           
@@ -1048,6 +1064,7 @@ useEffect(() => {
         return;
       }
 
+      await hybridDataService.syncCourses(user.uid);
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {

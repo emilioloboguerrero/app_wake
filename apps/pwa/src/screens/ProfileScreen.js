@@ -492,10 +492,10 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     setSettingsLoading(true);
     try {
       await profileUpdateMutation.mutateAsync({
-        displayName: userProfile.displayName,
-        username: userProfile.username,
-        phoneNumber: userProfile.phoneNumber,
-        gender: userProfile.gender,
+        displayName: (userProfile.displayName || '').trim(),
+        username: (userProfile.username || '').trim(),
+        phoneNumber: (userProfile.phoneNumber || '').trim(),
+        gender: (userProfile.gender || '').trim(),
         weight: userProfile.bodyweight ? parseFloat(userProfile.bodyweight) : null,
         height: userProfile.height ? parseFloat(userProfile.height) : null,
       });

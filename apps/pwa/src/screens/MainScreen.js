@@ -612,7 +612,7 @@ const MainScreen = ({ navigation, route }) => {
       refreshCoursesFromDatabase();
       navigation.setParams({ refresh: undefined });
     }
-  }, [route?.params?.refresh]);
+  }, [route?.params?.refresh, user?.uid, navigation]);
 
   // Download callbacks — stable references, no stale closure bugs
   const onDownloadSuccess = useCallback((courseId, newVersion, status) => {

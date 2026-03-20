@@ -445,7 +445,11 @@ export default function AvailabilityCalendarScreen() {
               </div>
             ) : (
               <div className="availability-sidebar-content">
-                {error && <div className="availability-day-error">{error}</div>}
+                {(error || slotsError) && (
+                  <div className="availability-day-error">
+                    {error || slotsError?.message || 'Error al cargar los horarios'}
+                  </div>
+                )}
 
                 <div className="availability-add-block availability-add-block-single">
                   <span className="availability-add-block-title">Añadir una franja</span>

@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/apiService';
+import firestoreService from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';

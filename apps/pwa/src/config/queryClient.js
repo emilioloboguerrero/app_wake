@@ -2,12 +2,14 @@ import { QueryClient, QueryCache } from '@tanstack/react-query';
 import { WakeApiError } from '../utils/apiClient';
 import authService from '../services/authService';
 import { STALE_TIMES, GC_TIMES } from './queryConfig';
+import logger from '../utils/logger';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
       if (error instanceof WakeApiError &&
           (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
+        logger.warn('[queryClient] auth error — forcing sign out:', error.code);
         authService.signOutUser();
       }
     },

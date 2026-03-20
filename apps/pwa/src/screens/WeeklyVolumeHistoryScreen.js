@@ -60,7 +60,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
 
   const currentWeek = getMondayWeek();
 
-  const { data: userData, isLoading: loading } = useQuery({
+  const { data: userData, isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.user.detail(userId),
     queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!userId,
@@ -136,6 +136,29 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           <View style={{ marginTop: getGapAfterHeader() }}>
             <WakeLoader size={80} />
             <Text style={styles.loadingText}>Cargando historial...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+        <FixedWakeHeader
+          showBackButton={true}
+          onBackPress={() => navigation.goBack()}
+        />
+        <View style={styles.emptyContainer}>
+          <View style={{ height: headerTotalHeight }} />
+          <View style={{ marginTop: getGapAfterHeader() }}>
+            <Text style={styles.emptyText}>No se pudo cargar el historial. Inténtalo de nuevo.</Text>
+            <TouchableOpacity
+              onPress={refetch}
+              style={{ marginTop: 20, alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10 }}
+            >
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>Reintentar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>

@@ -50,10 +50,10 @@ const SessionsScreen = ({ navigation }) => {
     isFetchingNextPage,
     isLoading: loading,
   } = useInfiniteQuery({
-    queryKey: ['progress', 'sessions', userId],
+    queryKey: ['sessions', userId],
     queryFn: ({ pageParam = null }) =>
       exerciseHistoryService.getSessionHistoryPaginated(userId, PAGE_SIZE, pageParam),
-    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextPageToken : undefined,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastDoc : undefined,
     enabled: !!userId,
     staleTime: STALE_TIMES.sessionHistory,
   });

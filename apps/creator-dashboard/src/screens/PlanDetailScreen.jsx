@@ -220,7 +220,6 @@ const PlanDetailScreen = () => {
     user?.uid,
     planId,
     modulesWithSessions,
-    libraryService,
   ]);
 
   const openWeekVolumeDrawer = useCallback(() => {

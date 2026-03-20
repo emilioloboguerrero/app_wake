@@ -489,7 +489,7 @@ const ProgramsAndClientsScreen = () => {
   const [search, setSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState(null);
 
-  const { data: clientsData, isLoading: isLoadingClients } = useQuery({
+  const { data: clientsData, isLoading: isLoadingClients, isError: isClientsError } = useQuery({
     queryKey: ['clients', 'creator', user?.uid],
     queryFn: () => apiClient.get('/clients'),
     ...cacheConfig.userProfile,
@@ -529,7 +529,7 @@ const ProgramsAndClientsScreen = () => {
 
   const handleClearSearch = useCallback(() => setSearch(''), []);
 
-  const showEmptyState = !isLoadingClients && clients.length === 0;
+  const showEmptyState = !isLoadingClients && !isClientsError && clients.length === 0;
 
   return (
     <DashboardLayout screenName="Clientes">
@@ -565,6 +565,8 @@ const ProgramsAndClientsScreen = () => {
           <div className="roster-list-wrap">
             {isLoadingClients ? (
               <RosterSkeleton />
+            ) : isClientsError ? (
+              <p className="roster-no-match">No se pudieron cargar los clientes. Intenta de nuevo.</p>
             ) : showEmptyState ? (
               <EmptyRoster />
             ) : filteredClients.length === 0 ? (

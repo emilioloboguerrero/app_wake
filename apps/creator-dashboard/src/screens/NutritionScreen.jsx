@@ -78,15 +78,16 @@ export default function NutritionScreen({ clientId = null }) {
   const [planFormCreating, setPlanFormCreating] = useState(false);
 
   const nutritionCache = cacheConfig.otherPrograms;
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const { data: meals = [], isLoading: mealsLoading } = useQuery({
+  const { data: meals = [], isLoading: mealsLoading, isError: mealsError } = useQuery({
     queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...nutritionCache,
   });
 
-  const { data: plans = [], isLoading: plansLoading } = useQuery({
+  const { data: plans = [], isLoading: plansLoading, isError: plansError } = useQuery({
     queryKey: queryKeys.nutrition.plans(creatorId),
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
@@ -108,13 +109,14 @@ export default function NutritionScreen({ clientId = null }) {
   });
 
   const clientDiaryQuery = useQuery({
-    queryKey: queryKeys.nutrition.diary(clientId, new Date().toISOString().slice(0, 10)),
-    queryFn: () => nutritionDb.getDiaryEntries(clientId, new Date().toISOString().slice(0, 10)),
+    queryKey: queryKeys.nutrition.diary(clientId, todayStr),
+    queryFn: () => nutritionDb.getDiaryEntries(clientId, todayStr),
     enabled: !!clientId,
     ...nutritionCache,
   });
 
   const isLoading = activeTab === 'recetas' ? mealsLoading : plansLoading;
+  const listError = activeTab === 'recetas' ? mealsError : plansError;
   const items = activeTab === 'recetas' ? meals : plans;
 
   const filtered = useMemo(() => {
@@ -276,6 +278,10 @@ export default function NutritionScreen({ clientId = null }) {
                   {Array.from({ length: 5 }).map((_, i) => (
                     <SkeletonCard key={i} className="ns-list-skeleton" />
                   ))}
+                </div>
+              ) : listError ? (
+                <div className="ns-list-empty">
+                  <p>No se pudo cargar la lista. Intenta de nuevo.</p>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="ns-list-empty">

@@ -91,7 +91,7 @@ const PRsScreen = ({ navigation, route }) => {
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { data: estimates = {}, isLoading: loading } = useQuery({
+  const { data: estimates = {}, isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.prs.all(user?.uid),
     queryFn: async () => {
       logger.log('[PRsScreen] fetching PRs for userId:', user.uid);
@@ -166,12 +166,34 @@ const PRsScreen = ({ navigation, route }) => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
-        <FixedWakeHeader 
+        <FixedWakeHeader
           showBackButton
           onBackPress={() => safeNavigation.goBack()}
         />
         <View style={styles.loadingContainer}>
           <WakeLoader />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+        <FixedWakeHeader
+          showBackButton
+          onBackPress={() => safeNavigation.goBack()}
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 }}>
+            No se pudo cargar tus ejercicios. Inténtalo de nuevo.
+          </Text>
+          <TouchableOpacity
+            onPress={refetch}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10 }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>Reintentar</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

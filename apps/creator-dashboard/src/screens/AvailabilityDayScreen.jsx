@@ -8,6 +8,7 @@ import { queryKeys, cacheConfig } from '../config/queryClient';
 import { GlowingEffect, AnimatedList, ShimmerSkeleton } from '../components/ui';
 import './AvailabilityDayScreen.css';
 
+
 const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'

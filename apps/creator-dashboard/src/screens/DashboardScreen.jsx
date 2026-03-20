@@ -236,6 +236,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Clientes activos</WidgetTitle>
                 {clientsQuery.isLoading ? (
                   <SkeletonCard />
+                ) : clientsQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar los clientes." />
                 ) : (
                   <>
                     <p className="ds-widget-number">
@@ -257,6 +259,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Llamadas esta semana</WidgetTitle>
                 {bookingsQuery.isLoading ? (
                   <SkeletonCard />
+                ) : bookingsQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar las llamadas." />
                 ) : (
                   <>
                     <p className="ds-widget-number">
@@ -285,6 +289,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Ingresos recientes</WidgetTitle>
                 {revenueQuery.isLoading ? (
                   <SkeletonCard />
+                ) : revenueQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar los ingresos." />
                 ) : (
                   <>
                     <p className="ds-widget-number ds-widget-number--revenue">
@@ -306,6 +312,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Tasa de adherencia</WidgetTitle>
                 {adherenceQuery.isLoading ? (
                   <SkeletonCard />
+                ) : adherenceQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar los datos de adherencia." />
                 ) : (
                   <>
                     <div className="ds-adherence-ring">
@@ -333,6 +341,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Sesiones completadas</WidgetTitle>
                 {adherenceQuery.isLoading ? (
                   <SkeletonCard />
+                ) : adherenceQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar las sesiones." />
                 ) : (
                   <>
                     <p className="ds-widget-number">
@@ -354,6 +364,8 @@ const DashboardScreen = () => {
                 <WidgetTitle>Próximas llamadas</WidgetTitle>
                 {bookingsQuery.isLoading ? (
                   <SkeletonCard />
+                ) : bookingsQuery.isError ? (
+                  <WidgetEmpty message="No se pudieron cargar las llamadas agendadas." />
                 ) : upcomingBookings.length === 0 ? (
                   <WidgetEmpty message="No hay llamadas agendadas. Comparte tu link de disponibilidad con tus clientes." />
                 ) : (

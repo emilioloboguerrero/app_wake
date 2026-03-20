@@ -516,7 +516,7 @@ export default function EventResultsScreen() {
 
   const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'registros';
 
-  const { data: event, isLoading: eventLoading } = useQuery({
+  const { data: event, isLoading: eventLoading, isError: eventError } = useQuery({
     queryKey: queryKeys.events.detail(eventId),
     queryFn: () => eventService.getEvent(eventId),
     enabled: !!user && !!eventId,
@@ -904,6 +904,10 @@ export default function EventResultsScreen() {
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
+          </div>
+        ) : eventError ? (
+          <div className="er-skeleton-wrap" style={{ textAlign: 'center', padding: '48px 0', opacity: 0.6 }}>
+            <p>No se pudo cargar el evento. Verifica tu conexión e intenta de nuevo.</p>
           </div>
         ) : (
           <>

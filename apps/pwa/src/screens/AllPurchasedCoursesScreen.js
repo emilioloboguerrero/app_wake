@@ -35,7 +35,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
   const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  const { data: allCourses = [], isLoading: loading, isError } = useQuery({
+  const { data: allCourses = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.user.courses(user?.uid),
     queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
     enabled: !!user?.uid,
@@ -170,7 +170,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
           ) : error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={() => window.location.reload()}>
+              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
                 <Text style={styles.retryButtonText}>Reintentar</Text>
               </TouchableOpacity>
             </View>
@@ -404,6 +404,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  courseTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+    flex: 1,
+    marginRight: 12,
   },
   disciplineBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',

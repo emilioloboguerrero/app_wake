@@ -76,7 +76,12 @@ export default function EventsScreen() {
 
   async function copyLink(ev) {
     const url = `https://wakelab.co/e/${ev.id}`;
-    await navigator.clipboard.writeText(url).catch(() => {});
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Enlace copiado', 'success');
+    } catch {
+      showToast('No se pudo copiar el enlace', 'error');
+    }
     setCopiedId(ev.id);
     setTimeout(() => setCopiedId(null), 2000);
     setMenuOpenId(null);

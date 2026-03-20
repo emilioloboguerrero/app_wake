@@ -4,6 +4,14 @@ import { Asset } from 'expo-asset';
 
 const svgModule = require('../assets/icons/vectors_fig/porfin.svg');
 
+const sanitizeSvg = (svg) => {
+  let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*\{[^}]*\}/gi, '');
+  clean = clean.replace(/javascript\s*:/gi, '');
+  return clean;
+};
+
 const MUSCLE_KEYS = [
   'pecs', 'triceps', 'front_delts', 'lats', 'rhomboids', 'biceps', 'rear_delts',
   'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'obliques', 'lower_back',
@@ -98,7 +106,8 @@ export default function LabMuscleHeatmap({ weekVolume = {}, previousWeekVolume =
         const res = await fetch(url);
         if (!res.ok) { setFetchFailed(true); return; }
         const text = await res.text();
-        const sized = text
+        const sanitized = sanitizeSvg(text);
+        const sized = sanitized
           .replace(/width="7996"/, 'width="100%"')
           .replace(/height="8819"/, 'style="height:auto;display:block;"');
         setRawSvg(sized);

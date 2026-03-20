@@ -94,9 +94,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   // Scroll tracking for pagination indicator
   const scrollX = useRef(new Animated.Value(0)).current;
 
-  logger.log('WorkoutCompletionScreen: Received', personalRecords?.length || 0, 'personal records');
-  logger.log('Personal records data:', personalRecords);
-  logger.log('WorkoutCompletionScreen: Received session muscle volumes:', sessionMuscleVolumes);
+  // Debug data logged only via useEffect to avoid spamming on every render
 
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
@@ -158,36 +156,8 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   // Get discipline-specific metric(s) - SIMPLIFIED
   const getDisciplineMetrics = (discipline, stats) => {
-    logger.log('🔍 getDisciplineMetrics called with:', { discipline, stats });
-    
-    // Calculate volume from exercises if available
-    const calculateVolume = () => {
-      if (!stats?.exercises) return 0;
-      
-      logger.log('🔍 Exercise data for volume calculation:', stats.exercises);
-      
-      let totalVolume = 0;
-      stats.exercises.forEach((exercise, exerciseIndex) => {
-        logger.log(`🔍 Exercise ${exerciseIndex}:`, exercise);
-        if (exercise.sets) {
-          exercise.sets.forEach((set, setIndex) => {
-            logger.log(`🔍 Set ${setIndex}:`, set);
-            const weight = parseFloat(set.weight) || 0;
-            const reps = parseInt(set.reps) || 0;
-            const setVolume = weight * reps;
-            logger.log(`🔍 Set volume: ${weight} × ${reps} = ${setVolume}`);
-            totalVolume += setVolume;
-          });
-        }
-      });
-      
-      logger.log('🔍 Total calculated volume:', totalVolume);
-      return totalVolume;
-    };
-    
     // Simple mapping based on discipline name
     if (discipline && discipline.toLowerCase().includes('fuerza')) {
-      // Volume metric removed - now handled by muscle volume cards above
       return [];
     }
     
@@ -220,7 +190,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       ];
     }
     
-    logger.log('⚠️ No metrics found for discipline:', discipline);
     return [];
   };
 
@@ -284,7 +253,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     if (!currentUser?.uid || !course?.courseId) return;
 
     try {
-      logger.log('🎬 Checking for workout completion screen tutorials...');
+      logger.debug('Checking for workout completion screen tutorials');
       const tutorials = await tutorialManager.getTutorialsForScreen(
         currentUser.uid,
         'workoutCompletion',
@@ -292,12 +261,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       );
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
+        logger.debug('Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
       } else {
-        logger.log('✅ No tutorials to show for workout completion screen');
+        logger.debug('No tutorials to show for workout completion screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -318,7 +287,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
-        logger.log('✅ Tutorial marked as completed');
+        logger.debug('Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -329,35 +298,19 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
       
-      logger.log('📊 Initializing completion screen with params:', { 
-        course: course?.courseId, 
-        workout: workout?.id, 
-        hasSessionData: !!sessionData,
-        hasLocalStats: !!localStats 
-      });
-      
-      logger.log('📊 Course discipline:', course?.discipline);
-      logger.log('📊 Course object keys:', Object.keys(course || {}));
-      logger.log('📊 Course object:', course);
-      logger.log('📊 Local stats:', localStats);
-      
+      logger.debug('[WorkoutCompletion] Initializing', { courseId: course?.courseId, hasSessionData: !!sessionData, hasLocalStats: !!localStats });
+
       if (sessionData && localStats) {
-        logger.log('📊 Using passed session data:', sessionData.sessionId);
-        logger.log('📊 Using passed local stats:', localStats);
-        
-        let discipline = course?.discipline;
-        
-        logger.log('📊 Final discipline:', discipline);
-        
+        const discipline = course?.discipline;
+
         const statsWithDiscipline = {
           ...localStats,
           discipline: discipline
         };
-        
-        logger.log('📊 Stats with discipline:', statsWithDiscipline);
+
         setCompletionStats(statsWithDiscipline);
       } else {
-        logger.log('❌ No session data or local stats provided');
+        logger.warn('[WorkoutCompletion] No session data or local stats provided');
         setCompletionStats({ error: 'No session data available' });
       }
       
@@ -635,7 +588,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       
       // Capture the card as an image
       const uri = await currentCardRef.current.capture();
-      logger.log('Card captured:', uri);
+      logger.debug('Card captured:', uri);
       
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
@@ -651,7 +604,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         dialogTitle: 'Compartir sesión',
       });
       
-      logger.log('Image shared successfully');
+      logger.debug('Image shared successfully');
     } catch (error) {
       logger.error('Error sharing card:', error);
     } finally {
@@ -1417,16 +1370,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               const hasWeeklyVolumes = !!weeklyMuscleVolumes && Object.keys(weeklyMuscleVolumes).length > 0;
               const hasSessionVolumes = !!sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0;
               
-              logger.log('🔍 Volume card render check:', {
-                shouldTrack: shouldShow,
-                hasWeeklyVolumes,
-                hasSessionVolumes,
-                weeklyVolumesKeys: weeklyMuscleVolumes ? Object.keys(weeklyMuscleVolumes) : [],
-                sessionVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : [],
-                courseDiscipline: course?.discipline,
-                willShow: shouldShow && (hasWeeklyVolumes || hasSessionVolumes)
-              });
-              
               // Show if discipline supports it AND we have either weekly volumes OR session volumes
               // The WeeklyMuscleVolumeCard can work with just sessionMuscleVolumes
               // MuscleSilhouette needs weeklyMuscleVolumes, but we can still show WeeklyMuscleVolumeCard
@@ -1530,15 +1473,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           <View style={styles.indicatorsRow}>
             {/* Discipline-Specific Metrics */}
             {(() => {
-              logger.log('🔍 Debug - completionStats:', completionStats);
-              logger.log('🔍 Debug - discipline:', completionStats?.discipline);
-              
               const metrics = getDisciplineMetrics(completionStats?.discipline, completionStats);
-              logger.log('🔍 Debug - metrics:', metrics);
-              
+
               if (!metrics || metrics.length === 0) {
-                logger.log('⚠️ No metrics found for discipline:', completionStats?.discipline);
-                // Return null instead of debug info - no discipline metrics to show
                 return null;
               }
               
@@ -1947,7 +1884,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         animationType="fade"
         presentationStyle="fullScreen"
         onRequestClose={() => {
-          logger.log('Closing fullscreen, reopening share modal');
           setFullscreenCardIndex(null);
           setIsShareModalVisible(true);
         }}
@@ -1956,7 +1892,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           <TouchableOpacity 
             activeOpacity={1}
             onPress={() => {
-              logger.log('Tapping to close fullscreen');
               setFullscreenCardIndex(null);
               setIsShareModalVisible(true);
             }}
@@ -1979,14 +1914,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   <View style={styles.fullscreenTopLeftRight}>
                     {(() => {
                       const sessionName = workout?.name || workout?.title || workout?.workoutName || sessionData?.workoutName || null;
-                      logger.log('🔍 Session name check:', { workout, sessionName });
                       return sessionName ? (
                         <Text style={styles.fullscreenSessionName}>{sessionName}</Text>
                       ) : null;
                     })()}
                     {(() => {
                       const programName = course?.name || course?.title || course?.courseName || null;
-                      logger.log('🔍 Program name check:', { course, programName });
                       return programName ? (
                         <Text style={styles.fullscreenProgramName}>{programName}</Text>
                       ) : null;
@@ -2060,45 +1993,27 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   {(() => {
                     // Calculate RM estimates for all sets
                     const allSetsWithRM = [];
-                    logger.log('🔍 Calculating top 3 RM sets. sessionData:', sessionData);
-                    
+
                     if (sessionData?.exercises) {
-                      logger.log('🔍 Found exercises:', sessionData.exercises.length);
-                      sessionData.exercises.forEach((exercise, exerciseIndex) => {
-                        logger.log(`🔍 Exercise ${exerciseIndex}:`, exercise.name || 'No name', 'sets:', exercise.sets?.length);
+                      sessionData.exercises.forEach((exercise) => {
                         if (exercise.sets) {
-                          exercise.sets.forEach((set, setIndex) => {
-                            logger.log(`  🔍 Set ${setIndex}:`, set);
-                            
-                            // Try multiple ways to get weight and reps
+                          exercise.sets.forEach((set) => {
                             const performance = set.performance || {};
                             let actualWeight = parseFloat(performance.weight || performance.weight_kg || set.weight || 0);
                             let actualReps = parseInt(performance.reps || set.reps || 0);
-                            
-                            // Try to get intensity from multiple locations
                             let intensity = set.intensity || set.objective?.intensity || exercise.intensity;
-                            
-                            logger.log(`  🔍 Set data: weight=${actualWeight}, reps=${actualReps}, intensity=${intensity}`);
-                            logger.log(`  🔍 Set object keys:`, Object.keys(set));
-                            
-                            // If we have weight and reps, try to calculate RM even without intensity
-                            // Use a default intensity of 7/10 if not available
+
                             if (actualWeight > 0 && actualReps > 0) {
                               let objectiveIntensity = null;
                               if (intensity) {
                                 objectiveIntensity = oneRepMaxService.parseIntensity(intensity);
-                                logger.log(`  🔍 Parsed intensity: ${objectiveIntensity}`);
                               }
-                              
-                              // If no intensity or couldn't parse, use default of 7
                               if (!objectiveIntensity) {
                                 objectiveIntensity = 7;
-                                logger.log(`  🔍 Using default intensity: 7`);
                               }
-                              
+
                               const rmEstimate = oneRepMaxService.calculate1RM(actualWeight, actualReps, objectiveIntensity);
-                              
-                              // Get exercise name from primary field if available
+
                               let exerciseName = 'Exercise';
                               if (exercise.name) {
                                 exerciseName = exercise.name;
@@ -2106,8 +2021,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                                 const libraryId = Object.keys(exercise.primary)[0];
                                 exerciseName = exercise.primary[libraryId];
                               }
-                              
-                              logger.log(`  ✅ Adding set: ${exerciseName}, RM=${rmEstimate}, weight=${actualWeight}, reps=${actualReps}`);
+
                               allSetsWithRM.push({
                                 exerciseName: exerciseName,
                                 weight: actualWeight,
@@ -2119,8 +2033,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         }
                       });
                     }
-                    
-                    logger.log('🔍 Total sets with RM:', allSetsWithRM.length);
                     
                     // Group sets by exercise name and keep only the highest RM for each exercise
                     const exerciseMap = {};
@@ -2136,10 +2048,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                       .sort((a, b) => b.rmEstimate - a.rmEstimate)
                       .slice(0, 2);
                     
-                    logger.log('🔍 Top 3 sets (one per exercise):', top3Sets);
-                    
                     if (top3Sets.length === 0) {
-                      logger.log('⚠️ No top 3 sets to display');
                       return (
                         <View style={styles.top3RMContainer}>
                           <Text style={styles.top3RMExercise}>No RM data available</Text>

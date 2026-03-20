@@ -11,10 +11,10 @@ import {
 } from 'firebase/auth';
 class AuthService {
   async registerUser(email, password, displayName) {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
 
-    const initialDisplayName = displayName || email.split('@')[0];
+    const initialDisplayName = (displayName || '').trim() || email.trim().split('@')[0];
     await updateProfile(user, { displayName: initialDisplayName });
     await user.reload();
 
@@ -22,14 +22,14 @@ class AuthService {
   }
 
   async signInUser(email, password) {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
 
     // Sync displayName from API if Firebase Auth profile is missing it
     if (!user.displayName) {
       try {
         const { data } = await apiClient.get('/creator/profile');
-        const fallbackName = data?.displayName || email.split('@')[0];
+        const fallbackName = data?.displayName || email.trim().split('@')[0];
         await updateProfile(user, { displayName: fallbackName });
         await user.reload();
       } catch (syncError) {
@@ -55,7 +55,7 @@ class AuthService {
   }
 
   async resetPassword(email) {
-    await sendPasswordResetEmail(auth, email);
+    await sendPasswordResetEmail(auth, email.trim());
   }
 }
 

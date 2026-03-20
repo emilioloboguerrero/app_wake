@@ -391,7 +391,7 @@ const LibraryContentScreen = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [dataEditMenuOpen]);
 
-  const { data: modulesData, isLoading: modulesLoading } = useQuery({
+  const { data: modulesData, isLoading: modulesLoading, error: modulesError } = useQuery({
     queryKey: queryKeys.library.modules(user?.uid),
     queryFn: async () => {
       const modules = await libraryService.getModuleLibrary(user.uid);
@@ -404,7 +404,7 @@ const LibraryContentScreen = () => {
     enabled: !!user && !moduleId && !sessionId,
   });
 
-  const { data: moduleSessionsData, isLoading: moduleLoading } = useQuery({
+  const { data: moduleSessionsData, isLoading: moduleLoading, error: moduleSessionsError } = useQuery({
     queryKey: ['library', 'module', moduleId, 'sessions'],
     queryFn: async () => {
       const mod = await libraryService.getLibraryModuleById(user.uid, moduleId);
@@ -415,7 +415,7 @@ const LibraryContentScreen = () => {
     enabled: !!user && !!moduleId,
   });
 
-  const { data: sessionExercisesData, isLoading: sessionLoading } = useQuery({
+  const { data: sessionExercisesData, isLoading: sessionLoading, error: sessionExercisesError } = useQuery({
     queryKey: ['library', 'session', sessionId, 'exercises'],
     queryFn: async () => {
       const session = await libraryService.getLibrarySessionById(user.uid, sessionId);
@@ -425,7 +425,7 @@ const LibraryContentScreen = () => {
   });
 
   const loading = modulesLoading || moduleLoading || sessionLoading;
-  const error = null;
+  const error = modulesError?.message || moduleSessionsError?.message || sessionExercisesError?.message || null;
 
   useEffect(() => {
     if (modulesData) setLibraryModules(modulesData);

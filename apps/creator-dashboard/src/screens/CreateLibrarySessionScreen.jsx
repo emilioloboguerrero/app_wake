@@ -7,6 +7,7 @@ import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
+import { queryKeys } from '../config/queryClient';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import './ProgramDetailScreen.css';
@@ -67,7 +68,7 @@ const CreateLibrarySessionScreen = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library', 'sessions', user.uid] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
       navigate(backPath, { state: backState });
     },
     onError: (err) => {
@@ -98,6 +99,7 @@ const CreateLibrarySessionScreen = () => {
               Nueva Sesión de Biblioteca
             </h1>
             <button
+              type="button"
               onClick={handleCancel}
               className="create-session-btn-cancel"
             >
@@ -137,6 +139,7 @@ const CreateLibrarySessionScreen = () => {
                             <span className="edit-program-image-action-text">Cambiar</span>
                           </button>
                           <button
+                            type="button"
                             className="edit-program-image-action-pill edit-program-image-delete-pill"
                             onClick={handleSessionImageDelete}
                             disabled={createSessionMutation.isPending}
@@ -168,6 +171,7 @@ const CreateLibrarySessionScreen = () => {
 
             <div className="create-session-cta-bar">
               <button
+                type="button"
                 onClick={handleCancel}
                 className="create-session-btn-cancel"
               >

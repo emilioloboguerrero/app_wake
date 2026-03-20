@@ -9,22 +9,19 @@ import {
   onAuthStateChanged,
   deleteUser,
   reauthenticateWithCredential,
-  EmailAuthProvider,
-  GoogleAuthProvider,
-  OAuthProvider
 } from 'firebase/auth';
 import { authStorage } from '../utils/authStorage';
 import profilePictureService from './profilePictureService';
 import sessionManager from './sessionManager';
 import googleAuthService from './googleAuthService';
-import { handleError, handleNetworkOperation } from '../utils/errorHandler';
+import { handleError } from '../utils/errorHandler';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
 import { queryClient } from '../config/queryClient';
 
-// Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 class AuthService {
   // Register new user
@@ -136,6 +133,7 @@ class AuthService {
       }
       
     } catch (error) {
+      logger.error('[AUTH] signOutUser error:', error);
       throw error;
     }
   }

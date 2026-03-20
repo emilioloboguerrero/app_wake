@@ -1134,11 +1134,12 @@ const NutritionScreen = () => {
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddOptionToMeal error:', e);
+        showToast('No se pudo añadir el alimento. Inténtalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
     },
-    [userId, selectedDate, queryClient]
+    [userId, selectedDate, diaryEntries, queryClient, showToast]
   );
 
   const handleAddUserMealToDiary = useCallback(
@@ -1199,11 +1200,12 @@ const NutritionScreen = () => {
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddUserMealToDiary error:', e);
+        showToast('No se pudo añadir la comida. Inténtalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
     },
-    [userId, selectedDate, misComidasSelectedByCard, queryClient]
+    [userId, selectedDate, diaryEntries, misComidasSelectedByCard, queryClient, showToast]
   );
 
   const runSearch = useCallback(async (term) => {
@@ -1219,10 +1221,11 @@ const NutritionScreen = () => {
     } catch (e) {
       logger.error('[NutritionScreen] buscar search:', e);
       setBuscarResults([]);
+      showToast('No se pudo buscar alimentos. Inténtalo de nuevo.', 'error');
     } finally {
       setBuscarLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   const handleBuscarSearch = useCallback(() => runSearch(buscarQuery), [runSearch, buscarQuery]);
 
@@ -1416,12 +1419,14 @@ const NutritionScreen = () => {
             await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
           } catch (err) {
             logger.error('[NutritionScreen] undo delete error:', err);
+            showToast('No se pudo deshacer la eliminación.', 'error');
           }
         },
         duration: 5000,
       });
     } catch (err) {
       logger.error('[NutritionScreen] deleteDiaryEntry error:', err);
+      showToast('No se pudo eliminar el alimento. Inténtalo de nuevo.', 'error');
     }
   }, [userId, selectedDate, showToast, queryClient]);
 
@@ -1549,6 +1554,7 @@ const NutritionScreen = () => {
       }
     } catch (e) {
       logger.error('[NutritionScreen] handleBuscarLog:', e);
+      showToast('No se pudo guardar el alimento. Inténtalo de nuevo.', 'error');
     } finally {
       setBuscarAddLoading(false);
     }
@@ -1565,6 +1571,7 @@ const NutritionScreen = () => {
         queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
       } catch (e) {
         logger.error('[NutritionScreen] deleteSavedFood:', e);
+        showToast('No se pudo eliminar el alimento guardado.', 'error');
       }
       return;
     }
@@ -1586,8 +1593,9 @@ const NutritionScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveFood:', e);
+      showToast('No se pudo guardar el alimento.', 'error');
     }
-  }, [userId, selectedFood, buscarServingIndex, buscarAmount, queryClient]);
+  }, [userId, selectedFood, buscarServingIndex, buscarAmount, queryClient, showToast]);
 
   const faltanOpacity = useRef(new Animated.Value(1)).current;
   const llevasOpacity = useRef(new Animated.Value(0)).current;
@@ -1787,10 +1795,11 @@ const NutritionScreen = () => {
     } catch (e) {
       logger.error('[NutritionScreen] createMeal search:', e);
       setCreateMealSearchResults([]);
+      showToast('No se pudo buscar alimentos. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateMealSearchLoading(false);
     }
-  }, [createMealSearchQuery]);
+  }, [createMealSearchQuery, showToast]);
 
   const createMealSearchSortedResults = useMemo(() => {
     const list = [...createMealSearchResults];
@@ -1976,10 +1985,11 @@ const NutritionScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'user-meals', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveCreateMeal:', e);
+      showToast('No se pudo guardar la comida. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateMealSaving(false);
     }
-  }, [userId, createMealName, createMealItems, queryClient]);
+  }, [userId, createMealName, createMealItems, queryClient, showToast]);
 
   const handleSaveCustomFood = useCallback(async () => {
     if (!userId) return;
@@ -2037,6 +2047,7 @@ const NutritionScreen = () => {
       }
     } catch (e) {
       logger.error('[NutritionScreen] handleSaveCustomFood:', e);
+      showToast('No se pudo guardar el alimento. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateFoodSaving(false);
     }
@@ -2047,6 +2058,7 @@ const NutritionScreen = () => {
     createFoodServings,
     editingSavedFood,
     queryClient,
+    showToast,
   ]);
 
   useEffect(() => {
@@ -2109,6 +2121,7 @@ const NutritionScreen = () => {
   const opcionesCardViewHeight = 540;
 
   const isInitialLoading = !userId || loading || !hasLoaded;
+  const isError = planQuery.isError || diaryQuery.isError;
 
   if (isInitialLoading) {
     return (
@@ -2116,6 +2129,28 @@ const NutritionScreen = () => {
         <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
         <View style={styles.loadingFullScreen}>
           <WakeLoader />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+        <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
+        <View style={styles.loadingFullScreen}>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 }}>
+            No se pudo cargar tu plan de nutrición. Inténtalo de nuevo.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              planQuery.refetch();
+              diaryQuery.refetch();
+            }}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10 }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>Reintentar</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

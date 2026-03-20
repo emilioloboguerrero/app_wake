@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
+import logger from '../utils/logger';
 import './CalendarView.css';
 
 export const DRAG_TYPE_CLIENT_PLAN_SESSION = 'client_plan_session';
@@ -469,7 +470,7 @@ const CalendarView = ({
 
       if (type === DRAG_TYPE_LIBRARY_SESSION && dragData.librarySessionRef) {
         if (!selectedProgramId) {
-          console.warn('[CalendarView] handleDrop: need to select a program first');
+          logger.warn('[CalendarView] handleDrop: need to select a program first');
           return;
         }
         const weekKey = getMondayWeek(date);

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import libraryService from '../services/libraryService';
+import { queryKeys } from '../config/queryClient';
 import { useToast } from '../contexts/ToastContext';
 import './CreateLibraryModuleScreen.css';
 
@@ -23,7 +24,7 @@ const CreateLibraryModuleScreen = () => {
       sessionRefs: [],
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library', 'modules', user.uid] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.modules(user.uid) });
       navigate(backPath, { state: backState });
     },
     onError: (err) => {
@@ -64,10 +65,11 @@ const CreateLibraryModuleScreen = () => {
           </div>
 
           <div className="clm-actions">
-            <button className="clm-btn-cancel" onClick={handleCancel}>
+            <button type="button" className="clm-btn-cancel" onClick={handleCancel}>
               Cancelar
             </button>
             <button
+              type="button"
               className="clm-btn-save"
               onClick={handleCreateModule}
               disabled={!moduleName.trim() || createModuleMutation.isPending}
@@ -82,4 +84,3 @@ const CreateLibraryModuleScreen = () => {
 };
 
 export default CreateLibraryModuleScreen;
-

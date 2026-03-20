@@ -5,9 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
-import Button from '../components/Button';
 import libraryService from '../services/libraryService';
-import { queryKeys } from '../config/queryClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 

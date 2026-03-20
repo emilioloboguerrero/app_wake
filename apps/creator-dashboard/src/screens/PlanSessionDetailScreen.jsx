@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { cacheConfig } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -27,6 +28,7 @@ const PlanSessionDetailScreen = () => {
       return sessions.find(s => s.id === sessionId) ?? null;
     },
     enabled: !!user && !!planId && !!moduleId && !!sessionId,
+    ...cacheConfig.activeProgram,
   });
 
   const [actionLoading, setActionLoading] = useState(false);

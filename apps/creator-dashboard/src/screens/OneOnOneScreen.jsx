@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +43,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const [selectedClient, setSelectedClient] = useState(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
   const [clientUserData, setClientUserData] = useState(null);
+  const clientDetailMountedRef = useRef(false);
 
   const selectedClientData = useMemo(
     () => (selectedClientId ? clients.find((c) => c.id === selectedClientId || c.clientUserId === selectedClientId) : null),
@@ -169,18 +170,22 @@ const OneOnOneScreen = ({ noLayout = false }) => {
     setIsClientDetailModalOpen(true);
     setLoadingClientData(true);
     setError(null);
+    clientDetailMountedRef.current = true;
     try {
       const userData = await oneOnOneService.getClientUserData(client.clientUserId);
+      if (!clientDetailMountedRef.current) return;
       setClientUserData(userData);
     } catch (err) {
       logger.error('Error fetching client data:', err);
+      if (!clientDetailMountedRef.current) return;
       setError('Error al cargar los datos del cliente');
     } finally {
-      setLoadingClientData(false);
+      if (clientDetailMountedRef.current) setLoadingClientData(false);
     }
   };
 
   const handleCloseClientDetailModal = () => {
+    clientDetailMountedRef.current = false;
     setIsClientDetailModalOpen(false);
     setSelectedClient(null);
     setClientUserData(null);

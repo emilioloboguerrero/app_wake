@@ -190,7 +190,9 @@ export function NutritionScreenBase({ navigation }) {
       const foods = data?.foods_search?.results?.food ?? [];
       setSearchResults(Array.isArray(foods) ? foods : []);
     } catch (e) {
+      logger.error('[NutritionScreen] nutritionFoodSearch error:', e);
       setSearchResults([]);
+      Alert.alert('Error', 'No se pudo buscar alimentos. Inténtalo de nuevo.');
     } finally {
       setSearchLoading(false);
     }

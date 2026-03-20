@@ -7,6 +7,7 @@ import Button from './Button';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
 import programService from '../services/programService';
 import { useToast } from '../contexts/ToastContext';
+import logger from '../utils/logger';
 import '../screens/ProgramDetailScreen.css';
 import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
@@ -246,7 +247,7 @@ const ProgramWeeksGrid = ({
     if (onSessionClick && mod && session) {
       onSessionClick(mod, session);
     } else {
-      console.warn('[ProgramWeeksGrid] handleEditSession: NOT calling onSessionClick', {
+      logger.warn('[ProgramWeeksGrid] handleEditSession: NOT calling onSessionClick', {
         hasOnSessionClick: !!onSessionClick,
         hasMod: !!mod,
         hasSession: !!session,
@@ -300,7 +301,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      console.warn('Session reorder failed:', err);
+      logger.warn('Session reorder failed:', err);
       showToast(err?.message || 'Error al cambiar el orden', 'error');
     }
   };
@@ -330,7 +331,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      console.warn('Move session to week failed:', err);
+      logger.warn('Move session to week failed:', err);
       showToast(err?.message || 'Error al mover la sesión', 'error');
     }
   };

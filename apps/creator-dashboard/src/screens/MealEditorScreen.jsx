@@ -11,6 +11,7 @@ import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -87,6 +88,7 @@ export default function MealEditorScreen() {
   const { mealId } = useParams();
   const isEdit = Boolean(mealId);
   const { user } = useAuth();
+  const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
 
   const [mealFormName, setMealFormName] = useState(() => {
@@ -142,6 +144,7 @@ export default function MealEditorScreen() {
         lastSavedRef.current = { name, itemsJson, video_url };
       } catch (e) {
         logger.error(e);
+        showToast('No se pudo guardar la receta. Intenta de nuevo.', 'error');
       }
     }, 700);
     return () => clearTimeout(t);
@@ -157,7 +160,9 @@ export default function MealEditorScreen() {
       const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
       setMealFormSearchResults(foods);
     } catch (e) {
+      logger.error('Food search failed', e);
       setMealFormSearchResults([]);
+      showToast('Error al buscar alimentos. Intenta de nuevo.', 'error');
     } finally {
       setMealFormSearchLoading(false);
     }

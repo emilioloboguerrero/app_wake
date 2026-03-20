@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import TextInput from '../components/TextInput';
-// import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
+
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';

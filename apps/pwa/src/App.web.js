@@ -8,7 +8,6 @@ import { queryClient } from './config/queryClient';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
-import { registerOnlineListener } from './utils/backgroundSync';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 
@@ -204,8 +203,6 @@ const loadHeavyComponents = async () => {
 const safeLog = (method, ...args) => {
   if (logger && logger[method]) {
     logger[method](...args);
-  } else {
-    console[method === 'log' ? 'log' : method === 'error' ? 'error' : 'warn'](...args);
   }
 };
 
@@ -249,10 +246,6 @@ export default function App() {
       const { isSafariWeb } = require('./utils/platform');
       logger.prod('App.web mounted', window.location.pathname, 'Safari:', isSafariWeb());
     }
-  }, []);
-
-  React.useEffect(() => {
-    registerOnlineListener();
   }, []);
 
   // Service worker management (for both login and non-login routes)

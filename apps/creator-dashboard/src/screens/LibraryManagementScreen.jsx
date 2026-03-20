@@ -289,21 +289,21 @@ const LibraryManagementScreen = () => {
 
   // ── Data fetching ────────────────────────────────────────────────────────
 
-  const { data: exercises = [], isLoading: loadingEx } = useQuery({
+  const { data: exercises = [], isLoading: loadingEx, isError: errorEx } = useQuery({
     queryKey: queryKeys.library.exercises(user?.uid),
     queryFn: () => libraryService.getExercises(),
     enabled: !!user?.uid && activeTab === 'ejercicios',
     ...cacheConfig.programStructure,
   });
 
-  const { data: rawSessions = [], isLoading: loadingSess } = useQuery({
+  const { data: rawSessions = [], isLoading: loadingSess, isError: errorSess } = useQuery({
     queryKey: queryKeys.library.sessions(user?.uid),
     queryFn: () => libraryService.getSessionLibrary(),
     enabled: !!user?.uid && activeTab === 'sesiones',
     ...cacheConfig.programStructure,
   });
 
-  const { data: modules = [], isLoading: loadingMod } = useQuery({
+  const { data: modules = [], isLoading: loadingMod, isError: errorMod } = useQuery({
     queryKey: queryKeys.library.modules(user?.uid),
     queryFn: () => libraryService.getModuleLibrary(),
     enabled: !!user?.uid && activeTab === 'modulos',
@@ -368,6 +368,7 @@ const LibraryManagementScreen = () => {
   const renderContent = () => {
     if (activeTab === 'ejercicios') {
       if (loadingEx) return <SkeletonRows count={6} />;
+      if (errorEx) return <EmptyState title="No se pudo cargar la biblioteca" subtitle="Verifica tu conexión e intenta de nuevo." />;
       if (!filteredExercises.length) {
         return (
           <EmptyState
@@ -391,6 +392,7 @@ const LibraryManagementScreen = () => {
 
     if (activeTab === 'sesiones') {
       if (loadingSess) return <SkeletonGrid count={6} cols={2} />;
+      if (errorSess) return <EmptyState title="No se pudieron cargar las sesiones" subtitle="Verifica tu conexión e intenta de nuevo." />;
       if (!filteredSessions.length) {
         return (
           <EmptyState
@@ -427,6 +429,7 @@ const LibraryManagementScreen = () => {
 
     if (activeTab === 'modulos') {
       if (loadingMod) return <SkeletonRows count={5} />;
+      if (errorMod) return <EmptyState title="No se pudieron cargar los módulos" subtitle="Verifica tu conexión e intenta de nuevo." />;
       if (!filteredModules.length) {
         return (
           <EmptyState

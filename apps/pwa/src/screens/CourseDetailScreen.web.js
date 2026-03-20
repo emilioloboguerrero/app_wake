@@ -4,7 +4,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/apiService';
+import firestoreService from '../services/firestoreService';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 

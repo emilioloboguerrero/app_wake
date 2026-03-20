@@ -151,7 +151,8 @@ const ProfileScreen = () => {
       }
     };
     loadCities();
-  }, [country, citiesCache]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country]);
 
   // Debounced username availability check
   useEffect(() => {

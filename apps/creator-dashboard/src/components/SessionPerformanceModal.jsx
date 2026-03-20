@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import clientProgramService from '../services/clientProgramService';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import './SessionPerformanceModal.css';
 
 const STATUS = {
@@ -118,7 +119,7 @@ export default function SessionPerformanceModal({
             try {
               planned = await libraryService.getLibrarySessionExercises(creatorId, librarySessionId);
             } catch (e) {
-              console.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
+              logger.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
             }
           }
           if (!cancelled) setPlannedExercises(Array.isArray(planned) ? planned : []);

@@ -159,4 +159,3 @@ export const queryKeys = {
     diary: (userId, date) => ['nutrition', 'diary', userId, date],
   },
 };
-

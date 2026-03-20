@@ -1,24 +1,30 @@
 import React from 'react';
 
+const sanitizeSvg = (svg) => {
+  // Strip script tags and event handlers to prevent XSS
+  let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*\{[^}]*\}/gi, '');
+  clean = clean.replace(/javascript\s*:/gi, '');
+  return clean;
+};
+
 const SvgIcon = ({ svgString, width = 32, height = 32, color = '#ffffff', className = '' }) => {
-  // Parse the SVG string and inject the color
-  // Replace stroke="currentColor" with the actual color
-  let svgWithColor = svgString.replace(/stroke="currentColor"/g, `stroke="${color}"`);
-  // Replace fill="currentColor" with the actual color (for yoga icon)
+  let svgWithColor = sanitizeSvg(svgString);
+  svgWithColor = svgWithColor.replace(/stroke="currentColor"/g, `stroke="${color}"`);
   svgWithColor = svgWithColor.replace(/fill="currentColor"/g, `fill="${color}"`);
-  // Also handle stroke-width vs strokeWidth
   svgWithColor = svgWithColor.replace(/stroke-width=/g, 'strokeWidth=');
-  
+
   return (
-    <div 
+    <div
       className={className}
-      style={{ 
-        width: `${width}px`, 
+      style={{
+        width: `${width}px`,
         height: `${height}px`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: color // Set color for any remaining currentColor references
+        color: color
       }}
       dangerouslySetInnerHTML={{ __html: svgWithColor }}
     />

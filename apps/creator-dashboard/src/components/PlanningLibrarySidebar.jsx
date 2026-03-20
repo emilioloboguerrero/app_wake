@@ -36,14 +36,14 @@ const PlanningLibrarySidebar = ({
     };
   }, [pulseTrigger]);
 
-  const { data: librarySessions = [], isLoading: sessionsLoading } = useQuery({
+  const { data: librarySessions = [], isLoading: sessionsLoading, isError: sessionsError } = useQuery({
     queryKey: queryKeys.library.sessions(creatorId),
     queryFn: () => libraryService.getSessionLibrary(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_SESSIONS,
     ...cacheConfig.programStructure,
   });
 
-  const { data: plans = [], isLoading: plansLoading } = useQuery({
+  const { data: plans = [], isLoading: plansLoading, isError: plansError } = useQuery({
     queryKey: ['plans', 'byCreator', creatorId],
     queryFn: () => plansService.getPlansByCreator(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_PLANS,
@@ -87,6 +87,8 @@ const PlanningLibrarySidebar = ({
     activeTab === LIBRARY_TAB_SESSIONS ? 'Buscar sesiones...' : 'Buscar planes...';
   const isLoading =
     activeTab === LIBRARY_TAB_SESSIONS ? sessionsLoading : plansLoading;
+  const isError =
+    activeTab === LIBRARY_TAB_SESSIONS ? sessionsError : plansError;
   const emptyMessage =
     activeTab === LIBRARY_TAB_SESSIONS
       ? (q ? 'No hay coincidencias' : 'No hay sesiones en la biblioteca')
@@ -134,6 +136,10 @@ const PlanningLibrarySidebar = ({
         {isLoading ? (
           <div className="planning-sidebar-loading">
             <p>Cargando...</p>
+          </div>
+        ) : isError ? (
+          <div className="planning-sidebar-empty">
+            <p>No se pudo cargar la biblioteca. Intenta de nuevo.</p>
           </div>
         ) : activeTab === LIBRARY_TAB_SESSIONS ? (
           filteredSessions.length === 0 ? (
