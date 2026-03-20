@@ -11,9 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
-  Image,
   Keyboard,
-  TouchableWithoutFeedback,
   useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -38,7 +36,7 @@ import BottomSpacer from '../components/BottomSpacer';
 import countriesList from '../../assets/data/countries.json';
 import citiesBundle from '../../assets/data/cities.json';
 
-import { validateForm, validateInput, sanitizeInput } from '../utils/validation.js';
+import { sanitizeInput } from '../utils/validation.js';
 import { trackUserRegistration } from '../services/monitoringService';
 import { isPWA } from '../utils/platform';
 import { 

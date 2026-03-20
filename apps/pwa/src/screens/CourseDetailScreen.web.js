@@ -4,6 +4,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
+// TODO: Phase 3 migration target — replace direct firestoreService import with API client
 import firestoreService from '../services/firestoreService';
 import LoadingScreen from './LoadingScreen';
 // Import the base component

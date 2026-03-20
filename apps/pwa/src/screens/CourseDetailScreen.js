@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppState } from 'react-native';
 import {
   View,
@@ -25,10 +25,10 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
+// TODO: Phase 3 migration target — replace direct firestoreService import with API client
 import firestoreService from '../services/firestoreService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
-import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
 import consolidatedDataService from '../services/consolidatedDataService';
@@ -50,6 +50,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
   const { isMuted, toggleMute } = useVideo();
   
   
@@ -243,15 +244,10 @@ const CourseDetailScreen = ({ navigation, route }) => {
       consolidatedDataService.clearUserCache(effectiveUser.uid);
       consolidatedDataService.clearAllCache();
       
-      // Sync courses to update cache with new purchase
-      await hybridDataService.syncCourses(effectiveUser.uid);
-      
-      // FIX: Also clear consolidated cache again after sync
-      consolidatedDataService.clearUserCache(effectiveUser.uid);
-      
-      // FIX: Wait a moment for cache to update, then download
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      // Invalidate course queries so React Query refetches fresh data
+      await queryClient.invalidateQueries({ queryKey: ['programs'] });
+      await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+
       // Notify MainScreen about the purchase
       purchaseEventManager.notifyPurchaseComplete(course.id);
       
@@ -726,9 +722,10 @@ useEffect(() => {
         
         if (result.success) {
           
-          // Sync courses to update cache with new purchase
-          await hybridDataService.syncCourses(effectiveUser.uid);
-          
+          // Invalidate course queries so React Query refetches fresh data
+          await queryClient.invalidateQueries({ queryKey: ['programs'] });
+          await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
           
@@ -942,7 +939,8 @@ useEffect(() => {
         return;
       }
 
-      await hybridDataService.syncCourses(user.uid);
+      await queryClient.invalidateQueries({ queryKey: ['programs'] });
+      await queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {

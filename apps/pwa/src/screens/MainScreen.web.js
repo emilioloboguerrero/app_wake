@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import apiService from '../services/apiService';
+// TODO: Phase 3 migration target — replace direct nutritionFirestoreService import with API client
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { TrainingNutritionChoiceModal } from '../components/TrainingNutritionChoiceModal.web';
 import logger from '../utils/logger';

@@ -419,7 +419,7 @@ const MainScreen = ({ navigation, route }) => {
     queryKey: ['bookings', 'upcoming', user?.uid],
     queryFn: () => getUpcomingBookingsForUser(user.uid),
     enabled: !!user?.uid,
-    staleTime: STALE_TIMES.clientList,
+    staleTime: STALE_TIMES.clientList, // TODO: staleTime uses clientList config for bookings — consider adding a dedicated bookings entry
     gcTime: GC_TIMES.clientList,
   });
 

@@ -86,7 +86,7 @@ const CommunityScreen = () => {
           </View>
 
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       
       {/* Tutorial Overlay */}

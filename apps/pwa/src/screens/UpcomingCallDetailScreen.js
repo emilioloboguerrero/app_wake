@@ -18,6 +18,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getBookingById } from '../services/callBookingService';
+// TODO: Phase 3 migration target — replace direct firestoreService import with API client
 import firestoreService from '../services/firestoreService';
 import profilePictureService from '../services/profilePictureService';
 

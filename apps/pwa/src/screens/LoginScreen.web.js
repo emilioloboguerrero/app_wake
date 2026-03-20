@@ -40,8 +40,8 @@ const LoginScreen = () => {
         }, 100);
       }
     }
-  }, [user, loading, navigate]);
-  
+  }, [user, loading]);
+
   // Additional fallback: Poll for user if AuthContext is slow to update
   useEffect(() => {
     if (hasRedirectedRef.current) return;
@@ -60,7 +60,7 @@ const LoginScreen = () => {
           clearInterval(pollInterval);
           window.location.replace(appHomePath);
         }
-      }, 100); // Check every 100ms
+      }, 500); // Check every 500ms
       
       setTimeout(() => {
         clearInterval(pollInterval);
@@ -68,7 +68,7 @@ const LoginScreen = () => {
       
       return () => clearInterval(pollInterval);
     }
-  }, [user, loading, navigate]);
+  }, [user, loading]);
 
   // Create MEMOIZED navigation adapter that matches React Navigation API
   const navigation = useMemo(() => ({

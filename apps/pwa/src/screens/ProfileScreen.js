@@ -59,6 +59,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const queryClient = useQueryClient();
+  // TODO: Consolidate dual loading state into a single loading state or use React Query's built-in isLoading
   const [loading, setLoading] = useState(true); // Start with true for initial profile load
   const [profileLoading, setProfileLoading] = useState(true); // Separate state for profile data loading
   
@@ -192,7 +193,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     if (userData.profilePictureUrl) {
       setProfilePictureUrl(userData.profilePictureUrl);
     } else {
-      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); }).catch(() => {});
+      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); }).catch(err => logger.warn('Failed to load profile picture URL', err));
     }
     checkForTutorials();
     setProfileLoading(false);

@@ -2294,7 +2294,7 @@ const LabScreen = ({ navigation }) => {
   const handleWeightUnitChange = (u) => {
     queryClient.setQueryData(['user', uid], (prev) => prev ? { ...prev, weightUnit: u } : prev);
     if (uid) {
-      apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
+      apiClient.patch('/users/me', { weightUnit: u }).catch(err => logger.warn('Failed to save weight unit preference', err));
     }
   };
 

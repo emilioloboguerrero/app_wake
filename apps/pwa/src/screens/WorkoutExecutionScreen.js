@@ -239,19 +239,8 @@ const getAssetBundleService = () => {
 };
 
 const getMonitoringService = () => {
-  const startTime = performance.now();
-  try {
-    const service = require('../services/monitoringService');
-    const duration = performance.now() - startTime;
-    if (duration > 50) {
-      logger.warn(`[TIMING] ⚠️ SLOW: monitoringService took ${duration.toFixed(2)}ms (threshold: 50ms)`);
-    }
-    return service;
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    logger.error(`[TIMING] [ERROR] monitoringService failed after ${duration.toFixed(2)}ms:`, error);
-    throw error;
-  }
+  const noop = () => {};
+  return { trackScreenView: noop, trackWorkoutStarted: noop, trackWorkoutCompleted: noop };
 };
 
 // ============================================================================
@@ -1226,8 +1215,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (!cp) return;
       import('../utils/apiClient.js').then(mod => {
         const client = mod.default || mod.apiClient;
-        client.post('/workout/session/checkpoint', cp, { idempotent: true }).catch(() => {});
-      }).catch(() => {});
+        client.post('/workout/session/checkpoint', cp, { idempotent: true }).catch(err => logger.warn('Checkpoint save failed', err));
+      }).catch(err => logger.warn('Checkpoint module load failed', err));
     }, 10_000);
   }, [buildCheckpoint]);
 
@@ -3997,8 +3986,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
                        import('../utils/apiClient.js').then(mod => {
                          const client = mod.default || mod.apiClient;
-                         client.delete('/workout/session/active').catch(() => {});
-                       }).catch(() => {});
+                         client.delete('/workout/session/active').catch(err => logger.warn('Failed to delete active session on completion', err));
+                       }).catch(err => logger.warn('Failed to load apiClient for session cleanup', err));
 
                        const { sessionData, stats, sessionMuscleVolumes, personalRecords = [] } = result;
 

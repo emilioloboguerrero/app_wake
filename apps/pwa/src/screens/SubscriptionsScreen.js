@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
+// TODO: Phase 3 migration target — replace direct firestoreService import with API client
 import firestoreService from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
+// TODO: Phase 3 migration target — replace direct firestoreService import with API client
 import firestoreService from '../services/firestoreService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
@@ -210,8 +211,8 @@ const DailyWorkoutScreen = () => {
         if (Date.now() - new Date(serverCp.savedAt).getTime() > 24 * 60 * 60 * 1000) return;
         if (serverCp.courseId !== courseId) return;
         setRecoveryCheckpoint(serverCp);
-      }).catch(() => {});
-    }).catch(() => {});
+      }).catch(err => logger.warn('Failed to check active session', err));
+    }).catch(err => logger.warn('Failed to load apiClient for session check', err));
   }, [contextUser, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRecoveryResume = useCallback(() => {
@@ -241,8 +242,8 @@ const DailyWorkoutScreen = () => {
     try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
     import('../utils/apiClient.js').then(mod => {
       const client = mod.default || mod.apiClient;
-      client.delete('/workout/session/active').catch(() => {});
-    }).catch(() => {});
+      client.delete('/workout/session/active').catch(err => logger.warn('Failed to delete active session on discard', err));
+    }).catch(err => logger.warn('Failed to load apiClient for session discard', err));
     setRecoveryCheckpoint(null);
   }, []);
 
