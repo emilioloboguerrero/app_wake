@@ -701,14 +701,12 @@ const MainScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (!loading && purchasedCourses.length > 0) {
       const updateTimeout = setTimeout(() => {
-        logger.debug('⏰ 7s TIMEOUT: Clearing any stuck updating status...');
         setDownloadedCourses(prev => {
           const updated = { ...prev };
           let hasChanges = false;
-          
+
           Object.keys(updated).forEach(courseId => {
             if (updated[courseId]?.status === 'updating') {
-              logger.debug('🔄 TIMEOUT: Clearing stuck updating status for course:', courseId);
               updated[courseId] = {
                 ...updated[courseId],
                 status: 'ready',
@@ -729,12 +727,9 @@ const MainScreen = ({ navigation, route }) => {
   // Re-fetch courses when screen regains focus, but only after a confirmed program update
   const focusEffectCallback = React.useCallback(() => {
     if (user?.uid && hasPendingUpdates) {
-      logger.debug('🔄 MainScreen focused - refreshing due to completed updates...');
       refreshCoursesFromDatabase();
       updateEventManager.clearPendingUpdates();
       setHasPendingUpdates(false);
-    } else {
-      logger.debug('⏭️ MainScreen focused - no pending updates, skipping refresh');
     }
   }, [user?.uid, hasPendingUpdates]);
 
@@ -764,16 +759,12 @@ const MainScreen = ({ navigation, route }) => {
     if (!user?.uid) return;
 
     try {
-      logger.debug('🎬 Checking for main screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'mainScreen');
-      
+
       if (tutorials.length > 0) {
-        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.debug('✅ No tutorials to show for main screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
