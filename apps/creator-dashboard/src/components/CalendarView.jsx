@@ -16,7 +16,7 @@ const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 // Color palette for programs (cycle through these)
 const PROGRAM_COLORS = [
-  'rgba(255, 255, 255, 0.6)',   // Gold
+  'rgba(255, 255, 255, 0.6)',   // White
   'rgba(107, 142, 35, 0.6)',   // Olive
   'rgba(70, 130, 180, 0.6)',   // Steel blue
   'rgba(186, 85, 211, 0.6)',   // Medium orchid
@@ -73,7 +73,7 @@ const CalendarView = ({
   onWeekClick
 }) => {
   const PLAN_BAR_COLOR = 'rgba(50, 50, 55, 0.96)';
-  const PLAN_BAR_ACCENT = 'rgba(255, 255, 255, 0.65)'; // visible gold accent
+  const PLAN_BAR_ACCENT = 'rgba(255, 255, 255, 0.65)'; // visible white accent
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -85,9 +85,6 @@ const CalendarView = ({
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
-
-  useEffect(() => {
-  }, [plannedSessions]);
 
   // Close session card menu when clicking outside (not on trigger or portal menu)
   useEffect(() => {
@@ -487,7 +484,7 @@ const CalendarView = ({
       } else {
       }
     } catch (error) {
-      console.error('[CalendarView] handleDrop:', error);
+      logger.error('[CalendarView] handleDrop:', error);
     }
   };
 

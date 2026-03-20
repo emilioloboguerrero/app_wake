@@ -10,14 +10,18 @@ const Modal = ({ isOpen, onClose, title, children, wide = false, extraWide = fal
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') onClose();
+  };
+
   const containerClassName = `modal-container ${wide ? 'modal-container-wide' : ''} ${extraWide ? 'modal-container-extra-wide' : ''} ${extraClass}`.trim();
 
   return (
-    <div className="modal-backdrop" onClick={handleBackdropClick}>
-      <div className={containerClassName}>
+    <div className="modal-backdrop" onClick={handleBackdropClick} onKeyDown={handleKeyDown}>
+      <div className={containerClassName} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
-          <button className="modal-close-button" onClick={onClose}>
+          <button className="modal-close-button" onClick={onClose} aria-label="Cerrar">
             ×
           </button>
         </div>

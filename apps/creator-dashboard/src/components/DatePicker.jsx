@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import './DatePicker.css';
 
 const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowFuture }) => {
@@ -13,16 +13,20 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
   });
   const containerRef = useRef(null);
 
-  const today = useRef(new Date());
-  today.current.setHours(0, 0, 0, 0);
-  const maxDate = useRef(
-    max
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const maxDate = useMemo(() => {
+    const d = max
       ? new Date(max)
       : allowFuture
         ? new Date(new Date().getFullYear() + 5, 11, 31)
-        : new Date(today.current.getFullYear() - 13, today.current.getMonth(), today.current.getDate())
-  );
-  maxDate.current.setHours(23, 59, 59, 999);
+        : new Date(today.getFullYear() - 13, today.getMonth(), today.getDate());
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }, [max, allowFuture, today]);
   const minDate = useRef(allowFuture ? new Date(2020, 0, 1) : new Date(1900, 0, 1));
 
   const prevValueRef = useRef(value);
@@ -36,7 +40,7 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
         setCurrentMonth(new Date(dateValue.getFullYear(), dateValue.getMonth(), 1));
       } else {
         setSelectedDate(null);
-        setCurrentMonth(new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1));
+        setCurrentMonth(new Date(maxDate.getFullYear(), maxDate.getMonth(), 1));
       }
     }
   }, [value]);
@@ -93,7 +97,7 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
   const handleNextMonth = (e) => {
     e.stopPropagation();
     const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-    if (newDate > new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1)) return;
+    if (newDate > new Date(maxDate.getFullYear(), maxDate.getMonth(), 1)) return;
     setCurrentMonth(newDate);
   };
 
@@ -112,8 +116,8 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
   const isDisabled = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     date.setHours(0, 0, 0, 0);
-    if (allowFuture) return date > maxDate.current || date < minDate.current;
-    return date > maxDate.current || date < minDate.current || date > today.current;
+    if (allowFuture) return date > maxDate || date < minDate.current;
+    return date > maxDate || date < minDate.current || date > today;
   };
 
   const isSelected = (day) => {
@@ -127,7 +131,7 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
 
   const isToday = (day) => {
     const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const t = today.current;
+    const t = today;
     return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear();
   };
 
@@ -140,9 +144,9 @@ const DatePicker = ({ value, onChange, error, max, placeholder, disabled, allowF
   // Build month-year options
   const monthYearOptions = [];
   const startYear = minDate.current.getFullYear();
-  const endYear = maxDate.current.getFullYear();
+  const endYear = maxDate.getFullYear();
   const minMonthDate = new Date(minDate.current.getFullYear(), minDate.current.getMonth(), 1);
-  const maxMonthDate = new Date(maxDate.current.getFullYear(), maxDate.current.getMonth(), 1);
+  const maxMonthDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
   for (let year = startYear; year <= endYear; year++) {
     for (let month = 0; month < 12; month++) {
       const d = new Date(year, month, 1);

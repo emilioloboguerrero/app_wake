@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
+import logger from '../utils/logger';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
@@ -146,7 +147,10 @@ const PlanWeeksGrid = ({
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.classList.remove('plan-weeks-cell-drag-over');
-    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+    let data;
+    try {
+      data = JSON.parse(e.dataTransfer.getData('application/json'));
+    } catch { return; }
     if (data.type !== DRAG_TYPE_LIBRARY_SESSION || !data.librarySessionRef) return;
 
     const prevModules = (modules || []).map((m) => ({ ...m, sessions: [...(m.sessions || [])] }));
@@ -212,7 +216,7 @@ const PlanWeeksGrid = ({
       await plansService.duplicateModule(planId, mod.id);
       await refreshModules();
     } catch (err) {
-      console.error('Error duplicating week:', err);
+      logger.error('Error duplicating week:', err);
       showToast(err.message || 'Error al duplicar la semana', 'error');
     } finally {
       setIsDuplicatingWeek(false);

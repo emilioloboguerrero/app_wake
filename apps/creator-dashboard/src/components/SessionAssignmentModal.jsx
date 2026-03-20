@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useToast } from '../contexts/ToastContext';
+import logger from '../utils/logger';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Button from './Button';
@@ -69,7 +70,7 @@ const SessionAssignmentModal = ({
       });
       handleClose();
     } catch (err) {
-      console.error('Error creating session:', err);
+      logger.error('Error creating session:', err);
       showToast(err.message || 'Error al crear la sesión', 'error');
     } finally {
       setIsCreating(false);

@@ -16,13 +16,6 @@ import './ProgramWeeksGrid.css';
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
 
-function arrayMove(arr, fromIndex, toIndex) {
-  const a = [...arr];
-  const [removed] = a.splice(fromIndex, 1);
-  a.splice(toIndex, 0, removed);
-  return a;
-}
-
 /**
  * Weeks grid for low-ticket program content: rows = weeks (modules), columns = position 1-7.
  * Sessions: slot = position in sorted order (old format) or order 0-6 (new). Plan drop assigns plan to week(s).
@@ -113,7 +106,7 @@ const ProgramWeeksGrid = ({
         await queryClient.refetchQueries({ queryKey: queryKeys.modules.all(programId) });
       }
     } catch (err) {
-      console.error('Error refreshing program modules:', err);
+      logger.error('Error refreshing program modules:', err);
     }
   };
 
@@ -439,12 +432,7 @@ const ProgramWeeksGrid = ({
   const handleDragOverWeek = (e, moduleId) => {
     e.preventDefault();
     e.stopPropagation();
-    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-      try {
-        return JSON.parse(e.dataTransfer.getData('application/json'));
-      } catch { return {}; }
-    })() : {};
-    if (data.type === DRAG_TYPE_PLAN) {
+    if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverWeekId(moduleId);
     }
@@ -453,12 +441,7 @@ const ProgramWeeksGrid = ({
   const handleDragOverBelow = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-      try {
-        return JSON.parse(e.dataTransfer.getData('application/json'));
-      } catch { return {}; }
-    })() : {};
-    if (data.type === DRAG_TYPE_PLAN) {
+    if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverBelow(true);
     }
@@ -607,16 +590,8 @@ const ProgramWeeksGrid = ({
                   const handleCellDragOver = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-                      try { return JSON.parse(e.dataTransfer.getData('application/json')); } catch { return {}; }
-                    })() : {};
-                    if (data.type === DRAG_TYPE_PLAN) {
+                    if (e.dataTransfer.types.includes('application/json')) {
                       e.dataTransfer.dropEffect = 'copy';
-                      setDragOverWeekId(mod.id);
-                    } else if (isEmpty && data.type === DRAG_TYPE_LIBRARY_SESSION) {
-                      handleDragOver(e);
-                    } else if (data.type === DRAG_TYPE_PROGRAM_SESSION) {
-                      e.dataTransfer.dropEffect = 'move';
                       e.currentTarget.classList.add('plan-weeks-cell-drag-over');
                     }
                   };

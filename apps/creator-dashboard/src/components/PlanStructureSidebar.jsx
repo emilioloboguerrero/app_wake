@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Input from './Input';
+import logger from '../utils/logger';
 import './PlanStructureSidebar.css';
 
 const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
@@ -28,7 +29,7 @@ const PlanStructureSidebar = ({
         const sessions = await libraryService.getSessionLibrary(creatorId);
         setLibrarySessions(sessions || []);
       } catch (err) {
-        console.error('Error loading library sessions:', err);
+        logger.error('Error loading library sessions:', err);
         setLibrarySessions([]);
       } finally {
         setLoading(false);

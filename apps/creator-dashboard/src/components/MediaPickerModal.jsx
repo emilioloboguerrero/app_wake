@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from './Modal';
 import { listFiles, uploadFile } from '../services/creatorMediaService';
+import logger from '../utils/logger';
 import './MediaPickerModal.css';
+
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 /**
  * Modal to pick a media item from the creator's folder or upload a new one.
@@ -26,7 +30,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
     listFiles(creatorId)
       .then((files) => setItems(files))
       .catch((e) => {
-        console.error('Media list error:', e);
+        logger.error('Media list error:', e);
         setError(e.message || 'Error al cargar la carpeta');
       })
       .finally(() => setLoading(false));
@@ -41,6 +45,22 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
     if (!file || !creatorId) return;
     e.target.value = '';
     setError(null);
+
+    if (accept && accept !== '*') {
+      const acceptedTypes = accept.split(',').map(t => t.trim());
+      const fileTypeOk = acceptedTypes.some(t => {
+        if (t.endsWith('/*')) return file.type.startsWith(t.replace('/*', '/'));
+        return file.type === t;
+      });
+      if (!fileTypeOk) {
+        setError(`Tipo de archivo no permitido. Se esperaba: ${accept}`);
+        return;
+      }
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`El archivo es demasiado grande. Máximo ${MAX_FILE_SIZE_MB}MB.`);
+      return;
+    }
     setUploading(true);
     setUploadProgress(0);
     try {
@@ -49,7 +69,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, creatorId,
       onSelect({ id: newItem.id, url: newItem.url, name: newItem.name, contentType: newItem.contentType });
       onClose();
     } catch (err) {
-      console.error('Upload error:', err);
+      logger.error('Upload error:', err);
       setError(err.message || 'Error al subir');
     } finally {
       setUploading(false);

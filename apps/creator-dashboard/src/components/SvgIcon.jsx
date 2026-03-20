@@ -1,18 +1,14 @@
 import React from 'react';
+import DOMPurify from 'dompurify';
 
-const sanitizeSvg = (svg) => {
-  // Strip script tags and event handlers to prevent XSS
-  let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, '');
-  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
-  clean = clean.replace(/\bon\w+\s*=\s*\{[^}]*\}/gi, '');
-  clean = clean.replace(/javascript\s*:/gi, '');
-  return clean;
-};
+const CSS_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|[a-zA-Z]+)$/;
 
 const SvgIcon = ({ svgString, width = 32, height = 32, color = '#ffffff', className = '' }) => {
-  let svgWithColor = sanitizeSvg(svgString);
-  svgWithColor = svgWithColor.replace(/stroke="currentColor"/g, `stroke="${color}"`);
-  svgWithColor = svgWithColor.replace(/fill="currentColor"/g, `fill="${color}"`);
+  const safeColor = CSS_COLOR_RE.test(color) ? color : '#ffffff';
+
+  let svgWithColor = DOMPurify.sanitize(svgString, { USE_PROFILES: { svg: true, svgFilters: true } });
+  svgWithColor = svgWithColor.replace(/stroke="currentColor"/g, `stroke="${safeColor}"`);
+  svgWithColor = svgWithColor.replace(/fill="currentColor"/g, `fill="${safeColor}"`);
   svgWithColor = svgWithColor.replace(/stroke-width=/g, 'strokeWidth=');
 
   return (
@@ -24,7 +20,7 @@ const SvgIcon = ({ svgString, width = 32, height = 32, color = '#ffffff', classN
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: color
+        color: safeColor
       }}
       dangerouslySetInnerHTML={{ __html: svgWithColor }}
     />

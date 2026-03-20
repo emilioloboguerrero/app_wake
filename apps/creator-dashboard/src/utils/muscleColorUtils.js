@@ -10,7 +10,7 @@ export const getMuscleColor = (setCount) => {
     // 1-6 sets: More opaque white with increasing opacity
     return { color: '#FFFFFF', opacity: 0.3 + ((setCount / 6) * 0.4) }; // 0.3 to 0.7 opacity
   } else if (setCount <= 18) {
-    // 6-18 sets: Golden color (app color)
+    // 6-18 sets: White highlight
     return { color: '#ffffff', opacity: 0.6 };
   } else {
     // 18+ sets: Dark red

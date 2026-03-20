@@ -32,6 +32,10 @@ const stagingConfig = {
 const firebaseEnv = import.meta.env.VITE_FIREBASE_ENV;
 const firebaseConfig = firebaseEnv === 'staging' ? stagingConfig : productionConfig;
 
+if (firebaseConfig.apiKey === 'TODO') {
+  throw new Error(`Firebase ${firebaseEnv} config is incomplete — fill in real values in config/firebase.js`);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

@@ -78,7 +78,7 @@ export const MUSCLE_DISPLAY_NAMES = {
   obliques: 'Oblicuos',
   lower_back: 'Lumbar',
   neck: 'Cuello',
-  "pantorrilla'nt": 'Pantorrilla'
+  pantorrilla: 'Pantorrilla'
 };
 
 export function getMuscleDisplayName(muscleKey) {
