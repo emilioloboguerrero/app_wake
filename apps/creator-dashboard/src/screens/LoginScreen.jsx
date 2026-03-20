@@ -35,11 +35,11 @@ const LoginScreen = () => {
     if (redirectPath) {
       try {
         const [path] = redirectPath.split('?');
-        if (path && path !== '/login') {
+        if (path && path.startsWith('/') && !path.startsWith('//') && path !== '/login') {
           navigate(path, { replace: true });
           return;
         }
-      } catch (e) {}
+      } catch { /* invalid redirect param, ignore */ }
     }
 
     if (isCreator && webOnboardingCompleted !== null) {

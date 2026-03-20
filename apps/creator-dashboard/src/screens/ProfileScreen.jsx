@@ -66,93 +66,55 @@ const ProfileScreen = () => {
   // Nav preferences
   const [navEventos, setNavEventos] = useState(true);
   const [navDisponibilidad, setNavDisponibilidad] = useState(true);
-  const [navPrefsLoaded, setNavPrefsLoaded] = useState(false);
 
-  const [countries, setCountries] = useState([]);
-  const [citiesCache, setCitiesCache] = useState({});
-  const [loadingCities, setLoadingCities] = useState(false);
+  const { data: countries = [] } = useQuery({
+    queryKey: ['countries'],
+    queryFn: async () => {
+      const allCountries = (await GetCountries()) || [];
+      return allCountries
+        .map((c) => ({
+          value: c.iso2,
+          label: c.name,
+          name: c.name,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    },
+    staleTime: Infinity,
+  });
 
-  useEffect(() => {
-    const loadCountries = async () => {
-      try {
-        const allCountries = (await GetCountries()) || [];
-        const formatted = allCountries
-          .map((country) => ({
-            value: country.iso2,
-            label: country.name,
-            name: country.name,
-          }))
-          .sort((a, b) => a.label.localeCompare(b.label));
-        setCountries(formatted);
-      } catch (error) {
-        logger.error('Error loading countries:', error);
-      }
-    };
-    loadCountries();
-  }, []);
+  const { data: citiesList = [], isLoading: loadingCities } = useQuery({
+    queryKey: ['cities', country],
+    queryFn: async () => {
+      const allCountries = (await GetCountries()) || [];
+      const countryObj = allCountries.find((c) => c.iso2 === country);
+      if (!countryObj) return [];
 
-  useEffect(() => {
-    const loadCities = async () => {
-      if (!country) {
-        return;
-      }
+      const states = (await GetState(countryObj.id)) || [];
+      const allCities = [];
 
-      // Check cache first
-      if (citiesCache[country]) {
-        return; // Already cached
-      }
-
-      setLoadingCities(true);
-      try {
-        const allCountries = (await GetCountries()) || [];
-        const countryObj = allCountries.find((c) => c.iso2 === country);
-
-        if (!countryObj) {
-          setLoadingCities(false);
-          return;
-        }
-
-        const states = (await GetState(countryObj.id)) || [];
-
-        const allCountryCities = [];
-
-        if (states.length > 0) {
-          for (const state of states) {
-            try {
-              const stateCities = (await GetCity(countryObj.id, state.id)) || [];
-              allCountryCities.push(...stateCities);
-            } catch (error) {
-              logger.warn(`Error loading cities for state ${state.name}:`, error);
-            }
-          }
-        } else {
+      if (states.length > 0) {
+        for (const state of states) {
           try {
-            const directCities = (await GetCity(countryObj.id, 0)) || [];
-            allCountryCities.push(...directCities);
-          } catch (error) {
-            logger.warn('Could not get cities directly:', error);
+            const stateCities = (await GetCity(countryObj.id, state.id)) || [];
+            allCities.push(...stateCities);
+          } catch {
+            console.error(`Error loading cities for state ${state.name}`);
           }
         }
-
-        // Cache the cities for this country (even if empty, to avoid re-fetching)
-        setCitiesCache((prev) => ({
-          ...prev,
-          [country]: allCountryCities,
-        }));
-      } catch (error) {
-        logger.error('Error loading cities:', error);
-        // Cache empty array to prevent re-fetching on error
-        setCitiesCache((prev) => ({
-          ...prev,
-          [country]: [],
-        }));
-      } finally {
-        setLoadingCities(false);
+      } else {
+        try {
+          const directCities = (await GetCity(countryObj.id, 0)) || [];
+          allCities.push(...directCities);
+        } catch {
+          console.error('Could not get cities directly');
+        }
       }
-    };
-    loadCities();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [country]);
+
+      return allCities;
+    },
+    enabled: !!country,
+    staleTime: Infinity,
+  });
 
   // Debounced username availability check
   useEffect(() => {
@@ -181,16 +143,18 @@ const ProfileScreen = () => {
     return () => clearTimeout(timer);
   }, [username, originalValues]);
 
-  // Load nav preferences on mount
+  const { data: navPrefsData, isSuccess: navPrefsLoaded } = useQuery({
+    queryKey: ['navPreferences', user?.uid],
+    queryFn: () => userPreferencesService.getNavPreferences(),
+    enabled: !!user?.uid,
+    staleTime: 5 * 60 * 1000,
+  });
+
   useEffect(() => {
-    if (!user?.uid) return;
-    userPreferencesService.getNavPreferences().then((prefs) => {
-      if (!prefs) { setNavPrefsLoaded(true); return; }
-      setNavEventos(prefs.eventos !== false);
-      setNavDisponibilidad(prefs.disponibilidad !== false);
-      setNavPrefsLoaded(true);
-    }).catch(() => setNavPrefsLoaded(true));
-  }, [user?.uid]);
+    if (!navPrefsData) return;
+    setNavEventos(navPrefsData.eventos !== false);
+    setNavDisponibilidad(navPrefsData.disponibilidad !== false);
+  }, [navPrefsData]);
 
   const getFilteredCountries = useMemo(() => {
     if (!countrySearchQuery.trim()) return countries;
@@ -202,24 +166,19 @@ const ProfileScreen = () => {
   }, [countries, countrySearchQuery]);
 
   const filteredCities = useMemo(() => {
-    if (!country) return [];
-
-    const countryCities = citiesCache[country] || [];
-
-    if (countryCities.length === 0) return [];
+    if (!country || citiesList.length === 0) return [];
 
     const searchLower = citySearchQuery.toLowerCase();
 
     if (!searchLower) {
-      // Return top 100 cities if no search query (for performance)
-      return countryCities.slice(0, 100).map((city) => city.name);
+      return citiesList.slice(0, 100).map((c) => c.name);
     }
 
-    return countryCities
-      .filter((city) => city.name.toLowerCase().includes(searchLower))
-      .map((city) => city.name)
-      .slice(0, 50); // Limit results for performance
-  }, [citiesCache, country, citySearchQuery]);
+    return citiesList
+      .filter((c) => c.name.toLowerCase().includes(searchLower))
+      .map((c) => c.name)
+      .slice(0, 50);
+  }, [citiesList, country, citySearchQuery]);
 
   const getCountryLabel = (value) => {
     if (!value) return '';

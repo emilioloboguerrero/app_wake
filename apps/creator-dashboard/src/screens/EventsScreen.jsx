@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,9 +45,14 @@ export default function EventsScreen() {
   const [activeFilter, setActiveFilter] = useState('active');
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const copiedTimerRef = useRef(null);
   const [togglingId, setTogglingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  useEffect(() => {
+    return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); };
+  }, []);
 
   const { data: events = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.events.byCreator(user?.uid),
@@ -83,7 +88,8 @@ export default function EventsScreen() {
       showToast('No se pudo copiar el enlace', 'error');
     }
     setCopiedId(ev.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
     setMenuOpenId(null);
   }
 

@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
 import { GlowingEffect } from '../components/ui';
+import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import './EventCheckinScreen.css';
@@ -39,30 +40,7 @@ export default function EventCheckinScreen() {
 
   useEffect(() => {
     if (!event?.image_url) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const size = 64;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        const { data } = ctx.getImageData(0, 0, size, size);
-        let bestR = 255, bestG = 255, bestB = 255, bestScore = -1;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          if (a < 128) continue;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          if (max < 40 || max > 245) continue;
-          const sat = max === 0 ? 0 : (max - min) / max;
-          const score = sat * (max / 255);
-          if (score > bestScore) { bestScore = score; bestR = r; bestG = g; bestB = b; }
-        }
-        setAccentRgb([bestR, bestG, bestB]);
-      } catch {}
-    };
-    img.src = event.image_url;
+    return extractAccentFromImage(event.image_url, setAccentRgb);
   }, [event?.image_url]);
 
   // ─── Event handlers ───

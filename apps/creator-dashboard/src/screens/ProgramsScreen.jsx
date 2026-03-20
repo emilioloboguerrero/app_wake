@@ -15,6 +15,7 @@ import {
 } from '../components/ui';
 import apiClient from '../utils/apiClient';
 import { cacheConfig } from '../config/queryClient';
+import logger from '../utils/logger';
 import './ProgramsScreen.css';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -314,7 +315,7 @@ const GrupalesTab = ({ userId }) => {
       setShowModal(false);
     },
     onError: (err) => {
-      console.error('[ProgramsScreen] create program failed', err);
+      logger.error('[ProgramsScreen] create program failed', err);
       showToast('No se pudo crear el programa. Intenta de nuevo.', 'error');
     },
   });

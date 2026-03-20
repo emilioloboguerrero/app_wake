@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../utils/apiClient';
@@ -119,6 +119,11 @@ const CreatorOnboardingScreen = () => {
 
   const fileInputRef = useRef(null);
   const textareaRef  = useRef(null);
+  const animTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => { if (animTimerRef.current) clearTimeout(animTimerRef.current); };
+  }, []);
 
   // ── Navigation ────────────────────────────────────────────────
   const goToStep = useCallback((next, dir) => {
@@ -126,7 +131,7 @@ const CreatorOnboardingScreen = () => {
     setDirection(dir);
     setIsAnimating(true);
     setError(null);
-    setTimeout(() => {
+    animTimerRef.current = setTimeout(() => {
       setStep(next);
       setStepKey(k => k + 1);
       setIsAnimating(false);

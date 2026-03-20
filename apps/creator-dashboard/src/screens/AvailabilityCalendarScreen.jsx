@@ -295,7 +295,7 @@ export default function AvailabilityCalendarScreen() {
         setSaving(false);
       }
     },
-    [selectedDateStr, user?.uid, slots, availability.timezone]
+    [selectedDateStr, user?.uid, slots, availability.timezone, queryClient]
   );
 
   const handleTimelineDrop = useCallback(

@@ -41,8 +41,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const [assignError, setAssignError] = useState(null);
   const [isClientDetailModalOpen, setIsClientDetailModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
-  const [loadingClientData, setLoadingClientData] = useState(false);
-  const [clientUserData, setClientUserData] = useState(null);
+  const [clientUserDataId, setClientUserDataId] = useState(null);
   const clientDetailMountedRef = useRef(false);
 
   const selectedClientData = useMemo(
@@ -79,6 +78,13 @@ const OneOnOneScreen = ({ noLayout = false }) => {
     },
     enabled: !!selectedClientUserId && !!user?.uid,
     ...cacheConfig.programStructure,
+  });
+
+  const { data: clientUserData = null, isLoading: loadingClientData } = useQuery({
+    queryKey: ['clients', 'userData', clientUserDataId],
+    queryFn: () => oneOnOneService.getClientUserData(clientUserDataId),
+    enabled: isClientDetailModalOpen && !!clientUserDataId,
+    ...cacheConfig.userProfile,
   });
 
   const assignedPrograms = clientProgramsList.filter((p) => p.isAssigned);
@@ -165,30 +171,19 @@ const OneOnOneScreen = ({ noLayout = false }) => {
     navigate(`/one-on-one/${clientId}`, { state: { returnTo: '/products?tab=clientes' } });
   };
 
-  const handleClientInfoClick = async (client) => {
+  const handleClientInfoClick = (client) => {
     setSelectedClient(client);
+    setClientUserDataId(client.clientUserId);
     setIsClientDetailModalOpen(true);
-    setLoadingClientData(true);
     setError(null);
     clientDetailMountedRef.current = true;
-    try {
-      const userData = await oneOnOneService.getClientUserData(client.clientUserId);
-      if (!clientDetailMountedRef.current) return;
-      setClientUserData(userData);
-    } catch (err) {
-      logger.error('Error fetching client data:', err);
-      if (!clientDetailMountedRef.current) return;
-      setError('Error al cargar los datos del cliente');
-    } finally {
-      if (clientDetailMountedRef.current) setLoadingClientData(false);
-    }
   };
 
   const handleCloseClientDetailModal = () => {
     clientDetailMountedRef.current = false;
     setIsClientDetailModalOpen(false);
     setSelectedClient(null);
-    setClientUserData(null);
+    setClientUserDataId(null);
     setError(null);
   };
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import './ApiKeysScreen.css';
 
@@ -22,6 +23,7 @@ const truncateKeyId = (id) => {
 
 const ApiKeysScreen = () => {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [revealModalOpen, setRevealModalOpen] = useState(false);
@@ -47,6 +49,9 @@ const ApiKeysScreen = () => {
       setKeyName('');
       setCreatedKey(res.data ?? res);
       setRevealModalOpen(true);
+    },
+    onError: () => {
+      showToast('No se pudo crear la clave', 'error');
     },
   });
 
@@ -82,6 +87,8 @@ const ApiKeysScreen = () => {
     navigator.clipboard.writeText(raw).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
+    }).catch(() => {
+      showToast('No se pudo copiar al portapapeles', 'error');
     });
   };
 
