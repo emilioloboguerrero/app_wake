@@ -12,14 +12,14 @@ export const STALE_TIMES = {
 };
 
 export const GC_TIMES = {
-  activeSession: 0,
-  userProfile: 15 * 60 * 1000,
+  activeSession: 30 * 60 * 1000,
+  userProfile: 60 * 60 * 1000,
   programStructure: 60 * 60 * 1000,
-  nutritionDiary: 5 * 60 * 1000,
-  exerciseHistory: 30 * 60 * 1000,
-  sessionHistory: 20 * 60 * 1000,
+  nutritionDiary: 30 * 60 * 1000,
+  exerciseHistory: 60 * 60 * 1000,
+  sessionHistory: 60 * 60 * 1000,
   clientList: 5 * 60 * 1000,
-  bodyLog: 15 * 60 * 1000,
+  bodyLog: 60 * 60 * 1000,
   events: 5 * 60 * 1000,
   eventRegistrations: 2 * 60 * 1000,
 };

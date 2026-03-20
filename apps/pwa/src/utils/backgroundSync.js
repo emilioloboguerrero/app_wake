@@ -71,8 +71,8 @@ export async function processPendingQueue() {
       try {
         if (entry.method === 'POST') {
           const postResult = await apiClient.post(entry.path, entry.body);
-          if (entry.tempId && entry.path === '/nutrition/diary' && postResult?.data?.entryId) {
-            const realId = postResult.data.entryId;
+          if (entry.tempId && entry.path === '/nutrition/diary' && postResult?.data?.id) {
+            const realId = postResult.data.id;
             const date = entry.body?.date;
             if (date) {
               queryClient.setQueryData(['nutrition', 'diary', date], (old) => {
@@ -81,6 +81,9 @@ export async function processPendingQueue() {
               });
               queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', date] });
             }
+          }
+          if (entry.path === '/workout/complete') {
+            queryClient.invalidateQueries({ queryKey: ['workout', 'sessions'] });
           }
         } else if (entry.method === 'PATCH') {
           await apiClient.patch(entry.path, entry.body);
