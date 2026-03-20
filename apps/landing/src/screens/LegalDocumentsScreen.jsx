@@ -108,6 +108,7 @@ const LegalDocumentsScreen = () => {
                   src={selectedDocument.url}
                   title={LEGAL_DOCUMENTS[selectedDocument.key].title}
                   className="legal-document-pdf-iframe"
+                  sandbox="allow-same-origin"
                 />
               </div>
             </div>

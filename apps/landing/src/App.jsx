@@ -33,7 +33,7 @@ function Home() {
   const dosFormasRef = useRef(null);
 
   useEffect(() => {
-    getMainHeroLandingImages().then(setHeroImages);
+    getMainHeroLandingImages().then(setHeroImages).catch(() => {});
   }, []);
 
   const [dbImagesReady, setDbImagesReady] = useState(false);
@@ -53,11 +53,11 @@ function Home() {
   }, [heroImages]);
 
   useEffect(() => {
-    getLandingCards().then(setCards);
+    getLandingCards().then(setCards).catch(() => {});
   }, []);
 
   useEffect(() => {
-    getDosFormasImage().then(setDosFormasImage);
+    getDosFormasImage().then(setDosFormasImage).catch(() => {});
   }, []);
 
   const allHeroImages = [HERO_PLACEHOLDER, ...heroImages];
@@ -137,7 +137,7 @@ function Home() {
         >
           {allHeroImages.map((url, i) => (
               <img
-                key={i}
+                key={url}
                 src={url}
                 alt=""
                 width={16}
@@ -290,14 +290,14 @@ function Home() {
                     <p className="section-card-back-text">
                       Programas diseñados por entrenadores y referentes <strong>en los que confías</strong>. Rutinas <strong>estructuradas y adaptables</strong> a tu nivel para que entrenes con quien <strong>te inspira</strong>.
                     </p>
-                    <button
-                      type="button"
+                    <a
+                      href="/creators"
                       className="section-card-back-cta"
                       onClick={(e) => { e.stopPropagation(); }}
                       aria-label="Ver entrenadores en la plataforma"
                     >
                       Ver entrenadores
-                    </button>
+                    </a>
                   </div>
                 </div>
               </div>

@@ -3,7 +3,6 @@
 
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
-import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // Production Firebase project: wolf-20b8b
@@ -30,10 +29,17 @@ const stagingConfig = {
 const firebaseEnv = import.meta.env.VITE_FIREBASE_ENV;
 const firebaseConfig = firebaseEnv === 'staging' ? stagingConfig : productionConfig;
 
+if (firebaseConfig.apiKey === 'TODO') {
+  throw new Error('Staging Firebase not configured — fill in real values in firebase.js stagingConfig');
+}
+
 const app = initializeApp(firebaseConfig);
 
 // App Check — must run immediately after initializeApp(), before any other service
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY ?? '';
+if (!RECAPTCHA_SITE_KEY) {
+  console.warn('[Firebase] AppCheck disabled — VITE_RECAPTCHA_SITE_KEY not set');
+}
 const appCheck = RECAPTCHA_SITE_KEY
   ? initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
@@ -41,8 +47,7 @@ const appCheck = RECAPTCHA_SITE_KEY
     })
   : null;
 
-const firestore = getFirestore(app);
 const auth = getAuth(app);
 
-export { firestore, auth, appCheck };
+export { auth, appCheck };
 export default app;

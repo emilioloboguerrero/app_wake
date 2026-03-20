@@ -8,6 +8,10 @@ const ANIM_DURATION = 300;
 
 const SCROLL_THRESHOLD = 10;
 
+const navItems = [
+  { to: '/creators', label: 'Creadores' },
+];
+
 const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnimating, setMenuAnimating] = useState(false);
@@ -58,10 +62,6 @@ const Header = () => {
     setMenuAnimating(false);
     setTimeout(() => setMenuOpen(false), ANIM_DURATION);
   };
-
-  const navItems = [
-    { to: '/creators', label: 'Creadores' },
-  ];
 
   return (
     <header className={`header ${!headerVisible ? 'header-hidden' : ''}`}>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { QRCodeSVG } from 'qrcode.react';
 import apiClient from '../utils/apiClient';
 import heroLogoSrc from '../assets/hero-logo.svg';
 import wakeLogotypeSrc from '../assets/Logotipo-WAKE-positivo.svg';
@@ -380,7 +381,14 @@ export default function EventSignupScreen() {
         setEvent(data);
         setTimeout(() => setPhase(data.wakeUsersOnly ? 'gate' : 'hero'), 1400);
       })
-      .catch(() => setPhase('not_found'));
+      .catch((err) => {
+        if (err?.status === 404) {
+          setPhase('not_found');
+        } else {
+          setEvent(null);
+          setPhase('error');
+        }
+      });
   }, [eventId]);
 
   // Color extraction — canvas-based, no library needed
@@ -448,10 +456,10 @@ export default function EventSignupScreen() {
     }
     const str = String(val ?? '').trim();
     if (s.required !== false && !str) { setError('Este campo es obligatorio'); return false; }
-    if (s.type === 'email' && str && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str)) {
+    if (s.type === 'email' && str && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(str)) {
       setError('Ingresa un email válido'); return false;
     }
-    if (s.type === 'number' && str && (Number(str) < 1 || Number(str) > 99)) {
+    if (s.type === 'number' && str && (!Number.isInteger(Number(str)) || Number(str) < 1 || Number(str) > 99)) {
       setError('Ingresa una edad válida'); return false;
     }
     return true;
@@ -535,6 +543,9 @@ export default function EventSignupScreen() {
   async function submitWaitlist() {
     const contact = waitlistContact.trim();
     if (!contact) { setWaitlistError('Ingresa un email o teléfono'); return; }
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact);
+    const isPhone = /^\+?\d[\d\s\-]{6,}$/.test(contact);
+    if (!isEmail && !isPhone) { setWaitlistError('Ingresa un email o teléfono válido'); return; }
     try {
       await apiClient.post(`/events/${eventId}/waitlist`, { contact });
       setPhase('waitlist_success');
@@ -546,9 +557,15 @@ export default function EventSignupScreen() {
 
   // ── Share ────────────────────────────────────────────────────────
   async function handleShare() {
-    await navigator.clipboard.writeText(window.location.href).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setCopied(false);
+      setError('No se pudo copiar el enlace');
+      setTimeout(() => setError(null), 2500);
+    }
   }
 
   const hasImage = Boolean(event?.imageUrl);
@@ -609,6 +626,19 @@ export default function EventSignupScreen() {
     return (
       <div className="es-page es-fade-in" style={cssVars}>
         <p className="es-msg">Este evento no existe.</p>
+      </div>
+    );
+  }
+
+  // ── ERROR (non-404) ─────────────────────────────────────────────
+  if (phase === 'error') {
+    return (
+      <div className="es-page es-fade-in" style={cssVars}>
+        <AmbientOrbs />
+        <p className="es-msg">Ocurrió un error al cargar el evento.</p>
+        <button className="es-cta" style={{ marginTop: 16 }} onClick={() => { setPhase('loading'); apiClient.get(`/events/${eventId}`).then(({ data }) => { setEvent(data); setTimeout(() => setPhase(data.wakeUsersOnly ? 'gate' : 'hero'), 400); }).catch((err) => { if (err?.status === 404) setPhase('not_found'); else setPhase('error'); }); }}>
+          Reintentar
+        </button>
       </div>
     );
   }
@@ -926,8 +956,8 @@ export default function EventSignupScreen() {
           if (emailStep) return form[emailStep.field] || null;
           return null;
         })();
-        const qrUrl = checkInToken
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(JSON.stringify({ eventId, token: checkInToken }))}&bgcolor=1a1a1a&color=ffffff&qzone=1`
+        const qrData = checkInToken
+          ? JSON.stringify({ eventId, token: checkInToken })
           : null;
         return (
         <div className="es-success es-fade-in">
@@ -971,9 +1001,16 @@ export default function EventSignupScreen() {
               </div>
             )}
 
-            {qrUrl && (
+            {qrData && (
               <div className="es-success-qr">
-                <img src={qrUrl} alt="QR Check-in" width={160} height={160} className="es-success-qr-img" />
+                <QRCodeSVG
+                  value={qrData}
+                  size={160}
+                  bgColor="#1a1a1a"
+                  fgColor="#ffffff"
+                  level="M"
+                  className="es-success-qr-img"
+                />
                 <p className="es-success-qr-hint">
                   Muestra este QR en la entrada
                   {toEmail && <><br /><span>También enviado a {toEmail}</span></>}
