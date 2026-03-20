@@ -231,15 +231,11 @@ export default function App() {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           registrations.forEach((registration) => {
             registration.unregister();
-            logger.debug('[APP] Service worker unregistered for login route');
           });
         });
       }
     } else {
-      // Load heavy components for non-login routes
-      logger.debug('[APP] Starting to load heavy components for non-login route...');
       loadHeavyComponents().then(() => {
-        logger.debug('[APP] Heavy components loaded, setting componentsLoaded to true');
         setComponentsLoaded(true);
 
         // Initialize Service Worker AFTER components are loaded (path respects base path e.g. /app/sw.js)

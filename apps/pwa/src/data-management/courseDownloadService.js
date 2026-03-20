@@ -333,12 +333,10 @@ class CourseDownloadService {
       } catch (validationError) {
         logger.warn('⚠️ Course data validation warning:', validationError);
       }
-      logger.debug('✅ Course downloaded successfully:', courseId);
       return true;
       
     } catch (error) {
       logger.error('❌ Course download failed:', error);
-      logger.error('❌ Error details:', error.message);
       
       // FIX: Even on error, try to store basic data so course shows up
       try {
@@ -354,7 +352,6 @@ class CourseDownloadService {
           compressed: false
         };
         await this.storeCourseLocally(courseId, fallbackData);
-        logger.debug('✅ Stored fallback course data after error');
       } catch (fallbackError) {
         logger.error('❌ Failed to store fallback data:', fallbackError);
       }
