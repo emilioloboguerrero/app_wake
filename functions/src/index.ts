@@ -31,6 +31,45 @@ const fatSecretClientSecret = functions.params.defineSecret(
 );
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
+// ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
+const gen1RateStore = new Map<string, {count: number; resetAt: number}>();
+
+function checkGen1RateLimit(key: string, maxPerMinute = 10): void {
+  const now = Date.now();
+  const entry = gen1RateStore.get(key);
+  if (!entry || now >= entry.resetAt) {
+    gen1RateStore.set(key, {count: 1, resetAt: now + 60_000});
+    return;
+  }
+  entry.count++;
+  if (entry.count > maxPerMinute) {
+    const err = new Error("Too many requests") as Error & {statusCode: number};
+    err.statusCode = 429;
+    throw err;
+  }
+}
+
+function isGen1RateLimitError(err: unknown): boolean {
+  return err instanceof Error && (err as Error & {statusCode?: number}).statusCode === 429;
+}
+
+// ─── Input validation helpers ────────────────────────────────────────────────
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BARCODE_RE = /^\d{8,14}$/;
+const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
+// ─── Gen1 auth helper ────────────────────────────────────────────────────────
+async function verifyGen1Auth(request: Request): Promise<string | null> {
+  const header = request.headers?.authorization;
+  if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(header.slice(7));
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
+
 // Simple Mercado Pago client
 const getClient = () => {
   const token = mercadopagoAccessToken.value();
@@ -92,15 +131,6 @@ function toErrorMessage(error: unknown): string {
   }
 }
 
-const buildReferenceBase = (
-  version: string,
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string => {
-  return [version, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
-};
-
 function buildExternalReference(
   userId: string,
   courseId: string,
@@ -114,8 +144,7 @@ function buildExternalReference(
     throw new Error("Identifiers cannot contain the reference delimiter '|'");
   }
 
-  const base = buildReferenceBase(REFERENCE_VERSION, userId, courseId, paymentType);
-  const reference = base;
+  const reference = [REFERENCE_VERSION, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
 
   if (reference.length > REFERENCE_MAX_LENGTH) {
     throw new Error("external_reference exceeds Mercado Pago length limit");
@@ -219,8 +248,6 @@ async function checkUserOwnsCourse(
   }
 }
 
-// Note: addCourseToUser function removed - now using transactions for atomic operations
-
 // Helper: Classify errors for proper handling
 function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
   if (!error || typeof error !== "object") {
@@ -259,41 +286,44 @@ function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
   return "RETRYABLE";
 }
 
-// Signature verification removed - accepting all webhooks
-// WARNING: This allows anyone to send webhooks to your function
-// Consider implementing signature verification for production security
-
 // Create unique payment preference
 export const createPaymentPreference = functions
   .runWith({secrets: [mercadopagoAccessToken]})
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
     }
 
-    try {
-      const {userId, courseId} = request.body;
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
+      return;
+    }
 
-      // Get course
+    try {
+      checkGen1RateLimit(`createPaymentPreference_${userId}`);
+
+      const {courseId} = request.body || {};
+      if (!courseId || !COURSE_ID_RE.test(courseId)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
+        return;
+      }
+
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          success: false,
-          error: "Course not found",
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
         return;
       }
 
       const externalReference = buildExternalReference(userId, courseId, "otp");
 
-      // Create preference
       const client = getClient();
       const preference = new Preference(client);
       const result = await preference.create({
@@ -315,16 +345,14 @@ export const createPaymentPreference = functions
         externalReference,
       });
 
-      response.json({
-        success: true,
-        init_point: result.init_point,
-      });
+      response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
-      response.status(500).json({
-        success: false,
-        error: message,
-      });
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
+      functions.logger.error("createPaymentPreference error", error);
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"}});
     }
   });
 
@@ -334,21 +362,31 @@ export const createSubscriptionCheckout = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
     }
 
-    try {
-      const {userId, courseId, payer_email: payerEmail} = request.body;
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
+      return;
+    }
 
-      if (!payerEmail) {
-        response.status(400).json({
-          success: false,
-          error: "Payer email is required for subscriptions",
-        });
+    try {
+      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`);
+
+      const {courseId, payer_email: payerEmail} = request.body || {};
+
+      if (!courseId || !COURSE_ID_RE.test(courseId)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
+        return;
+      }
+
+      if (!payerEmail || !EMAIL_RE.test(payerEmail)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Formato de email inválido", field: "payer_email"}});
         return;
       }
 
@@ -356,18 +394,12 @@ export const createSubscriptionCheckout = functions
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          success: false,
-          error: "Course not found",
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
         return;
       }
 
       if (!course.price) {
-        response.status(400).json({
-          success: false,
-          error: "Course price not found",
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Course price not found"}});
         return;
       }
 
@@ -375,10 +407,7 @@ export const createSubscriptionCheckout = functions
       const user = userDoc.data();
 
       if (!user) {
-        response.status(404).json({
-          success: false,
-          error: "User not found",
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "User not found"}});
         return;
       }
 
@@ -459,20 +488,17 @@ export const createSubscriptionCheckout = functions
           {merge: true}
         );
 
-        response.json({
-          success: true,
-          init_point: result.init_point,
-          subscription_id: result.id,
-        });
+        response.json({data: {init_point: result.init_point, subscription_id: result.id}});
         return;
       }
 
       functions.logger.error("PreApproval API did not return init_point");
-      response.status(500).json({
-        success: false,
-        error: "Failed to create subscription checkout URL",
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Failed to create subscription checkout URL"}});
     } catch (error: unknown) {
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
       const message = toErrorMessage(error);
       functions.logger.error("Error creating subscription:", error);
 
@@ -485,18 +511,11 @@ export const createSubscriptionCheckout = functions
         normalizedMessage.includes("must belong to this site");
 
       if (requiresAlternateEmail) {
-        response.status(409).json({
-          success: false,
-          error: "Por favor ingresa tu correo de Mercado Pago",
-          requireAlternateEmail: true,
-        });
+        response.status(409).json({error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"}});
         return;
       }
 
-      response.status(500).json({
-        success: false,
-        error: message || "Error creating subscription",
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"}});
     }
   });
 
@@ -642,20 +661,11 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      // Log webhook received - log everything for debugging
-      functions.logger.info("=== WEBHOOK RECEIVED ===");
-      functions.logger.info("Method:", request.method);
-      functions.logger.info("Headers:", JSON.stringify(request.headers, null, 2));
-      functions.logger.info("Body:", JSON.stringify(request.body, null, 2));
-      functions.logger.info("Query:", JSON.stringify(request.query, null, 2));
-      functions.logger.info("Type:", request.body?.type);
-      functions.logger.info("Action:", request.body?.action);
-      functions.logger.info("Full Request:", JSON.stringify({
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-        query: request.query,
-      }, null, 2));
+      functions.logger.info("Webhook received", {
+        type: request.body?.type,
+        action: request.body?.action,
+        dataId: request.body?.data?.id,
+      });
 
       // Handle both payment and subscription webhooks
       const webhookType = request.body?.type;
@@ -935,23 +945,6 @@ export const processPaymentWebhook = functions
         }
         return;
       }
-
-      // Log all payment data for debugging
-      functions.logger.info("=== PAYMENT DATA (FULL) ===");
-      functions.logger.info("Payment ID:", paymentId);
-      functions.logger.info("Payment Source:", paymentSource);
-      functions.logger.info("Payment Status:", paymentData.status);
-      functions.logger.info("Payment Data Keys:", Object.keys(paymentData));
-      functions.logger.info("Payment Full Data:", JSON.stringify(paymentData, null, 2));
-
-      // Log subscription-specific fields
-      functions.logger.info("=== SUBSCRIPTION FIELDS ===");
-      functions.logger.info("subscription_id:", paymentData.subscription_id);
-      functions.logger.info("preapproval_id:", paymentData.preapproval_id);
-      functions.logger.info("external_reference:", paymentData.external_reference);
-      functions.logger.info("payer:", JSON.stringify(paymentData.payer, null, 2));
-      functions.logger.info("subscription_data:", JSON.stringify(paymentData.subscription_data, null, 2));
-      functions.logger.info("date_of_expiration:", paymentData.date_of_expiration);
 
       // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {
@@ -1455,7 +1448,7 @@ export const updateSubscriptionStatus = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -1463,50 +1456,53 @@ export const updateSubscriptionStatus = functions
     }
 
     if (request.method !== "POST") {
-      response.status(405).json({
-        success: false,
-        error: "Method not allowed",
-      });
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
       return;
     }
 
     try {
+      checkGen1RateLimit(`updateSubscriptionStatus_${userId}`);
+
       const {
-        userId,
         subscriptionId,
         action,
         survey,
       }: {
-        userId?: string;
         subscriptionId?: string;
         action?: string;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         survey?: any;
       } = request.body || {};
 
-      if (!userId || !subscriptionId || !action) {
-        response.status(400).json({
-          success: false,
-          error: "Missing userId, subscriptionId, or action",
-        });
+      if (!subscriptionId || typeof subscriptionId !== "string") {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "subscriptionId es requerido", field: "subscriptionId"}});
         return;
       }
 
+      if (!action || typeof action !== "string") {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "action es requerido", field: "action"}});
+        return;
+      }
+
+      const ALLOWED_ACTIONS = ["cancel", "pause", "resume"] as const;
       const actionToStatus: Record<string, string> = {
         cancel: "cancelled",
         pause: "paused",
         resume: "authorized",
       };
 
-      const targetStatus = actionToStatus[action];
-
-      if (!targetStatus) {
-        response.status(400).json({
-          success: false,
-          error: "Unsupported action",
-        });
+      if (!ALLOWED_ACTIONS.includes(action as typeof ALLOWED_ACTIONS[number])) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Unsupported action. Must be cancel, pause, or resume", field: "action"}});
         return;
       }
+
+      const targetStatus = actionToStatus[action];
 
       const subscriptionRef = db
         .collection("users")
@@ -1517,10 +1513,7 @@ export const updateSubscriptionStatus = functions
       const subscriptionDoc = await subscriptionRef.get();
 
       if (!subscriptionDoc.exists) {
-        response.status(404).json({
-          success: false,
-          error: "Subscription not found for user",
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Subscription not found for user"}});
         return;
       }
 
@@ -1604,17 +1597,14 @@ export const updateSubscriptionStatus = functions
         }
       }
 
-      response.json({
-        success: true,
-        status: targetStatus,
-      });
+      response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
       functions.logger.error("Error updating subscription status:", error);
-      response.status(500).json({
-        success: false,
-        error: message,
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al actualizar el estado de la suscripción"}});
     }
   });
 
@@ -1874,7 +1864,7 @@ export const nutritionFoodSearch = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
       return;
     }
 
@@ -1882,10 +1872,7 @@ export const nutritionFoodSearch = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1897,10 +1884,11 @@ export const nutritionFoodSearch = functions
         language = "es",
       } = request.body || {};
       if (!search_expression || typeof search_expression !== "string") {
-        response.status(400).json({
-          success: false,
-          error: "search_expression is required",
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression es requerido", field: "search_expression"}});
+        return;
+      }
+      if (search_expression.length > 200) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression demasiado largo (máx 200 caracteres)", field: "search_expression"}});
         return;
       }
 
@@ -1931,22 +1919,15 @@ export const nutritionFoodSearch = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          success: false,
-          error: "Food search failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodSearch error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Food search failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
     }
   });
 
@@ -1959,7 +1940,7 @@ export const nutritionFoodGet = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
       return;
     }
 
@@ -1967,10 +1948,7 @@ export const nutritionFoodGet = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1981,10 +1959,7 @@ export const nutritionFoodGet = functions
         include_sub_categories,
       } = request.body || {};
       if (food_id === undefined || food_id === null || food_id === "") {
-        response.status(400).json({
-          success: false,
-          error: "food_id is required",
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "food_id es requerido", field: "food_id"}});
         return;
       }
 
@@ -2011,7 +1986,7 @@ export const nutritionFoodGet = functions
 
       if (!res.ok) {
         if (res.status === 404) {
-          response.status(404).json({success: false, error: "Food not found"});
+          response.status(404).json({error: {code: "NOT_FOUND", message: "Alimento no encontrado"}});
           return;
         }
         const text = await res.text();
@@ -2019,22 +1994,15 @@ export const nutritionFoodGet = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          success: false,
-          error: "Food details failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodGet error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Food details failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
     }
   });
 
@@ -2047,7 +2015,7 @@ export const nutritionBarcodeLookup = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
       return;
     }
 
@@ -2055,10 +2023,7 @@ export const nutritionBarcodeLookup = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -2067,11 +2032,8 @@ export const nutritionBarcodeLookup = functions
         region = "ES",
         language = "es",
       } = request.body || {};
-      if (!barcode || typeof barcode !== "string") {
-        response.status(400).json({
-          success: false,
-          error: "barcode is required",
-        });
+      if (!barcode || typeof barcode !== "string" || !BARCODE_RE.test(barcode.trim())) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "El código de barras debe contener entre 8 y 14 dígitos", field: "barcode"}});
         return;
       }
 
@@ -2098,31 +2060,47 @@ export const nutritionBarcodeLookup = functions
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as {error?: {code?: number}};
         if (res.status === 404 || errBody?.error?.code === 211) {
-          response.status(404).json({success: false, error: "No food found for barcode"});
+          response.status(404).json({error: {code: "NOT_FOUND", message: "Ningún alimento encontrado para ese código de barras"}});
           return;
         }
         functions.logger.error("FatSecret barcode failed", {
           status: res.status,
           body: errBody,
         });
-        response.status(502).json({
-          success: false,
-          error: "Barcode lookup failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionBarcodeLookup error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Barcode lookup failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
     }
   });
+
+// ─── onUserCreated ────────────────────────────────────────────────────────────
+// Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
+// Creates the Firestore user doc so all downstream reads have a document to work with.
+export const onUserCreated = functions.auth.user().onCreate(async (user) => {
+  // Allowlisted fields only — never spread the Firebase Auth user object
+  const userDoc: Record<string, unknown> = {
+    role: "user",
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  if (user.email) userDoc.email = user.email;
+  if (user.displayName) userDoc.displayName = user.displayName;
+
+  try {
+    await db.collection("users").doc(user.uid).set(userDoc, {merge: true});
+    functions.logger.info("onUserCreated: user doc created", {uid: user.uid});
+  } catch (err: unknown) {
+    functions.logger.error("onUserCreated: failed to create user doc", {
+      uid: user.uid,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
 
 // ─── sendEventConfirmationEmail ────────────────────────────────────────────
 // Fires on every new registration and sends an HTML email with the event
