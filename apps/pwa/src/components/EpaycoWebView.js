@@ -37,7 +37,7 @@ const EpaycoWebView = ({
     if (!visible || !checkoutURL || !isWeb) return;
     if (hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
-    logger.log('🌐 [EpaycoWebView] Redirecting immediately to Mercado Pago');
+    logger.debug('🌐 [EpaycoWebView] Redirecting immediately to Mercado Pago');
     window.location.href = checkoutURL;
   }, [visible, checkoutURL, isWeb]);
 

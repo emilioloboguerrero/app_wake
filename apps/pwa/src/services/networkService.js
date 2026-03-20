@@ -223,7 +223,7 @@ class NetworkService {
   async executeRequest(url, options, retries) {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        logger.log(`Network request attempt ${attempt}/${retries}: ${options.method} ${url}`);
+        logger.debug(`Network request attempt ${attempt}/${retries}: ${options.method} ${url}`);
         
         const response = await this.fetchWithTimeout(url, options);
         
@@ -232,7 +232,7 @@ class NetworkService {
         }
 
         const data = await response.json();
-        logger.log(`Network request successful: ${options.method} ${url}`);
+        logger.debug(`Network request successful: ${options.method} ${url}`);
         
         return {
           success: true,
@@ -342,7 +342,7 @@ class NetworkService {
     formData.append('file', file);
 
     try {
-      logger.log(`Uploading file to ${endpoint}`);
+      logger.debug(`Uploading file to ${endpoint}`);
       
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         method: 'POST',
@@ -357,7 +357,7 @@ class NetworkService {
       }
 
       const result = await response.json();
-      logger.log('File upload successful');
+      logger.debug('File upload successful');
       
       return {
         success: true,

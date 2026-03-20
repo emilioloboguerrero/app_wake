@@ -24,7 +24,7 @@ const LoginScreen = () => {
   // Redirect to home if already logged in (home = /app when deployed under /app)
   useEffect(() => {
     // Always log current state for debugging
-    logger.log('[LOGIN SCREEN WEB] BREAKPOINT: useEffect triggered. uid:', user?.uid || auth.currentUser?.uid, {
+    logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: useEffect triggered. uid:', user?.uid || auth.currentUser?.uid, {
       hasRedirected: hasRedirectedRef.current,
       hasUser: !!user,
       hasFirebaseUser: !!auth.currentUser,
@@ -42,20 +42,20 @@ const LoginScreen = () => {
     
     if (!loading && currentUser) {
       const uid = currentUser?.uid;
-      logger.log('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget:', appHomePath);
+      logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: User authenticated, will redirect. uid:', uid, 'redirectTarget:', appHomePath);
       hasRedirectedRef.current = true; // Mark as redirected
       setTimeout(() => {
-        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace(appHomePath). uid:', uid);
+        logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace(appHomePath). uid:', uid);
         window.location.replace(appHomePath);
       }, 100); // Small delay to ensure state is stable
     } else if (!loading && !currentUser) {
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
         const uid = firebaseUser.uid;
-        logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Firebase user but AuthContext not updated, redirecting. uid:', uid);
+        logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: Firebase user but AuthContext not updated, redirecting. uid:', uid);
         hasRedirectedRef.current = true;
         setTimeout(() => {
-          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace from Firebase fallback. uid:', uid);
+          logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: Executing window.location.replace from Firebase fallback. uid:', uid);
           window.location.replace(appHomePath);
         }, 100);
       } else {
@@ -85,7 +85,7 @@ const LoginScreen = () => {
         
         const firebaseUser = auth.currentUser;
         if (firebaseUser && !loading) {
-          logger.log('[LOGIN SCREEN WEB] BREAKPOINT: Polling found user, redirecting. uid:', firebaseUser.uid);
+          logger.debug('[LOGIN SCREEN WEB] BREAKPOINT: Polling found user, redirecting. uid:', firebaseUser.uid);
           hasRedirectedRef.current = true;
           clearInterval(pollInterval);
           window.location.replace(appHomePath);

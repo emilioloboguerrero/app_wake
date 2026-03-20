@@ -5,7 +5,7 @@ import logger from '../utils/logger';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
-    logger.log(`🔍 [isCourseEntryActive] Checking course entry:`, {
+    logger.debug(`🔍 [isCourseEntryActive] Checking course entry:`, {
       hasEntry: !!courseEntry,
       status: courseEntry?.status,
       is_trial: courseEntry?.is_trial,
@@ -14,7 +14,7 @@ class PurchaseService {
     });
 
     if (!courseEntry) {
-      logger.log(`❌ [isCourseEntryActive] No course entry - returning false`);
+      logger.debug(`❌ [isCourseEntryActive] No course entry - returning false`);
       return false;
     }
 
@@ -22,7 +22,7 @@ class PurchaseService {
     const now = new Date();
     const isNotExpired = !expiresAt || expiresAt > now;
 
-    logger.log(`🔍 [isCourseEntryActive] Expiration check:`, {
+    logger.debug(`🔍 [isCourseEntryActive] Expiration check:`, {
       expiresAt: expiresAt ? expiresAt.toISOString() : null,
       now: now.toISOString(),
       isNotExpired,
@@ -30,21 +30,21 @@ class PurchaseService {
     });
 
     if (!isNotExpired) {
-      logger.log(`❌ [isCourseEntryActive] Course expired - returning false`);
+      logger.debug(`❌ [isCourseEntryActive] Course expired - returning false`);
       return false;
     }
 
     if (courseEntry.status === 'active') {
-      logger.log(`✅ [isCourseEntryActive] Course is active - returning true`);
+      logger.debug(`✅ [isCourseEntryActive] Course is active - returning true`);
       return true;
     }
 
     if (courseEntry.is_trial) {
-      logger.log(`✅ [isCourseEntryActive] Course is trial - returning true`);
+      logger.debug(`✅ [isCourseEntryActive] Course is trial - returning true`);
       return true;
     }
 
-    logger.log(`❌ [isCourseEntryActive] Course not active and not trial - returning false`);
+    logger.debug(`❌ [isCourseEntryActive] Course not active and not trial - returning false`);
     return false;
   }
 
@@ -225,7 +225,7 @@ class PurchaseService {
       }
 
       const requestBody = { userId, courseId, payer_email: payerEmail };
-      logger.log('💳 [prepareSubscription] Request to createSubscriptionCheckout', {
+      logger.debug('💳 [prepareSubscription] Request to createSubscriptionCheckout', {
         params: requestBody,
         hasUserId: !!userId,
         hasCourseId: !!courseId,
@@ -292,7 +292,7 @@ class PurchaseService {
    */
   async preparePurchase(userId, courseId) {
     try {
-      logger.log('💳 [preparePurchase] Input', {
+      logger.debug('💳 [preparePurchase] Input', {
         userId: userId ?? null,
         courseId: courseId ?? null,
         hasUserId: !!userId,
@@ -311,7 +311,7 @@ class PurchaseService {
       if (courseDetails.access_duration === "monthly") {
         const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
         const payerEmail = userDoc?.email || null;
-        logger.log('💳 [preparePurchase] Calling purchase web function: createSubscriptionCheckout', {
+        logger.debug('💳 [preparePurchase] Calling purchase web function: createSubscriptionCheckout', {
           endpoint: 'createSubscriptionCheckout',
           params: { userId, courseId, payer_email: payerEmail },
           hasUserId: !!userId,
@@ -321,7 +321,7 @@ class PurchaseService {
         return await this.prepareSubscription(userId, courseId, payerEmail);
       } else {
         const body = { userId, courseId };
-        logger.log('💳 [preparePurchase] Calling purchase web function: createPaymentPreference', {
+        logger.debug('💳 [preparePurchase] Calling purchase web function: createPaymentPreference', {
           endpoint: 'createPaymentPreference',
           params: body,
           hasUserId: !!userId,

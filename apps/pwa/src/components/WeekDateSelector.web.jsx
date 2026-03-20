@@ -133,7 +133,7 @@ export default function WeekDateSelector({
     const hasInitialArrays = Array.isArray(initialDatesWithPlanned) && Array.isArray(initialDatesWithEntries);
     const monthMatch = key === initialMonthKey;
     if (monthMatch && hasInitialArrays) {
-      logger.log('[WeekDateSelector.web] calendar open: using initial data', { key, initialMonthKey, plannedCount: initialDatesWithPlanned.length, entriesCount: initialDatesWithEntries.length });
+      logger.debug('[WeekDateSelector.web] calendar open: using initial data', { key, initialMonthKey, plannedCount: initialDatesWithPlanned.length, entriesCount: initialDatesWithEntries.length });
       fetchCacheRef.current[key] = { planned: initialDatesWithPlanned, entries: initialDatesWithEntries };
       setDatesWithPlanned(initialDatesWithPlanned);
       setDatesWithEntries(initialDatesWithEntries);
@@ -142,14 +142,14 @@ export default function WeekDateSelector({
 
     // 2. Cache hit — already fetched this month during this session
     if (fetchCacheRef.current[key]) {
-      logger.log('[WeekDateSelector.web] calendar open: using cache', { key, plannedCount: fetchCacheRef.current[key].planned?.length, entriesCount: fetchCacheRef.current[key].entries?.length });
+      logger.debug('[WeekDateSelector.web] calendar open: using cache', { key, plannedCount: fetchCacheRef.current[key].planned?.length, entriesCount: fetchCacheRef.current[key].entries?.length });
       setDatesWithPlanned(fetchCacheRef.current[key].planned);
       setDatesWithEntries(fetchCacheRef.current[key].entries);
       return;
     }
 
     // 3. Live fetch — both queries in parallel
-    logger.log('[WeekDateSelector.web] calendar open: live fetch', {
+    logger.debug('[WeekDateSelector.web] calendar open: live fetch', {
       key,
       initialMonthKey,
       monthMatch,
@@ -165,7 +165,7 @@ export default function WeekDateSelector({
     ]).then(([planned, entries]) => {
       const plannedList = Array.isArray(planned) ? planned : [];
       const entriesList = Array.isArray(entries) ? entries : [];
-      logger.log('[WeekDateSelector.web] live fetch resolved', { key, plannedCount: plannedList.length, entriesCount: entriesList.length, stillCurrentMonth: monthKey(calendarMonthRef.current) === key });
+      logger.debug('[WeekDateSelector.web] live fetch resolved', { key, plannedCount: plannedList.length, entriesCount: entriesList.length, stillCurrentMonth: monthKey(calendarMonthRef.current) === key });
       if (monthKey(calendarMonthRef.current) === key) {
         fetchCacheRef.current[key] = { planned: plannedList, entries: entriesList };
         setDatesWithPlanned(plannedList);

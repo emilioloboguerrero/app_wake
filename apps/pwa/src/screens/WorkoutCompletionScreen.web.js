@@ -23,7 +23,7 @@ const WorkoutCompletionScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [WorkoutCompletion Web] Navigating to:', routeName, params);
+      logger.debug('🧭 [WorkoutCompletion Web] Navigating to:', routeName, params);
       
       const routeMap = {
         'DailyWorkout': () => {
@@ -43,7 +43,7 @@ const WorkoutCompletionScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [WorkoutCompletion Web] setParams:', params);
+      logger.debug('🧭 [WorkoutCompletion Web] setParams:', params);
     },
   };
   

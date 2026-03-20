@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { cacheConfig } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -219,7 +219,7 @@ export default function PlanEditorScreen() {
   }, [planId, creatorId, isAssignmentScope, assignmentId, navigate, returnTo]);
 
   const { data: mealsData } = useQuery({
-    queryKey: ['nutrition', 'meals', creatorId],
+    queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...cacheConfig.otherPrograms,
@@ -451,6 +451,7 @@ export default function PlanEditorScreen() {
       setFoodSearchResults(foods);
     } catch (e) {
       setFoodSearchResults([]);
+      showToast('Error al buscar alimentos. Intenta de nuevo.', 'error');
     } finally {
       setFoodSearchLoading(false);
     }

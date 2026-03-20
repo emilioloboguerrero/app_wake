@@ -64,7 +64,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   const handleDataPointClick = (data, index) => {
     setSelectedIndex(index);
     showTooltip();
-    logger.log('📊 Data point clicked:', { index, data });
+    logger.debug('📊 Data point clicked:', { index, data });
   };
 
   // Dismiss tooltip
@@ -105,9 +105,9 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
     session.sets && session.sets.some(hasSetData)
   );
 
-  logger.log('📊 ExerciseProgressChart: sessions received:', sessions?.length || 0);
-  logger.log('📊 ExerciseProgressChart: validSessions:', validSessions.length);
-  logger.log('📊 ExerciseProgressChart: loading:', loading);
+  logger.debug('📊 ExerciseProgressChart: sessions received:', sessions?.length || 0);
+  logger.debug('📊 ExerciseProgressChart: validSessions:', validSessions.length);
+  logger.debug('📊 ExerciseProgressChart: loading:', loading);
 
   if (sessions?.length > 0 && validSessions.length === 0) {
     const first = sessions[0];
@@ -205,7 +205,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
       ? repsValues.reduce((sum, reps) => sum + reps, 0) / repsValues.length 
       : 0;
 
-    logger.log('📊 Session data:', { 
+    logger.debug('📊 Session data:', { 
       date: session.date, 
       maxWeight, 
       avgReps, 
@@ -227,7 +227,7 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   // Apply dynamic label density filtering
   const filteredLabels = getFilteredLabels(allLabels, selectedPeriod);
 
-  logger.log('📊 Progress chart data:', { 
+  logger.debug('📊 Progress chart data:', { 
     allLabels: allLabels.length, 
     filteredLabels: filteredLabels.length, 
     selectedPeriod,

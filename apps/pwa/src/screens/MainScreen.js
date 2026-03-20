@@ -428,7 +428,7 @@ const MainScreen = ({ navigation, route }) => {
   // Log auth state on mount for diagnostics
   useEffect(() => {
     const uid = user?.uid;
-    logger.log('[MAIN_SCREEN] Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
+    logger.debug('[MAIN_SCREEN] Screen mounted. uid:', uid, 'fromContext:', !!contextUser, 'fromAuthCurrentUser:', !!auth.currentUser);
     if (!uid) {
       logger.warn('[MAIN_SCREEN] No uid available on MainScreen mount');
     }
@@ -470,7 +470,7 @@ const MainScreen = ({ navigation, route }) => {
         const parentIsolation = parentCs ? parentCs.isolation || parentCs.getPropertyValue('isolation') : '';
         const cardContainer = el.closest?.('[class*="cardContentWithImage"]') || el.parentElement?.parentElement;
         const firstChildOfCard = cardContainer?.children?.[0];
-        logger.log('[CARD_CONTRAST] DOM after paint', {
+        logger.debug('[CARD_CONTRAST] DOM after paint', {
           courseId,
           index: i,
           mixBlendMode: mixBlend,
@@ -485,7 +485,7 @@ const MainScreen = ({ navigation, route }) => {
         });
       });
       if (blendEls.length === 0) {
-        logger.log('[CARD_CONTRAST] DOM after paint', {
+        logger.debug('[CARD_CONTRAST] DOM after paint', {
           noElementsFound: true,
           nextStep: 'No [data-card-blend="true"] in DOM. Check that dataSet is set and selector in global.css matches.',
         });
@@ -540,10 +540,10 @@ const MainScreen = ({ navigation, route }) => {
         const localPath = assetBundleService.getLibraryLocalPath();
         if (isMounted && localPath) {
           setLibraryImageUri(localPath);
-          logger.log('✅ Loaded library image from local asset bundle:', localPath);
+          logger.debug('✅ Loaded library image from local asset bundle:', localPath);
           return;
         }
-        logger.log('ℹ️ Using bundled library image fallback (no local asset yet)');
+        logger.debug('ℹ️ Using bundled library image fallback (no local asset yet)');
       } catch (error) {
         logger.error('❌ Error loading library image from app_resources:', error);
       }
@@ -606,9 +606,9 @@ const MainScreen = ({ navigation, route }) => {
 
   // Handle refresh parameter from navigation (e.g., after purchase)
   useEffect(() => {
-    logger.log('🔍 MainScreen route params:', route?.params);
+    logger.debug('🔍 MainScreen route params:', route?.params);
     if (route?.params?.refresh && user?.uid) {
-      logger.log('🔄 Refresh requested after purchase, reloading courses...');
+      logger.debug('🔄 Refresh requested after purchase, reloading courses...');
       refreshCoursesFromDatabase();
       navigation.setParams({ refresh: undefined });
     }
@@ -641,7 +641,7 @@ const MainScreen = ({ navigation, route }) => {
   // Debounced so rapid back-to-back events only trigger one refresh
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribe((courseId) => {
-      logger.log('🛒 Purchase event received for course:', courseId);
+      logger.debug('🛒 Purchase event received for course:', courseId);
       if (user?.uid) {
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
@@ -652,7 +652,7 @@ const MainScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     const unsubscribe = purchaseEventManager.subscribeReady((courseId) => {
-      logger.log('🎉 Purchase ready event received for course:', courseId);
+      logger.debug('🎉 Purchase ready event received for course:', courseId);
       if (user?.uid) {
         if (purchaseRefreshTimerRef.current) clearTimeout(purchaseRefreshTimerRef.current);
         purchaseRefreshTimerRef.current = setTimeout(() => { refreshCoursesFromDatabase(); }, 300);
@@ -664,7 +664,7 @@ const MainScreen = ({ navigation, route }) => {
   // Listen for update completion events
   useEffect(() => {
     const unsubscribe = updateEventManager.subscribe((courseId) => {
-      logger.log('🔄 Update completed for course:', courseId);
+      logger.debug('🔄 Update completed for course:', courseId);
       setHasPendingUpdates(true);
     });
 
@@ -777,12 +777,12 @@ const MainScreen = ({ navigation, route }) => {
   // Re-fetch courses when screen regains focus, but only after a confirmed program update
   const focusEffectCallback = React.useCallback(() => {
     if (user?.uid && hasPendingUpdates) {
-      logger.log('🔄 MainScreen focused - refreshing due to completed updates...');
+      logger.debug('🔄 MainScreen focused - refreshing due to completed updates...');
       refreshCoursesFromDatabase();
       updateEventManager.clearPendingUpdates();
       setHasPendingUpdates(false);
     } else {
-      logger.log('⏭️ MainScreen focused - no pending updates, skipping refresh');
+      logger.debug('⏭️ MainScreen focused - no pending updates, skipping refresh');
     }
   }, [user?.uid, hasPendingUpdates]);
 
@@ -812,16 +812,16 @@ const MainScreen = ({ navigation, route }) => {
     if (!user?.uid) return;
 
     try {
-      logger.log('🎬 Checking for main screen tutorials...');
+      logger.debug('🎬 Checking for main screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'mainScreen');
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
+        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
       } else {
-        logger.log('✅ No tutorials to show for main screen');
+        logger.debug('✅ No tutorials to show for main screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -840,7 +840,7 @@ const MainScreen = ({ navigation, route }) => {
           'mainScreen', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
+        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -980,11 +980,11 @@ const MainScreen = ({ navigation, route }) => {
       
       if (preloadPromises.length > 0) {
         Promise.all(preloadPromises).catch(error => {
-          logger.log('⚠️ Image preload failed:', error);
+          logger.debug('⚠️ Image preload failed:', error);
         });
       }
     } catch (error) {
-      logger.log('⚠️ Error in image preloading:', error);
+      logger.debug('⚠️ Error in image preloading:', error);
     }
   };
 
@@ -1127,7 +1127,7 @@ const MainScreen = ({ navigation, route }) => {
       if (!imageUrl) {
         logger.warn(`⚠️ No image URL found for course ${course.id || course.courseId || 'unknown'}`);
       } else {
-        logger.log(`🖼️ Course ${course.id || course.courseId || 'unknown'} has image URL:`, imageUrl);
+        logger.debug(`🖼️ Course ${course.id || course.courseId || 'unknown'} has image URL:`, imageUrl);
       }
 
       // Web: per-pixel text color from image behind (mix-blend-mode: difference).
@@ -1141,7 +1141,7 @@ const MainScreen = ({ navigation, route }) => {
       const contrastPhase = imageLoadedForBlend ? 'after-image-load' : 'before-image-load';
       const blendKey = imageLoadedForBlend ? 'blend-loaded' : 'blend-pending';
       const textColorFromStyles = '#ffffff';
-      logger.log('[CARD_CONTRAST]', {
+      logger.debug('[CARD_CONTRAST]', {
         courseId: courseIdForCard,
         phase: contrastPhase,
         blendKey,
@@ -1319,7 +1319,7 @@ const MainScreen = ({ navigation, route }) => {
                   recyclingKey={course.id || course.courseId || 'unknown'}
                   onLoad={() => {
                     const id = course.id || course.courseId;
-                    logger.log('[CARD_IMAGE_LOAD]', {
+                    logger.debug('[CARD_IMAGE_LOAD]', {
                       courseId: id,
                       step: 'image-painted',
                       message: 'Image on screen; calling setState to force re-render so blend repaints.',
@@ -1328,7 +1328,7 @@ const MainScreen = ({ navigation, route }) => {
                       const next = new Set(prev);
                       if (next.has(id)) return prev;
                       next.add(id);
-                      logger.log('[CARD_CONTRAST]', {
+                      logger.debug('[CARD_CONTRAST]', {
                         courseId: id,
                         step: 'state-update',
                         message: 'Adding course to cardImageLoadedIds → re-render will follow with phase after-image-load',
@@ -1464,7 +1464,7 @@ const MainScreen = ({ navigation, route }) => {
         </Animated.View>
       );
     } else if (item.type === 'library') {
-      logger.log('📚 Rendering library card with image:', libraryImageUri || libraryImage);
+      logger.debug('📚 Rendering library card with image:', libraryImageUri || libraryImage);
       return (
         <Animated.View style={[styles.swipeableCard, cardStyle]}>
           <View style={styles.cardContentWithImage}>

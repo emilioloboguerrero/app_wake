@@ -36,7 +36,7 @@ const OnboardingNavigator = ({ onComplete }) => {
   const effectiveUid = getEffectiveUid(user);
 
   useEffect(() => {
-    logger.log('[ONBOARDING_NAV] mounted. uid:', effectiveUid);
+    logger.debug('[ONBOARDING_NAV] mounted. uid:', effectiveUid);
     if (!effectiveUid) logger.warn('[ONBOARDING_NAV] No uid in OnboardingNavigator');
   }, [effectiveUid]);
 

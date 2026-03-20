@@ -227,21 +227,21 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const checkForTutorials = useCallback(async () => {
     const effectiveUser = user || auth.currentUser;
     if (!effectiveUser?.uid) {
-      logger.log('⚠️ [ProgramLibraryScreen] No user available for tutorials check');
+      logger.debug('⚠️ [ProgramLibraryScreen] No user available for tutorials check');
       return;
     }
 
     try {
-      logger.log(`🎬 [ProgramLibraryScreen] Checking for library screen tutorials for user: ${effectiveUser.uid}`);
+      logger.debug(`🎬 [ProgramLibraryScreen] Checking for library screen tutorials for user: ${effectiveUser.uid}`);
       const tutorials = await tutorialManager.getTutorialsForScreen(effectiveUser.uid, 'library');
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
+        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
       } else {
-        logger.log('✅ No tutorials to show for library screen');
+        logger.debug('✅ No tutorials to show for library screen');
       }
     } catch (error) {
       logger.error('❌ [ProgramLibraryScreen] Error checking for tutorials:', error);
@@ -333,7 +333,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     // Check cache first
     const cached = moduleCache.current.get(courseId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      logger.log('✅ Using cached modules for course:', courseId);
+      logger.debug('✅ Using cached modules for course:', courseId);
       return cached.data;
     }
     
@@ -343,7 +343,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     }
     
     try {
-      logger.log('🔄 Fetching modules for course:', courseId);
+      logger.debug('🔄 Fetching modules for course:', courseId);
       // TODO: no endpoint for getCourseModules — no matching REST endpoint
       const modules = await apiService.getCourseModules(courseId, user?.uid);
       
@@ -406,7 +406,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   const handleRefresh = async () => {
     try {
-      logger.log('🔄 Refreshing courses from database...');
+      logger.debug('🔄 Refreshing courses from database...');
       
       // Reload courses directly from database
       await fetchCourses();
@@ -429,7 +429,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
           'library', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
+        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);

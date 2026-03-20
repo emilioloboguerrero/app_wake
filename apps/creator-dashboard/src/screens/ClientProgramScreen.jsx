@@ -160,6 +160,7 @@ const ClientProgramScreen = () => {
     queryKey: ['clients', 'detail', clientId],
     queryFn: () => oneOnOneService.getClientById(clientId),
     enabled: !!clientId && !!user,
+    ...cacheConfig.userProfile,
   });
   const error = clientError?.message ?? (!loading && client && client.creatorId !== user?.uid ? 'No tienes permiso para ver este cliente' : (!loading && !client ? 'Cliente no encontrado' : null));
 
@@ -215,12 +216,14 @@ const ClientProgramScreen = () => {
     queryKey: ['nutrition', 'plans', user?.uid],
     queryFn: () => nutritionDb.getPlansByCreator(user.uid),
     enabled: isNutricionTab && !!user?.uid,
+    ...cacheConfig.programStructure,
   });
 
   const { data: clientNutritionAssignments = [] } = useQuery({
     queryKey: ['nutrition', 'assignments', client?.clientUserId],
     queryFn: () => nutritionDb.getAssignmentsByUser(client.clientUserId),
     enabled: isNutricionTab && !!client?.clientUserId,
+    ...cacheConfig.programStructure,
   });
 
   const { data: plans = [] } = useQuery({

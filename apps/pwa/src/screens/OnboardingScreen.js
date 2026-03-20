@@ -115,7 +115,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   // Log uid sources on mount and when user/uid changes (verify uid is passed correctly)
   useEffect(() => {
-    logger.log('[ONBOARDING] uid check:', {
+    logger.debug('[ONBOARDING] uid check:', {
       effectiveUid: effectiveUid ?? null,
       fromUseAuth: user?.uid ?? null,
       fromAuthCurrentUser: auth.currentUser?.uid ?? null,
@@ -131,7 +131,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   // Log when AuthContext user reference changes (e.g. after sign-in restore)
   useEffect(() => {
-    logger.log('[ONBOARDING] useAuth user changed:', user?.uid ?? 'null', 'email:', user?.email ?? 'null');
+    logger.debug('[ONBOARDING] useAuth user changed:', user?.uid ?? 'null', 'email:', user?.email ?? 'null');
   }, [user]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
@@ -1286,7 +1286,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
 
     const uidForSubmit = user?.uid || auth.currentUser?.uid;
-    logger.log('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
+    logger.debug('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
     if (!uidForSubmit) {
       logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
@@ -1439,7 +1439,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
               // On web/PWA, force full reload to /login (same as ProfileScreen sign-out flow)
               if (typeof window !== 'undefined') {
                 const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-                logger.log('[ONBOARDING] Web: reloading to /login after cancel');
+                logger.debug('[ONBOARDING] Web: reloading to /login after cancel');
                 window.location.replace(loginPath);
                 return;
               }

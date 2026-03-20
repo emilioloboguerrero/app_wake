@@ -26,9 +26,8 @@ async function generateSecureNonce(length = 32) {
 class AppleAuthService {
   constructor() {
     // Apple Sign-In will be loaded dynamically when needed
-    logger.log('AppleAuthService initialized');
     if (isExpoGo) {
-      logger.log('Apple Sign-In disabled in Expo Go - will work in production builds');
+      logger.debug('Apple Sign-In disabled in Expo Go - will work in production builds');
     }
   }
 
@@ -47,7 +46,7 @@ class AppleAuthService {
       appleAuth = appleSignInModule.appleAuth;
       AppleButton = appleSignInModule.AppleButton;
       
-      logger.log('Apple Sign-In loaded successfully');
+      logger.debug('Apple Sign-In loaded successfully');
       
       return { appleAuth, AppleButton };
     } catch (error) {
@@ -84,7 +83,7 @@ class AppleAuthService {
     }
 
     try {
-      logger.log('Apple Sign-In initiated');
+      logger.debug('Apple Sign-In initiated');
       
       // Generate secure nonce required by Firebase to mitigate replay attacks
       const rawNonce = await generateSecureNonce();
@@ -180,7 +179,7 @@ class AppleAuthService {
         throw new Error('Apple Sign-In failed - no identify token returned');
       }
 
-      logger.log('Identity token received, signing in to Firebase...');
+      logger.debug('Identity token received, signing in to Firebase...');
       
       // Create a Firebase credential from the response
       const { identityToken } = appleAuthRequestResponse;
@@ -209,7 +208,7 @@ class AppleAuthService {
         }
       }
       
-      logger.log('Apple sign-in successful:', firebaseUser.uid);
+      logger.debug('Apple sign-in successful:', firebaseUser.uid);
       
       // Create or update user document in Firestore (same as Google — create if missing)
       await this.createOrUpdateUserDocument(firebaseUser);
@@ -268,12 +267,12 @@ class AppleAuthService {
   // Sign out from Apple and Firebase
   async signOut() {
     try {
-      logger.log('Signing out from Apple and Firebase...');
+      logger.debug('Signing out from Apple and Firebase...');
       
       // Apple Sign-In doesn't require explicit sign-out
       // The sign-out is handled by Firebase Auth
       
-      logger.log('Sign out successful');
+      logger.debug('Sign out successful');
       return { success: true };
       
     } catch (error) {
@@ -324,7 +323,7 @@ class AppleAuthService {
         return { success: false, error: 'Apple Sign-In not available' };
       }
 
-      logger.log('Revoking Apple Sign-In token...');
+      logger.debug('Revoking Apple Sign-In token...');
       
       // Dynamically load Apple Sign-In module
       const { appleAuth: appleAuthModule } = await this.loadAppleSignIn();
@@ -342,7 +341,7 @@ class AppleAuthService {
       // Revoke the token
       await appleAuthModule.revokeToken(auth, authorizationCode);
       
-      logger.log('Apple Sign-In token revoked successfully');
+      logger.debug('Apple Sign-In token revoked successfully');
       return { success: true };
       
     } catch (error) {
@@ -368,7 +367,7 @@ class AppleAuthService {
 
       // Check if user already exists in Firestore
       const existingUser = await apiService.getUser(firebaseUser.uid);
-      logger.log('[APPLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
+      logger.debug('[APPLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
       
       if (existingUser) {
         // User exists - update login time and provider info
@@ -376,10 +375,10 @@ class AppleAuthService {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.log('[APPLE AUTH] Updated existing user document');
+        logger.debug('[APPLE AUTH] Updated existing user document');
       } else {
         // New Apple user - updateUser now creates doc if missing
-        logger.log('[APPLE AUTH] No document for new Apple user — calling updateUser (will create doc)');
+        logger.debug('[APPLE AUTH] No document for new Apple user — calling updateUser (will create doc)');
         await apiService.updateUser(firebaseUser.uid, userData);
       }
       

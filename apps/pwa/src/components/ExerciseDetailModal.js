@@ -22,7 +22,6 @@ const ExerciseDetailModal = ({
   lastUpdated 
 }) => {
   const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailModal render started - ${componentStartTime.toFixed(2)}ms`);
   
   // CRITICAL: Early return BEFORE expensive operations to avoid blocking paint
   const visibilityCheckStart = performance.now();
@@ -44,23 +43,21 @@ const ExerciseDetailModal = ({
   const stylesStartTime = performance.now();
   const styles = createStyles(screenWidth, screenHeight, insets);
   const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailModal createStyles took ${stylesDuration.toFixed(2)}ms`);
   if (stylesDuration > 10) {
     logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
   
   const handleViewAllHistory = () => {
     // Navigate to full history screen (if implemented)
-    logger.log('📊 View all history for:', exerciseKey);
+    logger.debug('📊 View all history for:', exerciseKey);
   };
 
   const handleResetPR = () => {
     // Modal doesn't support reset functionality
-    logger.log('📊 Reset PR requested for:', exerciseKey);
+    logger.debug('📊 Reset PR requested for:', exerciseKey);
   };
 
   const jsxStartTime = performance.now();
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
   
   return (
     <Modal
@@ -71,7 +68,6 @@ const ExerciseDetailModal = ({
     >
       {(() => {
         const jsxContentStartTime = performance.now();
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX content starting - ${jsxContentStartTime.toFixed(2)}ms`);
         return null;
       })()}
       <View style={styles.container}>
@@ -108,7 +104,6 @@ const ExerciseDetailModal = ({
       {(() => {
         const jsxEndTime = performance.now();
         const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
         if (jsxDuration > 50) {
           logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal JSX creation took ${jsxDuration.toFixed(2)}ms`);
         }
@@ -121,7 +116,6 @@ const ExerciseDetailModal = ({
   useEffect(() => {
     const componentEndTime = performance.now();
     const componentDuration = componentEndTime - componentStartTime;
-    logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailModal render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
     if (componentDuration > 50) {
       logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
     }

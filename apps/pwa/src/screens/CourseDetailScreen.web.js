@@ -24,10 +24,10 @@ const CourseDetailScreen = () => {
     queryKey: ['programs', courseId],
     queryFn: async () => {
       if (courseFromState) {
-        logger.log('✅ Using course from navigation state:', courseFromState);
+        logger.debug('✅ Using course from navigation state:', courseFromState);
         return courseFromState;
       }
-      logger.log('🔍 Fetching course data for courseId:', courseId);
+      logger.debug('🔍 Fetching course data for courseId:', courseId);
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) throw new Error('Course not found');
       const transformedCourse = {
@@ -48,7 +48,7 @@ const CourseDetailScreen = () => {
         video_intro_url: courseData.video_intro_url || null,
         ...courseData,
       };
-      logger.log('✅ Course data loaded:', transformedCourse);
+      logger.debug('✅ Course data loaded:', transformedCourse);
       return transformedCourse;
     },
     staleTime: STALE_TIMES.programStructure,

@@ -118,16 +118,16 @@ async function updateActivityStreak(_userId, _activityDate) {
 
 function getInitialStreakState(userId) {
   if (!userId) {
-    logger.log('[STREAK] getInitialStreakState: no userId → _loaded:true, isLoading:false');
+    logger.debug('[STREAK] getInitialStreakState: no userId → _loaded:true, isLoading:false');
     return { streakNumber: 0, flameLevel: 0, isLoading: false, _loaded: true };
   }
   const cached = streakCache.get(userId);
   const today = getTodayLocal();
   if (cached && cached.computedForDate === today && cached.state) {
-    logger.log('[STREAK] getInitialStreakState: cache HIT', { userId: userId.slice(0, 8), today });
+    logger.debug('[STREAK] getInitialStreakState: cache HIT', { userId: userId.slice(0, 8), today });
     return { ...cached.state, isLoading: false, _loaded: true };
   }
-  logger.log('[STREAK] getInitialStreakState: cache MISS → _loaded:false, isLoading:true', { userId: userId.slice(0, 8) });
+  logger.debug('[STREAK] getInitialStreakState: cache MISS → _loaded:false, isLoading:true', { userId: userId.slice(0, 8) });
   return { streakNumber: 0, flameLevel: 0, isLoading: true, _loaded: false };
 }
 

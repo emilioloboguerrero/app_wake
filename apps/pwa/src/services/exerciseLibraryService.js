@@ -22,17 +22,17 @@ class ExerciseLibraryService {
       
       // Check if cache is still valid
       if (cached.timestamp && (now - cached.timestamp) < this.cacheTTL) {
-        logger.log(`✅ Cache hit for ${exerciseName} (age: ${Math.round((now - cached.timestamp) / 1000)}s)`);
+        logger.debug(`✅ Cache hit for ${exerciseName} (age: ${Math.round((now - cached.timestamp) / 1000)}s)`);
         return cached.data;
       } else {
         // Cache expired, remove it
-        logger.log(`⏰ Cache expired for ${exerciseName}, fetching fresh data`);
+        logger.debug(`⏰ Cache expired for ${exerciseName}, fetching fresh data`);
         this.cache.delete(cacheKey);
       }
     }
 
     try {
-      logger.log(`📚 Fetching exercise: ${exerciseName} from library: ${libraryId}`);
+      logger.debug(`📚 Fetching exercise: ${exerciseName} from library: ${libraryId}`);
 
       const apiResult = await apiClient.get(`/exercises/${libraryId}/${encodeURIComponent(exerciseName)}`);
       const exerciseData = apiResult?.data;
@@ -41,7 +41,7 @@ class ExerciseLibraryService {
         throw new Error(`Exercise ${exerciseName} not found in library ${libraryId}`);
       }
 
-      logger.log('🔧 exerciseLibraryService.getExerciseData payload:', {
+      logger.debug('🔧 exerciseLibraryService.getExerciseData payload:', {
         exerciseName,
         hasImplements: Array.isArray(exerciseData.implements),
         implementsLength: Array.isArray(exerciseData.implements) ? exerciseData.implements.length : 'n/a',
@@ -56,15 +56,15 @@ class ExerciseLibraryService {
       
       // Debug: Log the muscle activation data structure
       if (exerciseData.muscle_activation) {
-        logger.log(`💪 Muscle activation data for "${exerciseName}":`, exerciseData.muscle_activation);
-        logger.log(`💪 Type of muscle_activation:`, typeof exerciseData.muscle_activation);
-        logger.log(`💪 Keys in muscle_activation:`, Object.keys(exerciseData.muscle_activation));
+        logger.debug(`💪 Muscle activation data for "${exerciseName}":`, exerciseData.muscle_activation);
+        logger.debug(`💪 Type of muscle_activation:`, typeof exerciseData.muscle_activation);
+        logger.debug(`💪 Keys in muscle_activation:`, Object.keys(exerciseData.muscle_activation));
       } else {
-        logger.log(`⚠️ No muscle_activation data found for "${exerciseName}"`);
+        logger.debug(`⚠️ No muscle_activation data found for "${exerciseName}"`);
       }
       
       // Debug: log result object shape (still without implements)
-      logger.log('🔧 exerciseLibraryService.getExerciseData result (with implements):', {
+      logger.debug('🔧 exerciseLibraryService.getExerciseData result (with implements):', {
         hasDescription: !!result.description,
         hasVideoUrl: !!result.video_url,
         hasMuscleActivation: !!result.muscle_activation,
@@ -80,7 +80,7 @@ class ExerciseLibraryService {
         timestamp: Date.now()
       });
       
-      logger.log(`✅ Exercise data loaded and cached: ${exerciseName}`);
+      logger.debug(`✅ Exercise data loaded and cached: ${exerciseName}`);
       return result;
       
     } catch (error) {
@@ -95,7 +95,7 @@ class ExerciseLibraryService {
    * @returns {Promise<{title: string, description: string, video_url: string}>}
    */
   async resolvePrimaryExercise(primaryRef) {
-    logger.log('🔍 Resolving primary exercise with data:', JSON.stringify(primaryRef, null, 2));
+    logger.debug('🔍 Resolving primary exercise with data:', JSON.stringify(primaryRef, null, 2));
     
     if (!primaryRef || typeof primaryRef !== 'object') {
       logger.error('❌ Primary ref is not an object:', primaryRef);
@@ -106,7 +106,7 @@ class ExerciseLibraryService {
     const libraryId = Object.keys(primaryRef)[0];
     const exerciseName = primaryRef[libraryId];
 
-    logger.log('🔍 Library ID:', libraryId, 'Exercise Name:', exerciseName);
+    logger.debug('🔍 Library ID:', libraryId, 'Exercise Name:', exerciseName);
 
     if (!libraryId || !exerciseName) {
       logger.error('❌ Missing libraryId or exerciseName:', { libraryId, exerciseName });
@@ -115,7 +115,7 @@ class ExerciseLibraryService {
 
     const exerciseData = await this.getExerciseData(libraryId, exerciseName);
     
-    logger.log(`🔍 resolvePrimaryExercise: Got exercise data for "${exerciseName}":`, {
+    logger.debug(`🔍 resolvePrimaryExercise: Got exercise data for "${exerciseName}":`, {
       description: exerciseData.description,
       video_url: exerciseData.video_url,
       muscle_activation: exerciseData.muscle_activation,

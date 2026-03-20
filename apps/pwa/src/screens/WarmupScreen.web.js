@@ -22,7 +22,7 @@ const WarmupScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [Warmup Web] Navigating to:', routeName, params);
+      logger.debug('🧭 [Warmup Web] Navigating to:', routeName, params);
       
       const routeMap = {
         'WorkoutExecution': () => {
@@ -50,7 +50,7 @@ const WarmupScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [Warmup Web] setParams:', params);
+      logger.debug('🧭 [Warmup Web] setParams:', params);
     },
   };
   

@@ -16,7 +16,7 @@ export const authStorage = {
         lastLogin: new Date().toISOString(),
       };
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-      logger.log('Auth state saved to storage');
+      logger.debug('Auth state saved to storage');
     } catch (error) {
       logger.error('Error saving auth state:', error);
     }
@@ -28,7 +28,7 @@ export const authStorage = {
       const authData = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
       if (authData) {
         const parsedData = JSON.parse(authData);
-        logger.log('Auth state retrieved from storage');
+        logger.debug('Auth state retrieved from storage');
         return parsedData;
       }
       return null;
@@ -42,7 +42,7 @@ export const authStorage = {
   async clearAuthState() {
     try {
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-      logger.log('Auth state cleared from storage');
+      logger.debug('Auth state cleared from storage');
     } catch (error) {
       logger.error('Error clearing auth state:', error);
     }

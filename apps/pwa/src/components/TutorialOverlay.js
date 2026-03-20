@@ -26,7 +26,6 @@ const TutorialOverlay = ({
   onComplete 
 }) => {
   const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
   
   // Hooks must be called before any early returns (React rules)
   // ALL hooks must be called unconditionally and in the same order every render
@@ -49,7 +48,7 @@ const TutorialOverlay = ({
   // Log when we have a video URL to load (for debugging web/PWA tutorial card stuck gray)
   useEffect(() => {
     if (visible && videoUrl) {
-      logger.log('[TutorialOverlay] Video source set, waiting for onLoad', {
+      logger.debug('[TutorialOverlay] Video source set, waiting for onLoad', {
         platform: Platform.OS,
         videoUrl: videoUrl.slice?.(0, 80),
         currentTutorialIndex,
@@ -83,7 +82,6 @@ const TutorialOverlay = ({
     if (visible && tutorialData && tutorialData.length > 0 && tutorialData[currentTutorialIndex]) {
       const componentEndTime = performance.now();
       const componentDuration = componentEndTime - componentStartTime;
-      logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
       if (componentDuration > 50) {
         logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
       }
@@ -114,7 +112,7 @@ const TutorialOverlay = ({
       await videoRef.current.pauseAsync();
       setIsVideoPlaying(false);
       progressAnimation.stopAnimation();
-      logger.log('Paused video and animation');
+      logger.debug('Paused video and animation');
     } else {
       await videoRef.current.playAsync();
       setIsVideoPlaying(true);
@@ -125,7 +123,7 @@ const TutorialOverlay = ({
           duration: remainingDuration,
           useNativeDriver: false,
         }).start();
-        logger.log('Resumed animation for', remainingDuration, 'ms');
+        logger.debug('Resumed animation for', remainingDuration, 'ms');
       } else if (videoDuration > 0) {
         setAnimationStarted(true);
         Animated.timing(progressAnimation, {
@@ -133,7 +131,7 @@ const TutorialOverlay = ({
           duration: videoDuration,
           useNativeDriver: false,
         }).start();
-        logger.log('Started synchronized animation for', videoDuration, 'ms');
+        logger.debug('Started synchronized animation for', videoDuration, 'ms');
       }
     }
   };
@@ -142,7 +140,7 @@ const TutorialOverlay = ({
     toggleMute();
     if (videoRef.current) {
       await videoRef.current.setIsMutedAsync(!isMuted).catch(() => {});
-      logger.log('Video audio updated - muted:', !isMuted);
+      logger.debug('Video audio updated - muted:', !isMuted);
     }
   };
 
@@ -177,18 +175,18 @@ const TutorialOverlay = ({
     const isLoaded = s?.isLoaded === true || isWebEvent;
 
     if (!isLoaded) {
-      logger.log('[TutorialOverlay] onVideoLoad early return: not loaded', { hasIsLoaded: s?.isLoaded, isWebEvent });
+      logger.debug('[TutorialOverlay] onVideoLoad early return: not loaded', { hasIsLoaded: s?.isLoaded, isWebEvent });
       return;
     }
 
     const duration = s?.durationMillis ?? s?.duration ?? durationFromWeb;
-    logger.log('[TutorialOverlay] onVideoLoad proceeding', { duration, platform: Platform.OS, isWebEvent });
+    logger.debug('[TutorialOverlay] onVideoLoad proceeding', { duration, platform: Platform.OS, isWebEvent });
     setIsLoading(false);
     setVideoError(false);
     setVideoDuration(duration);
     setAnimationStarted(false);
     progressAnimation.setValue(0);
-    logger.log('Video', currentTutorialIndex, 'loaded, duration:', duration);
+    logger.debug('Video', currentTutorialIndex, 'loaded, duration:', duration);
     setTimeout(async () => {
       if (videoRef.current) {
         await videoRef.current.setPositionAsync(0).catch(() => {});
@@ -202,9 +200,9 @@ const TutorialOverlay = ({
             duration,
             useNativeDriver: false,
           }).start();
-          logger.log('Started synchronized animation for', duration, 'ms');
+          logger.debug('Started synchronized animation for', duration, 'ms');
         }
-        logger.log('Video', currentTutorialIndex, 'position reset to 0, started playing');
+        logger.debug('Video', currentTutorialIndex, 'position reset to 0, started playing');
       }
     }, 100);
   };
@@ -228,10 +226,10 @@ const TutorialOverlay = ({
     // Auto-skip to next tutorial after a short delay, or close if it's the last one
     setTimeout(() => {
       if (currentTutorialIndex < tutorialData.length - 1) {
-        logger.log('⏭️ Auto-skipping to next tutorial due to video error');
+        logger.debug('⏭️ Auto-skipping to next tutorial due to video error');
         handleNextTutorial();
       } else {
-        logger.log('✅ Closing tutorial overlay (last tutorial failed)');
+        logger.debug('✅ Closing tutorial overlay (last tutorial failed)');
         handleComplete();
       }
     }, 2000); // Give user 2 seconds to see the error before auto-skipping
@@ -260,13 +258,11 @@ const TutorialOverlay = ({
   const stylesStartTime = performance.now();
   const styles = createStyles(screenWidth, screenHeight);
   const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[CHILD] [TIMING] TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
   if (stylesDuration > 10) {
     logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
 
   const jsxStartTime = performance.now();
-  logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
 
   const videoCardContent = (
     <TouchableOpacity
@@ -424,7 +420,6 @@ const TutorialOverlay = ({
       {(() => {
         const jsxEndTime = performance.now();
         const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
         if (jsxDuration > 50) {
           logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay JSX creation took ${jsxDuration.toFixed(2)}ms`);
         }

@@ -112,7 +112,7 @@ export default function MealEditorScreen() {
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
 
   const queryClient = useQueryClient();
-  const { data: mealData, isLoading: mealLoading } = useQuery({
+  const { data: mealData, isLoading: mealLoading, error: mealError } = useQuery({
     queryKey: queryKeys.nutrition.meal(creatorId, mealId),
     queryFn: () => nutritionDb.getMealById(creatorId, mealId),
     enabled: !!mealId && mealId !== 'new' && !!creatorId,
@@ -148,7 +148,7 @@ export default function MealEditorScreen() {
       }
     }, 700);
     return () => clearTimeout(t);
-  }, [mealId, creatorId, mealLoading, mealFormName, mealFormItems, mealFormVideoUrl]);
+  }, [mealId, creatorId, mealLoading, mealFormName, mealFormItems, mealFormVideoUrl, showToast]);
 
   async function handleMealFormSearch() {
     if (!mealFormSearchQuery.trim()) return;
@@ -293,6 +293,18 @@ export default function MealEditorScreen() {
       <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
         <div className="library-session-detail-container">
           <p style={{ color: 'rgba(255,255,255,0.6)', padding: 24 }}>Cargando…</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (mealError) {
+    return (
+      <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
+        <div className="library-session-detail-container">
+          <p style={{ color: 'rgba(255,100,100,0.9)', padding: 24 }}>
+            {mealError?.message || 'Error al cargar la receta. Intenta de nuevo.'}
+          </p>
         </div>
       </DashboardLayout>
     );

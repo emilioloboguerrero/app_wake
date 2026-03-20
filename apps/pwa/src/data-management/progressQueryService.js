@@ -13,13 +13,13 @@ class ProgressQueryService {
    */
   async getUserCourseProgress(userId, courseId) {
     try {
-      logger.log('📊 Getting course progress:', { userId, courseId });
+      logger.debug('📊 Getting course progress:', { userId, courseId });
       
       // Get course progress from user document
       const progressData = await userProgressService.getCourseProgress(userId, courseId);
       
       if (!progressData) {
-        logger.log('📊 No course progress found');
+        logger.debug('📊 No course progress found');
         return {
           sessions: [],
           analytics: this.calculateProgressAnalytics([]),
@@ -44,7 +44,7 @@ class ProgressQueryService {
       // Calculate progress analytics
       const progressAnalytics = this.calculateProgressAnalytics(sessions);
       
-      logger.log(`✅ Retrieved ${sessions.length} sessions for course progress`);
+      logger.debug(`✅ Retrieved ${sessions.length} sessions for course progress`);
       
       return {
         sessions,
@@ -65,7 +65,7 @@ class ProgressQueryService {
    */
   async getRecentWorkouts(userId, days = 7) {
     try {
-      logger.log('📅 Getting recent workouts:', { userId, days });
+      logger.debug('📅 Getting recent workouts:', { userId, days });
       
       // Get all course progress for user
       const allCourseProgress = await userProgressService.getAllCourseProgress(userId);
@@ -93,7 +93,7 @@ class ProgressQueryService {
       // Sort all sessions by date
       allSessions.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
       
-      logger.log(`✅ Retrieved ${allSessions.length} recent sessions`);
+      logger.debug(`✅ Retrieved ${allSessions.length} recent sessions`);
       return allSessions;
       
     } catch (error) {
@@ -110,12 +110,12 @@ class ProgressQueryService {
    */
   async getExerciseProgressHistory(userId, exerciseId, courseId = null) {
     try {
-      logger.log('💪 Getting exercise progress:', { userId, exerciseId, courseId });
+      logger.debug('💪 Getting exercise progress:', { userId, exerciseId, courseId });
       
       // Get exercise history from subcollection
       const exerciseHistory = await exerciseHistoryService.getExerciseHistory(userId, exerciseId);
       
-      logger.log(`✅ Retrieved exercise history: ${exerciseHistory.sessions.length} sessions`);
+      logger.debug(`✅ Retrieved exercise history: ${exerciseHistory.sessions.length} sessions`);
       return exerciseHistory.sessions;
       
     } catch (error) {
@@ -277,7 +277,7 @@ class ProgressQueryService {
       };
       
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
-      logger.log('💾 Progress data cached locally');
+      logger.debug('💾 Progress data cached locally');
       
     } catch (error) {
       logger.error('❌ Failed to cache progress data:', error);
@@ -299,11 +299,11 @@ class ProgressQueryService {
       const maxAgeMs = maxAgeMinutes * 60 * 1000;
       
       if (cacheAge > maxAgeMs) {
-        logger.log('⏰ Progress cache expired');
+        logger.debug('⏰ Progress cache expired');
         return null;
       }
       
-      logger.log('⚡ Using cached progress data');
+      logger.debug('⚡ Using cached progress data');
       return cache;
       
     } catch (error) {

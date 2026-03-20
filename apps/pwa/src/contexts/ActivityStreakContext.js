@@ -51,7 +51,7 @@ export const ActivityStreakProvider = ({ children }) => {
         userId,
         hasUser: !!userId,
       };
-      logger.log('[STREAK] ActivityStreakProvider value', { userId: userId?.slice(0, 8), isLoading: v.isLoading, streakNumber: v.streakNumber });
+      logger.debug('[STREAK] ActivityStreakProvider value', { userId: userId?.slice(0, 8), isLoading: v.isLoading, streakNumber: v.streakNumber });
       return v;
     },
     [streakState, userId]
@@ -59,7 +59,7 @@ export const ActivityStreakProvider = ({ children }) => {
 
   const renderCountRef = useRef(0);
   renderCountRef.current += 1;
-  logger.log('[STREAK] ActivityStreakProvider render', { renderCount: renderCountRef.current, userId: userId?.slice(0, 8), valueIsLoading: value.isLoading });
+  logger.debug('[STREAK] ActivityStreakProvider render', { renderCount: renderCountRef.current, userId: userId?.slice(0, 8), valueIsLoading: value.isLoading });
 
   return (
     <ActivityStreakContext.Provider value={value}>

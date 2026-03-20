@@ -73,14 +73,14 @@ const DailyWorkoutScreen = () => {
     queryKey: ['daily-prefetch', user?.uid, courseId, currentMonthMeta.key],
     queryFn: async () => {
       const { start, end, key } = currentMonthMeta;
-      logger.log('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
+      logger.debug('[DailyWorkoutScreen.web] pre-fetch starting', { userId: user.uid, courseId, key, start, end });
       const [planned, entries] = await Promise.all([
         firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
         exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
       ]);
       const plannedArr = Array.isArray(planned) ? planned : [];
       const entriesArr = Array.isArray(entries) ? entries : [];
-      logger.log('[DailyWorkoutScreen.web] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
+      logger.debug('[DailyWorkoutScreen.web] pre-fetch resolved', { key, plannedCount: plannedArr.length, entriesCount: entriesArr.length, plannedSample: plannedArr.slice(0, 5) });
       return { planned: plannedArr, entries: entriesArr };
     },
     staleTime: STALE_TIMES.userProfile,
@@ -166,7 +166,7 @@ const DailyWorkoutScreen = () => {
 
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [DailyWorkout Web] Navigating to:', routeName, params);
+      logger.debug('🧭 [DailyWorkout Web] Navigating to:', routeName, params);
 
       const routeMap = {
         'WorkoutExecution': () => {
@@ -199,7 +199,7 @@ const DailyWorkoutScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [DailyWorkout Web] setParams:', params);
+      logger.debug('🧭 [DailyWorkout Web] setParams:', params);
     },
   };
 
@@ -236,7 +236,7 @@ const DailyWorkoutScreen = () => {
 
   const passInitialPlanned = initialDataMonthKey === currentMonthKey ? initialPlannedDates : undefined;
   const passInitialEntries = initialDataMonthKey === currentMonthKey && !isOneOnOne ? initialEntriesDates : undefined;
-  logger.log('[DailyWorkoutScreen.web] WeekDateSelector props', {
+  logger.debug('[DailyWorkoutScreen.web] WeekDateSelector props', {
     isOneOnOne,
     currentMonthKey,
     initialDataMonthKey,

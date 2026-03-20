@@ -10,13 +10,13 @@ let analytics = null;
 try {
   crashlytics = require('@react-native-firebase/crashlytics').default;
 } catch (error) {
-  logger.log('Crashlytics not available in Expo Go - will work in production builds');
+  logger.debug('Crashlytics not available in Expo Go - will work in production builds');
 }
 
 try {
   analytics = require('@react-native-firebase/analytics').default;
 } catch (error) {
-  logger.log('Analytics not available in Expo Go - will work in production builds');
+  logger.debug('Analytics not available in Expo Go - will work in production builds');
 }
 
 class MonitoringService {
@@ -32,16 +32,16 @@ class MonitoringService {
       
       if (crashlytics && userId) {
         await crashlytics().setUserId(userId);
-        logger.log('Crashlytics initialized for user:', userId);
+        logger.debug('Crashlytics initialized for user:', userId);
       }
       
       if (analytics && userId) {
         await analytics().setUserId(userId);
-        logger.log('Analytics initialized for user:', userId);
+        logger.debug('Analytics initialized for user:', userId);
       }
       
       this.isInitialized = true;
-      logger.log('Monitoring service initialized');
+      logger.debug('Monitoring service initialized');
       
     } catch (error) {
       logger.error('Failed to initialize monitoring:', error);
@@ -73,7 +73,7 @@ class MonitoringService {
   async trackEvent(eventName, parameters = {}) {
     try {
       // Log event locally
-      logger.log(`Event tracked: ${eventName}`, parameters);
+      logger.debug(`Event tracked: ${eventName}`, parameters);
       
       // Track in Analytics if available
       if (analytics && !__DEV__) {
@@ -124,7 +124,7 @@ class MonitoringService {
     try {
       if (analytics && !__DEV__) {
         await analytics().setUserProperty(property, value);
-        logger.log(`User property set: ${property} = ${value}`);
+        logger.debug(`User property set: ${property} = ${value}`);
       }
     } catch (error) {
       logger.error('Failed to set user property:', error);

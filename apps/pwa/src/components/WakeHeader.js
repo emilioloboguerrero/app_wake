@@ -20,7 +20,6 @@ export const FixedWakeHeader = ({
   backgroundColor = '#1a1a1a'
 }) => {
   const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render started - ${componentStartTime.toFixed(2)}ms`);
   
   const insetsStartTime = performance.now();
   const insets = useSafeAreaInsets();
@@ -168,7 +167,6 @@ export const FixedWakeHeader = ({
   
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
   if (componentDuration > 50) {
     logger.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
   }
@@ -177,7 +175,6 @@ export const FixedWakeHeader = ({
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
   const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
   
   const insets = useSafeAreaInsets();
   // Use hook for reactive dimensions that update on orientation change
@@ -190,7 +187,6 @@ export const WakeHeaderSpacer = () => {
   
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
   if (componentDuration > 10) {
     logger.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
   }

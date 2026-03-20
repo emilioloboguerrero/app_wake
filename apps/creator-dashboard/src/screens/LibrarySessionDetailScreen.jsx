@@ -544,6 +544,7 @@ const LibrarySessionDetailScreen = () => {
         loadExercisesFromLibrary(libraries[0].id, libraries);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionQueryData]);
 
   const loadExercisesFromLibrary = useCallback(async (libraryId, libraries = null) => {
@@ -1254,12 +1255,14 @@ const LibrarySessionDetailScreen = () => {
   };
 
   // Cmd/Ctrl+Enter in exercise modal creates exercise when valid
+  const canSaveCreatingExerciseRef = useRef(null);
+  const handleSaveCreatingExerciseRef = useRef(null);
   useEffect(() => {
     if (!isExerciseModalOpen || !isCreatingExercise) return;
     const onKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canSaveCreatingExercise() && !isSavingNewExercise) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canSaveCreatingExerciseRef.current?.() && !isSavingNewExercise) {
         e.preventDefault();
-        handleSaveCreatingExercise();
+        handleSaveCreatingExerciseRef.current?.();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1809,6 +1812,7 @@ const LibrarySessionDetailScreen = () => {
     const hasData = measures.length > 0 && objectives.length > 0;
     return hasPrimary && hasSets && hasData;
   };
+  canSaveCreatingExerciseRef.current = canSaveCreatingExercise;
 
   const handleSaveCreatingExercise = async () => {
     if (!canSaveCreatingExercise() || !user || !sessionId) return;
@@ -1902,6 +1906,7 @@ const LibrarySessionDetailScreen = () => {
       setIsSavingNewExercise(false);
     }
   };
+  handleSaveCreatingExerciseRef.current = handleSaveCreatingExercise;
 
   // Handlers for exercise configuration (adapted from ProgramDetailScreen for library sessions)
   const handleEditPrimary = async () => {

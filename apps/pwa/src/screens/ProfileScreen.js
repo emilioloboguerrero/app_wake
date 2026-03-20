@@ -179,7 +179,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       return;
     }
     const userData = profileQueryData;
-    logger.log('✅ Profile loaded successfully');
+    logger.debug('✅ Profile loaded successfully');
     setUserRole(userData.role || 'user');
     setUserProfile({
       displayName: userData.displayName || '',
@@ -507,7 +507,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             displayName: userProfile.displayName.trim()
           });
           await auth.currentUser.reload();
-          logger.log('✅ Firebase Auth displayName synced from profile settings');
+          logger.debug('✅ Firebase Auth displayName synced from profile settings');
         } catch (profileSyncError) {
           logger.warn('⚠️ Failed to sync Firebase Auth displayName from profile settings:', profileSyncError);
         }
@@ -534,12 +534,12 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   };
 
   const handleSignOut = () => {
-    logger.log('🔐 handleSignOut called - showing confirmation modal');
+    logger.debug('🔐 handleSignOut called - showing confirmation modal');
     setIsSignOutConfirmModalVisible(true);
   };
 
   const handleSignOutConfirm = async () => {
-    logger.log('🔐 User confirmed sign out');
+    logger.debug('🔐 User confirmed sign out');
     try {
       setIsSignOutConfirmModalVisible(false);
       // Close the settings modal first
@@ -547,12 +547,12 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       // Sign out user
       await authService.signOutUser();
-      logger.log('🔐 Sign out successful');
+      logger.debug('🔐 Sign out successful');
       
       // On web/PWA, force full reload to /login so the app always shows the login screen
       if (typeof window !== 'undefined') {
         const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-        logger.log('🌐 Web: reloading to /login');
+        logger.debug('🌐 Web: reloading to /login');
         window.location.replace(loginPath);
         return;
       }
@@ -564,7 +564,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   };
 
   const handleSignOutCancel = () => {
-    logger.log('🔐 Sign out cancelled');
+    logger.debug('🔐 Sign out cancelled');
     setIsSignOutConfirmModalVisible(false);
   };
 
@@ -752,16 +752,16 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     if (!user?.uid) return;
 
     try {
-      logger.log('🎬 Checking for profile screen tutorials...');
+      logger.debug('🎬 Checking for profile screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'profile');
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
+        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
       } else {
-        logger.log('✅ No tutorials to show for profile screen');
+        logger.debug('✅ No tutorials to show for profile screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -780,7 +780,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           'profile', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
+        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -1536,7 +1536,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         </View>
 
         {/* Creator section */}
-        {logger.log('[ProfileScreen] render: userRole =', userRole) || null}
         {(userRole === 'creator' || userRole === 'admin') && (
           <View style={styles.creatorSectionContainer}>
             <TouchableOpacity

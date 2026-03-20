@@ -54,7 +54,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   
   // Log auth state changes for debugging
   useEffect(() => {
-    logger.log(`🔐 [CourseDetailScreen] Auth state changed - user.uid=${user?.uid}, authLoading=${authLoading}`);
+    logger.debug(`🔐 [CourseDetailScreen] Auth state changed - user.uid=${user?.uid}, authLoading=${authLoading}`);
   }, [user?.uid, authLoading]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
@@ -220,11 +220,11 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const handlePostPurchaseFlow = React.useCallback(async () => {
     // Prevent duplicate execution
     if (postPurchaseFlowTriggeredRef.current) {
-      logger.log('⏭️ Post-purchase flow already triggered, skipping duplicate...');
+      logger.debug('⏭️ Post-purchase flow already triggered, skipping duplicate...');
       return;
     }
     
-    logger.log('🔄 Starting post-purchase flow...');
+    logger.debug('🔄 Starting post-purchase flow...');
     
     // Mark as triggered immediately to prevent duplicates
     postPurchaseFlowTriggeredRef.current = true;
@@ -255,7 +255,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       consolidatedDataService.clearAllCache();
       
       // Sync courses to update cache with new purchase
-      logger.log('📦 Force syncing courses...');
+      logger.debug('📦 Force syncing courses...');
       await hybridDataService.syncCourses(effectiveUser.uid);
       
       // FIX: Also clear consolidated cache again after sync
@@ -265,15 +265,15 @@ const CourseDetailScreen = ({ navigation, route }) => {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Notify MainScreen about the purchase
-      logger.log('📢 Notifying purchase complete...');
+      logger.debug('📢 Notifying purchase complete...');
       purchaseEventManager.notifyPurchaseComplete(course.id);
       
       // Download the purchased course data
-      logger.log('📥 Downloading purchased course...');
+      logger.debug('📥 Downloading purchased course...');
       try {
         // CRITICAL: Pass userId to downloadCourse for proper version checking and week change detection
         await courseDownloadService.downloadCourse(course.id, effectiveUser.uid);
-        logger.log('✅ Course downloaded successfully');
+        logger.debug('✅ Course downloaded successfully');
       } catch (downloadError) {
         logger.error('❌ Error downloading course:', downloadError);
         // Continue even if download fails - user can retry later
@@ -287,11 +287,11 @@ const CourseDetailScreen = ({ navigation, route }) => {
       processingPurchaseRef.current = false;
       postPurchaseFlowTriggeredRef.current = false;
       
-      logger.log('✅ Post-purchase flow completed, showing success alert...');
+      logger.debug('✅ Post-purchase flow completed, showing success alert...');
 
       // Show success message - use setTimeout to ensure it shows after state updates
       setTimeout(() => {
-        logger.log('📢 Displaying purchase success now...');
+        logger.debug('📢 Displaying purchase success now...');
         try {
           if (Platform.OS === 'web') {
             setShowPurchaseSuccess(true);
@@ -303,21 +303,21 @@ const CourseDetailScreen = ({ navigation, route }) => {
               {
                 text: 'Ir a Página Principal',
                 onPress: () => {
-                  logger.log('📱 User chose: Navigate to MainScreen');
+                  logger.debug('📱 User chose: Navigate to MainScreen');
                   navigation.navigate('MainScreen');
                 }
               },
               {
                 text: 'Aceptar',
                 onPress: () => {
-                  logger.log('✅ User chose: Aceptar (staying on page)');
+                  logger.debug('✅ User chose: Aceptar (staying on page)');
                 },
                 style: 'cancel'
               }
             ]
           );
           }
-          logger.log('✅ Purchase success shown');
+          logger.debug('✅ Purchase success shown');
         } catch (alertError) {
           logger.error('❌ Error showing alert:', alertError);
         }
@@ -369,18 +369,18 @@ const CourseDetailScreen = ({ navigation, route }) => {
     
     // Fix: Set checkingOwnership to false if user is not available to prevent infinite loading
     if (!effectiveUser?.uid) {
-      logger.log('⚠️ [checkCourseOwnership] User not available (context or Firebase), skipping ownership check');
+      logger.debug('⚠️ [checkCourseOwnership] User not available (context or Firebase), skipping ownership check');
       setCheckingOwnership(false);
       return;
     }
     
-    logger.log(`🔍 [checkCourseOwnership] START - Checking ownership for course: ${course.id}, user: ${effectiveUser.uid} (fromContext=${!!user}, fromFirebase=${!!auth.currentUser && !user})`);
+    logger.debug(`🔍 [checkCourseOwnership] START - Checking ownership for course: ${course.id}, user: ${effectiveUser.uid} (fromContext=${!!user}, fromFirebase=${!!auth.currentUser && !user})`);
     
     try {
       setCheckingOwnership(true);
-      logger.log(`🔍 [checkCourseOwnership] Calling getUserCourseState for course: ${course.id}`);
+      logger.debug(`🔍 [checkCourseOwnership] Calling getUserCourseState for course: ${course.id}`);
       const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
-      logger.log(`🔍 [checkCourseOwnership] getUserCourseState result:`, {
+      logger.debug(`🔍 [checkCourseOwnership] getUserCourseState result:`, {
         ownsCourse: courseState.ownsCourse,
         hasCourseData: !!courseState.courseData,
         courseData: courseState.courseData,
@@ -389,11 +389,10 @@ const CourseDetailScreen = ({ navigation, route }) => {
       });
       
       const isProcessing = processingPurchaseRef.current || pendingPostPurchaseRef.current;
-      logger.log(`🔍 [checkCourseOwnership] Processing state: isProcessing=${isProcessing}, processingPurchaseRef=${processingPurchaseRef.current}, pendingPostPurchaseRef=${pendingPostPurchaseRef.current}`);
       
       // If we're processing a purchase and course is now owned, trigger post-purchase flow
       if (isProcessing && courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-        logger.log('✅ Course ownership confirmed during purchase processing - triggering post-purchase flow');
+        logger.debug('✅ Course ownership confirmed during purchase processing - triggering post-purchase flow');
         handlePostPurchaseFlow();
         // Fix: Set checkingOwnership to false before returning
         setCheckingOwnership(false);
@@ -402,13 +401,13 @@ const CourseDetailScreen = ({ navigation, route }) => {
       
       // If processing, defer UI update but still check ownership
       if (isProcessing) {
-        logger.log('⏳ Ownership check during purchase processing - course owned:', courseState.ownsCourse);
+        logger.debug('⏳ Ownership check during purchase processing - course owned:', courseState.ownsCourse);
         // Fix: Set checkingOwnership to false before returning
         setCheckingOwnership(false);
         return;
       }
 
-      logger.log(`🔍 [checkCourseOwnership] Setting state - ownsCourse=${courseState.ownsCourse}, isProcessing=${isProcessing}`);
+      logger.debug(`🔍 [checkCourseOwnership] Setting state - ownsCourse=${courseState.ownsCourse}, isProcessing=${isProcessing}`);
       setUserCourseEntry(courseState.courseData);
       setUserTrialHistory(courseState.trialHistory);
       setUserOwnsCourse(courseState.ownsCourse);
@@ -420,9 +419,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
       setOwnershipReady(shouldBeReady);
       
       // Log ownership state for debugging
-      logger.log(`✅ [checkCourseOwnership] State updated: userOwnsCourse=${courseState.ownsCourse}, ownershipReady=${shouldBeReady}, shouldBeReady calculation: ownsCourse(${courseState.ownsCourse}) && !isProcessing(${!isProcessing}) = ${shouldBeReady}`);
+      logger.debug(`✅ [checkCourseOwnership] State updated: userOwnsCourse=${courseState.ownsCourse}, ownershipReady=${shouldBeReady}, shouldBeReady calculation: ownsCourse(${courseState.ownsCourse}) && !isProcessing(${!isProcessing}) = ${shouldBeReady}`);
       if (courseState.courseData) {
-        logger.log(`📋 [checkCourseOwnership] Course data details:`, {
+        logger.debug(`📋 [checkCourseOwnership] Course data details:`, {
           status: courseState.courseData.status,
           is_trial: courseState.courseData.is_trial,
           expires_at: courseState.courseData.expires_at,
@@ -441,7 +440,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   }, [user?.uid, course.id, handlePostPurchaseFlow]); // Note: We check auth.currentUser inside the function
 
   useEffect(() => {
-    logger.log(`🚀 [CourseDetailScreen] Component mounted/updated - course.id=${course.id}, user.uid=${user?.uid}`);
+    logger.debug(`🚀 [CourseDetailScreen] Component mounted/updated - course.id=${course.id}, user.uid=${user?.uid}`);
     fetchCourseModules();
     fetchUserRole();
     
@@ -461,20 +460,20 @@ const CourseDetailScreen = ({ navigation, route }) => {
   // This is critical because user might not be loaded when component first mounts
   // AuthContext may take time to restore user from IndexedDB (checks at 0ms, 100ms, 500ms, 1000ms)
   useEffect(() => {
-    logger.log(`👤 [CourseDetailScreen] User effect triggered - user.uid=${user?.uid}, authLoading=${authLoading}, course.id=${course.id}, checkingOwnership=${checkingOwnership}`);
+    logger.debug(`👤 [CourseDetailScreen] User effect triggered - user.uid=${user?.uid}, authLoading=${authLoading}, course.id=${course.id}, checkingOwnership=${checkingOwnership}`);
     
     // Check Firebase auth directly as fallback (in case AuthContext hasn't updated yet)
     const firebaseUser = auth.currentUser;
-    logger.log(`👤 [CourseDetailScreen] Firebase auth.currentUser: ${firebaseUser?.uid || 'null'}`);
+    logger.debug(`👤 [CourseDetailScreen] Firebase auth.currentUser: ${firebaseUser?.uid || 'null'}`);
     
     // Use user from context if available, otherwise fallback to Firebase auth
     const effectiveUser = user || firebaseUser;
     
     if (effectiveUser?.uid && course.id) {
-      logger.log(`👤 [CourseDetailScreen] User available (uid=${effectiveUser.uid}, fromContext=${!!user}, fromFirebase=${!!firebaseUser && !user}) - checking ownership for course: ${course.id}`);
+      logger.debug(`👤 [CourseDetailScreen] User available (uid=${effectiveUser.uid}, fromContext=${!!user}, fromFirebase=${!!firebaseUser && !user}) - checking ownership for course: ${course.id}`);
       // If user from context is not available but Firebase has it, update the check
       if (!user && firebaseUser) {
-        logger.log(`⚠️ [CourseDetailScreen] User found in Firebase but not in context - AuthContext may not have updated yet`);
+        logger.debug(`⚠️ [CourseDetailScreen] User found in Firebase but not in context - AuthContext may not have updated yet`);
       }
       checkCourseOwnership();
       // Fetch role when we have a user (context or Firebase) so admin/creator see correct button even before context loads
@@ -483,15 +482,15 @@ const CourseDetailScreen = ({ navigation, route }) => {
       // Auth has finished loading - wait a bit more for IndexedDB restore (up to 2 seconds)
       // This handles the case where AuthContext delay checks haven't completed yet
       if (!effectiveUser?.uid) {
-        logger.log(`⏳ [CourseDetailScreen] Auth finished loading but no user yet - waiting 2s for IndexedDB restore before clearing checkingOwnership`);
+        logger.debug(`⏳ [CourseDetailScreen] Auth finished loading but no user yet - waiting 2s for IndexedDB restore before clearing checkingOwnership`);
         const timeout = setTimeout(() => {
           const finalFirebaseUser = auth.currentUser;
           const finalEffectiveUser = user || finalFirebaseUser;
           if (!finalEffectiveUser?.uid) {
-            logger.log(`✅ [CourseDetailScreen] After 2s wait, still no user - user is not logged in, clearing checkingOwnership`);
+            logger.debug(`✅ [CourseDetailScreen] After 2s wait, still no user - user is not logged in, clearing checkingOwnership`);
             setCheckingOwnership(false);
           } else {
-            logger.log(`✅ [CourseDetailScreen] User became available during 2s wait (uid=${finalEffectiveUser.uid}) - checking ownership`);
+            logger.debug(`✅ [CourseDetailScreen] User became available during 2s wait (uid=${finalEffectiveUser.uid}) - checking ownership`);
             checkCourseOwnership();
             fetchUserRole();
           }
@@ -500,7 +499,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
         return () => clearTimeout(timeout);
       }
     } else {
-      logger.log(`⏳ [CourseDetailScreen] Auth still loading (authLoading=${authLoading}) - waiting for auth to finish before checking ownership`);
+      logger.debug(`⏳ [CourseDetailScreen] Auth still loading (authLoading=${authLoading}) - waiting for auth to finish before checking ownership`);
     }
   }, [user?.uid, course.id, checkCourseOwnership, fetchUserRole, authLoading, checkingOwnership]);
 
@@ -595,7 +594,7 @@ useEffect(() => {
   if (userOwnsCourse && ownershipReady && processingPurchase && !successAlertShownRef.current) {
     successAlertShownRef.current = true;
     
-    logger.log('📢 Button shows "¡Ya tienes este programa!" - showing success alert');
+    logger.debug('📢 Button shows "¡Ya tienes este programa!" - showing success alert');
     
     // Small delay to ensure UI has updated
     setTimeout(() => {
@@ -606,14 +605,14 @@ useEffect(() => {
           {
             text: 'Ir a Página Principal',
             onPress: () => {
-              logger.log('📱 User chose: Navigate to MainScreen');
+              logger.debug('📱 User chose: Navigate to MainScreen');
               navigation.navigate('MainScreen');
             }
           },
           {
             text: 'Aceptar',
             onPress: () => {
-              logger.log('✅ User chose: Aceptar (staying on page)');
+              logger.debug('✅ User chose: Aceptar (staying on page)');
             },
             style: 'cancel'
           }
@@ -645,10 +644,10 @@ useEffect(() => {
     if (isWeb && effectiveUser?.uid) {
       checkCourseOwnership().then(async () => {
         if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
-          logger.log('💳 Screen mounted while processing purchase - checking if course was assigned...');
+          logger.debug('💳 Screen mounted while processing purchase - checking if course was assigned...');
           const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
           if (courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-            logger.log('✅ Course found on mount - triggering post-purchase flow');
+            logger.debug('✅ Course found on mount - triggering post-purchase flow');
             handlePostPurchaseFlow();
           }
         }
@@ -666,7 +665,7 @@ useEffect(() => {
         try {
           const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
           if (courseState.ownsCourse && !userOwnsCourse) {
-            logger.log('🔍 Safety check: User actually owns course, updating state');
+            logger.debug('🔍 Safety check: User actually owns course, updating state');
             setUserOwnsCourse(true);
             setOwnershipReady(true);
           }
@@ -688,7 +687,7 @@ useEffect(() => {
     // On native, set up focus/blur handling
     const handleAppStateChange = (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        logger.log('🛑 App went to background - pausing video');
+        logger.debug('🛑 App went to background - pausing video');
         try {
           if (videoPlayer) {
             videoPlayer.pause();
@@ -696,7 +695,7 @@ useEffect(() => {
             setIsVideoPaused(true);
           }
         } catch (error) {
-          logger.log('⚠️ Error pausing video player:', error.message);
+          logger.debug('⚠️ Error pausing video player:', error.message);
         }
       }
     };
@@ -896,8 +895,8 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      logger.log('💳 Preparing purchase for course:', course.id);
-      logger.log('🔍 [handlePurchaseCourse] User details:', {
+      logger.debug('💳 Preparing purchase for course:', course.id);
+      logger.debug('🔍 [handlePurchaseCourse] User details:', {
         userId: effectiveUser.uid,
         userEmail: effectiveUser.email,
         courseId: course.id,
@@ -906,7 +905,7 @@ useEffect(() => {
       // Prepare purchase (creates payment preference)
       const purchaseResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id);
       
-      logger.log('🔍 [handlePurchaseCourse] Purchase result:', {
+      logger.debug('🔍 [handlePurchaseCourse] Purchase result:', {
         success: purchaseResult.success,
         requiresAlternateEmail: purchaseResult.requiresAlternateEmail,
         error: purchaseResult.error,
@@ -989,7 +988,7 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      logger.log('💳 Retrying purchase with Mercado Pago email:', mercadoPagoEmail.trim());
+      logger.debug('💳 Retrying purchase with Mercado Pago email:', mercadoPagoEmail.trim());
       
       // Call prepareSubscription directly with the provided email
       const subscriptionResult = await purchaseService.prepareSubscription(
@@ -1121,7 +1120,7 @@ useEffect(() => {
 
   // Handle payment success
   const handlePaymentSuccess = () => {
-    logger.log('✅ Payment successful, waiting for course assignment...');
+    logger.debug('✅ Payment successful, waiting for course assignment...');
     setShowPaymentModal(false);
     setCheckoutURL(null);
     // Post-purchase flow will be triggered by Firestore listener
@@ -1129,7 +1128,7 @@ useEffect(() => {
 
   // Handle payment error
   const handlePaymentError = () => {
-    logger.log('❌ Payment failed or cancelled');
+    logger.debug('❌ Payment failed or cancelled');
     setShowPaymentModal(false);
     setCheckoutURL(null);
     setProcessingPurchase(false);

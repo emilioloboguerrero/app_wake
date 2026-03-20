@@ -112,8 +112,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   // Categorize courses - ensure all courses are shown even if they don't match a category
   const categorizedCourses = React.useMemo(() => {
-    logger.log('🔍 Categorizing courses, allCourses.length:', allCourses.length);
-    logger.log('🔍 allCourses array:', allCourses);
+    logger.debug('🔍 Categorizing courses, allCourses.length:', allCourses.length);
+    logger.debug('🔍 allCourses array:', allCourses);
     
     const active = allCourses.filter(course => course.isActive === true);
     const expired = allCourses.filter(course => course.isExpired === true);
@@ -123,7 +123,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
       !course.isActive && !course.isExpired && !course.isCompleted
     );
     
-    logger.log('🔍 AllPurchasedCoursesScreen - Course categorization:', {
+    logger.debug('🔍 AllPurchasedCoursesScreen - Course categorization:', {
       total: allCourses.length,
       active: active.length,
       expired: expired.length,

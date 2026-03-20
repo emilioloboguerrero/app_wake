@@ -64,7 +64,7 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
 
   const recentSessions = validSessions.slice(0, maxSessions);
 
-  logger.log('📊 ExerciseHistoryCard: sessions:', sessions?.length ?? 0, 'validSessions:', validSessions.length, 'recentSessions:', recentSessions.length);
+  logger.debug('📊 ExerciseHistoryCard: sessions:', sessions?.length ?? 0, 'validSessions:', validSessions.length, 'recentSessions:', recentSessions.length);
   if (sessions?.length > 0 && validSessions.length === 0) {
     const first = sessions[0];
     const firstSet = first.sets?.[0];

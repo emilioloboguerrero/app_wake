@@ -85,7 +85,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       import('../config/firebase').then(({ auth }) => {
         const firebaseUser = auth.currentUser;
         if (firebaseUser) {
-          logger.log('⚠️ DailyWorkoutScreen: Using fallback Firebase user (AuthContext failed)');
+          logger.debug('⚠️ DailyWorkoutScreen: Using fallback Firebase user (AuthContext failed)');
           setFallbackUser(firebaseUser);
         }
       });
@@ -252,10 +252,10 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         const opts = isOneOnOne && selectedDateProp ? { targetDate: selectedDateProp } : {};
         loadSessionState(opts);
       } else {
-        logger.log('⏭️ Waiting for user to be available before loading session state...');
+        logger.debug('⏭️ Waiting for user to be available before loading session state...');
       }
     } else {
-      logger.log('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
+      logger.debug('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
     }
   }, [user?.uid]); // Re-run when user becomes available
 
@@ -279,7 +279,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (route.params?.selectedSessionId && user?.uid) {
       const { selectedSessionId, selectedModuleId, selectedSessionIndex } = route.params;
       
-      logger.log('📍 Session pre-selected from CourseStructure:', {
+      logger.debug('📍 Session pre-selected from CourseStructure:', {
         selectedSessionId,
         selectedModuleId,
         selectedSessionIndex
@@ -293,7 +293,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           
           if (!allSessions || allSessions.length === 0) {
             // Need to load session state first to get all sessions
-            logger.log('📥 Loading session state to get all sessions...');
+            logger.debug('📥 Loading session state to get all sessions...');
             const initialState = await sessionService.getCurrentSession(
               user.uid,
               course.courseId
@@ -313,7 +313,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           );
           
           if (selectedSession) {
-            logger.log('✅ Found pre-selected session, selecting it...');
+            logger.debug('✅ Found pre-selected session, selecting it...');
             await handleSelectSession(selectedSession, selectedSessionIndex);
             
             // Clear params after successful selection to prevent re-selection on back navigation
@@ -365,7 +365,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
-      logger.log('🎯 Loading session state...');
+      logger.debug('🎯 Loading session state...');
       
       // Safety check: ensure user and course are available
       if (!user?.uid) {
@@ -406,7 +406,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         await checkForTutorials();
       }
 
-      logger.log('✅ Session state loaded successfully');
+      logger.debug('✅ Session state loaded successfully');
       
     } catch (error) {
       logger.error('❌ Error loading session state:', error);
@@ -442,10 +442,10 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }
       
       if (imageUrls.length > 0) {
-        logger.log('🖼️ Preloading images in parallel...');
+        logger.debug('🖼️ Preloading images in parallel...');
         // Preload all images in parallel for maximum speed
         await Promise.all(imageUrls.map(url => ExpoImage.prefetch(url)));
-        logger.log('✅ All images preloaded');
+        logger.debug('✅ All images preloaded');
       }
     } catch (error) {
       logger.error('❌ Error preloading images:', error);
@@ -464,7 +464,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         sessionId,
         sessionState.workout.title
       );
-      logger.log('✅ Workout session started:', session.sessionId);
+      logger.debug('✅ Workout session started:', session.sessionId);
       navigation.navigate('Warmup', {
         course: course,
         workout: sessionState.workout,
@@ -493,18 +493,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 // Handle session selection
   const handleSelectSession = async (session, sessionIndex) => {
     try {
-      logger.log('🔄 Starting session selection for:', session.title);
+      logger.debug('🔄 Starting session selection for:', session.title);
       setIsChangingSession(true);
-      logger.log('📍 User selected session:', session.title, 'at index:', sessionIndex);
-      logger.log('🔄 isChangingSession set to true');
+      logger.debug('📍 User selected session:', session.title, 'at index:', sessionIndex);
       
       // DON'T clear preview state yet - keep it for loading overlay
       // setPreviewSessionId(null);
-      logger.log('🔄 Keeping previewSessionId for loading overlay:', previewSessionId);
+      logger.debug('🔄 Keeping previewSessionId for loading overlay:', previewSessionId);
       
       // Show loading state immediately
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
-      logger.log('🔄 Session state loading set to true');
       
       // Use single service to select session
       const newState = await sessionService.selectSession(
@@ -527,14 +525,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 
       // Clear preview state after successful load
       setPreviewSessionId(null);
-      logger.log('🔄 previewSessionId cleared after successful load');
       
       // Scroll back to session image card (first card)
       if (mainSwipeRef.current) {
         mainSwipeRef.current.scrollTo({ x: 0, animated: true });
       }
       
-      logger.log('✅ Session selected successfully');
+      logger.debug('✅ Session selected successfully');
       
     } catch (error) {
       logger.error('❌ Error selecting session:', error);
@@ -545,17 +542,15 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }));
       // Clear preview state on error too
       setPreviewSessionId(null);
-      logger.log('🔄 previewSessionId cleared after error');
       Alert.alert('Error', 'No se pudo cambiar la sesión');
     } finally {
       setIsChangingSession(false);
-      logger.log('🔄 isChangingSession set to false');
     }
   };
 
   const handleNextWorkout = async () => {
     try {
-      logger.log('⏭️ Moving to next workout...');
+      logger.debug('⏭️ Moving to next workout...');
       
       // Use single service to move to next workout
       const newState = await sessionService.moveToNextWorkout(
@@ -565,7 +560,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       );
       
       setSessionState(newState);
-      logger.log('✅ Next workout loaded');
+      logger.debug('✅ Next workout loaded');
       
     } catch (error) {
       logger.error('❌ Failed to move to next workout:', error);
@@ -605,7 +600,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     const isCompleted = !!(sessionId && completedIds.includes(sessionId)) || !!(session.id && completedIds.includes(session.id));
 
     if (isLoadingThisCard) {
-      logger.log('🔄 Loading overlay should be visible for session:', session.title);
+      logger.debug('🔄 Loading overlay should be visible for session:', session.title);
     }
 
     const anim = sessionListAnimsRef.current[index];
@@ -773,7 +768,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (!user?.uid || !course?.courseId) return;
 
     try {
-      logger.log('🎬 Checking for daily workout screen tutorials...');
+      logger.debug('🎬 Checking for daily workout screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
         user.uid, 
         'dailyWorkout',
@@ -781,12 +776,12 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       );
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
+        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
       } else {
-        logger.log('✅ No tutorials to show for daily workout screen');
+        logger.debug('✅ No tutorials to show for daily workout screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -806,7 +801,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
-        logger.log('✅ Tutorial marked as completed');
+        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);

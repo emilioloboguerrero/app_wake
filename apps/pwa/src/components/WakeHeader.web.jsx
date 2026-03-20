@@ -92,7 +92,7 @@ export const FixedWakeHeader = ({
   const streakLogRef = React.useRef({ isLoading, streakNumber });
   if (streakLogRef.current.isLoading !== isLoading || streakLogRef.current.streakNumber !== streakNumber) {
     streakLogRef.current = { isLoading, streakNumber };
-    logger.log('[STREAK] WakeHeader.web received', { isLoading, streakNumber, flameLevel });
+    logger.debug('[STREAK] WakeHeader.web received', { isLoading, streakNumber, flameLevel });
   }
   const isDead = flameLevel === 0;
   const streakOpacity = isDead || isLoading ? OPACITY_DEAD : OPACITY_ACTIVE;

@@ -121,7 +121,7 @@ class FirestoreService {
    * Tries indexed query first; on failure (e.g. missing composite index) falls back to client_id+program_id then filter by date in memory.
    */
   async getDatesWithPlannedSessions(userId, courseId, startDate, endDate) {
-    logger.log('[getDatesWithPlannedSessions] called', { userId, courseId, startDate, endDate });
+    logger.debug('[getDatesWithPlannedSessions] called', { userId, courseId, startDate, endDate });
     try {
       const result = await apiClient.get('/workout/calendar/planned', { params: { courseId, startDate, endDate } });
       return result?.data ?? [];
@@ -167,7 +167,7 @@ class FirestoreService {
         const copy = await this.getClientSessionContentCopy(clientSessionId, options);
         if (copy) {
           if (!options.minimal) {
-            logger.log('🔍 [resolvePlannedSessionContent] using client_session_content copy:', {
+            logger.debug('🔍 [resolvePlannedSessionContent] using client_session_content copy:', {
               clientSessionDocId: clientSessionId,
               copyId: copy.id,
               planSessionId,
@@ -202,7 +202,7 @@ class FirestoreService {
           }
           if (personalizedSession) {
             if (!options.minimal) {
-              logger.log('🔍 [resolvePlannedSessionContent] using client_plan_content session:', {
+              logger.debug('🔍 [resolvePlannedSessionContent] using client_plan_content session:', {
                 session_id,
                 resolvedId: personalizedSession.id,
                 hasExercises: !!personalizedSession.exercises?.length
@@ -214,7 +214,7 @@ class FirestoreService {
         const fromPlan = await this._resolvePlannedSessionFromPlan(plan_id, module_id, session_id, creatorId, options);
         if (fromPlan) {
           if (!options.minimal) {
-            logger.log('🔍 [resolvePlannedSessionContent] using plan/library:', {
+            logger.debug('🔍 [resolvePlannedSessionContent] using plan/library:', {
               session_id,
               resolvedId: fromPlan.id,
               hasExercises: !!fromPlan.exercises?.length
@@ -239,7 +239,7 @@ class FirestoreService {
         }
         logger.warn('resolvePlannedSessionContent: library_session_ref but no creator_id');
       }
-      logger.log('🔍 [resolvePlannedSessionContent] no content resolved');
+      logger.debug('🔍 [resolvePlannedSessionContent] no content resolved');
       return null;
     } catch (error) {
       logger.error('resolvePlannedSessionContent:', error);
@@ -259,7 +259,7 @@ class FirestoreService {
   async getPlannedSessionContentForDate(userId, courseId, date, creatorIdFromCourse = null) {
     const planned = await this.getPlannedSessionForDate(userId, courseId, date);
     if (!planned) {
-      logger.log('🔍 [getPlannedSessionContentForDate] no planned session for date, returning null');
+      logger.debug('🔍 [getPlannedSessionContentForDate] no planned session for date, returning null');
       return null;
     }
     let creatorId = creatorIdFromCourse ?? planned.creator_id ?? null;
@@ -274,7 +274,7 @@ class FirestoreService {
     const resolved = await this.resolvePlannedSessionContent(planned, creatorId);
     // Slot id = client_sessions doc id so PWA matching and completion use the same id
     const out = resolved ? { ...resolved, sessionIdForMatching: planned.id } : null;
-    logger.log('🔍 [getPlannedSessionContentForDate] resolved content:', {
+    logger.debug('🔍 [getPlannedSessionContentForDate] resolved content:', {
       plannedDocId: planned.id,
       plannedSessionId: planned.session_id,
       sessionIdForMatching: out?.sessionIdForMatching,

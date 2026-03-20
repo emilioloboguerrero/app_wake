@@ -106,7 +106,7 @@ const AuthenticatedLayout = ({ children }) => {
   const prevPathRef = React.useRef(location.pathname);
 
   const refreshUserProfile = React.useCallback(() => {
-    logger.log('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
+    logger.debug('[AUTH LAYOUT] refreshUserProfile called — refetching profile');
     const promise = new Promise((resolve) => {
       refreshResolveRef.current = resolve;
     });
@@ -204,7 +204,7 @@ const AuthenticatedLayout = ({ children }) => {
       // if AuthContext is still loading but we have firebaseUser/directFirebaseCheck we'd otherwise
       // show "Waiting for profile" forever without ever starting the fetch.
       if (effectiveUidForFetch) {
-        logger.log('[AUTH LAYOUT] BREAKPOINT: Starting profile fetch for uid:', effectiveUidForFetch);
+        logger.debug('[AUTH LAYOUT] BREAKPOINT: Starting profile fetch for uid:', effectiveUidForFetch);
         setProfileLoading(true);
         checkedUserIdRef.current = effectiveUidForFetch;
         
@@ -227,7 +227,7 @@ const AuthenticatedLayout = ({ children }) => {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
               if (cacheAge < 5 * 60 * 1000) {
-                logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
+                logger.debug('[AUTH LAYOUT] BREAKPOINT: Profile from cache. uid:', effectiveUidForFetch, 'onboardingCompleted:', status.onboardingCompleted, 'profileCompleted:', status.profileCompleted);
                 if (mounted) {
                   setUserProfile({
                     profileCompleted: status.profileCompleted ?? false,
@@ -250,7 +250,7 @@ const AuthenticatedLayout = ({ children }) => {
           
           if (mounted) {
             if (profile) {
-              logger.log('[AUTH LAYOUT] BREAKPOINT: Profile from Firestore. uid:', effectiveUidForFetch, 'onboardingCompleted:', profile.onboardingCompleted, 'profileCompleted:', profile.profileCompleted);
+              logger.debug('[AUTH LAYOUT] BREAKPOINT: Profile from Firestore. uid:', effectiveUidForFetch, 'onboardingCompleted:', profile.onboardingCompleted, 'profileCompleted:', profile.profileCompleted);
               setUserProfile(profile);
               try {
                 localStorage.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
@@ -260,7 +260,7 @@ const AuthenticatedLayout = ({ children }) => {
                 }));
               } catch (_) {}
             } else {
-              logger.log('[AUTH LAYOUT] BREAKPOINT: No profile (new user). uid:', effectiveUidForFetch, '-> setting onboarding not completed');
+              logger.debug('[AUTH LAYOUT] BREAKPOINT: No profile (new user). uid:', effectiveUidForFetch, '-> setting onboarding not completed');
               setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             }
           }
@@ -272,13 +272,13 @@ const AuthenticatedLayout = ({ children }) => {
               try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
               if (cached) {
                 const status = JSON.parse(cached);
-                logger.log('[AUTH LAYOUT] Using cached onboarding status after error. uid:', effectiveUidForFetch, status);
+                logger.debug('[AUTH LAYOUT] Using cached onboarding status after error. uid:', effectiveUidForFetch, status);
                 setUserProfile({
                   profileCompleted: status.profileCompleted ?? false,
                   onboardingCompleted: status.onboardingCompleted ?? false
                 });
               } else {
-                logger.log('[AUTH LAYOUT] No cache, assuming new user after error. uid:', effectiveUidForFetch);
+                logger.debug('[AUTH LAYOUT] No cache, assuming new user after error. uid:', effectiveUidForFetch);
                 setUserProfile({ profileCompleted: false, onboardingCompleted: false });
               }
             } catch {
@@ -444,7 +444,7 @@ const AuthenticatedLayout = ({ children }) => {
   // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
   if (finalHasUser && (profileLoading || userProfile === null)) {
     logger.prod('LAYOUT LoadingScreen (waiting for profile)', { uid: effectiveUid, profileLoading, hasProfile: !!userProfile });
-    logger.log('[AUTH LAYOUT] BREAKPOINT: Waiting for profile. uid:', effectiveUid, 'profileLoading:', profileLoading, 'userProfile:', userProfile ? 'set' : 'null');
+    logger.debug('[AUTH LAYOUT] BREAKPOINT: Waiting for profile. uid:', effectiveUid, 'profileLoading:', profileLoading, 'userProfile:', userProfile ? 'set' : 'null');
     return <LoadingScreen />;
   }
 
@@ -460,26 +460,26 @@ const AuthenticatedLayout = ({ children }) => {
   if (isOnOnboardingPath) {
     // We're on /onboarding: only render onboarding screen if they still need it
     if (hasCompletedOnboarding) {
-      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding but profile complete, redirecting to /. uid:', effectiveUid);
+      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding but profile complete, redirecting to /. uid:', effectiveUid);
       return <Navigate to="/" replace />;
     }
     // Profile already done but questions not: send to questions flow (e.g. after refresh)
     if (userProfile.profileCompleted && !userProfile.onboardingCompleted) {
-      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding, profile done, redirecting to questions. uid:', effectiveUid);
+      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding, profile done, redirecting to questions. uid:', effectiveUid);
       return <Navigate to="/onboarding/questions" replace />;
     }
-    logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding, rendering children. uid:', effectiveUid);
+    logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding, rendering children. uid:', effectiveUid);
   } else if (isOnOnboardingQuestionsPath) {
     // On questions flow: allow even if refetch hasn't updated profile yet
     if (hasCompletedOnboarding) {
-      logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions but onboarding complete, redirecting to /. uid:', effectiveUid);
+      logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions but onboarding complete, redirecting to /. uid:', effectiveUid);
       return <Navigate to="/" replace />;
     }
-    logger.log('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions, rendering children. uid:', effectiveUid);
+    logger.debug('[AUTH LAYOUT] BREAKPOINT: On /onboarding/questions, rendering children. uid:', effectiveUid);
   } else {
     // We're on another route: redirect to onboarding only when profile explicitly says incomplete
     if (needsOnboarding) {
-      logger.log('[AUTH LAYOUT] BREAKPOINT: Onboarding decision - redirecting to /onboarding.', {
+      logger.debug('[AUTH LAYOUT] BREAKPOINT: Onboarding decision - redirecting to /onboarding.', {
         uid: effectiveUid,
         onboardingCompleted: userProfile.onboardingCompleted,
         profileCompleted: userProfile.profileCompleted
@@ -488,7 +488,7 @@ const AuthenticatedLayout = ({ children }) => {
     }
   }
 
-  logger.log('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
+  logger.debug('[AUTH LAYOUT] BREAKPOINT: Rendering authenticated content. uid:', effectiveUid);
   const userRole = userProfile?.role ?? null;
 
   // Render tab bar in a portal to document.body so position:fixed is relative to viewport

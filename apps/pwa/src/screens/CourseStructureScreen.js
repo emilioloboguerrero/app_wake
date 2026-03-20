@@ -297,7 +297,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
     // Calculate global session index across all modules
     const globalSessionIndex = calculateGlobalSessionIndex(moduleId, sessionIndex);
     
-    logger.log('📍 Navigating to session:', {
+    logger.debug('📍 Navigating to session:', {
       sessionTitle: session.title,
       sessionId: session.id || session.sessionId,
       moduleId: moduleId,

@@ -25,13 +25,13 @@ class SessionService {
     const cacheKey = targetDate ? `${userId}|${courseId}|${targetDate}` : `${userId}|${courseId}`;
 
     try {
-      logger.log('🎯 Getting current session:', { userId, courseId, manualSessionId, targetDate });
+      logger.debug('🎯 Getting current session:', { userId, courseId, manualSessionId, targetDate });
 
       // Check cache first (unless force refresh) - 5 minute cache
       if (!forceRefresh) {
         const cached = this.cache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp) < 300000) {
-          logger.log('✅ Using cached session state');
+          logger.debug('✅ Using cached session state');
           return cached.data;
         }
       }
@@ -43,7 +43,7 @@ class SessionService {
 
       const t0 = Date.now();
       const res = await apiClient.get('/workout/daily', { params });
-      logger.log('⏱️ [getCurrentSession] GET /workout/daily:', Date.now() - t0, 'ms');
+      logger.debug('⏱️ [getCurrentSession] GET /workout/daily:', Date.now() - t0, 'ms');
 
       const d = res?.data;
 
@@ -162,7 +162,7 @@ class SessionService {
       };
 
       this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
-      logger.log('✅ Session state built via API:', {
+      logger.debug('✅ Session state built via API:', {
         sessionTitle: session.title,
         exerciseCount: workout.exercises.length,
         isManual: !!manualSessionId,
@@ -191,7 +191,7 @@ class SessionService {
   async selectSession(userId, courseId, sessionId, sessionIndex) {
     const tSelectStart = Date.now();
     try {
-      logger.log('📍 Selecting session manually:', { sessionId, sessionIndex });
+      logger.debug('📍 Selecting session manually:', { sessionId, sessionIndex });
 
       // Clear cache first (forces full re-fetch: course data, progress, and workout build)
       this.clearCache(userId, courseId);
@@ -203,7 +203,7 @@ class SessionService {
         manualSessionIndex: sessionIndex
       });
 
-      logger.log('✅ Session selection completed in', Date.now() - tSelectStart, 'ms:', {
+      logger.debug('✅ Session selection completed in', Date.now() - tSelectStart, 'ms:', {
         sessionTitle: newState.session?.title,
         isManual: newState.isManual
       });
@@ -247,11 +247,11 @@ class SessionService {
    */
   async completeSession(userId, courseId, sessionData, options = {}) {
     try {
-      logger.log('🏁 Completing session:', sessionData.sessionId || sessionData.id);
+      logger.debug('🏁 Completing session:', sessionData.sessionId || sessionData.id);
 
       // Handle both session objects and workout objects
       let actualSessionData;
-      logger.log('🔍 VOLUME DEBUG: Determining session data type:', {
+      logger.debug('🔍 VOLUME DEBUG: Determining session data type:', {
         hasExercises: !!sessionData.exercises,
         exercisesLength: sessionData.exercises?.length,
         firstExerciseHasExerciseId: !!sessionData.exercises?.[0]?.exerciseId,
@@ -261,11 +261,11 @@ class SessionService {
       
       if (sessionData.exercises && sessionData.exercises[0] && sessionData.exercises[0].exerciseId) {
         // This is a session object (has exerciseId)
-        logger.log('🔍 VOLUME DEBUG: Using session object directly');
+        logger.debug('🔍 VOLUME DEBUG: Using session object directly');
         actualSessionData = sessionData;
       } else {
         // This is a workout object (has exercise names), convert to session format
-        logger.log('🔍 VOLUME DEBUG: Converting workout object to session format');
+        logger.debug('🔍 VOLUME DEBUG: Converting workout object to session format');
         actualSessionData = this.convertWorkoutToSession(sessionData, userId, courseId);
         
         // Get the actual session from sessionManager to preserve startTime
@@ -273,14 +273,14 @@ class SessionService {
           const currentSession = await sessionManager.getCurrentSession();
           if (currentSession && currentSession.startTime) {
             actualSessionData.startTime = currentSession.startTime;
-            logger.log('✅ Preserved startTime from current session:', currentSession.startTime);
+            logger.debug('✅ Preserved startTime from current session:', currentSession.startTime);
           }
         } catch (error) {
           logger.warn('⚠️ Could not get current session for startTime:', error);
         }
       }
       
-      logger.log('🔍 VOLUME DEBUG: actualSessionData created:', {
+      logger.debug('🔍 VOLUME DEBUG: actualSessionData created:', {
         hasActualSessionData: !!actualSessionData,
         sessionId: actualSessionData?.sessionId,
         exercisesCount: actualSessionData?.exercises?.length,
@@ -309,7 +309,7 @@ class SessionService {
         const workoutForVolume = options.plannedWorkout ?? null;
         if (workoutForVolume?.exercises?.length) {
           sessionMuscleVolumes = this.calculateSimpleMuscleVolumes(actualSessionData, workoutForVolume);
-          logger.log('💪 Session muscle volumes calculated:', Object.keys(sessionMuscleVolumes).length, 'muscles');
+          logger.debug('💪 Session muscle volumes calculated:', Object.keys(sessionMuscleVolumes).length, 'muscles');
         }
       } catch (error) {
         logger.error('❌ Error calculating muscle volumes:', error);
@@ -318,7 +318,7 @@ class SessionService {
       // Clear cache to force refresh
       this.clearCache(userId, courseId);
 
-      logger.log('✅ Session completed successfully');
+      logger.debug('✅ Session completed successfully');
 
       return {
         sessionData: actualSessionData,
@@ -338,8 +338,8 @@ class SessionService {
    * Only count sets where user actually performed reps/weight AND intensity >= 7
    */
   calculateSimpleMuscleVolumes(sessionData, workoutData) {
-    logger.log('🔍 SIMPLE VOLUME: Starting calculation');
-    logger.log('🔍 SIMPLE VOLUME: Input data:', {
+    logger.debug('🔍 SIMPLE VOLUME: Starting calculation');
+    logger.debug('🔍 SIMPLE VOLUME: Input data:', {
       sessionDataExercisesCount: sessionData.exercises?.length || 0,
       workoutDataExercisesCount: workoutData.exercises?.length || 0,
       sessionDataExercises: sessionData.exercises?.map(ex => ({
@@ -364,7 +364,7 @@ class SessionService {
     
     sessionData.exercises.forEach((sessionExercise) => {
       // 🔍 VOLUME DEBUG: Log exercise matching
-      logger.log('🔍 SIMPLE VOLUME: Processing session exercise:', {
+      logger.debug('🔍 SIMPLE VOLUME: Processing session exercise:', {
         exerciseName: sessionExercise.exerciseName,
         exerciseId: sessionExercise.exerciseId,
         setsCount: sessionExercise.sets?.length || 0
@@ -375,7 +375,7 @@ class SessionService {
         we.name === sessionExercise.exerciseName || we.id === sessionExercise.exerciseId
       );
       
-      logger.log('🔍 SIMPLE VOLUME: Exercise matching result:', {
+      logger.debug('🔍 SIMPLE VOLUME: Exercise matching result:', {
         sessionExerciseName: sessionExercise.exerciseName,
         sessionExerciseId: sessionExercise.exerciseId,
         foundWorkoutExercise: !!workoutExercise,
@@ -386,17 +386,17 @@ class SessionService {
       });
       
       if (!workoutExercise?.muscle_activation) {
-        logger.log(`🔍 SIMPLE VOLUME: Skipping ${sessionExercise.exerciseName} - no muscle activation`);
+        logger.debug(`🔍 SIMPLE VOLUME: Skipping ${sessionExercise.exerciseName} - no muscle activation`);
         return;
       }
       
-      logger.log(`🔍 SIMPLE VOLUME: Processing ${sessionExercise.exerciseName}`);
+      logger.debug(`🔍 SIMPLE VOLUME: Processing ${sessionExercise.exerciseName}`);
       
       // Count only sets with actual user performance
       let effectiveSets = 0;
       sessionExercise.sets.forEach((set, setIndex) => {
         // 🔍 VOLUME DEBUG: Log each set processing
-        logger.log('🔍 SIMPLE VOLUME: Processing set:', {
+        logger.debug('🔍 SIMPLE VOLUME: Processing set:', {
           exerciseName: sessionExercise.exerciseName,
           setIndex,
           set,
@@ -410,7 +410,7 @@ class SessionService {
         const hasActualWeight = set.weight && set.weight !== '' && !isNaN(parseFloat(set.weight));
         const hasActualData = hasActualReps || hasActualWeight;
         
-        logger.log('🔍 SIMPLE VOLUME: Set data validation:', {
+        logger.debug('🔍 SIMPLE VOLUME: Set data validation:', {
           exerciseName: sessionExercise.exerciseName,
           setIndex,
           hasActualReps,
@@ -422,12 +422,12 @@ class SessionService {
         });
         
         if (!hasActualData) {
-          logger.log(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - no actual data (reps: "${set.reps}", weight: "${set.weight}"), skipping`);
+          logger.debug(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - no actual data (reps: "${set.reps}", weight: "${set.weight}"), skipping`);
           return;
         }
         
         // Check intensity >= 7
-        logger.log('🔍 SIMPLE VOLUME: Parsing intensity:', {
+        logger.debug('🔍 SIMPLE VOLUME: Parsing intensity:', {
           exerciseName: sessionExercise.exerciseName,
           setIndex,
           intensityString: set.intensity,
@@ -436,7 +436,7 @@ class SessionService {
         
         const intensity = oneRepMaxService.parseIntensity(set.intensity);
         
-        logger.log('🔍 SIMPLE VOLUME: Intensity parsing result:', {
+        logger.debug('🔍 SIMPLE VOLUME: Intensity parsing result:', {
           exerciseName: sessionExercise.exerciseName,
           setIndex,
           intensityString: set.intensity,
@@ -448,17 +448,17 @@ class SessionService {
         
         if (intensity >= 7) {
           effectiveSets++;
-          logger.log(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - intensity ${intensity} >= 7, counted (${set.reps} reps, ${set.weight}kg)`);
+          logger.debug(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - intensity ${intensity} >= 7, counted (${set.reps} reps, ${set.weight}kg)`);
         } else {
-          logger.log(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - intensity ${intensity} < 7, not counted`);
+          logger.debug(`🔍 SIMPLE VOLUME: Set ${setIndex + 1} - intensity ${intensity} < 7, not counted`);
         }
       });
       
-      logger.log(`🔍 SIMPLE VOLUME: ${sessionExercise.exerciseName} - ${effectiveSets} effective sets`);
+      logger.debug(`🔍 SIMPLE VOLUME: ${sessionExercise.exerciseName} - ${effectiveSets} effective sets`);
       
       // Distribute to muscles if there are effective sets
       if (effectiveSets > 0) {
-        logger.log('🔍 SIMPLE VOLUME: Distributing to muscles:', {
+        logger.debug('🔍 SIMPLE VOLUME: Distributing to muscles:', {
           exerciseName: sessionExercise.exerciseName,
           effectiveSets,
           muscleActivation: workoutExercise.muscle_activation
@@ -469,11 +469,11 @@ class SessionService {
           if (!isNaN(numericPercentage)) {
             const contribution = effectiveSets * (numericPercentage / 100);
             muscleSets[muscle] = (muscleSets[muscle] || 0) + contribution;
-            logger.log(`🔍 SIMPLE VOLUME: ${muscle} +${contribution.toFixed(2)} sets (${numericPercentage}%)`);
+            logger.debug(`🔍 SIMPLE VOLUME: ${muscle} +${contribution.toFixed(2)} sets (${numericPercentage}%)`);
           }
         });
       } else {
-        logger.log(`🔍 SIMPLE VOLUME: ${sessionExercise.exerciseName} - no effective sets, skipping muscle distribution`);
+        logger.debug(`🔍 SIMPLE VOLUME: ${sessionExercise.exerciseName} - no effective sets, skipping muscle distribution`);
       }
     });
     
@@ -482,7 +482,7 @@ class SessionService {
       muscleSets[muscle] = Math.round(muscleSets[muscle] * 10) / 10;
     });
     
-    logger.log('🔍 SIMPLE VOLUME: Final result:', muscleSets);
+    logger.debug('🔍 SIMPLE VOLUME: Final result:', muscleSets);
     return muscleSets;
   }
 
@@ -490,7 +490,7 @@ class SessionService {
    * Convert workout object to session format
    */
   convertWorkoutToSession(workout, userId, courseId) {
-    logger.log('🔍 VOLUME DEBUG: convertWorkoutToSession called with:', {
+    logger.debug('🔍 VOLUME DEBUG: convertWorkoutToSession called with:', {
       hasWorkout: !!workout,
       hasExercises: !!workout?.exercises,
       exercisesLength: workout?.exercises?.length,
@@ -517,7 +517,7 @@ class SessionService {
       duration: 0,
       exercises: workout.exercises.map(exercise => {
         // 🔍 VOLUME DEBUG: Log exercise processing
-        logger.log('🔍 VOLUME DEBUG: Processing exercise in convertWorkoutToSession:', {
+        logger.debug('🔍 VOLUME DEBUG: Processing exercise in convertWorkoutToSession:', {
           exerciseName: exercise.name || exercise.exerciseName,
           exerciseId: exercise.id || exercise.exerciseId,
           originalLibraryId: exercise.libraryId,
@@ -565,7 +565,7 @@ class SessionService {
             };
             
             // 🔍 VOLUME DEBUG: Log each set processing
-            logger.log('🔍 VOLUME DEBUG: Processing set in convertWorkoutToSession:', {
+            logger.debug('🔍 VOLUME DEBUG: Processing set in convertWorkoutToSession:', {
               exerciseName: exercise.name || exercise.exerciseName,
               setIndex,
               originalSet: set,
@@ -585,7 +585,7 @@ class SessionService {
             const passesFilter = hasReps || hasWeight;
             
             // 🔍 VOLUME DEBUG: Log set filtering
-            logger.log('🔍 VOLUME DEBUG: Set filtering in convertWorkoutToSession:', {
+            logger.debug('🔍 VOLUME DEBUG: Set filtering in convertWorkoutToSession:', {
               exerciseName: exercise.name || exercise.exerciseName,
               setIndex,
               set,
@@ -607,7 +607,7 @@ class SessionService {
         };
         
         // 🔍 VOLUME DEBUG: Log final processed exercise
-        logger.log('🔍 VOLUME DEBUG: Final processed exercise:', {
+        logger.debug('🔍 VOLUME DEBUG: Final processed exercise:', {
           exerciseName: processedExercise.exerciseName,
           libraryId: processedExercise.libraryId,
           setsCount: processedExercise.sets.length,
@@ -625,7 +625,7 @@ class SessionService {
       }).filter(exercise => exercise !== null) // Remove null exercises
     };
     
-      logger.log('🔍 VOLUME DEBUG: convertWorkoutToSession result:', {
+      logger.debug('🔍 VOLUME DEBUG: convertWorkoutToSession result:', {
         sessionId: convertedSession.sessionId,
         exercisesCount: convertedSession.exercises.length,
         firstExerciseId: convertedSession.exercises[0]?.exerciseId,
@@ -637,11 +637,11 @@ class SessionService {
       
       // Log all exercise keys that will be created
       const exerciseKeys = convertedSession.exercises.map(ex => `${ex.libraryId}_${ex.exerciseName}`);
-      logger.log('🔍 SESSION HISTORY DEBUG: Exercise keys to be saved:', exerciseKeys);
+      logger.debug('🔍 SESSION HISTORY DEBUG: Exercise keys to be saved:', exerciseKeys);
       
       // Log set filtering results for each exercise
       convertedSession.exercises.forEach(exercise => {
-        logger.log('🔍 SET FILTERING DEBUG:', {
+        logger.debug('🔍 SET FILTERING DEBUG:', {
           exerciseName: exercise.exerciseName,
           libraryId: exercise.libraryId,
           originalSetsCount: exercise.sets?.length || 0,
@@ -666,8 +666,8 @@ class SessionService {
    */
   async addSessionData(userId, sessionData, plannedSnapshot = null) {
     try {
-      logger.log('📚 Adding session data to history:', sessionData.sessionId);
-      logger.log('📚 Session data structure:', {
+      logger.debug('📚 Adding session data to history:', sessionData.sessionId);
+      logger.debug('📚 Session data structure:', {
         sessionId: sessionData.sessionId,
         courseId: sessionData.courseId,
         exercisesCount: sessionData.exercises?.length,
@@ -676,7 +676,7 @@ class SessionService {
       
       // Server handles course progress, 1RM, streak atomically
       const result = await exerciseHistoryService.addSessionData(userId, sessionData, plannedSnapshot);
-      logger.log('✅ Session data added to history successfully');
+      logger.debug('✅ Session data added to history successfully');
       return result;
       
     } catch (error) {
@@ -737,7 +737,7 @@ class SessionService {
       if (key === prefix || (typeof key === 'string' && key.startsWith(prefix + '_'))) toDelete.push(key);
     }
     toDelete.forEach((k) => this.cache.delete(k));
-    logger.log('🗑️ Cache cleared for session and progress:', userId, courseId);
+    logger.debug('🗑️ Cache cleared for session and progress:', userId, courseId);
   }
 
   /**
@@ -745,7 +745,7 @@ class SessionService {
    */
   clearAllCache() {
     this.cache.clear();
-    logger.log('🗑️ All cache cleared');
+    logger.debug('🗑️ All cache cleared');
   }
 }
 

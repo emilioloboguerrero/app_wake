@@ -10,7 +10,7 @@ class ExerciseHistoryService {
    */
   async addSessionData(userId, sessionData, plannedSnapshot = null) {
     try {
-      logger.log('📚 Adding session data to exercise history:', sessionData.sessionId);
+      logger.debug('📚 Adding session data to exercise history:', sessionData.sessionId);
 
       if (!sessionData || !sessionData.exercises || !Array.isArray(sessionData.exercises)) {
         throw new Error('Invalid session data structure');
@@ -32,7 +32,7 @@ class ExerciseHistoryService {
 
       const res = await apiClient.post('/workout/complete', body);
 
-      logger.log('✅ Session data added to exercise history');
+      logger.debug('✅ Session data added to exercise history');
       return res?.data ?? null;
     } catch (error) {
       if (error instanceof WakeApiError && error.status === 0) {
@@ -47,7 +47,7 @@ class ExerciseHistoryService {
           exercises: sessionData.exercises,
           planned: plannedSnapshot ? { exercises: plannedSnapshot.exercises } : undefined,
         }, priority: 'high' });
-        logger.log('[exerciseHistoryService] session queued for offline replay');
+        logger.debug('[exerciseHistoryService] session queued for offline replay');
         return { queued: true };
       }
       logger.error('❌ Error adding session data to exercise history:', error);
@@ -112,7 +112,7 @@ class ExerciseHistoryService {
    */
   async getSessionHistoryPaginated(userId, pageLimit = 20, pageToken = null) {
     try {
-      logger.log('📊 Getting paginated session history for user:', userId, { limit: pageLimit });
+      logger.debug('📊 Getting paginated session history for user:', userId, { limit: pageLimit });
       const sessions = {};
       let token = pageToken;
       let hasMore = false;
@@ -130,7 +130,7 @@ class ExerciseHistoryService {
         hasMore = res?.hasMore ?? false;
       } while (hasMore && fetched < pageLimit && token);
 
-      logger.log('✅ Retrieved paginated session history:', Object.keys(sessions).length, 'sessions');
+      logger.debug('✅ Retrieved paginated session history:', Object.keys(sessions).length, 'sessions');
       return { sessions, nextPageToken: token, hasMore };
     } catch (error) {
       logger.error('❌ Error getting paginated session history:', error);
@@ -144,10 +144,10 @@ class ExerciseHistoryService {
    */
   async getAllExerciseKeysFromExerciseHistory(userId) {
     try {
-      logger.log('📊 Getting all exercise keys from exercise history for user:', userId);
+      logger.debug('📊 Getting all exercise keys from exercise history for user:', userId);
       const res = await apiClient.get('/progress/prs');
       const prs = res?.data ?? [];
-      logger.log('✅ Found', prs.length, 'unique exercise keys from exercise history');
+      logger.debug('✅ Found', prs.length, 'unique exercise keys from exercise history');
       return prs.map((pr) => pr.exerciseKey);
     } catch (error) {
       logger.error('❌ Error getting exercise keys from exercise history:', error);

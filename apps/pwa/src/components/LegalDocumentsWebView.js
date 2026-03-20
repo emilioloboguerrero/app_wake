@@ -33,7 +33,7 @@ const LegalDocumentsWebView = ({
     if (!visible || !isWeb) return;
     if (hasOpenedRef.current) return;
     hasOpenedRef.current = true;
-    logger.log('🌐 [LegalDocumentsWebView] Opening legal page immediately');
+    logger.debug('🌐 [LegalDocumentsWebView] Opening legal page immediately');
     try {
       const w = window.open(LEGAL_URL, '_blank', 'noopener,noreferrer');
       if (w) {

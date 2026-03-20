@@ -11,24 +11,24 @@ class LocalCourseCache {
    */
   async getUserCoursesFromCache(userId) {
     try {
-      logger.log('📖 Loading active course IDs from cache...');
+      logger.debug('📖 Loading active course IDs from cache...');
       
       const cacheKey = `active_courses_${userId}`;
       const cachedData = await AsyncStorage.getItem(cacheKey);
       
       if (!cachedData) {
-        logger.log('❌ No cached course IDs found for user:', userId);
+        logger.debug('❌ No cached course IDs found for user:', userId);
         return [];
       }
       
       const courseCache = JSON.parse(cachedData);
-      logger.log('📊 Found cache with', courseCache.activeCourses?.length || 0, 'course IDs');
+      logger.debug('📊 Found cache with', courseCache.activeCourses?.length || 0, 'course IDs');
       
       // Filter expired courses by checking expiration dates
       const validCourseIds = this.filterExpiredCourseIds(courseCache.activeCourses || []);
       
       if (validCourseIds.length !== (courseCache.activeCourses?.length || 0)) {
-        logger.log(`⏰ Found ${(courseCache.activeCourses?.length || 0) - validCourseIds.length} expired courses, updating cache...`);
+        logger.debug(`⏰ Found ${(courseCache.activeCourses?.length || 0) - validCourseIds.length} expired courses, updating cache...`);
         
         // Update cache with only valid course IDs
         await this.updateActiveCourseIds(userId, validCourseIds);
@@ -37,7 +37,7 @@ class LocalCourseCache {
       // Now load course content from downloaded courses for each active ID
       const coursesWithContent = await this.loadCourseContentForIds(validCourseIds);
       
-      logger.log(`✅ Loaded ${coursesWithContent.length} courses with content`);
+      logger.debug(`✅ Loaded ${coursesWithContent.length} courses with content`);
       return coursesWithContent;
       
     } catch (error) {
@@ -53,7 +53,7 @@ class LocalCourseCache {
    */
   async updateUserCourseCache(userId, courses) {
     try {
-      logger.log('🔍 Checking if cache needs update with', courses.length, 'courses from database...');
+      logger.debug('🔍 Checking if cache needs update with', courses.length, 'courses from database...');
       
       // Extract just the course IDs and expiration info (minimal data)
       const newActiveCourses = courses.map(course => ({
@@ -78,11 +78,11 @@ class LocalCourseCache {
       const hasChanges = this.compareCourseArrays(currentActiveCourses, newActiveCourses);
       
       if (hasChanges) {
-        logger.log('🔄 Cache has changes, updating...');
+        logger.debug('🔄 Cache has changes, updating...');
         await this.updateActiveCourseIds(userId, newActiveCourses);
-        logger.log('✅ Course ID cache updated successfully');
+        logger.debug('✅ Course ID cache updated successfully');
       } else {
-        logger.log('✅ Cache is up to date, no changes needed');
+        logger.debug('✅ Cache is up to date, no changes needed');
       }
       
     } catch (error) {
@@ -98,7 +98,7 @@ class LocalCourseCache {
   compareCourseArrays(current, newCourses) {
     // Different lengths = definitely different
     if (current.length !== newCourses.length) {
-      logger.log('📊 Cache comparison: Different lengths', current.length, 'vs', newCourses.length);
+      logger.debug('📊 Cache comparison: Different lengths', current.length, 'vs', newCourses.length);
       return true;
     }
     
@@ -107,7 +107,7 @@ class LocalCourseCache {
       const existingCourse = current.find(c => c.courseId === newCourse.courseId);
       
       if (!existingCourse) {
-        logger.log('📊 Cache comparison: New course found:', newCourse.courseId);
+        logger.debug('📊 Cache comparison: New course found:', newCourse.courseId);
         return true;
       }
       
@@ -116,7 +116,7 @@ class LocalCourseCache {
           existingCourse.status !== newCourse.status ||
           existingCourse.is_trial !== newCourse.is_trial ||
           existingCourse.trial_expires_at !== newCourse.trial_expires_at) {
-        logger.log('📊 Cache comparison: Course changed:', newCourse.courseId);
+        logger.debug('📊 Cache comparison: Course changed:', newCourse.courseId);
         return true;
       }
     }
@@ -125,12 +125,12 @@ class LocalCourseCache {
     for (const currentCourse of current) {
       const stillExists = newCourses.find(c => c.courseId === currentCourse.courseId);
       if (!stillExists) {
-        logger.log('📊 Cache comparison: Course removed:', currentCourse.courseId);
+        logger.debug('📊 Cache comparison: Course removed:', currentCourse.courseId);
         return true;
       }
     }
     
-    logger.log('📊 Cache comparison: No changes detected');
+    logger.debug('📊 Cache comparison: No changes detected');
     return false;
   }
   
@@ -163,7 +163,7 @@ class LocalCourseCache {
    */
   async addCourseToCache(userId, courseData) {
     try {
-      logger.log('➕ Adding course ID to cache:', courseData.courseId);
+      logger.debug('➕ Adding course ID to cache:', courseData.courseId);
       
       // Get current active course IDs
       const cacheKey = `active_courses_${userId}`;
@@ -189,11 +189,11 @@ class LocalCourseCache {
       if (existingIndex >= 0) {
         // Update existing course
         activeCourses[existingIndex] = courseInfo;
-        logger.log('🔄 Updated existing course in cache');
+        logger.debug('🔄 Updated existing course in cache');
       } else {
         // Add new course
         activeCourses.push(courseInfo);
-        logger.log('✅ Added new course to cache');
+        logger.debug('✅ Added new course to cache');
       }
       
       await this.updateActiveCourseIds(userId, activeCourses);
@@ -210,14 +210,14 @@ class LocalCourseCache {
    */
   async removeCourseFromCache(userId, courseId) {
     try {
-      logger.log('➖ Removing course from cache:', courseId);
+      logger.debug('➖ Removing course from cache:', courseId);
       
       // Get current active course IDs
       const cacheKey = `active_courses_${userId}`;
       const cachedData = await AsyncStorage.getItem(cacheKey);
       
       if (!cachedData) {
-        logger.log('ℹ️ No cache found to remove course from');
+        logger.debug('ℹ️ No cache found to remove course from');
         return false;
       }
       
@@ -228,10 +228,10 @@ class LocalCourseCache {
       
       if (filteredCourses.length < activeCourses.length) {
         await this.updateActiveCourseIds(userId, filteredCourses);
-        logger.log('✅ Course removed from cache');
+        logger.debug('✅ Course removed from cache');
         return true;
       } else {
-        logger.log('ℹ️ Course not found in cache');
+        logger.debug('ℹ️ Course not found in cache');
         return false;
       }
       
@@ -249,7 +249,7 @@ class LocalCourseCache {
     try {
       const cacheKey = `active_courses_${userId}`;
       await AsyncStorage.removeItem(cacheKey);
-      logger.log('🧹 User course cache cleared');
+      logger.debug('🧹 User course cache cleared');
     } catch (error) {
       logger.error('❌ Failed to clear course cache:', error);
     }
@@ -261,9 +261,9 @@ class LocalCourseCache {
    */
   async forceClearCache(userId) {
     try {
-      logger.log('🧹 Force clearing all cache data...');
+      logger.debug('🧹 Force clearing all cache data...');
       await this.clearUserCourseCache(userId);
-      logger.log('✅ All cache data cleared, next load will refresh from database');
+      logger.debug('✅ All cache data cleared, next load will refresh from database');
     } catch (error) {
       logger.error('❌ Failed to force clear cache:', error);
     }
@@ -301,7 +301,7 @@ class LocalCourseCache {
             const trialExpired = now > trialExpiration;
             
             if (trialExpired) {
-              logger.log(`⏰ Trial expired (kept for visibility): ${course.courseId}`);
+              logger.debug(`⏰ Trial expired (kept for visibility): ${course.courseId}`);
             }
           } catch (error) {
             logger.error('❌ Error parsing trial expiration for course:', course.courseId, error);
@@ -311,7 +311,7 @@ class LocalCourseCache {
       }
       
       if (!course.expires_at) {
-        logger.log('⚠️ Course missing expiration date:', course.courseId);
+        logger.debug('⚠️ Course missing expiration date:', course.courseId);
         return true; // Keep courses without expiration date
       }
       
@@ -320,7 +320,7 @@ class LocalCourseCache {
         const isExpired = now > expirationDate;
         
         if (isExpired) {
-          logger.log(`⏰ Course expired: ${course.courseId} (expired: ${course.expires_at})`);
+          logger.debug(`⏰ Course expired: ${course.courseId} (expired: ${course.expires_at})`);
         }
         
         return !isExpired;
@@ -337,19 +337,19 @@ class LocalCourseCache {
    */
   async loadCourseContentForIds(courseIds) {
     try {
-      logger.log('📚 Loading course content for', courseIds.length, 'active courses...');
+      logger.debug('📚 Loading course content for', courseIds.length, 'active courses...');
       
       const coursesWithContent = [];
       
       for (const courseInfo of courseIds) {
         try {
-          logger.log('🔍 Loading content for course:', courseInfo.courseId);
+          logger.debug('🔍 Loading content for course:', courseInfo.courseId);
           
           // Get basic course info from downloaded content
           const courseData = await courseDownloadService.getCourseData(courseInfo.courseId);
           
           if (courseData && courseData.courseData) {
-            logger.log('✅ Found downloaded content for:', courseInfo.courseId);
+            logger.debug('✅ Found downloaded content for:', courseInfo.courseId);
             
             // Create course object for MainScreen display
             const courseForDisplay = {
@@ -377,7 +377,7 @@ class LocalCourseCache {
         }
       }
       
-      logger.log('✅ Successfully loaded content for', coursesWithContent.length, 'courses');
+      logger.debug('✅ Successfully loaded content for', coursesWithContent.length, 'courses');
       return coursesWithContent;
       
     } catch (error) {

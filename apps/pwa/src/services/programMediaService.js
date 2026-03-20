@@ -198,7 +198,7 @@ class ProgramMediaService {
         if (!verifyInfo.exists) {
           throw new Error(`Failed to create directory: ${path}`);
         }
-        logger.log(`✅ Created directory: ${path}`);
+        logger.debug(`✅ Created directory: ${path}`);
       }
     } catch (error) {
       logger.error(`❌ Error ensuring directory ${path}:`, error);
@@ -248,13 +248,13 @@ class ProgramMediaService {
       if (!raw) {
         this._manifests = {};
         this._manifestsLoaded = true;
-        logger.log('⚠️ No manifests found, starting fresh');
+        logger.debug('⚠️ No manifests found, starting fresh');
         return;
       }
       
       this._manifests = JSON.parse(raw);
       this._manifestsLoaded = true;
-      logger.log(`✅ Loaded ${Object.keys(this._manifests).length} program media manifests`);
+      logger.debug(`✅ Loaded ${Object.keys(this._manifests).length} program media manifests`);
     } catch (error) {
       logger.error(`❌ Error loading manifests:`, error);
       this._manifests = {};

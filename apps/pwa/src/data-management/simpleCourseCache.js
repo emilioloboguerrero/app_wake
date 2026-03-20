@@ -8,18 +8,18 @@ class SimpleCourseCache {
    */
   async getUserCourses(userId) {
     try {
-      logger.log('📖 Loading courses from cache...');
+      logger.debug('📖 Loading courses from cache...');
       
       const cacheKey = `user_courses_${userId}`;
       const cachedData = await AsyncStorage.getItem(cacheKey);
       
       if (!cachedData) {
-        logger.log('❌ No cache found - needs initial population');
+        logger.debug('❌ No cache found - needs initial population');
         return null; // Signal that cache needs to be populated
       }
       
       const courseData = JSON.parse(cachedData);
-      logger.log(`✅ Loaded ${courseData.courses.length} courses from cache`);
+      logger.debug(`✅ Loaded ${courseData.courses.length} courses from cache`);
       
       return courseData.courses;
       
@@ -34,7 +34,7 @@ class SimpleCourseCache {
    */
   async updateCache(userId, courses) {
     try {
-      logger.log('💾 Updating cache with', courses.length, 'courses...');
+      logger.debug('💾 Updating cache with', courses.length, 'courses...');
       
       const cacheData = {
         userId,
@@ -46,7 +46,7 @@ class SimpleCourseCache {
       const cacheKey = `user_courses_${userId}`;
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
       
-      logger.log('✅ Cache updated successfully');
+      logger.debug('✅ Cache updated successfully');
       
     } catch (error) {
       logger.error('❌ Failed to update cache:', error);
@@ -58,7 +58,7 @@ class SimpleCourseCache {
    */
   async addCourseToCache(userId, courseData) {
     try {
-      logger.log('➕ Adding course to cache:', courseData.courseId);
+      logger.debug('➕ Adding course to cache:', courseData.courseId);
       
       const currentCourses = await this.getUserCourses(userId) || [];
       
@@ -78,14 +78,14 @@ class SimpleCourseCache {
    */
   async removeCourseFromCache(userId, courseId) {
     try {
-      logger.log('➖ Removing course from cache:', courseId);
+      logger.debug('➖ Removing course from cache:', courseId);
       
       const currentCourses = await this.getUserCourses(userId) || [];
       const filteredCourses = currentCourses.filter(c => c.courseId !== courseId);
       
       if (filteredCourses.length < currentCourses.length) {
         await this.updateCache(userId, filteredCourses);
-        logger.log('✅ Course removed from cache');
+        logger.debug('✅ Course removed from cache');
         return true;
       }
       
@@ -104,7 +104,7 @@ class SimpleCourseCache {
     try {
       const cacheKey = `user_courses_${userId}`;
       await AsyncStorage.removeItem(cacheKey);
-      logger.log('🧹 Cache cleared');
+      logger.debug('🧹 Cache cleared');
     } catch (error) {
       logger.error('❌ Failed to clear cache:', error);
     }

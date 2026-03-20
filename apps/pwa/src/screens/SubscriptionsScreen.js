@@ -319,7 +319,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
 
-    logger.log('Cancel subscription survey result', {
+    logger.debug('Cancel subscription survey result', {
       subscriptionId: pendingCancelSubscription.id,
       answers: cancelSurveyAnswers,
     });

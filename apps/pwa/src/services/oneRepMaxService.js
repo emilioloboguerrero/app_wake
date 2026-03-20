@@ -11,13 +11,13 @@ class OneRepMaxService {
    */
   parseReps(repsStr) {
     if (!repsStr || typeof repsStr !== 'string') {
-      logger.log('⚠️ parseReps: Invalid input:', repsStr, '→ using fallback: 10');
+      logger.debug('⚠️ parseReps: Invalid input:', repsStr, '→ using fallback: 10');
       return 10;
     }
     
     // Remove all spaces
     const cleaned = repsStr.trim().replace(/\s+/g, '');
-    logger.log('🔢 parseReps: Parsing', repsStr, '→ cleaned:', cleaned);
+    logger.debug('🔢 parseReps: Parsing', repsStr, '→ cleaned:', cleaned);
     
     if (cleaned.includes('-')) {
       // Range format: "8-12"
@@ -26,23 +26,23 @@ class OneRepMaxService {
       const max = parseInt(parts[1]);
       
       if (isNaN(min) || isNaN(max) || min <= 0 || max <= 0) {
-        logger.log('⚠️ parseReps: Invalid range values:', { min, max }, '→ using fallback: 10');
+        logger.debug('⚠️ parseReps: Invalid range values:', { min, max }, '→ using fallback: 10');
         return 10;
       }
       
       const average = (min + max) / 2;
-      logger.log('✅ parseReps: Range parsed:', min, '-', max, '→ average:', average);
+      logger.debug('✅ parseReps: Range parsed:', min, '-', max, '→ average:', average);
       return average;
     } else {
       // Single number: "10"
       const value = parseInt(cleaned);
       
       if (isNaN(value) || value <= 0) {
-        logger.log('⚠️ parseReps: Non-numeric value:', cleaned, '(e.g., AMRAP/Fallo) → using fallback: 10');
+        logger.debug('⚠️ parseReps: Non-numeric value:', cleaned, '(e.g., AMRAP/Fallo) → using fallback: 10');
         return 10;
       }
       
-      logger.log('✅ parseReps: Single value parsed:', value);
+      logger.debug('✅ parseReps: Single value parsed:', value);
       return value;
     }
   }
@@ -54,7 +54,7 @@ class OneRepMaxService {
    */
   parseIntensity(intensityStr) {
     // 🔍 VOLUME DEBUG: Enhanced logging for intensity parsing
-    logger.log('🔍 VOLUME DEBUG: parseIntensity called:', {
+    logger.debug('🔍 VOLUME DEBUG: parseIntensity called:', {
       intensityStr,
       intensityType: typeof intensityStr,
       intensityLength: intensityStr?.length,
@@ -65,7 +65,7 @@ class OneRepMaxService {
     });
     
     if (!intensityStr || typeof intensityStr !== 'string') {
-      logger.log('⚠️ parseIntensity: Invalid input:', {
+      logger.debug('⚠️ parseIntensity: Invalid input:', {
         intensityStr,
         reason: !intensityStr ? 'falsy value' : 'not a string',
         type: typeof intensityStr
@@ -75,7 +75,7 @@ class OneRepMaxService {
     
     // Remove all spaces
     const cleaned = intensityStr.trim().replace(/\s+/g, '');
-    logger.log('🔢 parseIntensity: Parsing', {
+    logger.debug('🔢 parseIntensity: Parsing', {
       original: intensityStr,
       cleaned: cleaned,
       originalLength: intensityStr.length,
@@ -85,7 +85,7 @@ class OneRepMaxService {
     // Match pattern "X/10"
     const match = cleaned.match(/^(\d+)\/10$/);
     
-    logger.log('🔍 VOLUME DEBUG: Regex matching:', {
+    logger.debug('🔍 VOLUME DEBUG: Regex matching:', {
       cleaned,
       regexPattern: '/^(\\d+)\\/10$/',
       matchResult: match,
@@ -94,7 +94,7 @@ class OneRepMaxService {
     });
     
     if (!match) {
-      logger.log('⚠️ parseIntensity: Does not match X/10 format:', {
+      logger.debug('⚠️ parseIntensity: Does not match X/10 format:', {
         cleaned,
         reason: 'regex pattern mismatch'
       });
@@ -103,7 +103,7 @@ class OneRepMaxService {
     
     const level = parseInt(match[1]);
     
-    logger.log('🔍 VOLUME DEBUG: Level parsing:', {
+    logger.debug('🔍 VOLUME DEBUG: Level parsing:', {
       capturedGroup: match[1],
       parsedLevel: level,
       isValidNumber: !isNaN(level),
@@ -112,7 +112,7 @@ class OneRepMaxService {
     
     // Validate range 1-10
     if (level < 1 || level > 10) {
-      logger.log('⚠️ parseIntensity: Out of range (1-10):', {
+      logger.debug('⚠️ parseIntensity: Out of range (1-10):', {
         level,
         isValidRange: level >= 1 && level <= 10,
         reason: level < 1 ? 'too low' : 'too high'
@@ -120,7 +120,7 @@ class OneRepMaxService {
       return null;
     }
     
-    logger.log('✅ parseIntensity: Successfully parsed:', {
+    logger.debug('✅ parseIntensity: Successfully parsed:', {
       original: intensityStr,
       cleaned: cleaned,
       level: level,
@@ -136,7 +136,7 @@ class OneRepMaxService {
    */
   roundToNearest5(weight) {
     const rounded = Math.ceil(weight / 5) * 5;
-    logger.log('🔢 roundToNearest5:', weight, '→', rounded, '(rounded up)');
+    logger.debug('🔢 roundToNearest5:', weight, '→', rounded, '(rounded up)');
     return rounded;
   }
   
@@ -149,19 +149,19 @@ class OneRepMaxService {
    * @returns {number} - Estimated 1RM rounded to 1 decimal
    */
   calculate1RM(actualWeight, actualReps, objectiveIntensity) {
-    logger.log('🔢 calculate1RM: Input:', { actualWeight, actualReps, objectiveIntensity });
+    logger.debug('🔢 calculate1RM: Input:', { actualWeight, actualReps, objectiveIntensity });
     
     // Formula components
     const numerator = actualWeight * (1 + 0.0333 * actualReps);
     const denominator = 1 - 0.025 * (10 - objectiveIntensity);
     
-    logger.log('🔢 calculate1RM: Numerator:', numerator);
-    logger.log('🔢 calculate1RM: Denominator:', denominator);
+    logger.debug('🔢 calculate1RM: Numerator:', numerator);
+    logger.debug('🔢 calculate1RM: Denominator:', denominator);
     
     const estimate = numerator / denominator;
     const rounded = Math.round(estimate * 10) / 10; // Round to 1 decimal
     
-    logger.log('✅ calculate1RM: Result:', estimate, '→ rounded:', rounded);
+    logger.debug('✅ calculate1RM: Result:', estimate, '→ rounded:', rounded);
     return rounded;
   }
   
@@ -174,19 +174,19 @@ class OneRepMaxService {
    * @returns {number} - Suggested weight (rounded to nearest 5kg)
    */
   calculateWeightSuggestion(estimate1RM, objectiveReps, objectiveIntensity) {
-    logger.log('🔢 calculateWeightSuggestion: Input:', { estimate1RM, objectiveReps, objectiveIntensity });
+    logger.debug('🔢 calculateWeightSuggestion: Input:', { estimate1RM, objectiveReps, objectiveIntensity });
     
     // Formula components
     const numerator = estimate1RM * (1 - 0.025 * (10 - objectiveIntensity));
     const denominator = 1 + 0.0333 * objectiveReps;
     
-    logger.log('🔢 calculateWeightSuggestion: Numerator:', numerator);
-    logger.log('🔢 calculateWeightSuggestion: Denominator:', denominator);
+    logger.debug('🔢 calculateWeightSuggestion: Numerator:', numerator);
+    logger.debug('🔢 calculateWeightSuggestion: Denominator:', denominator);
     
     const suggestion = numerator / denominator;
     const rounded = this.roundToNearest5(suggestion);
     
-    logger.log('✅ calculateWeightSuggestion: Result:', suggestion, '→ rounded to nearest 5kg:', rounded);
+    logger.debug('✅ calculateWeightSuggestion: Result:', suggestion, '→ rounded to nearest 5kg:', rounded);
     return rounded;
   }
   
@@ -197,7 +197,7 @@ class OneRepMaxService {
    */
   async getEstimatesForUser(userId) {
     try {
-      logger.log('📖 getEstimatesForUser: Fetching estimates');
+      logger.debug('📖 getEstimatesForUser: Fetching estimates');
       const res = await apiClient.get('/workout/prs');
       const prs = res?.data ?? [];
       const estimates = {};
@@ -208,7 +208,7 @@ class OneRepMaxService {
           achievedWith: pr.achievedWith,
         };
       });
-      logger.log('✅ getEstimatesForUser: Found', prs.length, 'estimates');
+      logger.debug('✅ getEstimatesForUser: Found', prs.length, 'estimates');
       return estimates;
     } catch (error) {
       logger.error('❌ getEstimatesForUser: Error fetching estimates:', error);
@@ -218,9 +218,9 @@ class OneRepMaxService {
   
   async resetEstimate(userId, exerciseKey) {
     try {
-      logger.log('🔄 resetEstimate: Resetting estimate for', exerciseKey);
+      logger.debug('🔄 resetEstimate: Resetting estimate for', exerciseKey);
       await apiClient.delete(`/workout/prs/${encodeURIComponent(exerciseKey)}`);
-      logger.log('✅ resetEstimate: Estimate deleted successfully');
+      logger.debug('✅ resetEstimate: Estimate deleted successfully');
     } catch (error) {
       logger.error('❌ resetEstimate: Error:', error);
       throw error;
@@ -248,10 +248,10 @@ class OneRepMaxService {
   async getHistoryForExercise(userId, libraryId, exerciseName) {
     try {
       const exerciseKey = `${libraryId}_${exerciseName}`;
-      logger.log('📖 getHistoryForExercise: Fetching history for', exerciseKey);
+      logger.debug('📖 getHistoryForExercise: Fetching history for', exerciseKey);
       const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
       const records = res?.data ?? [];
-      logger.log('✅ getHistoryForExercise: Found', records.length, 'entries');
+      logger.debug('✅ getHistoryForExercise: Found', records.length, 'entries');
       // PRHistoryChart expects { estimate, date: { seconds } }
       return records.map(r => ({
         id: r.date,

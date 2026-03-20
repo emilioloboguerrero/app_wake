@@ -49,7 +49,7 @@ const CreatorProfileScreen = () => {
   // Create navigation adapter that matches React Navigation API
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [CreatorProfile Web] Navigating to:', routeName, params);
+      logger.debug('🧭 [CreatorProfile Web] Navigating to:', routeName, params);
       
       const routeMap = {
         'CourseDetail': () => {
@@ -74,7 +74,7 @@ const CreatorProfileScreen = () => {
       } else {
         // Fallback: try to construct path from route name
         const path = `/${routeName.toLowerCase()}`;
-        logger.log('🧭 [CreatorProfile Web] Using fallback path:', path);
+        logger.debug('🧭 [CreatorProfile Web] Using fallback path:', path);
         navigate(path, { state: params });
       }
     },
@@ -83,7 +83,7 @@ const CreatorProfileScreen = () => {
     },
     setParams: (params) => {
       // On web, we can update location state
-      logger.log('🧭 [CreatorProfile Web] setParams called:', params);
+      logger.debug('🧭 [CreatorProfile Web] setParams called:', params);
     },
   };
   
@@ -95,7 +95,7 @@ const CreatorProfileScreen = () => {
     }
   };
   
-  logger.log('🧭 [CreatorProfile Web] Rendering with params:', route.params);
+  logger.debug('🧭 [CreatorProfile Web] Rendering with params:', route.params);
   
   return <CreatorProfileScreenBase navigation={navigation} route={route} />;
 };

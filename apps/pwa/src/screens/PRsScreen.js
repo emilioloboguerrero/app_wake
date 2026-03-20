@@ -94,7 +94,7 @@ const PRsScreen = ({ navigation, route }) => {
   const { data: estimates = {}, isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.prs.all(user?.uid),
     queryFn: async () => {
-      logger.log('[PRsScreen] fetching PRs for userId:', user.uid);
+      logger.debug('[PRsScreen] fetching PRs for userId:', user.uid);
       const [prs, allExerciseKeys] = await Promise.all([
         oneRepMaxService.getEstimatesForUser(user.uid),
         exerciseHistoryService.getAllExerciseKeysFromExerciseHistory(user.uid),
@@ -103,7 +103,7 @@ const PRsScreen = ({ navigation, route }) => {
       allExerciseKeys.forEach(key => {
         merged[key] = prs[key] ?? { current: null, lastUpdated: 'Historial disponible' };
       });
-      logger.log('✅ All exercises loaded:', Object.keys(merged).length);
+      logger.debug('✅ All exercises loaded:', Object.keys(merged).length);
       return merged;
     },
     enabled: !!user?.uid,

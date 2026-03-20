@@ -36,7 +36,7 @@ const CourseStructureScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [CourseStructure Web] Navigating to:', routeName, params);
+      logger.debug('🧭 [CourseStructure Web] Navigating to:', routeName, params);
       
       const routeMap = {
         'DailyWorkout': () => {
@@ -60,7 +60,7 @@ const CourseStructureScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [CourseStructure Web] setParams:', params);
+      logger.debug('🧭 [CourseStructure Web] setParams:', params);
     },
   };
   

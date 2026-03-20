@@ -94,10 +94,10 @@ class AssetBundleService {
 
     this._initPromise = (async () => {
       try {
-        logger.log('📦 AssetBundleService: Initializing asset bundle...');
+        logger.debug('📦 AssetBundleService: Initializing asset bundle...');
 
         if (!this.BASE_DIR) {
-          logger.log(
+          logger.debug(
             'ℹ️ AssetBundleService: documentDirectory is not available on this platform; skipping bundle downloads.'
           );
           return;
@@ -108,7 +108,7 @@ class AssetBundleService {
         const remoteVersion = resources?.version || null;
 
         if (!remoteVersion) {
-          logger.log('ℹ️ AssetBundleService: No remote version found, skipping bundle initialization.');
+          logger.debug('ℹ️ AssetBundleService: No remote version found, skipping bundle initialization.');
           return;
         }
 
@@ -120,12 +120,12 @@ class AssetBundleService {
           localManifest.version === remoteVersion &&
           localManifest.status === 'complete'
         ) {
-          logger.log('✅ AssetBundleService: Local bundle is up to date:', remoteVersion);
+          logger.debug('✅ AssetBundleService: Local bundle is up to date:', remoteVersion);
           this._manifest = localManifest;
           return;
         }
 
-        logger.log('⬇️ AssetBundleService: Downloading full asset bundle for version:', remoteVersion);
+        logger.debug('⬇️ AssetBundleService: Downloading full asset bundle for version:', remoteVersion);
         await this._downloadFullBundle(remoteVersion, resources);
       } catch (error) {
         logger.error('❌ AssetBundleService: Error during initialization');
@@ -181,7 +181,7 @@ class AssetBundleService {
       if (!url) continue;
       try {
         const filePath = `${warmupDir}/${sanitize(logicalKey)}.mp4`;
-        logger.log('⬇️ Downloading warmup video:', logicalKey, '→', filePath);
+        logger.debug('⬇️ Downloading warmup video:', logicalKey, '→', filePath);
         await FileSystem.downloadAsync(url, filePath);
         files[`warmup.${logicalKey}`] = filePath;
       } catch (error) {
@@ -196,7 +196,7 @@ class AssetBundleService {
       try {
         const sanitized = sanitize(scoreKey); // e.g. "7/10" -> "7-10"
         const filePath = `${intensityDir}/${sanitized}.mp4`;
-        logger.log('⬇️ Downloading intensity video:', scoreKey, '→', filePath);
+        logger.debug('⬇️ Downloading intensity video:', scoreKey, '→', filePath);
         await FileSystem.downloadAsync(url, filePath);
         files[`intensity.${scoreKey}`] = filePath;
       } catch (error) {
@@ -208,7 +208,7 @@ class AssetBundleService {
     if (libraryImageUrl) {
       try {
         const filePath = `${imagesDir}/library.jpg`;
-        logger.log('⬇️ Downloading library image →', filePath);
+        logger.debug('⬇️ Downloading library image →', filePath);
         await FileSystem.downloadAsync(libraryImageUrl, filePath);
         files['library'] = filePath;
       } catch (error) {
@@ -230,7 +230,7 @@ class AssetBundleService {
       files,
     };
 
-    logger.log('📦 AssetBundleService: Bundle download finished with status:', status, {
+    logger.debug('📦 AssetBundleService: Bundle download finished with status:', status, {
       version,
       fileCount: Object.keys(files).length,
     });

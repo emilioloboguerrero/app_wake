@@ -30,7 +30,6 @@ class AppResourcesService {
 
     this._loadingPromise = (async () => {
       try {
-        logger.log('📦 Loading app resources...');
         const result = await apiClient.get('/app-resources', { includeAuth: false });
         const a = result?.data?.assets;
         if (!a) {
@@ -44,7 +43,7 @@ class AppResourcesService {
           warmupVideos: a.warmup ?? {},
           intensityVideos: a.intensity ?? {},
         };
-        logger.log('✅ App resources loaded:', { version: resources.version, hasLibraryImage: !!resources.libraryImageUrl });
+        logger.debug('✅ App resources loaded:', { version: resources.version, hasLibraryImage: !!resources.libraryImageUrl });
         this._cache = resources;
         return resources;
       } catch (error) {

@@ -26,12 +26,12 @@ class WorkoutSessionService {
    */
   async startSession(courseId, sessionId, userId) {
     try {
-      logger.log('🏋️ Starting workout session:', { courseId, sessionId, userId });
+      logger.debug('🏋️ Starting workout session:', { courseId, sessionId, userId });
       
       // Check if there's already an active session
       const existingSession = await this.getCurrentSession();
       if (existingSession && existingSession.status === SessionStates.ACTIVE) {
-        logger.log('⚠️ Found existing active session, completing it first');
+        logger.debug('⚠️ Found existing active session, completing it first');
         await this.completeSession();
       }
       
@@ -62,7 +62,7 @@ class WorkoutSessionService {
       // Save initial session
       await this.saveSessionData(sessionData);
       
-      logger.log('✅ Workout session started:', sessionData.sessionId);
+      logger.debug('✅ Workout session started:', sessionData.sessionId);
       return sessionData;
       
     } catch (error) {
@@ -105,7 +105,7 @@ class WorkoutSessionService {
       // CRITICAL: Auto-save after every set
       await this.autoSaveSession(session);
       
-      logger.log(`✅ Set added to session (${session.sets.length} total sets)`);
+      logger.debug(`✅ Set added to session (${session.sets.length} total sets)`);
       return session;
       
     } catch (error) {
@@ -121,11 +121,11 @@ class WorkoutSessionService {
     try {
       const session = await this.getCurrentSession();
       if (!session) {
-        logger.log('ℹ️ No active session to complete');
+        logger.debug('ℹ️ No active session to complete');
         return null;
       }
       
-      logger.log('🏁 Completing workout session:', session.sessionId);
+      logger.debug('🏁 Completing workout session:', session.sessionId);
       
       // Update session completion data
       session.status = SessionStates.COMPLETED;
@@ -142,7 +142,7 @@ class WorkoutSessionService {
       // Add to upload queue
       await this.addToUploadQueue(session);
       
-      logger.log('✅ Session completed:', {
+      logger.debug('✅ Session completed:', {
         sessionId: session.sessionId,
         duration: session.duration_minutes,
         sets: session.sets.length
@@ -166,7 +166,7 @@ class WorkoutSessionService {
         return null;
       }
       
-      logger.log('❌ Cancelling workout session:', session.sessionId);
+      logger.debug('❌ Cancelling workout session:', session.sessionId);
       
       session.status = SessionStates.CANCELLED;
       session.cancelledAt = new Date().toISOString();
@@ -176,7 +176,7 @@ class WorkoutSessionService {
       // Clean up active session
       await AsyncStorage.removeItem('active_session');
       
-      logger.log('✅ Session cancelled');
+      logger.debug('✅ Session cancelled');
       return session;
       
     } catch (error) {
@@ -229,7 +229,7 @@ class WorkoutSessionService {
         }))
       ]);
       
-      logger.log(`💾 Auto-saved session after set ${sessionData.sets.length}`);
+      logger.debug(`💾 Auto-saved session after set ${sessionData.sets.length}`);
       
     } catch (error) {
       logger.error('❌ Auto-save failed:', error);
@@ -285,7 +285,7 @@ class WorkoutSessionService {
         JSON.stringify(sessionData)
       );
       
-      logger.log('📤 Session added to upload queue:', sessionData.sessionId);
+      logger.debug('📤 Session added to upload queue:', sessionData.sessionId);
       
     } catch (error) {
       logger.error('❌ Failed to add session to upload queue:', error);
@@ -419,11 +419,11 @@ class WorkoutSessionService {
       
       if (sessionData) {
         const session = JSON.parse(sessionData);
-        logger.log('📊 Retrieved completed session data:', session.sessionId);
+        logger.debug('📊 Retrieved completed session data:', session.sessionId);
         return session;
       }
       
-      logger.log('📊 No completed session data found for:', sessionId);
+      logger.debug('📊 No completed session data found for:', sessionId);
       return null;
     } catch (error) {
       logger.error('❌ Failed to get completed session data:', error);
