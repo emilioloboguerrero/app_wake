@@ -871,17 +871,6 @@ const LibraryExercisesScreen = () => {
     return LIBRARY_ICONS.find(icon => icon.id === iconId);
   };
 
-  const renderIcon = (iconId, size = 24) => {
-    const icon = getIconById(iconId);
-    if (!icon) return null;
-    
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d={icon.path} fill="currentColor"/>
-      </svg>
-    );
-  };
-
   // Get all unique muscles from all exercises
   const allMuscles = useMemo(() => {
     const musclesSet = new Set();

@@ -356,9 +356,11 @@ export default function PlanEditorScreen() {
         lastSavedRef.current = { name, macros, categoriesJson };
       } catch (e) {
         logger.error(e);
+        showToast('No se pudo guardar el plan. Intenta de nuevo.', 'error');
       }
     }, 700);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId, meals]);
 
   useEffect(() => {
