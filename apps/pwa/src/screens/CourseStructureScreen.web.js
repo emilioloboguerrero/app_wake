@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 import firestoreService from '../services/firestoreService';
@@ -29,7 +30,7 @@ const CourseStructureScreen = () => {
       };
     },
     enabled: !!courseId || !!courseFromState,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
   });
   
   // Create navigation adapter

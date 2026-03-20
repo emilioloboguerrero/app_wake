@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   SafeAreaView,
   ScrollView,
@@ -81,7 +82,7 @@ const SubscriptionsScreen = ({ navigation }) => {
     queryKey: queryKeys.user.subscriptions(user?.uid),
     queryFn: () => firestoreService.getUserSubscriptions(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.clientList,
   });
 
   const subscriptions = rawSubscriptions

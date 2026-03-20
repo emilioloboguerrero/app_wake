@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -38,7 +39,7 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     queryKey: queryKeys.user.courses(user?.uid),
     queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
     enabled: !!user?.uid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
   });
 
   const error = isError ? 'Error al cargar tus cursos' : null;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
@@ -304,7 +305,7 @@ export default function EventRegistrationsScreen() {
       return { event: ev, registrations: regs, waitlist: wl };
     },
     enabled: !!user && !!eventId,
-    staleTime: 30 * 1000,
+    staleTime: STALE_TIMES.nutritionDiary,
   });
 
   useEffect(() => {

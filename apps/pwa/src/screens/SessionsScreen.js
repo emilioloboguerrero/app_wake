@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -54,7 +55,7 @@ const SessionsScreen = ({ navigation }) => {
       exerciseHistoryService.getSessionHistoryPaginated(userId, PAGE_SIZE, pageParam),
     getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastDoc : undefined,
     enabled: !!userId,
-    staleTime: 10 * 60 * 1000,
+    staleTime: STALE_TIMES.sessionHistory,
   });
 
   const sessions = useMemo(() => {

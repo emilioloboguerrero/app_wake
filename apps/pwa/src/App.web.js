@@ -48,12 +48,12 @@ const useMontserratFontsWeb = () => {
   // Use useState to maintain hook order (matching what native useFonts does)
   // This is the ONLY hook called in this function, ensuring consistent hook order
   // DO NOT call any other hooks here - this must match the hook structure exactly
-  
+
   // Unique identifier to verify this version is being used
   if (typeof window !== 'undefined') {
     logger.debug('[APP] ✅ Using INLINED useMontserratFontsWeb (web version)');
   }
-  
+
   // CRITICAL: Always call useState in the same order
   // This must be called unconditionally to maintain hook order
   const [fontsLoaded] = React.useState(true);
@@ -98,12 +98,12 @@ ensureMontserratLoaded();
 const VIEWPORT_LOG = '[VIEWPORT]';
 function applyViewportHeightOnce() {
   if (typeof window === 'undefined' || !window.document) {
-    console.log(VIEWPORT_LOG, 'once: skip (no window/document)');
+    logger.debug(VIEWPORT_LOG, 'once: skip (no window/document)');
     return;
   }
   const root = document.getElementById('root');
   if (!root) {
-    console.log(VIEWPORT_LOG, 'once: skip (no #root)');
+    logger.debug(VIEWPORT_LOG, 'once: skip (no #root)');
     return;
   }
   const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
@@ -141,7 +141,7 @@ function applyViewportHeightOnce() {
   const curH = getCurrentHeight();
   const w = getWidth();
   const h = getHeight();
-  console.log(VIEWPORT_LOG, 'once: run', { pwa, ios, android, innerHeight: window.innerHeight, visualViewportH: window.visualViewport?.height, screenAvailH: window.screen?.availHeight, curH, getHeight: h, width: w });
+  logger.debug(VIEWPORT_LOG, 'once: run', { pwa, ios, android, innerHeight: window.innerHeight, visualViewportH: window.visualViewport?.height, screenAvailH: window.screen?.availHeight, curH, getHeight: h, width: w });
   if (w > 0 && h > 0 && window.document.documentElement) {
     window.document.documentElement.style.setProperty('--layout-width-px', `${w}px`);
     window.document.documentElement.style.setProperty('--layout-height-px', `${h}px`);
@@ -154,9 +154,9 @@ function applyViewportHeightOnce() {
     root.style.setProperty('height', `${h}px`, 'important');
     root.style.setProperty('min-height', `${h}px`, 'important');
     root.style.setProperty('max-height', `${h}px`, 'important');
-    console.log(VIEWPORT_LOG, 'once: applied', { height: h, rootComputed: root ? getComputedStyle(root).height : null });
+    logger.debug(VIEWPORT_LOG, 'once: applied', { height: h, rootComputed: root ? getComputedStyle(root).height : null });
   } else {
-    console.log(VIEWPORT_LOG, 'once: not applied (w or h invalid)', { w, h });
+    logger.debug(VIEWPORT_LOG, 'once: not applied (w or h invalid)', { w, h });
   }
 }
 applyViewportHeightOnce();
@@ -218,12 +218,12 @@ export default function App() {
   const [initError, setInitError] = React.useState(null);
   const [debugMode] = React.useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('WAKE_DEBUG') === 'true' || 
+      return localStorage.getItem('WAKE_DEBUG') === 'true' ||
              window.location.search.includes('debug=true');
     }
     return false;
   });
-  
+
   // Base path: derive from URL first (reload at /app stays in PWA), then fall back to build env
   const webBasePath =
     typeof window !== 'undefined' && (window.location.pathname === '/app' || window.location.pathname.startsWith('/app/'))
@@ -233,15 +233,15 @@ export default function App() {
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
   logger.debug('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
-  
+
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
-  
+
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
   // Don't conditionally change this value as it can affect hook order
   const fontsLoaded = fontsLoadedFromHook;
-  
+
   // Production debug: log on mount so we see something in console (Safari etc.)
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -268,7 +268,7 @@ export default function App() {
       loadHeavyComponents().then(() => {
         logger.debug('[APP] Heavy components loaded, setting componentsLoaded to true');
         setComponentsLoaded(true);
-        
+
         // Initialize Service Worker AFTER components are loaded (path respects base path e.g. /app/sw.js)
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
           const swPath = webBasePath + '/sw.js';
@@ -307,14 +307,14 @@ export default function App() {
         logger.debug('[APP] Setting componentsLoaded to true anyway to continue...');
         setComponentsLoaded(true); // Continue anyway
       });
-      
+
       // Fallback: if components don't load within 3 seconds, set to true anyway
       // Use a ref to track if we've already set it
       const timeoutId = setTimeout(() => {
         logger.debug('[APP] ⚠️ Components loading timeout (3s) - forcing componentsLoaded to true');
         setComponentsLoaded(true);
       }, 3000);
-      
+
       // Cleanup timeout if component unmounts
       return () => {
         clearTimeout(timeoutId);
@@ -327,7 +327,7 @@ export default function App() {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       const originalWarn = logger.warn;
       const originalError = logger.error;
-      
+
       // Filter out specific chart-related warnings
       logger.warn = (...args) => {
         const message = args.join(' ');
@@ -348,7 +348,7 @@ export default function App() {
         }
         originalWarn(...args);
       };
-      
+
       logger.error = (...args) => {
         const message = args.join(' ');
         // Suppress chart-related errors
@@ -361,7 +361,7 @@ export default function App() {
         }
         originalError(...args);
       };
-      
+
       return () => {
         logger.warn = originalWarn;
         logger.error = originalError;
@@ -377,7 +377,7 @@ export default function App() {
       const errorHandler = (event) => {
         const message = String(event.message || '');
         const source = String(event.filename || '');
-        
+
         // Skip Chrome extension errors
         if (message.includes('chrome-extension://') ||
             message.includes('ERR_FILE_NOT_FOUND') ||
@@ -402,7 +402,7 @@ export default function App() {
       const rejectionHandler = (event) => {
         const reason = event.reason;
         const reasonStr = String(reason || '');
-        
+
         // Skip Chrome extension promise rejections
         if (reasonStr.includes('chrome-extension://') ||
             reasonStr.includes('ERR_FILE_NOT_FOUND') ||
@@ -415,13 +415,13 @@ export default function App() {
           event.preventDefault();
           return;
         }
-        
+
         safeLog('error', '❌ Unhandled Promise Rejection:', event.reason);
       };
-      
+
       window.addEventListener('error', errorHandler, true);
       window.addEventListener('unhandledrejection', rejectionHandler);
-      
+
       return () => {
         window.removeEventListener('error', errorHandler, true);
         window.removeEventListener('unhandledrejection', rejectionHandler);
@@ -449,19 +449,19 @@ export default function App() {
   React.useEffect(() => {
     // Skip initialization for login route
     if (isLoginPath) return;
-    
+
     // Prevent multiple initializations
     let mounted = true;
-    
+
     // Initialize web storage (non-blocking)
     const initializeApp = async () => {
       if (!mounted) return;
-      
+
       // Guard: Only run if components are loaded
       if (!webStorageService || !auth) {
         return;
       }
-      
+
       try {
         safeLog('log', '🚀 Starting web app initialization...');
         if (debugMode) {
@@ -473,7 +473,7 @@ export default function App() {
             onLine: navigator.onLine
           });
         }
-        
+
         // Initialize web storage service first (critical for web)
         // Don't await - let it initialize in background with timeout
         Promise.race([
@@ -489,7 +489,7 @@ export default function App() {
             }
           }
         });
-        
+
         // Check auth state (non-blocking)
         try {
           const currentUser = auth.currentUser;
@@ -514,14 +514,14 @@ export default function App() {
             }
           }
         }
-        
+
         // Skip native-only services on web (they use AsyncStorage/AppState which don't work)
         // These services are not critical for web functionality
         if (mounted) safeLog('log', 'ℹ️ Skipping native-only services on web (session manager, workout progress)');
-        
+
         // Skip monitoring on web (uses React Native Firebase which doesn't work on web)
         if (mounted) safeLog('log', 'ℹ️ Skipping monitoring service on web (React Native Firebase not available)');
-        
+
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
           // Use Promise.race to prevent hanging
@@ -534,7 +534,7 @@ export default function App() {
             if (mounted) safeLog('warn', '⚠️ Persistent storage request failed:', error);
           });
         }
-        
+
         if (mounted) safeLog('log', '✅ Web app initialization completed');
       } catch (error) {
         if (mounted) {
@@ -553,7 +553,7 @@ export default function App() {
         // Don't block app from loading even if initialization fails
       }
     };
-    
+
     if (fontsLoaded) {
       // Run initialization asynchronously without blocking render
       initializeApp().catch(err => {
@@ -568,7 +568,7 @@ export default function App() {
     } else {
       safeLog('log', '⏳ Waiting for fonts to load...');
     }
-    
+
     return () => {
       mounted = false;
     };
@@ -577,7 +577,7 @@ export default function App() {
   // Debug: Log render - Skip for login route
   React.useEffect(() => {
     if (isLoginPath) return;
-    
+
     if (fontsLoaded) {
       safeLog('log', '🎨 App rendered, fonts loaded:', fontsLoaded);
       if (debugMode) {
@@ -642,12 +642,12 @@ export default function App() {
   // is already near full height (innerHeight >= screen.availHeight - 2).
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.document) {
-      console.log(VIEWPORT_LOG, 'effect: skip (no window/document)');
+      logger.debug(VIEWPORT_LOG, 'effect: skip (no window/document)');
       return;
     }
     const root = document.getElementById('root');
     if (!root) {
-      console.log(VIEWPORT_LOG, 'effect: skip (no #root)');
+      logger.debug(VIEWPORT_LOG, 'effect: skip (no #root)');
       return;
     }
     const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
@@ -689,7 +689,7 @@ export default function App() {
       const apply = shouldApply();
       const h = getHeight();
       if (!apply) {
-        console.log(VIEWPORT_LOG, 'effect setHeight: shouldApply=false, skip');
+        logger.debug(VIEWPORT_LOG, 'effect setHeight: shouldApply=false, skip');
         return;
       }
       document.documentElement.style.setProperty('height', `${h}px`, 'important');
@@ -699,11 +699,11 @@ export default function App() {
       root.style.setProperty('height', `${h}px`, 'important');
       root.style.setProperty('min-height', `${h}px`, 'important');
       root.style.setProperty('max-height', `${h}px`, 'important');
-      console.log(VIEWPORT_LOG, 'effect setHeight: applied', { h, rootComputed: getComputedStyle(root).height });
+      logger.debug(VIEWPORT_LOG, 'effect setHeight: applied', { h, rootComputed: getComputedStyle(root).height });
     };
     const h0 = getHeight();
     const apply0 = shouldApply();
-    console.log(VIEWPORT_LOG, 'effect: mount', { shouldApply: apply0, getHeight: h0, innerHeight: window.innerHeight, rootComputed: getComputedStyle(root).height });
+    logger.debug(VIEWPORT_LOG, 'effect: mount', { shouldApply: apply0, getHeight: h0, innerHeight: window.innerHeight, rootComputed: getComputedStyle(root).height });
     setHeight();
     const t1 = setTimeout(setHeight, 100);
     const t2 = setTimeout(setHeight, 300);

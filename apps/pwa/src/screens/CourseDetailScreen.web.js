@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
 import LoadingScreen from './LoadingScreen';
@@ -50,7 +51,7 @@ const CourseDetailScreen = () => {
       logger.log('✅ Course data loaded:', transformedCourse);
       return transformedCourse;
     },
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
     enabled: !!courseId,
   });
 

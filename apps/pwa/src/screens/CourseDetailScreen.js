@@ -39,6 +39,7 @@ import EpaycoWebView from '../components/EpaycoWebView';
 import BookCallSlotModal from '../components/BookCallSlotModal';
 import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
@@ -106,7 +107,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
     queryKey: ['user', effectiveUserUid],
     queryFn: () => firestoreService.getUser(effectiveUserUid),
     enabled: !!effectiveUserUid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
     refetchInterval: processingPurchase ? 2000 : false,
   });
 

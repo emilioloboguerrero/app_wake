@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   StyleSheet,
@@ -102,7 +103,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
       return { booking: b, creatorName: cn, courseName: cName, courseImageUrl: cImg, creatorProfileUrl };
     },
     enabled: !!paramBooking || !!bookingId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
   });
 
   const booking = data?.booking ?? null;
