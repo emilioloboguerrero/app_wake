@@ -15,6 +15,19 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
+async function verifyEventOwnership(
+  eventId: string,
+  userId: string
+): Promise<admin.firestore.DocumentSnapshot> {
+  const doc = await db.collection("events").doc(eventId).get();
+  if (!doc.exists || doc.data()?.creatorId !== userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
+  }
+  return doc;
+}
+
+// ─── Public endpoints ─────────────────────────────────────────────────────
+
 // GET /events/:eventId (no auth — draft events return 404)
 router.get("/events/:eventId", async (req, res) => {
   const doc = await db.collection("events").doc(req.params.eventId).get();
@@ -22,7 +35,32 @@ router.get("/events/:eventId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  const event = doc.data()!;
+
+  let spotsRemaining: number | null = null;
+  if (event.maxRegistrations) {
+    const regsSnap = await db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .count()
+      .get();
+    spotsRemaining = Math.max(0, event.maxRegistrations - regsSnap.data().count);
+  }
+
+  res.json({
+    data: {
+      eventId: doc.id,
+      title: event.title,
+      description: event.description || null,
+      imageUrl: event.image_url || null,
+      date: event.date || null,
+      location: event.location || null,
+      status: event.status,
+      spotsRemaining,
+      fields: event.fields || [],
+    },
+  });
 });
 
 // POST /events/:eventId/register (no auth — supports unauthenticated)
@@ -38,7 +76,8 @@ router.post("/events/:eventId/register", async (req, res) => {
   }
 
   // Check capacity
-  if (event.capacity) {
+  if (event.maxRegistrations || event.capacity) {
+    const cap = event.maxRegistrations || event.capacity;
     const regsSnap = await db
       .collection("event_signups")
       .doc(req.params.eventId)
@@ -46,8 +85,14 @@ router.post("/events/:eventId/register", async (req, res) => {
       .count()
       .get();
 
-    if (regsSnap.data().count >= event.capacity) {
-      // Add to waitlist instead
+    if (regsSnap.data().count >= cap) {
+      const waitlistSnap = await db
+        .collection("event_signups")
+        .doc(req.params.eventId)
+        .collection("waitlist")
+        .count()
+        .get();
+
       const waitlistRef = await db
         .collection("event_signups")
         .doc(req.params.eventId)
@@ -57,7 +102,13 @@ router.post("/events/:eventId/register", async (req, res) => {
           created_at: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-      res.status(201).json({ data: { id: waitlistRef.id, waitlisted: true } });
+      res.status(201).json({
+        data: {
+          registrationId: waitlistRef.id,
+          status: "waitlisted",
+          waitlistPosition: waitlistSnap.data().count + 1,
+        },
+      });
       return;
     }
   }
@@ -76,7 +127,11 @@ router.post("/events/:eventId/register", async (req, res) => {
     });
 
   res.status(201).json({
-    data: { id: regRef.id, check_in_token: checkInToken },
+    data: {
+      registrationId: regRef.id,
+      status: "registered",
+      waitlistPosition: null,
+    },
   });
 });
 
@@ -94,9 +149,33 @@ router.get("/creator/events", async (req, res) => {
     .orderBy("created_at", "desc")
     .get();
 
-  res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
-  });
+  const events = await Promise.all(
+    snapshot.docs.map(async (d) => {
+      const data = d.data();
+      const regsSnap = await db
+        .collection("event_signups")
+        .doc(d.id)
+        .collection("registrations")
+        .count()
+        .get();
+
+      return {
+        eventId: d.id,
+        title: data.title,
+        description: data.description || null,
+        imageUrl: data.image_url || null,
+        date: data.date || null,
+        location: data.location || null,
+        status: data.status,
+        maxRegistrations: data.maxRegistrations || null,
+        registrationCount: regsSnap.data().count,
+        fields: data.fields || [],
+        createdAt: data.created_at,
+      };
+    })
+  );
+
+  res.json({ data: events });
 });
 
 // POST /creator/events
@@ -110,15 +189,23 @@ router.post("/creator/events", async (req, res) => {
     req.body
   );
 
+  const now = admin.firestore.FieldValue.serverTimestamp();
   const docRef = await db.collection("events").add({
     ...body,
     creatorId: auth.userId,
     status: "draft",
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: now,
+    updated_at: now,
   });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  const created = await docRef.get();
+
+  res.status(201).json({
+    data: {
+      eventId: docRef.id,
+      createdAt: created.data()?.created_at,
+    },
+  });
 });
 
 // PATCH /creator/events/:eventId
@@ -127,19 +214,162 @@ router.patch("/creator/events/:eventId", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const docRef = db.collection("events").doc(req.params.eventId);
-  const doc = await docRef.get();
+  const doc = await verifyEventOwnership(req.params.eventId, auth.userId);
+  const event = doc.data()!;
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
+  if (event.status !== "draft" && event.status !== "active") {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403,
+      "Solo se pueden editar eventos en estado draft o active"
+    );
   }
 
-  await docRef.update({
+  await doc.ref.update({
     ...req.body,
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  const updated = await doc.ref.get();
+
+  res.json({
+    data: {
+      eventId: req.params.eventId,
+      updatedAt: updated.data()?.updated_at,
+    },
+  });
+});
+
+// PATCH /creator/events/:eventId/status — change event status
+router.patch("/creator/events/:eventId/status", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { status } = validateBody<{ status: string }>(
+    { status: "string" },
+    req.body
+  );
+
+  const allowedStatuses = ["draft", "active", "closed"];
+  if (!allowedStatuses.includes(status)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Estado inválido. Usa: draft, active o closed",
+      "status"
+    );
+  }
+
+  await verifyEventOwnership(req.params.eventId, auth.userId);
+
+  const docRef = db.collection("events").doc(req.params.eventId);
+  await docRef.update({
+    status,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { eventId: req.params.eventId, status } });
+});
+
+// DELETE /creator/events/:eventId — delete event (only if draft or no registrations)
+router.delete("/creator/events/:eventId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await verifyEventOwnership(req.params.eventId, auth.userId);
+  const event = doc.data()!;
+
+  if (event.status !== "draft") {
+    const regsSnap = await db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .limit(1)
+      .get();
+
+    if (!regsSnap.empty) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409,
+        "No se puede eliminar un evento con registros. Cambia el estado a cerrado"
+      );
+    }
+  }
+
+  await doc.ref.delete();
+
+  res.status(204).send();
+});
+
+// POST /creator/events/:eventId/image/upload-url — signed URL for event image
+router.post("/creator/events/:eventId/image/upload-url", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  await verifyEventOwnership(req.params.eventId, auth.userId);
+
+  const { contentType } = validateBody<{ contentType: string }>(
+    { contentType: "string" },
+    req.body
+  );
+
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(contentType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Tipo de imagen no soportado. Usa JPEG, PNG o WebP",
+      "contentType"
+    );
+  }
+
+  const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
+  const storagePath = `event_images/${req.params.eventId}/cover.${ext}`;
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(storagePath);
+
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType,
+  });
+
+  res.json({ data: { uploadUrl: url, storagePath } });
+});
+
+// POST /creator/events/:eventId/image/confirm — confirm event image upload
+router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const eventDocRef = db.collection("events").doc(req.params.eventId);
+  const eventDoc = await eventDocRef.get();
+  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
+  }
+
+  const { storagePath } = validateBody<{ storagePath: string }>(
+    { storagePath: "string" },
+    req.body
+  );
+
+  const bucket = admin.storage().bucket();
+  const [exists] = await bucket.file(storagePath).exists();
+  if (!exists) {
+    throw new WakeApiServerError(
+      "NOT_FOUND", 404, "Archivo no encontrado en Storage"
+    );
+  }
+
+  const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
+  await eventDocRef.update({
+    image_url: imageUrl,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { imageUrl } });
 });
 
 // GET /creator/events/:eventId/registrations — paginated 50/page
@@ -148,21 +378,25 @@ router.get("/creator/events/:eventId/registrations", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  // Verify creator owns event
-  const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
+  await verifyEventOwnership(req.params.eventId, auth.userId);
 
   const pageToken = req.query.pageToken as string | undefined;
+  const checkedInFilter = req.query.checkedIn as string | undefined;
   const limit = 50;
 
   let query: admin.firestore.Query = db
     .collection("event_signups")
     .doc(req.params.eventId)
     .collection("registrations")
-    .orderBy("created_at", "desc")
-    .limit(limit + 1);
+    .orderBy("created_at", "desc");
+
+  if (checkedInFilter === "true") {
+    query = query.where("checked_in", "==", true);
+  } else if (checkedInFilter === "false") {
+    query = query.where("checked_in", "==", false);
+  }
+
+  query = query.limit(limit + 1);
 
   if (pageToken) {
     const cursor = await db
@@ -179,7 +413,19 @@ router.get("/creator/events/:eventId/registrations", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: docs.map((d) => {
+      const data = d.data();
+      return {
+        registrationId: d.id,
+        clientUserId: data.clientUserId || null,
+        email: data.email || null,
+        displayName: data.displayName || null,
+        checkedIn: data.checked_in || false,
+        checkedInAt: data.checked_in_at || null,
+        fieldValues: data.fieldValues || {},
+        createdAt: data.created_at,
+      };
+    }),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -193,10 +439,7 @@ router.post(
     requireCreator(auth);
     await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-    const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-    if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-    }
+    await verifyEventOwnership(req.params.eventId, auth.userId);
 
     const regRef = db
       .collection("event_signups")
@@ -209,12 +452,126 @@ router.post(
       throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
     }
 
+    if (regDoc.data()?.checked_in) {
+      throw new WakeApiServerError("CONFLICT", 409, "Este asistente ya hizo check-in");
+    }
+
     await regRef.update({
       checked_in: true,
       checked_in_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ data: { checked_in: true } });
+    const updated = await regRef.get();
+
+    res.json({
+      data: {
+        registrationId: req.params.regId,
+        checkedInAt: updated.data()?.checked_in_at,
+      },
+    });
+  }
+);
+
+// DELETE /creator/events/:eventId/registrations/:regId — remove a registration
+router.delete(
+  "/creator/events/:eventId/registrations/:regId",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    requireCreator(auth);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    await verifyEventOwnership(req.params.eventId, auth.userId);
+
+    const regRef = db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .doc(req.params.regId);
+
+    const regDoc = await regRef.get();
+    if (!regDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+    }
+
+    await regRef.delete();
+
+    res.status(204).send();
+  }
+);
+
+// GET /creator/events/:eventId/waitlist — list waitlist entries
+router.get("/creator/events/:eventId/waitlist", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  await verifyEventOwnership(req.params.eventId, auth.userId);
+
+  const snapshot = await db
+    .collection("event_signups")
+    .doc(req.params.eventId)
+    .collection("waitlist")
+    .orderBy("created_at", "asc")
+    .get();
+
+  res.json({
+    data: snapshot.docs.map((d) => {
+      const data = d.data();
+      return {
+        registrationId: d.id,
+        clientUserId: data.clientUserId || null,
+        email: data.email || null,
+        displayName: data.displayName || null,
+        checkedIn: false,
+        checkedInAt: null,
+        fieldValues: data.fieldValues || {},
+        createdAt: data.created_at,
+      };
+    }),
+  });
+});
+
+// POST /creator/events/:eventId/waitlist/:waitlistId/admit — admit from waitlist
+router.post(
+  "/creator/events/:eventId/waitlist/:waitlistId/admit",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    requireCreator(auth);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    await verifyEventOwnership(req.params.eventId, auth.userId);
+
+    const waitlistRef = db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("waitlist")
+      .doc(req.params.waitlistId);
+
+    const waitlistDoc = await waitlistRef.get();
+    if (!waitlistDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Entrada de lista de espera no encontrada");
+    }
+
+    const waitlistData = waitlistDoc.data()!;
+    const checkInToken = crypto.randomUUID();
+
+    const regRef = await db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .add({
+        ...waitlistData,
+        check_in_token: checkInToken,
+        checked_in: false,
+        admitted_from_waitlist: true,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    await waitlistRef.delete();
+
+    res.status(201).json({
+      data: { registrationId: regRef.id },
+    });
   }
 );
 
@@ -381,253 +738,5 @@ router.delete("/bookings/:bookingId", async (req, res) => {
 
   res.json({ data: { cancelled: true } });
 });
-
-// ─── Additional creator event endpoints ──────────────────────────────────
-
-// PATCH /creator/events/:eventId/status — change event status
-router.patch("/creator/events/:eventId/status", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const { status } = validateBody<{ status: string }>(
-    { status: "string" },
-    req.body
-  );
-
-  const allowedStatuses = ["draft", "active", "closed"];
-  if (!allowedStatuses.includes(status)) {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400,
-      "Estado inválido. Usa: draft, active o closed",
-      "status"
-    );
-  }
-
-  const docRef = db.collection("events").doc(req.params.eventId);
-  const doc = await docRef.get();
-
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
-
-  await docRef.update({
-    status,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  res.json({ data: { status } });
-});
-
-// DELETE /creator/events/:eventId — delete event (only if draft or no registrations)
-router.delete("/creator/events/:eventId", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const docRef = db.collection("events").doc(req.params.eventId);
-  const doc = await docRef.get();
-
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
-
-  const event = doc.data()!;
-
-  if (event.status !== "draft") {
-    const regsSnap = await db
-      .collection("event_signups")
-      .doc(req.params.eventId)
-      .collection("registrations")
-      .limit(1)
-      .get();
-
-    if (!regsSnap.empty) {
-      throw new WakeApiServerError(
-        "CONFLICT", 409,
-        "No se puede eliminar un evento con registros. Cambia el estado a cerrado"
-      );
-    }
-  }
-
-  await docRef.delete();
-
-  res.json({ data: { deleted: true } });
-});
-
-// POST /creator/events/:eventId/image/upload-url — signed URL for event image
-router.post("/creator/events/:eventId/image/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
-
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
-    req.body
-  );
-
-  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-  if (!allowedTypes.includes(contentType)) {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400,
-      "Tipo de imagen no soportado. Usa JPEG, PNG o WebP",
-      "contentType"
-    );
-  }
-
-  const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
-  const storagePath = `event_images/${req.params.eventId}/cover.${ext}`;
-  const bucket = admin.storage().bucket();
-  const file = bucket.file(storagePath);
-
-  const [url] = await file.getSignedUrl({
-    version: "v4",
-    action: "write",
-    expires: Date.now() + 15 * 60 * 1000,
-    contentType,
-  });
-
-  res.json({ data: { uploadUrl: url, storagePath } });
-});
-
-// POST /creator/events/:eventId/image/confirm — confirm event image upload
-router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const eventDocRef = db.collection("events").doc(req.params.eventId);
-  const eventDoc = await eventDocRef.get();
-  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
-
-  const { storagePath } = validateBody<{ storagePath: string }>(
-    { storagePath: "string" },
-    req.body
-  );
-
-  const bucket = admin.storage().bucket();
-  const [exists] = await bucket.file(storagePath).exists();
-  if (!exists) {
-    throw new WakeApiServerError(
-      "NOT_FOUND", 404, "Archivo no encontrado en Storage"
-    );
-  }
-
-  const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
-
-  await eventDocRef.update({
-    image_url: imageUrl,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  res.json({ data: { image_url: imageUrl } });
-});
-
-// DELETE /creator/events/:eventId/registrations/:regId — remove a registration
-router.delete(
-  "/creator/events/:eventId/registrations/:regId",
-  async (req, res) => {
-    const auth = await validateAuth(req);
-    requireCreator(auth);
-    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-    const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-    if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-    }
-
-    const regRef = db
-      .collection("event_signups")
-      .doc(req.params.eventId)
-      .collection("registrations")
-      .doc(req.params.regId);
-
-    const regDoc = await regRef.get();
-    if (!regDoc.exists) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
-    }
-
-    await regRef.delete();
-
-    res.json({ data: { deleted: true } });
-  }
-);
-
-// GET /creator/events/:eventId/waitlist — list waitlist entries
-router.get("/creator/events/:eventId/waitlist", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-  }
-
-  const snapshot = await db
-    .collection("event_signups")
-    .doc(req.params.eventId)
-    .collection("waitlist")
-    .orderBy("created_at", "asc")
-    .get();
-
-  res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
-  });
-});
-
-// POST /creator/events/:eventId/waitlist/:waitlistId/admit — admit from waitlist
-router.post(
-  "/creator/events/:eventId/waitlist/:waitlistId/admit",
-  async (req, res) => {
-    const auth = await validateAuth(req);
-    requireCreator(auth);
-    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-    const eventDoc = await db.collection("events").doc(req.params.eventId).get();
-    if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
-    }
-
-    const waitlistRef = db
-      .collection("event_signups")
-      .doc(req.params.eventId)
-      .collection("waitlist")
-      .doc(req.params.waitlistId);
-
-    const waitlistDoc = await waitlistRef.get();
-    if (!waitlistDoc.exists) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Entrada de lista de espera no encontrada");
-    }
-
-    const waitlistData = waitlistDoc.data()!;
-    const checkInToken = crypto.randomUUID();
-
-    const regRef = await db
-      .collection("event_signups")
-      .doc(req.params.eventId)
-      .collection("registrations")
-      .add({
-        ...waitlistData,
-        check_in_token: checkInToken,
-        checked_in: false,
-        admitted_from_waitlist: true,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-    await waitlistRef.delete();
-
-    res.status(201).json({
-      data: { id: regRef.id, check_in_token: checkInToken },
-    });
-  }
-);
 
 export default router;
