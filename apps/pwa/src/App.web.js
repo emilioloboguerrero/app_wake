@@ -437,64 +437,20 @@ export default function App() {
           if (mounted) safeLog('warn', 'Web storage initialization failed (non-critical):', error);
         });
 
-        // Check auth state (non-blocking)
-        try {
-          const currentUser = auth.currentUser;
-          if (mounted) {
-            safeLog('log', '🔐 Auth state:', {
-              isAuthenticated: !!currentUser,
-              userId: currentUser?.uid || 'none'
-            });
-            if (debugMode && currentUser) {
-              logger.debug('[DEBUG] User details:', {
-                uid: currentUser.uid,
-                email: currentUser.email,
-                emailVerified: currentUser.emailVerified
-              });
-            }
-          }
-        } catch (authError) {
-          if (mounted) {
-            safeLog('error', '❌ Auth check failed:', authError);
-            if (debugMode) {
-              logger.error('[DEBUG] Auth error details:', authError);
-            }
-          }
-        }
-
-        // Skip native-only services on web (they use AsyncStorage/AppState which don't work)
-        // These services are not critical for web functionality
-        if (mounted) safeLog('log', 'ℹ️ Skipping native-only services on web (session manager, workout progress)');
-
-        // Skip monitoring on web (uses React Native Firebase which doesn't work on web)
-        if (mounted) safeLog('log', 'ℹ️ Skipping monitoring service on web (React Native Firebase not available)');
-
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
           // Use Promise.race to prevent hanging
           Promise.race([
-            navigator.storage.persist().then(isPersistent => {
-              if (mounted) safeLog('log', '💾 Persistent storage:', isPersistent ? 'granted' : 'not granted');
-            }),
+            navigator.storage.persist(),
             new Promise(resolve => setTimeout(resolve, 1000)) // 1 second timeout
           ]).catch((error) => {
             if (mounted) safeLog('warn', '⚠️ Persistent storage request failed:', error);
           });
         }
 
-        if (mounted) safeLog('log', '✅ Web app initialization completed');
       } catch (error) {
         if (mounted) {
-          safeLog('error', '❌ App initialization failed:', error);
-          if (debugMode) {
-            logger.error('[DEBUG] Initialization error stack:', error.stack);
-            logger.error('[DEBUG] Error details:', {
-              name: error.name,
-              message: error.message,
-              code: error.code,
-              stack: error.stack
-            });
-          }
+          safeLog('error', 'App initialization failed:', error);
           setInitError(error);
         }
         // Don't block app from loading even if initialization fails

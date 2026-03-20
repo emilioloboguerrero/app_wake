@@ -1078,7 +1078,6 @@ const MainScreen = ({ navigation, route }) => {
       const blendKey = imageLoadedForBlend ? 'blend-loaded' : 'blend-pending';
       
       if (courseStatus === 'updating') {
-        logger.debug('🔄 RENDERING UPDATING CARD:', course.id, 'status:', courseStatus);
         return (
           <Animated.View style={[
             styles.swipeableCard, 

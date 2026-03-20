@@ -433,24 +433,10 @@ class CourseDownloadService {
       
       // Version check for low-ticket (only if not already updating)
       if (this.currentUserId) {
-        logger.debug('🔍 VERSION CHECK: Starting for course:', courseId, 'userId:', this.currentUserId);
-        
-        // Check if course is already being updated
-        logger.debug('🔍 VERSION CHECK: Calling getUserCourseVersion...');
         const userCourse = await apiService.getUserCourseVersion(this.currentUserId, courseId);
-        logger.debug('🔍 VERSION CHECK: getUserCourseVersion result:', userCourse);
         const updateStatus = userCourse?.update_status || 'ready';
-        
-        logger.debug('📊 VERSION CHECK: User course data:', {
-          courseId,
-          userId: this.currentUserId,
-          updateStatus,
-          downloadedVersion: userCourse?.downloaded_version,
-          userCourse: userCourse
-        });
-        
+
         if (updateStatus === 'updating') {
-          logger.debug('🔄 VERSION CHECK: Course is already being updated, checking if stuck...');
           
           // Check if update is stuck (older than 5 minutes)
           const lastUpdated = userCourse.lastUpdated || userCourse.updated_at || 0;
@@ -458,15 +444,11 @@ class CourseDownloadService {
           const isStuck = updateAge > 5 * 60 * 1000; // 5 minutes
           
           if (isStuck) {
-            logger.debug('⚠️ VERSION CHECK: Update appears stuck, clearing status');
-            // Clear stuck status
             await apiService.updateUserCourseVersionStatus(this.currentUserId, courseId, {
               update_status: 'ready',
               lastUpdated: Date.now()
             });
-            logger.debug('✅ VERSION CHECK: Stuck status cleared');
           } else {
-            logger.debug('🔄 VERSION CHECK: Update in progress, returning updating status');
             return {
               ...courseData,
               status: 'updating',
@@ -476,7 +458,6 @@ class CourseDownloadService {
         }
         
         if (updateStatus === 'failed') {
-          logger.debug('❌ VERSION CHECK: Course update failed, returning failed status');
           return {
             ...courseData,
             status: 'failed',
