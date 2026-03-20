@@ -11,7 +11,7 @@ setting it up and operating it.
 
 ## 1. What Staging Is
 
-Staging is a separate Firebase project (`wolf-dev`) that mirrors the production
+Staging is a separate Firebase project (`wake-staging`) that mirrors the production
 project (`wolf-20b8b`). It has its own:
 
 - Firestore database (separate data, separate rules)
@@ -23,7 +23,7 @@ project (`wolf-20b8b`). It has its own:
 Staging and production never share data or credentials. A bug in staging cannot
 corrupt production.
 
-The staging URL is the Firebase Hosting preview URL for `wolf-dev`. It is not
+The staging URL is the Firebase Hosting preview URL for `wake-staging`. It is not
 a vanity domain — use the `.web.app` URL Firebase assigns.
 
 ---
@@ -53,7 +53,7 @@ The `.firebaserc` file manages project aliases:
   "projects": {
     "default": "wolf-20b8b",
     "production": "wolf-20b8b",
-    "staging": "wolf-dev"
+    "staging": "wake-staging"
   }
 }
 ```
@@ -61,7 +61,7 @@ The `.firebaserc` file manages project aliases:
 Switch between projects with:
 
 ```bash
-firebase use staging    # Points to wolf-dev
+firebase use staging    # Points to wake-staging
 firebase use production # Points to wolf-20b8b
 firebase use default    # Same as production
 ```
@@ -73,11 +73,11 @@ firebase use            # Shows current project
 
 ### 3.2 First-Time Staging Setup
 
-If `wolf-dev` does not exist yet, create it:
+If `wake-staging` does not exist yet, create it:
 
 ```bash
 # 1. Create the project in Firebase Console (console.firebase.google.com)
-#    Project ID: wolf-dev
+#    Project ID: wake-staging
 
 # 2. Enable the same services as production:
 #    - Firestore (Native mode, us-central1)
@@ -152,7 +152,7 @@ const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
 
 ### 4.3 Secrets in Staging
 
-Staging requires its own secret values in the `wolf-dev` Secret Manager. Options:
+Staging requires its own secret values in the `wake-staging` Secret Manager. Options:
 
 **Option A — Real credentials (recommended for most secrets):**
 Use the same FatSecret and Resend credentials. These services don't distinguish
@@ -170,7 +170,7 @@ credentials that simulate payments without charging real money.
 | `FATSECRET_CLIENT_SECRET` | Same as production |
 | `RESEND_API_KEY` | Same as production (or a Resend test key) |
 
-To add a secret to `wolf-dev`:
+To add a secret to `wake-staging`:
 ```bash
 firebase use staging
 firebase functions:secrets:set SECRET_NAME
@@ -187,24 +187,24 @@ firebase functions:secrets:access SECRET_NAME
 The PWA and creator dashboard embed the Firebase config object in
 `apps/pwa/src/config/firebase.js` and `apps/creator-dashboard/src/config/firebase.js`.
 
-These files point to the production project (`wolf-20b8b`). For a staging build,
-you need to swap in the `wolf-dev` config. There are two approaches:
+These files now support environment-based config selection. Each file defines
+both `productionConfig` and `stagingConfig` objects and selects based on an
+environment variable:
 
-**Manual swap (current approach):**
-Before building for staging, temporarily edit the firebase config to use `wolf-dev`
-credentials. After deploying to staging, revert the change. This is tedious but
-correct for solo development.
+- **PWA (Expo):** `EXPO_PUBLIC_FIREBASE_ENV=staging`
+- **Creator Dashboard (Vite):** `VITE_FIREBASE_ENV=staging`
+- **Landing (Vite):** `VITE_FIREBASE_ENV=staging`
 
-**Environment-based swap (future improvement, when CI/CD is added):**
-Use a build-time environment variable to select the config:
-```js
-const firebaseConfig = process.env.VITE_ENV === 'staging'
-  ? stagingConfig
-  : productionConfig;
+When the env var is not set or is any value other than `'staging'`, the
+production config is used (safe default).
+
+Build for staging using the dedicated scripts:
+```bash
+npm run build:all:staging    # All three apps with staging config
+npm run build:pwa:staging    # PWA only
+npm run build:creator:staging # Creator dashboard only
+npm run build:landing:staging # Landing only
 ```
-
-This is the right pattern for when you add CI/CD. Don't add it now —
-the manual swap works fine at current scale.
 
 ---
 
@@ -342,23 +342,21 @@ jobs:
         with: { node-version: '22' }
       - run: npm ci
       - run: npm --prefix functions run build
-      - run: npm run build:all
-        env:
-          VITE_ENV: staging
+      - run: npm run build:all:staging
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_WOLF_DEV }}
-          projectId: wolf-dev
+          projectId: wake-staging
 ```
 
 This deploys to staging automatically on every push to `main`. Production
 deploys remain manual (intentional — production changes should be deliberate).
 
 Prerequisites before adding CI/CD:
-- [ ] Environment-based Firebase config selection (§4.4)
+- [x] Environment-based Firebase config selection (§4.4)
 - [ ] Staging secrets added to GitHub repository secrets
-- [ ] A `wolf-dev` service account key with deployment permissions
+- [ ] A `wake-staging` service account key with deployment permissions
 - [ ] At least basic smoke tests to run in the CI step
 
 Don't add CI/CD until all four prerequisites are in place.
