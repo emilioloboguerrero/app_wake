@@ -92,9 +92,11 @@ Wake uses **coarse scopes** for simplicity. Three scopes exist:
 |---|---|
 | `read` | GET access to all endpoints the creator can access. Read their profile, clients, programs, session history, nutrition data for their clients. No writes. |
 | `write` | All `read` permissions + POST/PATCH/PUT/DELETE for all endpoints the creator can access. |
-| `creator` | Reserved for future use. Currently identical to `write`. |
+| `creator` | All `write` permissions + access to creator-specific endpoints (programs, clients, library). |
 
-Scope is checked server-side against the authenticated creator's permissions.
+Scope enforcement is **implemented** in `validateAuth()` (`functions/src/api/middleware/auth.ts`).
+A `read`-scoped key is restricted to `GET` requests only. Scope is checked server-side
+against the authenticated creator's permissions.
 The API key does not expand permissions — it cannot access data the creator
 themselves cannot access. The scope only restricts the method (GET-only for `read`).
 
@@ -132,9 +134,9 @@ A `read` key goes directly to `status: 'active'` — no review step.
 
 ## 4. Rate Limiting
 
-### 4.1 Current Limits (Free Tier)
+### 4.1 Current Limits (Free Tier) — Implemented
 
-All third-party API keys are currently subject to:
+All third-party API keys are currently subject to (enforced in `checkRateLimit()` middleware):
 
 | Limit | Value |
 |---|---|
@@ -238,15 +240,20 @@ procedure.
 
 ## 6. Developer Portal
 
-The developer portal is a dedicated web app built on Vite + React (same stack as
-the creator dashboard). It lives at `/developers` within the Wake monorepo.
+The developer portal is planned as a dedicated web app built on Vite + React (same
+stack as the creator dashboard), to live at `/developers` within the Wake monorepo.
 
 ```
-apps/developer-portal/     ← Vite + React 18, base: /developers
+apps/developer-portal/     ← Vite + React 18, base: /developers (planned — not yet built)
 ```
 
-It is a separate app from the creator dashboard, served from the same Firebase
-Hosting deployment. Creators log in using their existing Firebase credentials.
+**Current state:** The developer portal app has not been built yet. API key
+management is currently available through the creator dashboard's `ApiKeysScreen`.
+The full developer portal (docs, reference, changelog) is a future deliverable.
+
+When built, it will be a separate app from the creator dashboard, served from the
+same Firebase Hosting deployment. Creators will log in using their existing Firebase
+credentials.
 
 ### 6.1 Pages
 
@@ -372,5 +379,5 @@ bypassing security rules entirely.
   requires a valid API key with an active creator account.
 - **SDK libraries** — no official client SDKs. Third parties use standard HTTP.
   The API is simple enough that an SDK adds no meaningful value at this stage.
-- **Sandbox / test environment** — third parties test against the `wolf-dev`
+- **Sandbox / test environment** — third parties test against the `wake-staging`
   staging environment using a staging API key. There is no separate sandbox mode.

@@ -349,9 +349,10 @@ Log a food entry.
 ```
 **Response:**
 ```json
-{ "data": { "entryId": "string", "createdAt": "ISO string" } }
+{ "data": { "id": "string" } }
 ```
 **Errors:** `VALIDATION_ERROR`
+**Notes:** Response returns `id` (Firestore document ID), not `entryId`. Status code `201`.
 
 ---
 
@@ -372,7 +373,7 @@ Update an existing diary entry (typically to change `numberOfUnits` or `servingI
 ```
 **Response:**
 ```json
-{ "data": { "entryId": "string", "updatedAt": "ISO string" } }
+{ "data": { "updated": true } }
 ```
 **Errors:** `NOT_FOUND`, `FORBIDDEN`
 

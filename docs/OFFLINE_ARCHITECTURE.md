@@ -62,6 +62,11 @@ These write operations are queued when offline and replayed on reconnect:
 | Save session checkpoint | `POST /workout/session/checkpoint` | Queued (low priority) |
 | Complete workout | `POST /workout/complete` | Queued (high priority — see §4.3) |
 
+**Enqueueing:** Services and components call `offlineQueue.enqueue()` directly —
+the `apiClient` does **not** auto-enqueue writes when offline. The service layer
+is responsible for detecting the offline condition and choosing to enqueue vs. fail.
+This keeps the `apiClient` thin and the offline decision explicit per-operation.
+
 ### 2.3 Writes (Not Queued — Fail Fast)
 
 These operations require a live server response and cannot be safely deferred:
@@ -190,16 +195,38 @@ function replayQueue():
 ### 4.4 Temp IDs
 
 When a diary entry is created offline, the client has no server-assigned ID yet.
-The queue entry uses a client-generated temp ID (`temp_xyz`) in the body.
+The queue entry includes a `tempId` field (set via `offlineQueue.enqueue({ ..., tempId: 'temp_xyz' })`).
 The optimistic React Query update uses the same temp ID in the cache.
 
-On successful replay, the server returns the real document ID. The client:
-1. Removes the temp entry from the React Query cache
-2. Inserts the real entry with the server ID
-3. Invalidates the diary query to trigger a re-fetch
+**Queue entry shape with temp ID:**
+```json
+{
+  "id": "q_...",
+  "method": "POST",
+  "path": "/nutrition/diary",
+  "body": { ... },
+  "tempId": "temp_xyz",
+  "enqueuedAt": "...",
+  "retryCount": 0,
+  "priority": "normal"
+}
+```
+
+On successful replay, the server returns `{ data: { id: "real_firestore_id" } }`.
+The `backgroundSync.processPendingQueue()` handler:
+1. Checks if the entry has a `tempId` and the path is `/nutrition/diary`
+2. Reads the real ID from `postResult.data.entryId`
+3. Updates the React Query cache: replaces the temp entry with the real ID
+4. Invalidates the diary query to trigger a re-fetch
+
+**Known issue:** The server returns the ID as `data.id` (not `data.entryId`),
+but `backgroundSync.js` checks for `data.entryId`. This means temp ID replacement
+silently fails — the diary re-fetch from the invalidation corrects the data, but
+the in-cache swap does not fire. This should be fixed in either the server response
+or the client check.
 
 Temp IDs are prefixed `temp_` and are never sent to the server as document IDs.
-They are only used in the local React Query cache.
+They are only used in the local React Query cache and the offline queue's `tempId` field.
 
 ---
 
@@ -270,7 +297,7 @@ When there are items in the offline queue, show a subtle indicator in the
 navigation bar (a small dot or count badge on a sync icon). This tells the user
 their data is saved locally but not yet synced.
 
-### 6.3 Non-Queueable Action Feedback
+### 6.3 Non-Queueable Action Feedback (Inline Errors)
 
 When a user attempts a non-queueable operation while offline (§2.3), show an
 inline error message in Spanish beneath the action button:
@@ -280,6 +307,13 @@ Sin conexión. Conéctate a internet para continuar.
 ```
 
 Do not show a modal or toast for this. Inline is less disruptive.
+
+Inline errors are also used for permanent failures during queue replay.
+When `backgroundSync` encounters a 4xx error on a queued entry, the entry is
+removed from the queue silently (logged via `logger.warn`). The user sees the
+corrected state on the next React Query re-fetch. No separate UI notification
+is shown for permanently failed queue entries — the data simply reverts to the
+server state on next fetch.
 
 ### 6.4 Workout Execution (Offline)
 

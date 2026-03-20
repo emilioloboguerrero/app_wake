@@ -2018,3 +2018,79 @@ Audited files:
   config/firebase/storage.rules
   firestore.indexes.json
 ================================================================================
+
+================================================================================
+ADDENDUM — 2026-03-20
+Status update on issues identified in this report.
+================================================================================
+
+The Phase 3 API migration has been implemented (all 6 domains coded, pending
+staging validation and production deploy). Below is the resolution status of
+the key issues identified in this audit:
+
+RESOLVED — Phase 3 API Implementation
+────────────────────────────────────────
+- Session completion non-atomic (5+ separate writes)
+  → Fixed: POST /workout/complete uses Firestore writeBatch() (atomic)
+
+- 1RM computed 2-3x per completion
+  → Fixed: computed once in POST /workout/complete handler
+
+- Streak via onSnapshot on entire user doc
+  → Fixed: computed server-side, returned in completion response
+
+- weight vs bodyweight field name inconsistency
+  → Fixed: PATCH /users/me normalizes to "weight"
+
+- Nutrition propagation snapshot refresh silently fails
+  → Fixed: server throws hard error if plan fetch fails during propagation
+
+- Cascading plan deletion: 1000+ sequential writes
+  → Fixed: server uses writeBatch() in pages of 500
+
+- Readiness soreness stored inverted
+  → Fixed: PUT /progress/readiness/{date} stores corrected value
+
+- consolidatedDataService client-side aggregation with unbounded reads
+  → Fixed: server-side aggregation in GET /analytics/weekly-volume and
+    GET /analytics/muscle-breakdown
+
+- Session state 100% in-memory — any interruption loses all progress
+  → Fixed: POST /workout/session/checkpoint + localStorage persistence
+
+- subscribeToUserDoc (onSnapshot) in CourseDetailScreen
+  → Fixed: replaced with useQuery + refetchInterval during purchase processing
+
+RESOLVED — Pre-Phase 3 Checklist (completed during audit)
+──────────────────────────────────────────────────────────
+- ContentHubScreen.jsx: migrated to useQuery (sessions + plans tabs)
+- ClientProgramScreen.jsx: migrated all secondary useEffect data fetches to useQuery
+- CourseDetailScreen.js: removed onSnapshot/subscribeToUserDoc, replaced with useQuery
+- firestoreService.js: deleted subscribeToUserDoc (no remaining callers)
+- ProductsScreen.jsx: fixed wrong React Query cache key
+
+RESOLVED — Infrastructure
+──────────────────────────
+- hybridDataService: fully deleted (callers migrated to apiClient)
+- consolidatedDataService: fully deleted
+- webStorageService: fully deleted
+- .firebaserc staging alias: updated to "wake-staging" (was previously wolf-dev
+  in docs, but the actual alias was set to wake-staging)
+
+STILL OPEN
+──────────
+- Staging validation + production deploy for all 6 domains (MANUAL steps)
+- App Check enforcement in Firebase Console (MANUAL)
+- wake-staging Firebase project creation (MANUAL)
+- Developer portal app (apps/developer-portal/) not yet built — API key management
+  available via creator dashboard ApiKeysScreen
+
+KNOWN BUG FOUND DURING DOC AUDIT (2026-03-20)
+───────────────────────────────────────────────
+- backgroundSync.js line 74 expects postResult.data.entryId but the server
+  (nutrition.ts line 66) returns { data: { id: docRef.id } }. This mismatch
+  means temp ID replacement in the React Query cache does not fire after offline
+  diary entry sync. The diary re-fetch from query invalidation corrects the data,
+  but the in-cache swap is a no-op. Fix: align server response or client check.
+
+================================================================================

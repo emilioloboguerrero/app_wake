@@ -25,7 +25,7 @@ document. This document is about sequencing and execution, not API design.
   functionality during a cutover is acceptable. Do not over-engineer for zero
   downtime at this scale.
 - **Staging validates before prod.** Every domain is fully exercised on staging
-  (`wolf-dev`) before the production deploy. If staging fails, production does
+  (`wake-staging`) before the production deploy. If staging fails, production does
   not change.
 - **One domain at a time.** Do not begin the next domain's migration until the
   previous domain is confirmed stable in production.
@@ -78,7 +78,7 @@ Build and test the function locally using the Firebase emulator suite.
 ### Step 2 — Deploy to staging
 
 ```bash
-firebase use wolf-dev
+firebase use staging
 firebase deploy --only functions
 ```
 
@@ -114,7 +114,7 @@ Verify the domain works end-to-end with real data from staging.
 ### Step 5 — Deploy to staging (full stack)
 
 ```bash
-firebase use wolf-dev
+firebase use staging
 firebase deploy --only functions,hosting
 ```
 

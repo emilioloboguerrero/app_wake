@@ -411,207 +411,102 @@ First card (furthest back): display-card--back-2
 Second card (middle): display-card--back-1
 Third card (front, no offset): display-card--front
 3. NavBar (Tubelight)
-What it does: A floating pill navigation bar — fixed to the bottom on mobile, top on desktop. The active tab has a glowing "lamp" drip above it that slides between tabs with a spring animation.
+What it does: A pill-shaped navigation bar with a glowing "tubelight" indicator that slides between tabs with a spring animation. Supports horizontal and vertical orientation.
+
+**Important: This component uses an `activeId`/`onSelect` callback pattern — NOT React Router `<Link>` elements.** The parent controls which tab is active and handles navigation. Items are `<button>` elements, not links.
 
 Files to create
 src/components/ui/TubelightNavBar.jsx
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { motion } from 'motion/react';
 import './TubelightNavBar.css';
 
-export default function TubelightNavBar({ items, className = '' }) {
-  const location = useLocation();
-  const [activeTab, setActiveTab] = useState(items[0].name);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Sync active tab to current route
-  useEffect(() => {
-    const match = items.find(item => location.pathname.startsWith(item.url));
-    if (match) setActiveTab(match.name);
-  }, [location.pathname, items]);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+export default function TubelightNavBar({ items, activeId, onSelect, orientation = 'horizontal' }) {
+  const [hovered, setHovered] = useState(null);
 
   return (
-    <div className={`tubelight-nav-wrapper ${className}`}>
-      <nav className="tubelight-nav">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.name;
+    <nav
+      className={`tubelight-nav tubelight-nav--${orientation}`}
+      onMouseLeave={() => setHovered(null)}
+    >
+      {items.map((item) => {
+        const isActive = item.id === activeId;
+        const isHovered = item.id === hovered;
 
-          return (
-            <Link
-              key={item.name}
-              to={item.url}
-              onClick={() => setActiveTab(item.name)}
-              className={`tubelight-nav-item ${isActive ? 'tubelight-nav-item--active' : ''}`}
-            >
-              {isMobile ? (
-                <Icon size={18} strokeWidth={2.5} />
-              ) : (
-                <span>{item.name}</span>
-              )}
+        return (
+          <button
+            key={item.id}
+            className={`tubelight-item ${isActive ? 'tubelight-item--active' : ''}`}
+            onClick={() => onSelect(item.id)}
+            onMouseEnter={() => setHovered(item.id)}
+            aria-current={isActive ? 'page' : undefined}
+          >
+            {item.icon && (
+              <span className="tubelight-item-icon">{item.icon}</span>
+            )}
+            <span className="tubelight-item-label">{item.label}</span>
 
-              {isActive && (
-                <motion.div
-                  layoutId="tubelight-lamp"
-                  className="tubelight-lamp"
-                  initial={false}
-                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                >
-                  <div className="tubelight-lamp-bar">
-                    <div className="tubelight-lamp-glow tubelight-lamp-glow--wide" />
-                    <div className="tubelight-lamp-glow tubelight-lamp-glow--mid" />
-                    <div className="tubelight-lamp-glow tubelight-lamp-glow--tight" />
-                  </div>
-                </motion.div>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+            {isActive && (
+              <motion.div
+                layoutId="tubelight-indicator"
+                className="tubelight-indicator"
+                transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+              />
+            )}
+
+            {(isHovered || isActive) && (
+              <motion.div
+                layoutId="tubelight-glow"
+                className="tubelight-glow"
+                transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
-src/components/ui/TubelightNavBar.css
+src/components/ui/TubelightNavBar.css — see the actual file for full CSS (tubelight-nav, tubelight-item, tubelight-indicator, tubelight-glow classes).
 
-.tubelight-nav-wrapper {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
-  padding-bottom: 24px;
-}
-
-@media (min-width: 768px) {
-  .tubelight-nav-wrapper {
-    bottom: auto;
-    top: 0;
-    padding-bottom: 0;
-    padding-top: 24px;
-  }
-}
-
-.tubelight-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  padding: 4px;
-  border-radius: 9999px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.tubelight-nav-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 24px;
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
-  text-decoration: none;
-  cursor: pointer;
-  transition: color 200ms ease;
-  white-space: nowrap;
-}
-
-.tubelight-nav-item:hover {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.tubelight-nav-item--active {
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-/* The lamp container — slides between tabs via layoutId */
-.tubelight-lamp {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 9999px;
-  z-index: -1;
-}
-
-/* The bar sitting on top edge of the active tab */
-.tubelight-lamp-bar {
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 9999px 9999px 0 0;
-}
-
-/* Three blurred glow layers bleeding upward */
-.tubelight-lamp-glow {
-  position: absolute;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 9999px;
-}
-
-.tubelight-lamp-glow--wide {
-  width: 48px;
-  height: 24px;
-  top: -8px;
-  left: -8px;
-  filter: blur(8px);
-}
-
-.tubelight-lamp-glow--mid {
-  width: 32px;
-  height: 24px;
-  top: -4px;
-  left: 0;
-  filter: blur(6px);
-}
-
-.tubelight-lamp-glow--tight {
-  width: 16px;
-  height: 16px;
-  top: 0;
-  left: 8px;
-  filter: blur(4px);
-}
 How to use
 
 import TubelightNavBar from '../components/ui/TubelightNavBar';
 import { Home, Users, Calendar, BarChart2 } from 'lucide-react';
 
+const [activeTab, setActiveTab] = useState('inicio');
+
 const navItems = [
-  { name: 'Inicio',    url: '/creators',          icon: Home },
-  { name: 'Clientes',  url: '/creators/clients',  icon: Users },
-  { name: 'Agenda',    url: '/creators/calendar', icon: Calendar },
-  { name: 'Resultados',url: '/creators/results',  icon: BarChart2 },
+  { id: 'inicio',     label: 'Inicio',     icon: <Home size={18} /> },
+  { id: 'clientes',   label: 'Clientes',   icon: <Users size={18} /> },
+  { id: 'agenda',     label: 'Agenda',     icon: <Calendar size={18} /> },
+  { id: 'resultados', label: 'Resultados', icon: <BarChart2 size={18} /> },
 ];
 
-// Drop inside your layout, outside any scroll containers
-<TubelightNavBar items={navItems} />
-Each item needs:
+<TubelightNavBar
+  items={navItems}
+  activeId={activeTab}
+  onSelect={(id) => { setActiveTab(id); navigate(`/creators/${id}`); }}
+  orientation="horizontal"
+/>
+Props:
+  items — array of { id, label, icon } objects
+  activeId — the id of the currently active tab (controlled by parent)
+  onSelect — callback fired with item.id when a tab is clicked (parent handles navigation)
+  orientation — 'horizontal' (default) or 'vertical'
 
-name — label shown on desktop, used for active tracking
-url — React Router path; auto-activates based on current route
-icon — any lucide-react icon component (shown on mobile)
-Important: The motion import uses motion/react here — that's the subpackage for React components (needed for layoutId). This is different from the plain motion import used in GlowingEffect.
+Each item needs:
+  id — unique string identifier for the tab
+  label — text label shown in the tab
+  icon — React node (e.g. lucide-react icon rendered inline)
+
+Important: This does NOT use React Router Links — it uses buttons with an onSelect callback. The parent component is responsible for navigation. The motion import uses motion/react (needed for layoutId spring animations).
 
 4. BentoGrid
-What it does: A CSS grid layout where cards span different columns/rows to create an asymmetric "bento box" look. On hover, card content slides up and a CTA link appears from below.
+What it does: A CSS grid layout where cards span different columns/rows to create an asymmetric "bento box" look.
+
+**Important: The actual implementation uses a `span` prop (e.g. `'1x1'`, `'2x1'`, `'1x2'`) for card sizing, NOT named grid-area placement classes.** Cards render `children` directly — they do NOT have built-in `name`, `description`, `icon`, `href`, or `cta` props.
 
 Files to create
 src/components/ui/BentoGrid.jsx
@@ -627,230 +522,59 @@ export function BentoGrid({ children, className = '' }) {
 }
 
 export function BentoCard({
-  name,
+  children,
   className = '',
-  background,
-  icon: Icon,
-  description,
-  href,
-  cta,
+  span = '1x1',
+  onClick,
 }) {
   return (
-    <div className={`bento-card ${className}`}>
-      {background && (
-        <div className="bento-card-bg">{background}</div>
-      )}
-
-      <div className="bento-card-content">
-        {Icon && <Icon className="bento-card-icon" size={48} strokeWidth={1.2} />}
-        <h3 className="bento-card-name">{name}</h3>
-        <p className="bento-card-description">{description}</p>
-      </div>
-
-      {href && cta && (
-        <div className="bento-card-cta">
-          <a href={href} className="bento-card-cta-link">
-            {cta}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginLeft: 6 }}>
-              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </a>
-        </div>
-      )}
-
-      <div className="bento-card-hover-overlay" />
+    <div
+      className={`bento-card bento-card--${span} ${className}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
+    >
+      {children}
     </div>
   );
 }
-src/components/ui/BentoGrid.css
 
-.bento-grid {
-  display: grid;
-  width: 100%;
-  grid-auto-rows: 22rem;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
+export default BentoGrid;
+src/components/ui/BentoGrid.css — see the actual file for full CSS (bento-grid, bento-card, bento-card--{span} classes).
 
-.bento-card {
-  position: relative;
-  grid-column: span 3;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: 0 -20px 80px -20px rgba(255, 255, 255, 0.06) inset;
-  cursor: default;
-}
-
-/* Background slot — for images, gradients, decorative elements */
-.bento-card-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-
-.bento-card-bg img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.4;
-}
-
-/* Content block — slides up on hover to reveal CTA */
-.bento-card-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 24px;
-  transform: translateY(0);
-  transition: transform 300ms ease;
-  pointer-events: none;
-}
-
-.bento-card:hover .bento-card-content {
-  transform: translateY(-40px);
-}
-
-.bento-card-icon {
-  color: rgba(255, 255, 255, 0.5);
-  transform-origin: left center;
-  transition: transform 300ms ease, color 300ms ease;
-  margin-bottom: 4px;
-}
-
-.bento-card:hover .bento-card-icon {
-  transform: scale(0.75);
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.bento-card-name {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-  margin: 0;
-}
-
-.bento-card-description {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.4);
-  margin: 0;
-  max-width: 36ch;
-}
-
-/* CTA — hidden below card, slides up on hover */
-.bento-card-cta {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 2;
-  padding: 16px 24px;
-  transform: translateY(40px);
-  opacity: 0;
-  transition: transform 300ms ease, opacity 300ms ease;
-}
-
-.bento-card:hover .bento-card-cta {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.bento-card-cta-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
-  text-decoration: none;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  transition: color 200ms, background 200ms;
-}
-
-.bento-card-cta-link:hover {
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-/* Subtle dark wash on hover */
-.bento-card-hover-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background: transparent;
-  transition: background 300ms ease;
-  pointer-events: none;
-}
-
-.bento-card:hover .bento-card-hover-overlay {
-  background: rgba(255, 255, 255, 0.02);
-}
 How to use
 
 import { BentoGrid, BentoCard } from '../components/ui/BentoGrid';
-import { FileText, Search, Globe, Calendar, Bell } from 'lucide-react';
 
-<BentoGrid style={{ gridTemplateRows: 'repeat(3, 22rem)' }}>
-  <BentoCard
-    name="Guarda tus archivos"
-    description="Guardamos automáticamente mientras escribes."
-    icon={FileText}
-    href="/files"
-    cta="Ver más"
-    className="bento-span-tall-center"   // see grid placement below
-  />
-  <BentoCard
-    name="Búsqueda completa"
-    description="Busca en todos tus archivos desde un solo lugar."
-    icon={Search}
-    href="/search"
-    cta="Explorar"
-    className="bento-span-left"
-  />
-  {/* etc */}
+<BentoGrid>
+  <BentoCard span="2x1" onClick={() => navigate('/files')}>
+    <h3>Guarda tus archivos</h3>
+    <p>Guardamos automáticamente mientras escribes.</p>
+  </BentoCard>
+  <BentoCard span="1x1">
+    <h3>Búsqueda completa</h3>
+    <p>Busca en todos tus archivos desde un solo lugar.</p>
+  </BentoCard>
+  <BentoCard span="1x2" onClick={() => navigate('/stats')}>
+    <h3>Estadísticas</h3>
+    <p>Ve tus resultados en tiempo real.</p>
+  </BentoCard>
 </BentoGrid>
-Grid placement classes
-Add these to your CSS to control which cells each card occupies (matching the original bento layout):
 
+Props (BentoCard):
+  children — card content (render whatever you want inside)
+  span — grid sizing: '1x1' (default), '2x1' (wide), '1x2' (tall), '2x2' (large). Maps to CSS class `bento-card--{span}`
+  onClick — optional click handler (adds button role + keyboard support when present)
+  className — additional CSS classes
 
-/* Add to BentoGrid.css */
-
-@media (min-width: 1024px) {
-  /* Tall center column */
-  .bento-span-tall-center {
-    grid-area: 1 / 2 / 4 / 3;
-  }
-  /* Left column, top two rows */
-  .bento-span-left {
-    grid-area: 1 / 1 / 3 / 2;
-  }
-  /* Left column, bottom row */
-  .bento-span-left-bottom {
-    grid-area: 3 / 1 / 4 / 2;
-  }
-  /* Right column, top row */
-  .bento-span-right-top {
-    grid-area: 1 / 3 / 2 / 4;
-  }
-  /* Right column, bottom two rows */
-  .bento-span-right-tall {
-    grid-area: 2 / 3 / 4 / 4;
-  }
-}
+Grid placement is controlled by the `span` prop, NOT by named grid-area classes. The CSS maps each span value to the appropriate `grid-column`/`grid-row` spans.
 Summary
-Component	File	Dependency
-GlowingEffect	components/ui/GlowingEffect.jsx + .css	motion (plain)
-DisplayCards	components/ui/DisplayCards.jsx + .css	None
-TubelightNavBar	components/ui/TubelightNavBar.jsx + .css	motion/react
-BentoGrid	components/ui/BentoGrid.jsx + .css	None
+Component	File	Dependency	Pattern
+GlowingEffect	components/ui/GlowingEffect.jsx + .css	motion (plain)	Wrap any card with position:relative
+DisplayCards	components/ui/DisplayCards.jsx + .css	None	className-based card stacking
+TubelightNavBar	components/ui/TubelightNavBar.jsx + .css	motion/react	activeId/onSelect callback (NOT React Router Links)
+BentoGrid	components/ui/BentoGrid.jsx + .css	None	span prop ('1x1', '2x1', etc.) for sizing
 
 # One install covers both GlowingEffect and TubelightNavBar
 npm install motion --prefix apps/creator-dashboard

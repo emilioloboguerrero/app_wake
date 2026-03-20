@@ -196,22 +196,27 @@ drifted. It does NOT loop — only one retry on 401.
 
 ### 4.4 Retryable Errors
 
-The client retries on 500, 503, and network failures (but NOT on 401, 403, 404,
-400, 409, 429). Retry policy:
+The client retries on 500, 503, and network failures (status `0`). Retry policy:
 
 ```
 MAX_RETRIES = 2
-INITIAL_DELAY_MS = 150
-BACKOFF_MULTIPLIER = 2
+DELAYS = [0, 150, 300]
 
 attempt 1 (original):  immediate
 attempt 2 (retry 1):   wait 150ms
 attempt 3 (retry 2):   wait 300ms
 ```
 
-On 429, the client reads the `Retry-After` response header (seconds) and waits
-that duration before the single allowed retry. If `Retry-After` is absent,
-treat as non-retryable and throw immediately.
+**429 handling:** On 429, the client reads the `Retry-After` field from the
+`WakeApiError` (parsed from the response header). If `retryAfter` is present,
+the client waits that many seconds and retries **once**. If `Retry-After` is
+absent, the error is thrown immediately (non-retryable).
+
+Note: `WakeApiError` has a 5th constructor parameter `retryAfter` (number of
+seconds, or `null`). This is populated from the `Retry-After` response header
+on 429 responses.
+
+**4xx errors** (400, 401, 403, 404, 409) are never retried — they throw immediately.
 
 Retries are NOT applied to non-idempotent requests by default. `POST` requests
 are only retried if the caller explicitly passes `{ idempotent: true }` in options.
@@ -353,7 +358,7 @@ queryFn: () => userService.getProfile()
 The Vite proxy config routes `/api/**` to `http://localhost:5001/wolf-20b8b/us-central1/api`.
 No environment variable is needed — the relative path works in both environments.
 
-For the staging Firebase project (`wolf-dev`), the same relative path applies.
+For the staging Firebase project (`wake-staging`), the same relative path applies.
 The deploy target controls which project is active, not the client code.
 
 ---

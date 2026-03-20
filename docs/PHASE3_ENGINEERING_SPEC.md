@@ -65,12 +65,12 @@ foundation. Steps are ordered — do not skip or reorder.
 
 ---
 
-### 1.1 Staging Project (`wolf-dev`)
+### 1.1 Staging Project (`wake-staging`)
 
-The `wolf-dev` Firebase project does not exist yet. Create it before anything else.
+The `wake-staging` Firebase project does not exist yet. Create it before anything else.
 
 **In the Firebase Console (`console.firebase.google.com`):**
-1. Create project, ID: `wolf-dev`
+1. Create project, ID: `wake-staging`
 2. Enable: Firestore (Native mode, us-central1), Auth (Email/Password + Google + Apple),
    Firebase Storage, Cloud Functions
 
@@ -80,7 +80,7 @@ The `wolf-dev` Firebase project does not exist yet. Create it before anything el
   "projects": {
     "default": "wolf-20b8b",
     "production": "wolf-20b8b",
-    "staging": "wolf-dev"
+    "staging": "wake-staging"
   }
 }
 ```
@@ -91,7 +91,7 @@ firebase use staging
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
-**Add secrets to `wolf-dev` Secret Manager:**
+**Add secrets to `wake-staging` Secret Manager:**
 ```bash
 firebase use staging
 firebase functions:secrets:set FATSECRET_CLIENT_ID         # same as prod
@@ -660,8 +660,8 @@ initializeAppCheck(app, {
 The App Check SDK automatically attaches the token to calls to Firebase services.
 For the API, the `apiClient.js` must read and forward it manually (see `API_CLIENT_SPEC.md §3.2`).
 
-**Staging (`wolf-dev`):**
-Register both apps in `wolf-dev` App Check as well, using a separate reCAPTCHA
+**Staging (`wake-staging`):**
+Register both apps in `wake-staging` App Check as well, using a separate reCAPTCHA
 Enterprise site key for the staging domain. Add the staging domain to the allowlist
 in the Google Cloud Console for that site key.
 
@@ -1385,10 +1385,10 @@ Everything else is a natural outcome of the migration. Do not defer the cache.**
 ## 12. Execution Checklist
 
 ```
-§1.1  ☐ Create wolf-dev Firebase project                              ← MANUAL: Firebase Console
+§1.1  ☐ Create wake-staging Firebase project                              ← MANUAL: Firebase Console
 §1.1  ✅ Update .firebaserc with staging alias                        (alias "staging" → wake-staging)
 §1.1  ☐ Deploy rules/indexes to staging                               ← MANUAL: firebase deploy --only firestore:rules,firestore:indexes --project staging
-§1.1  ☐ Add all secrets to wolf-dev Secret Manager                    ← MANUAL: MERCADOPAGO_*, FATSECRET_*, RESEND_API_KEY
+§1.1  ☐ Add all secrets to wake-staging Secret Manager                    ← MANUAL: MERCADOPAGO_*, FATSECRET_*, RESEND_API_KEY
 §1.1  ☐ Seed staging data (30 min)                                    ← MANUAL: npm run seed:staging
 §1.2  ✅ Add /api/** rewrite to firebase.json
 §1.2  ✅ Add Functions emulator to firebase.json
