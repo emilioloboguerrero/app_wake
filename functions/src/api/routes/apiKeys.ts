@@ -32,6 +32,7 @@ router.get("/api-keys", async (req, res) => {
       scope: data.scope,
       createdAt: data.createdAt,
       lastUsedAt: data.lastUsedAt ?? null,
+      ...(data.useCase ? { useCase: data.useCase } : {}),
     };
   });
 
@@ -70,7 +71,11 @@ router.post("/api-keys", async (req, res) => {
   const needsApproval = body.scope.some((s) => s === "write" || s === "creator");
   const status = needsApproval ? "pending_approval" : "active";
 
-  const docRef = await db.collection("api_keys").add({
+  // Generate key_<12 hex chars> ID per spec
+  const keyId = `key_${crypto.randomBytes(6).toString("hex")}`;
+  const useCase = typeof req.body.useCase === "string" ? req.body.useCase.trim() : null;
+
+  const docData: Record<string, unknown> = {
     creatorId: auth.userId,
     name: body.name,
     scope: body.scope,
@@ -79,16 +84,20 @@ router.post("/api-keys", async (req, res) => {
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
     revokedAt: null,
-  });
+  };
+  if (useCase) docData.useCase = useCase;
+
+  await db.collection("api_keys").doc(keyId).set(docData);
 
   // Return the raw key ONCE — it will never be retrievable again
   res.status(201).json({
     data: {
-      keyId: docRef.id,
+      keyId,
       key: rawKey,
       name: body.name,
       scope: body.scope,
       status,
+      ...(useCase ? { useCase } : {}),
     },
   });
 });

@@ -232,6 +232,9 @@ export default function Keys() {
               <tr key={key.keyId}>
                 <td style={styles.td}>
                   <span style={{ color: '#fff', fontWeight: 500 }}>{key.name}</span>
+                  {key.useCase && (
+                    <span style={styles.useCase}>{key.useCase}</span>
+                  )}
                 </td>
                 <td style={styles.td}>
                   <code style={styles.code}>{(key.scope || []).join(', ')}</code>
@@ -351,6 +354,12 @@ const styles = {
     fontSize: 13,
     padding: '12px',
     borderBottom: '1px solid rgba(255,255,255,0.04)',
+  },
+  useCase: {
+    display: 'block',
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    marginTop: 2,
   },
   code: {
     background: 'rgba(255,255,255,0.08)',
