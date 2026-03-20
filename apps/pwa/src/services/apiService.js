@@ -110,7 +110,6 @@ class FirestoreService {
       const result = await apiClient.get('/workout/planned-session', { params: { courseId, date: dateStr } });
       return result?.data ?? null;
     } catch (error) {
-      logger.debug('getPlannedSessionForDate:', error?.message);
       return null;
     }
   }
@@ -258,7 +257,6 @@ class FirestoreService {
       const result = await apiClient.get(`/workout/client-session-content/${clientSessionId}`);
       return result?.data ?? null;
     } catch (error) {
-      logger.debug('getPlannedSessionContentBySlotId:', error?.message);
       return null;
     }
   }
@@ -275,7 +273,6 @@ class FirestoreService {
       if (data && options.minimal) data.exercises = [];
       return data;
     } catch (error) {
-      logger.debug('getClientSessionContentCopy:', error?.message);
       return null;
     }
   }
@@ -299,7 +296,6 @@ class FirestoreService {
       });
       return data;
     } catch (error) {
-      logger.debug('getClientPlanContentCopy:', error?.message);
       return null;
     }
   }

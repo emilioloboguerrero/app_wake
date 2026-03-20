@@ -15,7 +15,7 @@ const firebaseConfig = {
   projectId: "wolf-20b8b",
   storageBucket: "wolf-20b8b.firebasestorage.app",
   messagingSenderId: "781583050959",
-  appId: "1:781583050959:android:0239876b40567c87dcefba"
+  appId: "1:781583050959:web:b0397d11565ce113dcefba"
 };
 
 // Initialize Firebase

@@ -1,8 +1,8 @@
 // Workout Session Service - Manages local workout sessions with auto-save
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../services/apiService';
-
 import logger from '../utils/logger.js';
+
 // Session states
 export const SessionStates = {
   CREATING: "creating",
@@ -26,12 +26,9 @@ class WorkoutSessionService {
    */
   async startSession(courseId, sessionId, userId) {
     try {
-      logger.debug('🏋️ Starting workout session:', { courseId, sessionId, userId });
-      
       // Check if there's already an active session
       const existingSession = await this.getCurrentSession();
       if (existingSession && existingSession.status === SessionStates.ACTIVE) {
-        logger.debug('⚠️ Found existing active session, completing it first');
         await this.completeSession();
       }
       
@@ -62,11 +59,9 @@ class WorkoutSessionService {
       // Save initial session
       await this.saveSessionData(sessionData);
       
-      logger.debug('✅ Workout session started:', sessionData.sessionId);
       return sessionData;
       
     } catch (error) {
-      logger.error('❌ Failed to start session:', error);
       throw error;
     }
   }
@@ -105,7 +100,6 @@ class WorkoutSessionService {
       // CRITICAL: Auto-save after every set
       await this.autoSaveSession(session);
       
-      logger.debug(`✅ Set added to session (${session.sets.length} total sets)`);
       return session;
       
     } catch (error) {
@@ -121,11 +115,8 @@ class WorkoutSessionService {
     try {
       const session = await this.getCurrentSession();
       if (!session) {
-        logger.debug('ℹ️ No active session to complete');
         return null;
       }
-      
-      logger.debug('🏁 Completing workout session:', session.sessionId);
       
       // Update session completion data
       session.status = SessionStates.COMPLETED;
@@ -141,12 +132,6 @@ class WorkoutSessionService {
       
       // Add to upload queue
       await this.addToUploadQueue(session);
-      
-      logger.debug('✅ Session completed:', {
-        sessionId: session.sessionId,
-        duration: session.duration_minutes,
-        sets: session.sets.length
-      });
       
       return session;
       
@@ -166,8 +151,6 @@ class WorkoutSessionService {
         return null;
       }
       
-      logger.debug('❌ Cancelling workout session:', session.sessionId);
-      
       session.status = SessionStates.CANCELLED;
       session.cancelledAt = new Date().toISOString();
       
@@ -176,7 +159,6 @@ class WorkoutSessionService {
       // Clean up active session
       await AsyncStorage.removeItem('active_session');
       
-      logger.debug('✅ Session cancelled');
       return session;
       
     } catch (error) {
@@ -228,8 +210,6 @@ class WorkoutSessionService {
           courseId: sessionData.courseId
         }))
       ]);
-      
-      logger.debug(`💾 Auto-saved session after set ${sessionData.sets.length}`);
       
     } catch (error) {
       logger.error('❌ Auto-save failed:', error);
@@ -284,8 +264,6 @@ class WorkoutSessionService {
         `pending_session_${sessionData.sessionId}`, 
         JSON.stringify(sessionData)
       );
-      
-      logger.debug('📤 Session added to upload queue:', sessionData.sessionId);
       
     } catch (error) {
       logger.error('❌ Failed to add session to upload queue:', error);
@@ -418,12 +396,9 @@ class WorkoutSessionService {
       const sessionData = await AsyncStorage.getItem(sessionKey);
       
       if (sessionData) {
-        const session = JSON.parse(sessionData);
-        logger.debug('📊 Retrieved completed session data:', session.sessionId);
-        return session;
+        return JSON.parse(sessionData);
       }
-      
-      logger.debug('📊 No completed session data found for:', sessionId);
+
       return null;
     } catch (error) {
       logger.error('❌ Failed to get completed session data:', error);

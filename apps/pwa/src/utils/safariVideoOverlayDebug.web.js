@@ -6,7 +6,6 @@
  */
 
 import { isWeb } from './platform';
-import logger from './logger';
 
 function isSafari() {
   if (!isWeb || typeof navigator === 'undefined') return false;
@@ -55,7 +54,6 @@ function runOnce() {
       'first overlay computed': overlayStyle,
     };
 
-    logger.debug('[Safari video overlay debug]', info);
     try {
       window.__SAFARI_VIDEO_DEBUG_INFO = info;
     } catch (_) {}

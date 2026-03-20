@@ -263,7 +263,7 @@ class ProfilePictureService {
           await AsyncStorage.removeItem(`profile_${userId}`);
         }
       } catch (cacheError) {
-        logger.debug('Could not clear cache');
+        // Could not clear cache
       }
 
       return true;
@@ -303,7 +303,6 @@ class ProfilePictureService {
         await AsyncStorage.removeItem(`profile_${userId}`);
       }
 
-      logger.debug(`✅ Cleared profile picture cache for user: ${userId}`);
     } catch (error) {
       logger.error('Error clearing profile picture cache:', error);
     }

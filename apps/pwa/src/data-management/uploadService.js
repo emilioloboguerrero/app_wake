@@ -8,14 +8,11 @@ class UploadService {
    */
   async uploadSession(sessionData) {
     try {
-      logger.debug('📤 Uploading session:', sessionData.sessionId);
-      
       // Validate session data before upload
       const isValid = await this.validateUploadData(sessionData);
       
       // If validation fails (no sets), skip upload gracefully
       if (!isValid) {
-        logger.debug('⚠️ Skipping upload for session with no sets:', sessionData.sessionId);
         await this.markUploadCompleted(sessionData.sessionId); // Mark as completed to remove from queue
         await this.cleanupLocalSession(sessionData.sessionId);
         return null; // Return null to indicate no upload occurred
@@ -26,8 +23,6 @@ class UploadService {
       // Still mark upload completed and cleanup so the queue does not retry.
       const docId = `${sessionData.userId}_${sessionData.courseId}_${sessionData.sessionId}`;
 
-      logger.debug('✅ Session upload processed (progress lives in user doc):', docId);
-      
       // Mark upload as completed and cleanup
       await this.markUploadCompleted(sessionData.sessionId);
       await this.cleanupLocalSession(sessionData.sessionId);
@@ -62,11 +57,9 @@ class UploadService {
     }
     
     if (sessionData.sets.length === 0) {
-      logger.debug('⚠️ Session has no sets to upload, skipping upload');
-      return false; // Return false instead of throwing error
+      return false; // No sets to upload
     }
     
-    logger.debug('✅ Session data validation passed');
     return true;
   }
   
@@ -75,25 +68,17 @@ class UploadService {
    */
   async processUploadQueue() {
     try {
-      logger.debug('🔄 Processing upload queue...');
-      
       const queueData = await AsyncStorage.getItem('upload_queue');
-      if (!queueData) {
-        logger.debug('ℹ️ Upload queue is empty');
-        return;
-      }
+      if (!queueData) return;
       
       const queue = JSON.parse(queueData);
       const pendingSessions = queue.sessions.filter(s => s.status === 'pending');
-      
-      logger.debug(`📋 Found ${pendingSessions.length} pending uploads`);
-      
+
       for (const sessionInfo of pendingSessions) {
         try {
           // Get complete session data
           const sessionData = await AsyncStorage.getItem(`pending_session_${sessionInfo.sessionId}`);
           if (!sessionData) {
-            logger.debug('⚠️ Session data not found, removing from queue:', sessionInfo.sessionId);
             await this.removeFromUploadQueue(sessionInfo.sessionId);
             continue;
           }
@@ -104,12 +89,10 @@ class UploadService {
           await this.uploadSession(session);
           
         } catch (error) {
-          logger.debug('❌ Upload failed for session:', sessionInfo.sessionId, error.message);
+          logger.warn('Upload failed for session:', sessionInfo.sessionId, error.message);
           await this.markUploadFailed(sessionInfo.sessionId, error.message);
         }
       }
-      
-      logger.debug('✅ Upload queue processing completed');
       
     } catch (error) {
       logger.error('❌ Failed to process upload queue:', error);
@@ -121,15 +104,11 @@ class UploadService {
    */
   async retryFailedUploads() {
     try {
-      logger.debug('🔄 Retrying failed uploads...');
-      
       const queueData = await AsyncStorage.getItem('upload_queue');
       if (!queueData) return;
-      
+
       const queue = JSON.parse(queueData);
       const failedSessions = queue.sessions.filter(s => s.status === 'failed');
-      
-      logger.debug(`🔄 Found ${failedSessions.length} failed uploads to retry`);
       
       for (const sessionInfo of failedSessions) {
         try {
@@ -143,7 +122,7 @@ class UploadService {
           }
           
         } catch (error) {
-          logger.debug('❌ Retry failed for session:', sessionInfo.sessionId);
+          logger.warn('Retry failed for session:', sessionInfo.sessionId);
         }
       }
       
@@ -264,7 +243,6 @@ class UploadService {
         }
       }
       
-      logger.debug('🧹 Local session data cleaned up:', sessionId);
       
     } catch (error) {
       logger.error('❌ Failed to cleanup local session:', error);

@@ -90,7 +90,6 @@ export function enqueue(operation) {
 
   queue.push(entry);
   writeQueue(queue);
-  logger.debug('[offlineQueue] encolado:', entry.id, entry.method, entry.path);
   return entry.id;
 }
 

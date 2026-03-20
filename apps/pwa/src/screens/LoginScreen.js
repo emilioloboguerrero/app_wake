@@ -75,7 +75,6 @@ const LoginScreen = ({ navigation }) => {
     // Check both AuthContext user and Firebase currentUser directly
     const currentUser = user || auth.currentUser;
     if (!loading && currentUser) {
-      logger.debug('[LOGIN SCREEN] User detected, redirecting to MainApp');
       redirectAttemptedRef.current = true;
       navigation.replace('MainApp');
     }
@@ -144,21 +143,11 @@ const LoginScreen = ({ navigation }) => {
       const user = await authService.signInUser(email, password);
       setIsLoading(false);
       
-      logger.debug('[LOGIN SCREEN] ✅ Login successful', {
-        userId: user?.uid,
-        email: user?.email,
-        firebaseUser: !!auth.currentUser,
-        firebaseUserId: auth.currentUser?.uid
-      });
-      
       const currentUser = user || auth.currentUser;
       if (currentUser) {
-        logger.debug('[LOGIN SCREEN] User available immediately, calling navigation.replace');
         setTimeout(() => {
           navigation.replace('MainApp');
         }, 200);
-      } else {
-        logger.debug('[LOGIN SCREEN] User not immediately available, waiting for AuthContext update');
       }
     } catch (error) {
       setIsLoading(false);
@@ -205,7 +194,6 @@ const LoginScreen = ({ navigation }) => {
       }
 
       setAuthError(errorMessage);
-      logger.debug('[LOGIN SCREEN] Sign-in error:', code, errorMessage);
     }
   };
 
@@ -247,7 +235,6 @@ const LoginScreen = ({ navigation }) => {
       const user = await authService.registerUser(email, password, initialDisplayName);
       setIsLoading(false);
       if (user || auth.currentUser) {
-        logger.debug('[LOGIN SCREEN] Registration successful, navigating to MainApp');
         navigation.replace('MainApp');
       }
     } catch (error) {
@@ -284,7 +271,6 @@ const LoginScreen = ({ navigation }) => {
       }
 
       setAuthError(errorMessage);
-      logger.debug('[LOGIN SCREEN] Register error:', code, errorMessage);
     }
   };
 
@@ -299,7 +285,6 @@ const LoginScreen = ({ navigation }) => {
         setIsLoading(false);
         const currentUser = result.user || auth.currentUser;
         if (currentUser) {
-          logger.debug('[LOGIN SCREEN] Google sign-in successful, calling navigation.replace (same as email sign-in)');
           setTimeout(() => {
             navigation.replace('MainApp');
           }, 200);

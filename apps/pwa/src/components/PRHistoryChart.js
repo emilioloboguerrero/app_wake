@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, Animated, Pressable } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import logger from '../utils/logger.js';
-
 const PRHistoryChart = ({ history }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
@@ -14,10 +12,6 @@ const PRHistoryChart = ({ history }) => {
   
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [tooltipOpacity] = useState(new Animated.Value(0));
-
-  logger.debug('📊 PRHistoryChart: Rendering chart component');
-  logger.debug('📊 PRHistoryChart: history received:', history);
-  logger.debug('📊 PRHistoryChart: Data points count:', history?.length || 0);
 
   // Animation functions for tooltip
   const showTooltip = () => {
@@ -40,7 +34,6 @@ const PRHistoryChart = ({ history }) => {
   const handleDataPointClick = (data, index) => {
     setSelectedIndex(index);
     showTooltip();
-    logger.debug('📊 PR data point clicked:', { index, data });
   };
 
   // Dismiss tooltip
@@ -51,7 +44,6 @@ const PRHistoryChart = ({ history }) => {
   
   // Handle empty data
   if (!history || history.length === 0) {
-    logger.debug('⚠️ PRHistoryChart: No data to display - showing empty state');
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -67,12 +59,9 @@ const PRHistoryChart = ({ history }) => {
     );
   }
   
-  logger.debug('✅ PRHistoryChart: Proceeding to render chart with', history.length, 'data points');
-  
   // If only 1 data point, add a starting point at 0 to show progression
   let chartData = [...history];
   if (history.length === 1) {
-    logger.debug('📊 Only 1 data point - adding baseline at 0 for visualization');
     const firstEntry = history[0];
     const firstDate = new Date(firstEntry.date.seconds * 1000); // Firestore Timestamp
     const baselineDate = new Date(firstDate);
@@ -103,8 +92,6 @@ const PRHistoryChart = ({ history }) => {
   });
   
   const estimates = chartData.map(entry => entry.estimate);
-  
-  logger.debug('📊 Chart data:', { labels, estimates });
   
   const data = {
     labels: labels,

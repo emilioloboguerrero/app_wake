@@ -16,11 +16,6 @@ const MuscleSilhouetteSVG = memo(({
   // Check if we're in selection mode (clickable)
   const isSelectionMode = selectedMuscles !== null && onMuscleClick !== null;
   
-  // Debug logging (only for volume mode)
-  if (!isSelectionMode) {
-    logger.debug('🎨 MuscleSilhouetteSVG rendering with volumes:', muscleVolumes);
-    logger.debug('🎨 Number of muscles with volume:', Object.keys(muscleVolumes).length);
-  }
 
   const renderMuscleGroup = (muscleId, paths) => {
     // Selection mode: use selectedMuscles Set
@@ -61,8 +56,6 @@ const MuscleSilhouetteSVG = memo(({
         : getMuscleColor(volume);
     }
     const { color: fillColor, opacity } = colorResult;
-    
-    logger.debug(`🎨 Rendering ${muscleId}: volume=${volume}, color=${fillColor}, opacity=${opacity}`);
     
     return (
       <G key={muscleId} id={muscleId}>

@@ -128,6 +128,18 @@ function isDateValidationError(err: unknown): err is DateValidationError {
   );
 }
 
+// ─── App Check helper ─────────────────────────────────────────────────────────
+async function verifyAppCheck(request: Request): Promise<boolean> {
+  const token = request.headers["x-firebase-appcheck"] as string | undefined;
+  if (!token) return false;
+  try {
+    await admin.appCheck().verifyToken(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Gen1 auth helper ────────────────────────────────────────────────────────
 async function verifyGen1Auth(request: Request): Promise<string | null> {
   const header = request.headers?.authorization;
@@ -138,6 +150,12 @@ async function verifyGen1Auth(request: Request): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function sendAppCheckError(res: Response): void {
+  res.status(401).json({
+    error: {code: "UNAUTHENTICATED", message: "App Check token inválido"},
+  });
 }
 
 function sendAuthError(res: Response): void {
@@ -383,10 +401,15 @@ export const createPaymentPreference = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -459,10 +482,15 @@ export const createSubscriptionCheckout = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -1562,7 +1590,7 @@ export const updateSubscriptionStatus = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -1571,6 +1599,11 @@ export const updateSubscriptionStatus = functions
 
     if (request.method !== "POST") {
       response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -1955,7 +1988,7 @@ async function getFatSecretToken(
 function setNutritionCors(res: Response): void {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Allow-Headers", "Content-Type, X-Firebase-AppCheck");
 }
 
 const nutritionRunOptions: functions.RuntimeOptions = {
@@ -1972,6 +2005,11 @@ export const nutritionFoodSearch = functions
     }
     if (request.method !== "POST") {
       response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -2051,6 +2089,11 @@ export const nutritionFoodGet = functions
       return;
     }
 
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
+      return;
+    }
+
     try {
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
@@ -2123,6 +2166,11 @@ export const nutritionBarcodeLookup = functions
     }
     if (request.method !== "POST") {
       response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 

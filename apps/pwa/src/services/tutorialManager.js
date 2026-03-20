@@ -4,7 +4,6 @@ import logger from '../utils/logger.js';
 class TutorialManager {
   async getTutorialsForScreen(userId, screenName, programId = null) {
     try {
-      logger.debug('🎬 Getting tutorials for:', { userId, screenName, programId });
       const params = programId ? { screenName, programId } : { screenName };
       const result = await apiClient.get('/users/me/tutorials', { params });
       return result?.data ?? [];
@@ -24,7 +23,6 @@ class TutorialManager {
 
   async markTutorialCompleted(userId, screenName, videoUrl, programId = null) {
     try {
-      logger.debug('✅ Marking tutorial as completed:', { userId, screenName, videoUrl, programId });
       const body = programId ? { screenName, videoUrl, programId } : { screenName, videoUrl };
       await apiClient.post('/users/me/tutorials/complete', body);
     } catch (error) {

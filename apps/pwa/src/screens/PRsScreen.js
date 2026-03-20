@@ -66,13 +66,6 @@ const PRsScreen = ({ navigation, route }) => {
 
   // Create safe navigation object - ensure it's always defined using useMemo
   const safeNavigation = React.useMemo(() => {
-    logger.debug('[PRsScreen] Creating safeNavigation, navigation prop:', {
-      hasNavigation: !!navigation,
-      hasNavigate: !!(navigation && navigation.navigate),
-      hasGoBack: !!(navigation && navigation.goBack),
-      navigationType: typeof navigation
-    });
-    
     if (navigation && typeof navigation.navigate === 'function' && typeof navigation.goBack === 'function') {
       return navigation;
     }
@@ -94,7 +87,6 @@ const PRsScreen = ({ navigation, route }) => {
   const { data: estimates = {}, isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.prs.all(user?.uid),
     queryFn: async () => {
-      logger.debug('[PRsScreen] fetching PRs for userId:', user.uid);
       const [prs, allExerciseKeys] = await Promise.all([
         oneRepMaxService.getEstimatesForUser(user.uid),
         exerciseHistoryService.getAllExerciseKeysFromExerciseHistory(user.uid),
@@ -103,7 +95,6 @@ const PRsScreen = ({ navigation, route }) => {
       allExerciseKeys.forEach(key => {
         merged[key] = prs[key] ?? { current: null, lastUpdated: 'Historial disponible' };
       });
-      logger.debug('✅ All exercises loaded:', Object.keys(merged).length);
       return merged;
     },
     enabled: !!user?.uid,

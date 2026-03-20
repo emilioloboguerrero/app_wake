@@ -29,7 +29,6 @@ function updateRetryCount(id) {
 // outgoing request via its request interceptor.
 export async function processPendingQueue() {
   if (_processing) {
-    logger.debug('[backgroundSync] already processing — skipped');
     return;
   }
 
@@ -45,8 +44,6 @@ export async function processPendingQueue() {
       if (b.priority === 'high' && a.priority !== 'high') return 1;
       return new Date(a.enqueuedAt) - new Date(b.enqueuedAt);
     });
-
-    logger.debug('[backgroundSync] processing', sorted.length, 'queued operations');
 
     for (const entry of sorted) {
       if (!entry?.id || !entry.method || !entry.path) {
@@ -87,12 +84,10 @@ export async function processPendingQueue() {
         }
 
         remove(entry.id);
-        logger.debug('[backgroundSync] reenviado exitosamente:', entry.id);
       } catch (err) {
         if (err instanceof WakeApiError) {
           if (entry.path === '/workout/complete' && err.status === 409) {
             remove(entry.id);
-            logger.debug('[backgroundSync] descartado (409 ya guardado):', entry.id);
           } else if (err.status >= 400 && err.status < 500) {
             // Permanent client-side failure — retrying won't help.
             remove(entry.id);
@@ -123,7 +118,6 @@ export function registerOnlineListener() {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') processPendingQueue();
     });
-    logger.debug('[backgroundSync] listeners de reconexión registrados');
   } catch (err) {
     logger.error('[backgroundSync] Error al registrar listeners de reconexión:', err);
   }

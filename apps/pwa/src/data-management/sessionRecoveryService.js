@@ -12,15 +12,11 @@ class SessionRecoveryService {
    */
   async initializeRecovery() {
     try {
-      logger.debug('🔄 Initializing session recovery...');
-      
       // Check for incomplete sessions
       await this.detectAndRecoverSessions();
       
       // Process any pending uploads
       await uploadService.processUploadQueue();
-      
-      logger.debug('✅ Session recovery initialization completed');
       
     } catch (error) {
       logger.error('❌ Recovery initialization failed:', error);
@@ -101,15 +97,9 @@ class SessionRecoveryService {
       const timeSinceLastSave = Date.now() - new Date(sessionData.lastSaved).getTime();
       const hoursAgo = timeSinceLastSave / (1000 * 60 * 60);
       
-      logger.debug(`🔍 Found incomplete session from ${hoursAgo.toFixed(1)} hours ago`);
-      
       if (hoursAgo > 24) {
-        // Old session - likely abandoned
-        logger.debug('🗑️ Discarding old session (>24 hours)');
         await this.discardOldSession(sessionData);
       } else {
-        // Recent session - auto-complete and upload
-        logger.debug('🔄 Auto-completing recent session');
         await this.autoCompleteSession(sessionData);
       }
       
@@ -139,8 +129,6 @@ class SessionRecoveryService {
       // Clear active session
       await AsyncStorage.removeItem('active_session');
       
-      logger.debug('✅ Session auto-completed and queued for upload:', sessionData.sessionId);
-      
     } catch (error) {
       logger.error('❌ Failed to auto-complete session:', error);
     }
@@ -160,8 +148,6 @@ class SessionRecoveryService {
         await AsyncStorage.removeItem(`session_backup_${i}`);
       }
       
-      logger.debug('🗑️ Old session discarded:', sessionData.sessionId);
-      
     } catch (error) {
       logger.error('❌ Failed to discard old session:', error);
     }
@@ -172,8 +158,6 @@ class SessionRecoveryService {
    */
   async handleOrphanedMetadata(metadata) {
     try {
-      logger.debug('🔍 Found orphaned session metadata:', metadata.sessionId);
-      
       // Try to recover from backup sessions
       let recoveredSession = null;
       
@@ -189,10 +173,8 @@ class SessionRecoveryService {
       }
       
       if (recoveredSession) {
-        logger.debug('🔄 Recovered session from backup');
         await this.autoCompleteSession(recoveredSession);
       } else {
-        logger.debug('❌ Could not recover session, cleaning metadata');
         await AsyncStorage.removeItem('session_metadata');
       }
       
@@ -225,7 +207,6 @@ class SessionRecoveryService {
         const hoursAgo = (Date.now() - new Date(mostRecent.lastSaved).getTime()) / (1000 * 60 * 60);
         
         if (hoursAgo < 6 && mostRecent.status === SessionStates.ACTIVE) {
-          logger.debug('🔄 Found recent backup session, recovering...');
           await this.autoCompleteSession(mostRecent);
         }
       }
@@ -267,8 +248,6 @@ class SessionRecoveryService {
         AsyncStorage.setItem('upload_queue', JSON.stringify(queue)),
         AsyncStorage.setItem(`pending_session_${sessionData.sessionId}`, JSON.stringify(sessionData))
       ]);
-      
-      logger.debug('📤 Session queued for upload:', sessionData.sessionId);
       
     } catch (error) {
       logger.error('❌ Failed to add session to upload queue:', error);

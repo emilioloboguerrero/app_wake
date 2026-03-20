@@ -277,8 +277,8 @@ class WorkoutProgressService {
     setTimeout(async () => {
       try {
         await uploadService.processUploadQueue();
-      } catch (error) {
-        logger.debug('Background upload will retry later:', error.message);
+      } catch {
+        // Background upload will retry later
       }
     }, 1000); // 1 second delay to not block completion UI
   }
@@ -445,7 +445,6 @@ class WorkoutProgressService {
                 ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedHybrid.date_timestamp?.toDate?.() || (plannedHybrid.date ? new Date(plannedHybrid.date) : effectiveTargetDate))}_${plannedHybrid.session_id}`
                 : plannedHybrid.id)
               : undefined;
-            if (plannedIdHybrid != null) logger.debug('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdHybrid });
             // sessionService reads courseData.courseData as "inner" and expects inner.modules and inner.isOneOnOne
             const innerCourseData = {
               ...(hybridCourse.courseData || hybridCourse),
@@ -460,13 +459,6 @@ class WorkoutProgressService {
               expiresAt: hybridCourse.expires_at || hybridCourse.expiresAt,
               imageUrl: hybridCourse.image_url || hybridCourse.imageUrl
             };
-            logger.debug('✅ Using hybrid cache + full week modules for instant load');
-            logger.debug('📦 [getCourseDataForWorkout] HYBRID return shape:', {
-              hasCourseData: !!returnPayload.courseData,
-              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
-              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
-              isOneOnOne: returnPayload.courseData?.isOneOnOne
-            });
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
               logger.error('❌ Background download failed:', error);
             });
@@ -474,7 +466,6 @@ class WorkoutProgressService {
           }
 
           // Course not in hybrid (e.g. one-on-one assigned via users.courses; hybrid uses courses collection). Fetch from Firestore.
-          logger.debug('📥 Course not in hybrid list (hybrid uses courses collection; one-on-one may be in users.courses). Fetching from Firestore:', courseId);
           const firestoreModuleOpts = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
           const [firestoreCourse, modules] = await Promise.all([
             apiService.getCourse(courseId),
@@ -492,7 +483,6 @@ class WorkoutProgressService {
                 ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedFirestore.date_timestamp?.toDate?.() || (plannedFirestore.date ? new Date(plannedFirestore.date) : effectiveTargetDate))}_${plannedFirestore.session_id}`
                 : plannedFirestore.id)
               : undefined;
-            if (plannedIdFirestore != null) logger.debug('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdFirestore });
             const innerCourseData = {
               ...(firestoreCourse.courseData || firestoreCourse),
               modules: modulesToUse,
@@ -506,14 +496,6 @@ class WorkoutProgressService {
               expiresAt: firestoreCourse.expires_at || firestoreCourse.expiresAt,
               imageUrl: firestoreCourse.image_url || firestoreCourse.imageUrl
             };
-            logger.debug('✅ Using Firestore (course not in hybrid list)');
-            logger.debug('📦 [getCourseDataForWorkout] FIRESTORE return shape:', {
-              hasCourseData: !!returnPayload.courseData,
-              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
-              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
-              isOneOnOne: returnPayload.courseData?.isOneOnOne,
-              modulesIsArray: Array.isArray(returnPayload.courseData?.modules)
-            });
             return returnPayload;
           }
           logger.warn('📦 [getCourseDataForWorkout] Course not found in Firestore either:', courseId);
@@ -522,12 +504,6 @@ class WorkoutProgressService {
         }
       }
       
-      logger.debug('📦 [getCourseDataForWorkout] LOCAL return shape:', {
-        hasCourseData: !!courseData,
-        innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : [],
-        modulesLength: courseData?.courseData?.modules?.length ?? 'n/a',
-        isOneOnOne: courseData?.courseData?.isOneOnOne
-      });
       return courseData;
     } catch (error) {
       logger.error('❌ Failed to get course data:', error);
@@ -554,19 +530,12 @@ class WorkoutProgressService {
    */
   async completeSession(userId, sessionId) {
     try {
-      logger.debug('🏁 Completing session via workoutProgressService:', { userId, sessionId });
-      
-      // Complete the session
       const completedSession = await workoutSessionService.completeSession();
-      
+
       if (completedSession) {
-        // Trigger background upload
         this.triggerBackgroundUpload();
-        
-        logger.debug('✅ Session completed successfully:', completedSession.sessionId);
         return completedSession;
       } else {
-        logger.debug('⚠️ No active session found to complete');
         return null;
       }
     } catch (error) {
@@ -628,31 +597,24 @@ class WorkoutProgressService {
    */
   async getNextAvailableSession(userId, courseId) {
     try {
-      logger.debug('🔍 Getting next available session for course:', { courseId, userId });
-      
       // Get course data
       const courseData = await this.getCourseDataForWorkout(courseId, userId);
       if (!courseData?.courseData?.modules) {
-        logger.debug('❌ Course has no modules');
         return null;
       }
       
       // Get completed sessions from local storage (simple approach)
       const completedSessions = await this.getCompletedSessionsLocally(userId, courseId);
-      logger.debug('📊 Found', completedSessions.length, 'completed sessions locally');
-      
       // Find the next session to do
       const nextSession = this.findNextSession(courseData.courseData.modules, completedSessions);
       
       if (!nextSession) {
-        logger.debug('🎉 Course completed! All sessions finished.');
-        return { 
+        return {
           isCourseCompleted: true,
           message: '¡Felicidades! Has completado todo el curso.'
         };
       }
       
-      logger.debug('✅ Next session found:', nextSession?.title || 'None');
       return nextSession;
       
     } catch (error) {
@@ -670,8 +632,6 @@ class WorkoutProgressService {
       completedSessions.map(session => session.session_id)
     );
     
-    logger.debug('📋 Completed session IDs:', Array.from(completedSessionIds));
-    
     // Go through modules in order
     for (const module of modules) {
       if (!module.sessions || module.sessions.length === 0) continue;
@@ -679,13 +639,6 @@ class WorkoutProgressService {
       // Go through sessions in order within each module
       for (const session of module.sessions) {
         if (!completedSessionIds.has(session.id)) {
-          logger.debug('🎯 Found next session:', session.title, 'in module:', module.title);
-          logger.debug('🔍 Session structure:', {
-            id: session.id,
-            title: session.title,
-            hasExercises: !!session.exercises,
-            exercisesLength: session.exercises?.length || 0
-          });
           return {
             ...session,
             moduleId: module.id,
@@ -695,7 +648,6 @@ class WorkoutProgressService {
       }
     }
     
-    logger.debug('🏁 All sessions completed!');
     return null; // All sessions completed
   }
 
@@ -714,9 +666,6 @@ class WorkoutProgressService {
         key.startsWith(`session_completed_${userId}_${courseId}_`)
       );
       
-      logger.debug('🔍 Looking for completion keys with pattern:', `session_completed_${userId}_${courseId}_`);
-      logger.debug('📋 All keys found:', allKeys.filter(key => key.includes('session_completed')));
-      logger.debug('📋 Matching keys for this course:', completionKeys);
       
       // Get all completion data
       for (const key of completionKeys) {
@@ -728,14 +677,12 @@ class WorkoutProgressService {
               session_id: parsed.sessionId,
               completed_at: parsed.completedAt
             });
-            logger.debug('✅ Parsed completion data:', { key, sessionId: parsed.sessionId });
           }
         } catch (parseError) {
           logger.warn('⚠️ Failed to parse completion data for key:', key);
         }
       }
       
-      logger.debug('📋 Found completed sessions locally:', completedSessions.length);
       return completedSessions;
       
     } catch (error) {
@@ -749,8 +696,6 @@ class WorkoutProgressService {
    */
   async markSessionCompleted(userId, courseId, sessionId) {
     try {
-      logger.debug('✅ Marking session as completed:', { userId, courseId, sessionId });
-      
       // Store completion in local storage for quick access
       const completionKey = `session_completed_${userId}_${courseId}_${sessionId}`;
       await AsyncStorage.setItem(completionKey, JSON.stringify({
@@ -760,7 +705,6 @@ class WorkoutProgressService {
         completedAt: new Date().toISOString()
       }));
       
-      logger.debug('✅ Session completion marked locally');
       
     } catch (error) {
       logger.error('❌ Failed to mark session as completed:', error);

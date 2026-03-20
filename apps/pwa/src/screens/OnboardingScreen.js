@@ -113,27 +113,12 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   const effectiveUid = user?.uid || auth.currentUser?.uid;
 
-  // Log uid sources on mount and when user/uid changes (verify uid is passed correctly)
   useEffect(() => {
-    logger.debug('[ONBOARDING] uid check:', {
-      effectiveUid: effectiveUid ?? null,
-      fromUseAuth: user?.uid ?? null,
-      fromAuthCurrentUser: auth.currentUser?.uid ?? null,
-      hasUser: !!user,
-      hasAuthCurrentUser: !!auth.currentUser,
-      routeParams: route?.params ?? {},
-      routeName: route?.name ?? null,
-    });
     if (!effectiveUid) {
       logger.warn('[ONBOARDING] No uid available — user:', !!user, 'auth.currentUser:', !!auth.currentUser);
     }
   }, [effectiveUid, user?.uid, auth.currentUser?.uid, route?.params, route?.name]);
 
-  // Log when AuthContext user reference changes (e.g. after sign-in restore)
-  useEffect(() => {
-    logger.debug('[ONBOARDING] useAuth user changed:', user?.uid ?? 'null', 'email:', user?.email ?? 'null');
-  }, [user]);
-  
   // Create styles with current dimensions - memoized to prevent recalculation
   // No static top padding on web: logo bar at top 0 (same as WakeHeader); space is in scroll spacer so it shrinks as user scrolls
   const styles = useMemo(() => StyleSheet.create({
@@ -1286,7 +1271,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
 
     const uidForSubmit = user?.uid || auth.currentUser?.uid;
-    logger.debug('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
     if (!uidForSubmit) {
       logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
@@ -1371,8 +1355,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         community: false
       };
 
-      logger.debug('📝 Saving user data:', userData);
-
       // Update Firebase Auth displayName with full name
       if (formData.displayName?.trim()) {
         try {
@@ -1381,7 +1363,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           });
           // Reload user to propagate changes to AuthContext
           await auth.currentUser.reload();
-          logger.debug('✅ Firebase Auth displayName updated to:', formData.displayName.trim());
         } catch (profileError) {
           logger.warn('⚠️ Failed to update Firebase Auth displayName:', profileError);
           // Continue anyway, not critical
@@ -1396,7 +1377,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           profileCompleted: true,
           cachedAt: Date.now()
         }));
-        logger.debug('💾 Profile completion status cached locally');
       } catch (cacheError) {
         logger.warn('⚠️ Failed to cache profile completion status:', cacheError);
         // Continue anyway - Firestore update is more important
@@ -1404,8 +1384,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
       await apiClient.patch('/users/me', userData);
 
-      logger.debug('✅ Onboarding completed successfully');
-      
       // Trigger AppNavigator to re-check user profile
       if (onComplete) {
         onComplete();
@@ -1435,11 +1413,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
             try {
               setLoading(true);
               await authService.signOutUser();
-              logger.debug('✅ User signed out successfully');
               // On web/PWA, force full reload to /login (same as ProfileScreen sign-out flow)
               if (typeof window !== 'undefined') {
                 const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-                logger.debug('[ONBOARDING] Web: reloading to /login after cancel');
                 window.location.replace(loginPath);
                 return;
               }

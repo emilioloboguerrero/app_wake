@@ -8,8 +8,6 @@ class StorageManagementService {
    */
   async getStorageUsage() {
     try {
-      logger.debug('📊 Analyzing storage usage...');
-      
       const allKeys = await AsyncStorage.getAllKeys();
       
       // Categorize storage keys
@@ -63,7 +61,6 @@ class StorageManagementService {
         details: storageBreakdown
       };
       
-      logger.debug('✅ Storage analysis completed:', summary);
       return summary;
       
     } catch (error) {
@@ -78,8 +75,6 @@ class StorageManagementService {
    */
   async cleanupOldSessions(olderThanDays = 30) {
     try {
-      logger.debug(`🧹 Cleaning up sessions older than ${olderThanDays} days...`);
-      
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
       
@@ -101,18 +96,15 @@ class StorageManagementService {
             if (sessionDate < cutoffDate) {
               await AsyncStorage.removeItem(key);
               cleanedCount++;
-              logger.debug(`🗑️ Removed old session: ${key}`);
             }
           }
         } catch (error) {
           // Remove corrupted session data
           await AsyncStorage.removeItem(key);
           cleanedCount++;
-          logger.debug(`🗑️ Removed corrupted session: ${key}`);
         }
       }
       
-      logger.debug(`✅ Cleanup completed: ${cleanedCount} sessions removed`);
       return cleanedCount;
       
     } catch (error) {
@@ -126,8 +118,6 @@ class StorageManagementService {
    */
   async removeFailedSessions() {
     try {
-      logger.debug('🧹 Cleaning up failed upload sessions...');
-      
       // Get upload queue
       const queueData = await AsyncStorage.getItem('upload_queue');
       if (!queueData) return 0;
@@ -147,7 +137,6 @@ class StorageManagementService {
       queue.sessions = queue.sessions.filter(s => s.status !== 'failed');
       await AsyncStorage.setItem('upload_queue', JSON.stringify(queue));
       
-      logger.debug(`✅ Removed ${removedCount} failed sessions`);
       return removedCount;
       
     } catch (error) {
@@ -161,14 +150,11 @@ class StorageManagementService {
    */
   async clearCacheData() {
     try {
-      logger.debug('🧹 Clearing progress cache...');
-      
       const allKeys = await AsyncStorage.getAllKeys();
       const cacheKeys = allKeys.filter(key => key.startsWith('progress_cache_'));
       
       await AsyncStorage.multiRemove(cacheKeys);
       
-      logger.debug(`✅ Cleared ${cacheKeys.length} cache entries`);
       return cacheKeys.length;
       
     } catch (error) {
@@ -182,27 +168,19 @@ class StorageManagementService {
    */
   async optimizeStorage() {
     try {
-      logger.debug('⚡ Optimizing storage...');
-      
       const usage = await this.getStorageUsage();
       
       // If storage usage is high, perform cleanup
       if (usage.total_size_mb > 100) {
-        logger.debug('⚠️ High storage usage detected, performing cleanup...');
-        
         const results = await Promise.all([
           this.cleanupOldSessions(30),
           this.removeFailedSessions(),
           this.clearCacheData()
         ]);
         
-        const totalCleaned = results.reduce((sum, count) => sum + count, 0);
-        logger.debug(`✅ Storage optimization completed: ${totalCleaned} items cleaned`);
-        
-        return totalCleaned;
+        return results.reduce((sum, count) => sum + count, 0);
       }
       
-      logger.debug('ℹ️ Storage usage within limits, no optimization needed');
       return 0;
       
     } catch (error) {
@@ -238,8 +216,6 @@ class StorageManagementService {
    */
   async removeUnusedCourses(userId) {
     try {
-      logger.debug('🧹 Removing unused courses...');
-      
       // Get user's active courses  
       const apiService = require('../services/apiService').default;
       const userDoc = await apiService.getUser(userId);
@@ -257,11 +233,9 @@ class StorageManagementService {
         if (!activeCourseIds.includes(courseId)) {
           await AsyncStorage.removeItem(key);
           removedCount++;
-          logger.debug(`🗑️ Removed unused course: ${courseId}`);
         }
       }
       
-      logger.debug(`✅ Removed ${removedCount} unused courses`);
       return removedCount;
       
     } catch (error) {

@@ -94,12 +94,7 @@ class AssetBundleService {
 
     this._initPromise = (async () => {
       try {
-        logger.debug('📦 AssetBundleService: Initializing asset bundle...');
-
         if (!this.BASE_DIR) {
-          logger.debug(
-            'ℹ️ AssetBundleService: documentDirectory is not available on this platform; skipping bundle downloads.'
-          );
           return;
         }
 
@@ -108,7 +103,6 @@ class AssetBundleService {
         const remoteVersion = resources?.version || null;
 
         if (!remoteVersion) {
-          logger.debug('ℹ️ AssetBundleService: No remote version found, skipping bundle initialization.');
           return;
         }
 
@@ -120,12 +114,10 @@ class AssetBundleService {
           localManifest.version === remoteVersion &&
           localManifest.status === 'complete'
         ) {
-          logger.debug('✅ AssetBundleService: Local bundle is up to date:', remoteVersion);
           this._manifest = localManifest;
           return;
         }
 
-        logger.debug('⬇️ AssetBundleService: Downloading full asset bundle for version:', remoteVersion);
         await this._downloadFullBundle(remoteVersion, resources);
       } catch (error) {
         logger.error('❌ AssetBundleService: Error during initialization');
@@ -181,7 +173,6 @@ class AssetBundleService {
       if (!url) continue;
       try {
         const filePath = `${warmupDir}/${sanitize(logicalKey)}.mp4`;
-        logger.debug('⬇️ Downloading warmup video:', logicalKey, '→', filePath);
         await FileSystem.downloadAsync(url, filePath);
         files[`warmup.${logicalKey}`] = filePath;
       } catch (error) {
@@ -196,7 +187,6 @@ class AssetBundleService {
       try {
         const sanitized = sanitize(scoreKey); // e.g. "7/10" -> "7-10"
         const filePath = `${intensityDir}/${sanitized}.mp4`;
-        logger.debug('⬇️ Downloading intensity video:', scoreKey, '→', filePath);
         await FileSystem.downloadAsync(url, filePath);
         files[`intensity.${scoreKey}`] = filePath;
       } catch (error) {
@@ -208,7 +198,6 @@ class AssetBundleService {
     if (libraryImageUrl) {
       try {
         const filePath = `${imagesDir}/library.jpg`;
-        logger.debug('⬇️ Downloading library image →', filePath);
         await FileSystem.downloadAsync(libraryImageUrl, filePath);
         files['library'] = filePath;
       } catch (error) {
@@ -229,11 +218,6 @@ class AssetBundleService {
       status,
       files,
     };
-
-    logger.debug('📦 AssetBundleService: Bundle download finished with status:', status, {
-      version,
-      fileCount: Object.keys(files).length,
-    });
 
     await this._saveManifest(manifest);
   }

@@ -60,7 +60,6 @@ class RequestDeduplicator {
       
       // Only return if within deduplication window
       if (age < this.deduplicationWindow) {
-        logger.debug(`[DEDUP] Reusing in-flight request: ${key.substring(0, 100)} (age: ${age}ms)`);
         return request;
       } else {
         // Request is stale, remove it
@@ -118,9 +117,6 @@ class RequestDeduplicator {
           this.requestTimestamps.delete(key);
         });
 
-        if (keysToDelete.length > 0) {
-          logger.debug(`[DEDUP] Cleaned up ${keysToDelete.length} stale request(s)`);
-        }
       }, this.cleanupInterval);
     }
   }
@@ -202,7 +198,6 @@ class NetworkService {
       const existingRequest = this.deduplicator.getInFlightRequest(requestKey);
       
       if (existingRequest) {
-        logger.debug(`[DEDUP] Deduplicating request: ${method} ${endpoint}`);
         return existingRequest;
       }
 
@@ -223,8 +218,6 @@ class NetworkService {
   async executeRequest(url, options, retries) {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        logger.debug(`Network request attempt ${attempt}/${retries}: ${options.method} ${url}`);
-        
         const response = await this.fetchWithTimeout(url, options);
         
         if (!response.ok) {
@@ -232,8 +225,7 @@ class NetworkService {
         }
 
         const data = await response.json();
-        logger.debug(`Network request successful: ${options.method} ${url}`);
-        
+
         return {
           success: true,
           data,
@@ -333,7 +325,6 @@ class NetworkService {
    */
   clearDeduplicationCache() {
     this.deduplicator.clear();
-    logger.debug('[DEDUP] Cleared deduplication cache');
   }
 
   // Upload file with progress tracking
@@ -342,8 +333,6 @@ class NetworkService {
     formData.append('file', file);
 
     try {
-      logger.debug(`Uploading file to ${endpoint}`);
-      
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         method: 'POST',
         body: formData,
@@ -357,8 +346,7 @@ class NetworkService {
       }
 
       const result = await response.json();
-      logger.debug('File upload successful');
-      
+
       return {
         success: true,
         data: result

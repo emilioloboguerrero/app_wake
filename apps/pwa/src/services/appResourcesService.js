@@ -43,7 +43,6 @@ class AppResourcesService {
           warmupVideos: a.warmup ?? {},
           intensityVideos: a.intensity ?? {},
         };
-        logger.debug('✅ App resources loaded:', { version: resources.version, hasLibraryImage: !!resources.libraryImageUrl });
         this._cache = resources;
         return resources;
       } catch (error) {

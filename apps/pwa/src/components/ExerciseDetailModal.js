@@ -47,15 +47,9 @@ const ExerciseDetailModal = ({
     logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal createStyles took ${stylesDuration.toFixed(2)}ms`);
   }
   
-  const handleViewAllHistory = () => {
-    // Navigate to full history screen (if implemented)
-    logger.debug('📊 View all history for:', exerciseKey);
-  };
+  const handleViewAllHistory = () => {};
 
-  const handleResetPR = () => {
-    // Modal doesn't support reset functionality
-    logger.debug('📊 Reset PR requested for:', exerciseKey);
-  };
+  const handleResetPR = () => {};
 
   const jsxStartTime = performance.now();
   

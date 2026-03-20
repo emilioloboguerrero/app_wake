@@ -66,7 +66,6 @@ class VideoCacheService {
       };
 
       await AsyncStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
-      logger.debug('✅ Video marked as cached:', cacheKey);
     } catch (error) {
       logger.error('❌ Error marking video as cached:', error);
     }
@@ -92,13 +91,10 @@ class VideoCacheService {
       const isCached = await this.isVideoCached(videoUrl);
       
       if (isCached) {
-        logger.debug('📱 Using cached video metadata');
         const cachedUri = await this.getCachedVideoUri(videoUrl);
         return cachedUri;
       }
 
-      // Mark as cached and return original URL
-      logger.debug('📥 Marking video as cached for future reference');
       await this.markVideoAsCached(videoUrl);
       
       return videoUrl;
@@ -132,7 +128,6 @@ class VideoCacheService {
   async clearAllCache() {
     try {
       await AsyncStorage.removeItem(this.cacheKey);
-      logger.debug('🗑️ All cache cleared');
     } catch (error) {
       logger.error('❌ Error clearing cache:', error);
     }
@@ -143,12 +138,7 @@ class VideoCacheService {
     try {
       if (!videoUrl) return;
       
-      logger.debug('📥 Preloading video:', videoUrl);
-      
-      // Mark video as cached (metadata only)
       await this.markVideoAsCached(videoUrl);
-      
-      logger.debug('✅ Video preloaded:', videoUrl);
     } catch (error) {
       logger.error('❌ Error preloading video:', error);
       // Don't throw - preloading is non-critical

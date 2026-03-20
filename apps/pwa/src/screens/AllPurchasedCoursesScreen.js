@@ -22,7 +22,6 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
-import logger from '../utils/logger.js';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
@@ -112,9 +111,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   // Categorize courses - ensure all courses are shown even if they don't match a category
   const categorizedCourses = React.useMemo(() => {
-    logger.debug('🔍 Categorizing courses, allCourses.length:', allCourses.length);
-    logger.debug('🔍 allCourses array:', allCourses);
-    
     const active = allCourses.filter(course => course.isActive === true);
     const expired = allCourses.filter(course => course.isExpired === true);
     const completed = allCourses.filter(course => course.isCompleted === true);
@@ -122,21 +118,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     const uncategorized = allCourses.filter(course => 
       !course.isActive && !course.isExpired && !course.isCompleted
     );
-    
-    logger.debug('🔍 AllPurchasedCoursesScreen - Course categorization:', {
-      total: allCourses.length,
-      active: active.length,
-      expired: expired.length,
-      completed: completed.length,
-      uncategorized: uncategorized.length,
-      courses: allCourses.map(c => ({
-        title: c.courseDetails?.title,
-        isActive: c.isActive,
-        isExpired: c.isExpired,
-        isCompleted: c.isCompleted,
-        status: c.status
-      }))
-    });
     
     return { active, expired, completed, uncategorized };
   }, [allCourses]);

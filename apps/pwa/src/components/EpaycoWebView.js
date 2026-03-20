@@ -37,7 +37,6 @@ const EpaycoWebView = ({
     if (!visible || !checkoutURL || !isWeb) return;
     if (hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
-    logger.debug('🌐 [EpaycoWebView] Redirecting immediately to Mercado Pago');
     window.location.href = checkoutURL;
   }, [visible, checkoutURL, isWeb]);
 
@@ -57,14 +56,11 @@ const EpaycoWebView = ({
 
   // Handle WebView load start (native only)
   const handleWebViewLoadStart = () => {
-    logger.debug('📍 [EpaycoWebView] WebView load started');
     webViewLoadStartRef.current = true;
   };
 
   // Handle WebView navigation (native only)
   const handleNavigationStateChange = (navState) => {
-    logger.debug('📍 WebView Navigation:', navState.url);
-    
     // Clear timeout if navigation happens
     if (loadTimeoutRef.current) {
       clearTimeout(loadTimeoutRef.current);
@@ -95,7 +91,6 @@ const EpaycoWebView = ({
     
     // If user is redirected to subscription management page or success page, payment is complete
     if (isPaymentSuccess || isSubscriptionManagementPage) {
-      logger.debug('✅ Payment/Subscription success detected:', navState.url);
       onPaymentSuccess?.({ url: navState.url });
       onClose?.();
       return;
@@ -126,7 +121,6 @@ const EpaycoWebView = ({
     );
     
     if (isPaymentError) {
-      logger.debug('❌ Payment error detected:', navState.url);
       onPaymentError?.({ url: navState.url });
       onClose?.();
       return;
@@ -135,7 +129,6 @@ const EpaycoWebView = ({
 
   // Handle WebView load
   const handleWebViewLoad = () => {
-    logger.debug('✅ [EpaycoWebView] Epayco checkout loaded');
     setLoading(false);
     setError(null);
     webViewLoadStartRef.current = false;

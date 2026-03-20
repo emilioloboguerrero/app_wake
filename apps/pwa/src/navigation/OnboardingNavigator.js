@@ -36,7 +36,6 @@ const OnboardingNavigator = ({ onComplete }) => {
   const effectiveUid = getEffectiveUid(user);
 
   useEffect(() => {
-    logger.debug('[ONBOARDING_NAV] mounted. uid:', effectiveUid);
     if (!effectiveUid) logger.warn('[ONBOARDING_NAV] No uid in OnboardingNavigator');
   }, [effectiveUid]);
 
@@ -70,8 +69,6 @@ const OnboardingNavigator = ({ onComplete }) => {
         profileCompleted: true,
       };
 
-      logger.debug('📝 Saving onboarding data. uid:', uid, userData.onboardingData);
-
       try {
         await AsyncStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
           onboardingCompleted: true,
@@ -95,7 +92,6 @@ const OnboardingNavigator = ({ onComplete }) => {
       }
 
       await apiClient.patch('/users/me', userData);
-      logger.debug('✅ Onboarding completed successfully. uid:', uid);
 
       if (onComplete) onComplete();
     } catch (error) {

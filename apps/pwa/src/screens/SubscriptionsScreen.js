@@ -319,11 +319,6 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
 
-    logger.debug('Cancel subscription survey result', {
-      subscriptionId: pendingCancelSubscription.id,
-      answers: cancelSurveyAnswers,
-    });
-
     const courseId =
       pendingCancelSubscription?.course_id ||
       pendingCancelSubscription?.courseId ||

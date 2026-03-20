@@ -10,13 +10,13 @@ let analytics = null;
 try {
   crashlytics = require('@react-native-firebase/crashlytics').default;
 } catch (error) {
-  logger.debug('Crashlytics not available in Expo Go - will work in production builds');
+  // Crashlytics not available in Expo Go
 }
 
 try {
   analytics = require('@react-native-firebase/analytics').default;
 } catch (error) {
-  logger.debug('Analytics not available in Expo Go - will work in production builds');
+  // Analytics not available in Expo Go
 }
 
 class MonitoringService {
@@ -32,16 +32,13 @@ class MonitoringService {
       
       if (crashlytics && userId) {
         await crashlytics().setUserId(userId);
-        logger.debug('Crashlytics initialized for user:', userId);
       }
-      
+
       if (analytics && userId) {
         await analytics().setUserId(userId);
-        logger.debug('Analytics initialized for user:', userId);
       }
-      
+
       this.isInitialized = true;
-      logger.debug('Monitoring service initialized');
       
     } catch (error) {
       logger.error('Failed to initialize monitoring:', error);
@@ -72,9 +69,6 @@ class MonitoringService {
   // Track essential business events
   async trackEvent(eventName, parameters = {}) {
     try {
-      // Log event locally
-      logger.debug(`Event tracked: ${eventName}`, parameters);
-      
       // Track in Analytics if available
       if (analytics && !__DEV__) {
         await analytics().logEvent(eventName, parameters);
@@ -124,7 +118,6 @@ class MonitoringService {
     try {
       if (analytics && !__DEV__) {
         await analytics().setUserProperty(property, value);
-        logger.debug(`User property set: ${property} = ${value}`);
       }
     } catch (error) {
       logger.error('Failed to set user property:', error);

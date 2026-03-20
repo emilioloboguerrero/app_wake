@@ -8,8 +8,6 @@
 
 'use client';
 
-import logger from './logger';
-
 const canUseDOM = typeof window !== 'undefined';
 
 const dimensions = {
@@ -18,8 +16,6 @@ const dimensions = {
 };
 const listeners = {};
 let shouldInit = canUseDOM;
-const VIEWPORT_LOG = '[VIEWPORT]';
-let dimensionsLogOnce = false;
 
 function isIOS() {
   return canUseDOM && /iPhone|iPad|iPod/.test(navigator.userAgent || '');
@@ -48,10 +44,6 @@ function getCanonicalWindowHeight() {
     h = Math.max(h, win.screen.availHeight);
   }
   const out = Math.round(h);
-  if (!dimensionsLogOnce && canUseDOM) {
-    dimensionsLogOnce = true;
-    logger.debug(VIEWPORT_LOG, 'Dimensions (useWindowDimensions)', { innerHeight: win.innerHeight, visualViewportH: win.visualViewport?.height, screenAvailH: win.screen?.availHeight, useAvail, canonicalHeight: out, isPWA: isPWA(), isIOS: isIOS(), isAndroid: isAndroid() });
-  }
   return out;
 }
 

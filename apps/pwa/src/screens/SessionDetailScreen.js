@@ -72,9 +72,6 @@ const SessionDetailScreen = ({ navigation, route }) => {
       if (allEstimates && allEstimates[exerciseKey]) {
         currentEstimate = allEstimates[exerciseKey].current;
         lastUpdated = allEstimates[exerciseKey].lastUpdated;
-        logger.debug('✅ Loaded current estimate for exercise:', exerciseName, currentEstimate);
-      } else {
-        logger.debug('📊 No current estimate found for exercise:', exerciseName);
       }
     } catch (error) {
       logger.error('❌ Error loading current estimate:', error);

@@ -58,7 +58,6 @@ class DisciplineImagesService {
 
       // Check if cache is expired
       if (now - parsedData.timestamp > this.cacheExpiry) {
-        logger.debug('⏰ Discipline images cache expired');
         await AsyncStorage.removeItem(this.cacheKey);
         return null;
       }

@@ -260,12 +260,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       );
       
       if (tutorials.length > 0) {
-        logger.debug('Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.debug('No tutorials to show for workout completion screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -286,7 +283,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
-        logger.debug('Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -297,8 +293,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
       
-      logger.debug('[WorkoutCompletion] Initializing', { courseId: course?.courseId, hasSessionData: !!sessionData, hasLocalStats: !!localStats });
-
       if (sessionData && localStats) {
         const discipline = course?.discipline;
 
@@ -587,8 +581,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       
       // Capture the card as an image
       const uri = await currentCardRef.current.capture();
-      logger.debug('Card captured:', uri);
-      
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
@@ -603,7 +595,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         dialogTitle: 'Compartir sesión',
       });
       
-      logger.debug('Image shared successfully');
     } catch (error) {
       logger.error('Error sharing card:', error);
     } finally {

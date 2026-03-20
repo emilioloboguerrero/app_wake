@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useMemo, useRef, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import activityStreakService from '../services/activityStreakService';
-import logger from '../utils/logger';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -44,22 +43,14 @@ export const ActivityStreakProvider = ({ children }) => {
   const streakState = activityStreakService.useActivityStreak(userId);
 
   const value = useMemo(
-    () => {
-      const v = {
-        ...DEFAULT_STREAK_STATE,
-        ...streakState,
-        userId,
-        hasUser: !!userId,
-      };
-      logger.debug('[STREAK] ActivityStreakProvider value', { userId: userId?.slice(0, 8), isLoading: v.isLoading, streakNumber: v.streakNumber });
-      return v;
-    },
+    () => ({
+      ...DEFAULT_STREAK_STATE,
+      ...streakState,
+      userId,
+      hasUser: !!userId,
+    }),
     [streakState, userId]
   );
-
-  const renderCountRef = useRef(0);
-  renderCountRef.current += 1;
-  logger.debug('[STREAK] ActivityStreakProvider render', { renderCount: renderCountRef.current, userId: userId?.slice(0, 8), valueIsLoading: value.isLoading });
 
   return (
     <ActivityStreakContext.Provider value={value}>

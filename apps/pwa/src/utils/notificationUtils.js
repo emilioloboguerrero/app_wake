@@ -5,7 +5,6 @@ import logger from './logger';
 export const initializeNotifications = async () => {
   try {
     await NotificationService.initialize();
-    logger.debug('Notifications initialized for user');
   } catch (error) {
     logger.error('Error initializing notifications:', error);
   }
@@ -20,13 +19,7 @@ export const setNotificationUserId = (userId) => {
 export const getFCMToken = async () => {
   try {
     const token = await NotificationService.getStoredToken();
-    if (token) {
-      logger.debug('FCM Token for Firebase Console:', token);
-      return token;
-    } else {
-      logger.debug('No FCM token available');
-      return null;
-    }
+    return token || null;
   } catch (error) {
     logger.error('Error getting FCM token:', error);
     return null;

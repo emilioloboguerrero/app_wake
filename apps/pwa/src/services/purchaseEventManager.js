@@ -28,7 +28,6 @@ class PurchaseEventManager {
 
   // Notify all listeners about a purchase
   notifyPurchaseComplete(courseId) {
-    logger.debug('📢 Purchase event: Course purchased:', courseId);
     this.listeners.forEach(callback => {
       try {
         callback(courseId);
@@ -40,7 +39,6 @@ class PurchaseEventManager {
 
   // Notify listeners that the purchase is confirmed in Firestore
   notifyPurchaseReady(courseId) {
-    logger.debug('📢 Purchase ready event: Course available:', courseId);
     this.readyListeners.forEach(callback => {
       try {
         callback(courseId);

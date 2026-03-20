@@ -179,7 +179,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       return;
     }
     const userData = profileQueryData;
-    logger.debug('✅ Profile loaded successfully');
     setUserRole(userData.role || 'user');
     setUserProfile({
       displayName: userData.displayName || '',
@@ -507,7 +506,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             displayName: userProfile.displayName.trim()
           });
           await auth.currentUser.reload();
-          logger.debug('✅ Firebase Auth displayName synced from profile settings');
         } catch (profileSyncError) {
           logger.warn('⚠️ Failed to sync Firebase Auth displayName from profile settings:', profileSyncError);
         }
@@ -534,12 +532,10 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   };
 
   const handleSignOut = () => {
-    logger.debug('🔐 handleSignOut called - showing confirmation modal');
     setIsSignOutConfirmModalVisible(true);
   };
 
   const handleSignOutConfirm = async () => {
-    logger.debug('🔐 User confirmed sign out');
     try {
       setIsSignOutConfirmModalVisible(false);
       // Close the settings modal first
@@ -547,12 +543,10 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       // Sign out user
       await authService.signOutUser();
-      logger.debug('🔐 Sign out successful');
-      
+
       // On web/PWA, force full reload to /login so the app always shows the login screen
       if (typeof window !== 'undefined') {
         const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-        logger.debug('🌐 Web: reloading to /login');
         window.location.replace(loginPath);
         return;
       }
@@ -564,13 +558,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   };
 
   const handleSignOutCancel = () => {
-    logger.debug('🔐 Sign out cancelled');
     setIsSignOutConfirmModalVisible(false);
   };
 
   // Handle delete account request
   const handleDeleteAccountRequest = () => {
-    logger.debug('🗑️ Delete account button pressed');
     // Remember that settings modal was open
     setWasSettingsModalOpen(isSettingsModalVisible);
     // Close settings modal and open delete account modal
@@ -752,16 +744,12 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     if (!user?.uid) return;
 
     try {
-      logger.debug('🎬 Checking for profile screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'profile');
-      
+
       if (tutorials.length > 0) {
-        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.debug('✅ No tutorials to show for profile screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -780,7 +768,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           'profile', 
           currentTutorial.videoUrl
         );
-        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);

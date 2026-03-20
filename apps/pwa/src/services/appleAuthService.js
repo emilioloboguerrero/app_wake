@@ -335,18 +335,15 @@ class AppleAuthService {
 
       // Check if user already exists in Firestore
       const existingUser = await apiService.getUser(firebaseUser.uid);
-      logger.debug('[APPLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
-      
+
       if (existingUser) {
         // User exists - update login time and provider info
         await apiService.updateUser(firebaseUser.uid, {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.debug('[APPLE AUTH] Updated existing user document');
       } else {
         // New Apple user - updateUser now creates doc if missing
-        logger.debug('[APPLE AUTH] No document for new Apple user — calling updateUser (will create doc)');
         await apiService.updateUser(firebaseUser.uid, userData);
       }
       

@@ -564,10 +564,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     const completedIds = sessionState.progress?.allSessionsCompleted || [];
     const isCompleted = !!(sessionId && completedIds.includes(sessionId)) || !!(session.id && completedIds.includes(session.id));
 
-    if (isLoadingThisCard) {
-      logger.debug('🔄 Loading overlay should be visible for session:', session.title);
-    }
-
     const anim = sessionListAnimsRef.current[index];
     const animStyle = anim ? {
       opacity: anim,
@@ -733,20 +729,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (!user?.uid || !course?.courseId) return;
 
     try {
-      logger.debug('🎬 Checking for daily workout screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
-        user.uid, 
+        user.uid,
         'dailyWorkout',
-        course.courseId  // Pass programId for program-specific tutorials
+        course.courseId
       );
-      
+
       if (tutorials.length > 0) {
-        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.debug('✅ No tutorials to show for daily workout screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -764,9 +756,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           user.uid, 
           'dailyWorkout', 
           currentTutorial.videoUrl,
-          course.courseId  // Pass programId for program-specific tutorials
+          course.courseId
         );
-        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);

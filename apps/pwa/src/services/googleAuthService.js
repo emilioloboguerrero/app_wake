@@ -17,9 +17,7 @@ let GoogleSignin = null;
 class GoogleAuthService {
   constructor() {
     // Google Sign-In will be loaded dynamically when needed
-    if (isExpoGo) {
-      logger.debug('Google Sign-In disabled in Expo Go - will work in production builds');
-    }
+    // Google Sign-In disabled in Expo Go - will work in production builds
   }
 
   // Dynamically load Google Sign-In module
@@ -43,9 +41,6 @@ class GoogleAuthService {
         webClientId: webClientId,
       });
       
-      logger.debug('Google Sign-In loaded and configured successfully');
-      logger.debug('Web Client ID:', webClientId);
-      
       return GoogleSignin;
     } catch (error) {
       logger.error('Error loading Google Sign-In module:', error);
@@ -67,12 +62,9 @@ class GoogleAuthService {
     // Web: Use Firebase signInWithPopup
     if (isWeb) {
       try {
-        logger.debug('Google Sign-In initiated (Web)');
         const provider = new GoogleAuthProvider();
         const userCredential = await signInWithPopup(auth, provider);
         const firebaseUser = userCredential.user;
-        
-        logger.debug('Google sign-in successful (Web):', firebaseUser.uid);
         
         // Create or update user document (allows new users — no account required)
         await this.createOrUpdateUserDocument(firebaseUser);
@@ -115,8 +107,6 @@ class GoogleAuthService {
     }
 
     try {
-      logger.debug('Google Sign-In initiated (Native)');
-      
       // Dynamically load Google Sign-In module
       const GoogleSigninModule = await this.loadGoogleSignIn();
       
@@ -136,8 +126,6 @@ class GoogleAuthService {
         throw new Error('No ID token found');
       }
 
-      logger.debug('ID token received, signing in to Firebase...');
-      
       // Create a Google credential with the token
       const googleCredential = GoogleAuthProvider.credential(idToken);
 
@@ -145,11 +133,9 @@ class GoogleAuthService {
       const userCredential = await signInWithCredential(auth, googleCredential);
       const firebaseUser = userCredential.user;
       
-      logger.debug('Google sign-in successful:', firebaseUser.uid);
-      
       // Create or update user document (allows new users — no account required)
       await this.createOrUpdateUserDocument(firebaseUser);
-      
+
       return { 
         success: true, 
         user: firebaseUser
@@ -211,15 +197,12 @@ class GoogleAuthService {
   // Sign out from Google and Firebase
   async signOut() {
     try {
-      logger.debug('Signing out from Google and Firebase...');
-      
       // Only sign out from Google if not in Expo Go
       if (!isExpoGo) {
         const GoogleSigninModule = await this.loadGoogleSignIn();
         await GoogleSigninModule.signOut();
       }
       
-      logger.debug('Sign out successful');
       return { success: true };
       
     } catch (error) {
@@ -282,18 +265,15 @@ class GoogleAuthService {
 
       // Check if user already exists in Firestore
       const existingUser = await apiService.getUser(firebaseUser.uid);
-      logger.debug('[GOOGLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
-      
+
       if (existingUser) {
         // User exists - update login time and provider info
         await apiService.updateUser(firebaseUser.uid, {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.debug('[GOOGLE AUTH] Updated existing user document');
       } else {
         // New Google user - updateUser now creates doc if missing
-        logger.debug('[GOOGLE AUTH] No document for new Google user — calling updateUser (will create doc)');
         await apiService.updateUser(firebaseUser.uid, userData);
       }
       

@@ -55,9 +55,7 @@ class AuthService {
 
   // Sign in user
   async signInUser(email, password) {
-    logger.debug('[AUTH] signInUser called');
     try {
-      logger.debug('[AUTH] Calling Firebase signInWithEmailAndPassword...');
       // Add timeout to prevent hanging (30 seconds)
       const signInPromise = signInWithEmailAndPassword(auth, email, password);
       const timeoutPromise = new Promise((_, reject) => 
@@ -65,22 +63,12 @@ class AuthService {
       );
       
       const userCredential = await Promise.race([signInPromise, timeoutPromise]);
-      logger.debug('[AUTH] ✅ Sign in successful:', {
-        userId: userCredential.user?.uid,
-        email: userCredential.user?.email,
-        firebaseCurrentUser: !!auth.currentUser
-      });
-      
+
       // Wait a bit longer to ensure Firebase auth state propagates and onAuthStateChanged fires
       // This helps AuthContext's onAuthStateChanged listener fire before we return
       await new Promise(resolve => setTimeout(resolve, 150));
       
-      // Verify user is still available after delay
       const finalUser = auth.currentUser || userCredential.user;
-      logger.debug('[AUTH] Final user check after delay:', {
-        hasUser: !!finalUser,
-        userId: finalUser?.uid
-      });
 
       return finalUser || userCredential.user;
     } catch (error) {
@@ -182,10 +170,10 @@ class AuthService {
       } catch (error) {
         // Ignore errors if picture doesn't exist or permission denied
         // This is not critical - continue with account deletion
-        if (error.code === 'storage/object-not-found' || 
+        if (error.code === 'storage/object-not-found' ||
             error.code === 'storage/unauthorized' ||
             error.message?.includes('does not exist')) {
-          logger.debug('Profile picture does not exist or already deleted, continuing...');
+          // Profile picture does not exist or already deleted
         } else {
           logger.warn('Failed to delete profile picture (non-critical):', error.message || error);
         }

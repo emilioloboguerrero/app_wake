@@ -37,16 +37,12 @@ const CommunityScreen = () => {
     if (!user?.uid) return;
 
     try {
-      logger.debug('🎬 Checking for community screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'community');
-      
+
       if (tutorials.length > 0) {
-        logger.debug('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.debug('✅ No tutorials to show for community screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -65,7 +61,6 @@ const CommunityScreen = () => {
           'community', 
           currentTutorial.videoUrl
         );
-        logger.debug('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);

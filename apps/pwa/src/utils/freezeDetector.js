@@ -22,10 +22,6 @@ export const trackRender = (componentName) => {
     });
   }
   
-  // Log every 10th render to avoid spam
-  if (renderCounts[componentName] % 10 === 0) {
-    logger.debug(`[FREEZE DETECTOR] ${componentName} rendered ${renderCounts[componentName]} times`);
-  }
 };
 
 export const resetCounters = () => {

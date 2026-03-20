@@ -4,7 +4,6 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
-import logger from '../utils/logger';
 import firestoreService from '../services/firestoreService';
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
@@ -36,8 +35,6 @@ const CourseStructureScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.debug('🧭 [CourseStructure Web] Navigating to:', routeName, params);
-      
       const routeMap = {
         'DailyWorkout': () => {
           const cId = params?.course?.courseId || params?.course?.id || courseId;
@@ -60,7 +57,6 @@ const CourseStructureScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.debug('🧭 [CourseStructure Web] setParams:', params);
     },
   };
   

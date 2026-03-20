@@ -93,7 +93,34 @@ Wake is a **fitness & nutrition platform** targeting Spanish-speaking users (pri
 
 ## Cloud Functions
 
-All in `functions/src/index.ts`. Do not create separate function files. When adding a new function, add it to this table.
+All Firebase function **exports** live in `functions/src/index.ts`. Do not create separate export files.
+
+The Phase 3 Express API is a single Gen2 function export (`api`) that internally uses Express routing. Route handlers live in `functions/src/api/routes/` — these are internal Express routes, not separate Firebase functions. This keeps `index.ts` focused on exports while keeping route files navigable.
+
+```
+functions/src/
+  index.ts                    ← ALL Firebase exports (Gen1 + Gen2 `api`)
+  api/
+    app.ts                    ← Express app setup, middleware, mounts routes
+    errors.ts                 ← WakeApiServerError class
+    middleware/
+      auth.ts                 ← validateAuth()
+      validate.ts             ← validateBody()
+      rateLimit.ts            ← checkRateLimit()
+    routes/
+      profile.ts              ← /users/me, /creator/profile
+      nutrition.ts            ← /nutrition/diary, /nutrition/foods, etc.
+      workout.ts              ← /workout/daily, /workout/complete, etc.
+      progress.ts             ← /progress/body-log, /progress/readiness, etc.
+      creator.ts              ← /creator/programs, /creator/clients, etc.
+      apiKeys.ts              ← /api-keys CRUD
+      events.ts               ← /events (public)
+      payments.ts             ← /payments (wraps existing logic)
+      analytics.ts            ← /analytics/weekly-volume, etc.
+      appResources.ts         ← /app-resources (public)
+```
+
+### Gen1 Functions (existing)
 
 | Function | Type | Purpose |
 |---|---|---|
@@ -107,6 +134,12 @@ All in `functions/src/index.ts`. Do not create separate function files. When add
 | `nutritionBarcodeLookup` | HTTPS onRequest | FatSecret proxy — barcode lookup |
 | `sendEventConfirmationEmail` | Firestore onCreate | HTML confirmation email with QR on `event_signups/{eventId}/registrations/{regId}` |
 | `onUserCreated` | Auth user().onCreate | Bootstraps `users/{userId}` document (`role: "user"`, `created_at`, email, displayName) on Firebase Auth user creation |
+
+### Gen2 Function (Phase 3 API)
+
+| Function | Type | Purpose |
+|---|---|---|
+| `api` | Gen2 HTTPS onRequest | Express app serving all `/api/v1/*` routes. 256MiB, concurrency 80, minInstances 1. |
 
 **Secrets (Firebase Secret Manager):** `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_ACCESS_TOKEN`, `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `RESEND_API_KEY`
 
@@ -343,7 +376,7 @@ Clients retry on 5xx and 429. Never on 4xx.
 - New Firestore collections without discussing schema first
 - Calling FatSecret or MercadoPago from client-side code
 - Editing `hosting/` directly
-- Splitting `functions/src/index.ts`
+- Moving Firebase function exports out of `functions/src/index.ts` (Express route handlers in `functions/src/api/routes/` are fine — they are internal to the `api` function, not separate exports)
 - `onSnapshot` listeners in new code
 - `hybridDataService` in new code
 - Unnecessary abstractions for one-off operations

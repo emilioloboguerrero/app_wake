@@ -10,8 +10,6 @@ class SessionManager {
    */
   async clearUserCache(userId) {
     try {
-      logger.debug(`🗑️ Clearing session progress cache for user: ${userId}`);
-      
       // Get all keys and filter for this user's progress
       const keys = await AsyncStorage.getAllKeys();
       const userProgressKeys = keys.filter(key => key.startsWith(`progress_${userId}_`));
@@ -19,7 +17,6 @@ class SessionManager {
       // Remove all user-specific progress caches
       await Promise.all(userProgressKeys.map(key => AsyncStorage.removeItem(key)));
       
-      logger.debug(`✅ Cleared ${userProgressKeys.length} session progress cache(s) for user: ${userId}`);
     } catch (error) {
       logger.error('❌ Error clearing session progress cache:', error);
     }
@@ -41,7 +38,6 @@ class SessionManager {
       
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
       apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('⚠️ Checkpoint save failed (start):', e));
-      logger.debug('✅ Session started:', sessionId);
       return sessionData;
     } catch (error) {
       logger.error('❌ Error starting session:', error);
@@ -76,8 +72,7 @@ class SessionManager {
       // Save locally and sync to cloud checkpoint
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
       apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('⚠️ Checkpoint save failed (exercise):', e));
-      logger.debug('✅ Exercise data saved:', exerciseName);
-      
+
     } catch (error) {
       logger.error('❌ Error adding exercise data:', error);
       throw error;
@@ -97,7 +92,6 @@ class SessionManager {
         const checkpoint = res?.data ?? null;
         if (checkpoint) {
           await AsyncStorage.setItem('current_session', JSON.stringify(checkpoint));
-          logger.debug('🔄 Session restored from cloud checkpoint');
           return checkpoint;
         }
       } catch (e) {
@@ -117,7 +111,6 @@ class SessionManager {
     try {
       await AsyncStorage.removeItem('current_session');
       apiClient.delete('/workout/checkpoint').catch(e => logger.error('⚠️ Checkpoint delete failed (cancel):', e));
-      logger.debug('❌ Session cancelled');
     } catch (error) {
       logger.error('❌ Error cancelling session:', error);
     }
@@ -134,8 +127,6 @@ class SessionManager {
       
       // Clear any current session
       await AsyncStorage.removeItem('current_session');
-      
-      logger.debug('🗑️ Progress cleared for:', { userId, courseId });
       
     } catch (error) {
       logger.error('❌ Error clearing progress:', error);

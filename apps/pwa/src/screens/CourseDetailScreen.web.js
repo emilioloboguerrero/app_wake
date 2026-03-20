@@ -6,8 +6,6 @@ import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/firestoreService';
 import LoadingScreen from './LoadingScreen';
-import logger from '../utils/logger';
-
 // Import the base component
 const CourseDetailScreenModule = require('./CourseDetailScreen.js');
 const CourseDetailScreenBase = CourseDetailScreenModule.CourseDetailScreenBase || CourseDetailScreenModule.default;
@@ -24,10 +22,8 @@ const CourseDetailScreen = () => {
     queryKey: ['programs', courseId],
     queryFn: async () => {
       if (courseFromState) {
-        logger.debug('✅ Using course from navigation state:', courseFromState);
         return courseFromState;
       }
-      logger.debug('🔍 Fetching course data for courseId:', courseId);
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) throw new Error('Course not found');
       const transformedCourse = {
@@ -48,7 +44,6 @@ const CourseDetailScreen = () => {
         video_intro_url: courseData.video_intro_url || null,
         ...courseData,
       };
-      logger.debug('✅ Course data loaded:', transformedCourse);
       return transformedCourse;
     },
     staleTime: STALE_TIMES.programStructure,

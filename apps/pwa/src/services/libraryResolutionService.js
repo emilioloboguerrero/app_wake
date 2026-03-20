@@ -4,8 +4,6 @@ import logger from '../utils/logger';
 class LibraryResolutionService {
   async resolveClientProgram(userId, programId, programTemplate) {
     try {
-      logger.debug('🔄 Resolving client program:', { userId, programId });
-
       let clientOverrides = null;
       try {
         const result = await apiClient.get(`/workout/client-programs/${programId}`);

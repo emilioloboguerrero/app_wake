@@ -18,8 +18,6 @@ class AppSessionManager {
       // Generate new session ID for this app start
       this.sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      logger.debug('🚀 App session started:', this.sessionId);
-      
       // Mark that app has started
       await this.markAppStarted();
       
@@ -41,7 +39,6 @@ class AppSessionManager {
       const lastSessionData = await AsyncStorage.getItem('app_session_data');
       
       if (!lastSessionData) {
-        logger.debug('🆕 Cold start: No previous session found');
         return true;
       }
       
@@ -56,16 +53,12 @@ class AppSessionManager {
         
         // If app was in background for more than 30 minutes, consider it a cold start
         if (minutesInBackground > 30) {
-          logger.debug(`🆕 Cold start: App was in background for ${minutesInBackground.toFixed(1)} minutes`);
           return true;
         } else {
-          logger.debug(`🔄 Resume: App was in background for only ${minutesInBackground.toFixed(1)} minutes`);
           return false;
         }
       }
       
-      // If no background state saved, assume cold start
-      logger.debug('🆕 Cold start: No background state found');
       return true;
       
     } catch (error) {
@@ -87,7 +80,6 @@ class AppSessionManager {
       };
       
       await AsyncStorage.setItem('app_session_data', JSON.stringify(sessionData));
-      logger.debug('📝 App start recorded');
     } catch (error) {
       logger.error('❌ Failed to mark app started:', error);
     }
@@ -99,8 +91,6 @@ class AppSessionManager {
   setupAppStateListener() {
     this.appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
       try {
-        logger.debug('📱 App state changed to:', nextAppState);
-        
         const sessionData = {
           sessionId: this.sessionId,
           appState: nextAppState,
@@ -120,9 +110,7 @@ class AppSessionManager {
    * Check if app needs cache refresh (cold start only)
    */
   async shouldRefreshCache() {
-    const isCold = await this.isColdStart();
-    logger.debug('🔍 Cache refresh needed:', isCold ? 'YES (cold start)' : 'NO (resume)');
-    return isCold;
+    return await this.isColdStart();
   }
 
   /**
