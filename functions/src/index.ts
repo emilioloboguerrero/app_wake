@@ -1701,14 +1701,11 @@ export const updateSubscriptionStatus = functions
           const courseId =
             survey?.courseId ??
             subscriptionData?.course_id ??
-            subscriptionData?.courseId ??
-            subscriptionData?.program_id ??
             undefined;
 
           const courseTitle =
             survey?.courseTitle ??
             subscriptionData?.course_title ??
-            subscriptionData?.courseTitle ??
             undefined;
 
           const statusBefore =

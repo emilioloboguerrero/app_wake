@@ -319,16 +319,8 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
 
-    const courseId =
-      pendingCancelSubscription?.course_id ||
-      pendingCancelSubscription?.courseId ||
-      pendingCancelSubscription?.program_id ||
-      null;
-
-    const courseTitle =
-      pendingCancelSubscription?.course_title ||
-      pendingCancelSubscription?.courseTitle ||
-      null;
+    const courseId = pendingCancelSubscription?.course_id || null;
+    const courseTitle = pendingCancelSubscription?.course_title || null;
 
     performAction(pendingCancelSubscription.id, 'cancel', {
       survey: {

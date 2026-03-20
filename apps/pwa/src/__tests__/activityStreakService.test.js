@@ -3,7 +3,7 @@ import { vi, describe, it, expect } from 'vitest';
 vi.mock('../config/firebase', () => ({ firestore: {} }));
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(), getDoc: vi.fn(), getDocFromServer: vi.fn(),
-  updateDoc: vi.fn(), onSnapshot: vi.fn(),
+  updateDoc: vi.fn(),
 }));
 vi.mock('react', () => ({
   useState: vi.fn(), useRef: vi.fn(), useEffect: vi.fn(),

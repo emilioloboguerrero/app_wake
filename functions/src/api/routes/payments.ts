@@ -736,14 +736,12 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
       const courseId =
         (survey.courseId as string | undefined) ??
-        subscriptionData.course_id ??
-        subscriptionData.courseId;
+        subscriptionData.course_id;
       if (courseId) surveyRecord.courseId = courseId;
 
       const courseTitle =
         (survey.courseTitle as string | undefined) ??
-        subscriptionData.course_title ??
-        subscriptionData.courseTitle;
+        subscriptionData.course_title;
       if (courseTitle) surveyRecord.courseTitle = courseTitle;
 
       const statusBefore =
