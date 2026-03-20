@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, validateDateFormat, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -51,6 +51,9 @@ router.get("/progress/body-log/:date", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Validate date param format
+  validateDateFormat(req.params.date, "date");
+
   const doc = await db
     .collection("users")
     .doc(auth.userId)
@@ -71,6 +74,32 @@ router.put("/progress/body-log/:date", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const date = req.params.date;
+  validateDateFormat(date, "date");
+
+  // Validate and allowlist fields
+  const body = validateBody<{
+    weight?: number;
+    bodyFat?: number;
+    notes?: string;
+    muscleMass?: number;
+    waist?: number;
+    chest?: number;
+    arms?: number;
+    hips?: number;
+  }>(
+    {
+      weight: "optional_number",
+      bodyFat: "optional_number",
+      notes: "optional_string",
+      muscleMass: "optional_number",
+      waist: "optional_number",
+      chest: "optional_number",
+      arms: "optional_number",
+      hips: "optional_number",
+    },
+    req.body
+  );
+
   const docRef = db
     .collection("users")
     .doc(auth.userId)
@@ -79,7 +108,7 @@ router.put("/progress/body-log/:date", async (req, res) => {
 
   await docRef.set(
     {
-      ...req.body,
+      ...body,
       date,
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     },
@@ -93,6 +122,8 @@ router.put("/progress/body-log/:date", async (req, res) => {
 router.delete("/progress/body-log/:date", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  validateDateFormat(req.params.date, "date");
 
   const docRef = db
     .collection("users")
@@ -112,7 +143,9 @@ router.delete("/progress/body-log/:date", async (req, res) => {
 // POST /progress/body-log/:date/photos/upload-url
 router.post("/progress/body-log/:date/photos/upload-url", async (req, res) => {
   const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await checkRateLimit(auth.userId, 20, "rate_limit_first_party");
+
+  validateDateFormat(req.params.date, "date");
 
   const { contentType } = validateBody<{ contentType: string }>(
     { contentType: "string" },
@@ -148,10 +181,15 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  validateDateFormat(req.params.date, "date");
+
   const { storagePath, photoId } = validateBody<{
     storagePath: string;
     photoId: string;
   }>({ storagePath: "string", photoId: "string" }, req.body);
+
+  // CRITICAL: Validate storage path prefix to prevent path traversal
+  validateStoragePath(storagePath, `body_log/${auth.userId}/${req.params.date}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -187,6 +225,8 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
 router.delete("/progress/body-log/:date/photos/:photoId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  validateDateFormat(req.params.date, "date");
 
   const docRef = db
     .collection("users")
@@ -228,6 +268,10 @@ router.get("/progress/readiness", async (req, res) => {
 
   const { startDate, endDate } = req.query as Record<string, string>;
 
+  // Validate date formats
+  if (startDate) validateDateFormat(startDate, "startDate");
+  if (endDate) validateDateFormat(endDate, "endDate");
+
   let query: admin.firestore.Query = db
     .collection("users")
     .doc(auth.userId)
@@ -251,6 +295,8 @@ router.get("/progress/readiness/:date", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  validateDateFormat(req.params.date, "date");
+
   const doc = await db
     .collection("users")
     .doc(auth.userId)
@@ -271,6 +317,28 @@ router.put("/progress/readiness/:date", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const date = req.params.date;
+  validateDateFormat(date, "date");
+
+  // Validate and allowlist fields
+  const body = validateBody<{
+    sleep?: number;
+    stress?: number;
+    energy?: number;
+    soreness?: number;
+    mood?: number;
+    notes?: string;
+  }>(
+    {
+      sleep: "optional_number",
+      stress: "optional_number",
+      energy: "optional_number",
+      soreness: "optional_number",
+      mood: "optional_number",
+      notes: "optional_string",
+    },
+    req.body
+  );
+
   const docRef = db
     .collection("users")
     .doc(auth.userId)
@@ -279,7 +347,7 @@ router.put("/progress/readiness/:date", async (req, res) => {
 
   await docRef.set(
     {
-      ...req.body,
+      ...body,
       date,
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     },
@@ -293,6 +361,8 @@ router.put("/progress/readiness/:date", async (req, res) => {
 router.delete("/progress/readiness/:date", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  validateDateFormat(req.params.date, "date");
 
   const docRef = db
     .collection("users")

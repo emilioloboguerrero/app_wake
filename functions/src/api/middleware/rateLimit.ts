@@ -1,3 +1,4 @@
+import type { Request } from "express";
 import * as admin from "firebase-admin";
 import { WakeApiServerError } from "../errors.js";
 
@@ -45,6 +46,20 @@ export async function checkRateLimit(
     err.retryAfter = secondsRemaining;
     throw err;
   }
+}
+
+/**
+ * IP-based rate limiting for unauthenticated/public endpoints.
+ * Uses req.ip (respects X-Forwarded-For behind proxies).
+ */
+export async function checkIpRateLimit(
+  req: Request,
+  limitRpm: number
+): Promise<void> {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  // Sanitize IP for use as Firestore doc ID (replace dots/colons)
+  const safeIp = ip.replace(/[.:]/g, "_");
+  await checkRateLimit(`ip_${safeIp}`, limitRpm, "rate_limit_windows");
 }
 
 export async function checkDailyRateLimit(

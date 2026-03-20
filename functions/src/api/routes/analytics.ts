@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
+import { validateDateFormat } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
@@ -22,11 +23,21 @@ router.get("/analytics/weekly-volume", async (req, res) => {
     );
   }
 
-  // Validate max 12 weeks
+  // Validate date format
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
+  // Validate max 12 weeks — check for invalid dates
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Fechas inválidas"
+    );
+  }
   const diffWeeks = (end.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000);
-  if (diffWeeks > 12) {
+  if (diffWeeks > 12 || diffWeeks < 0) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
       "Rango máximo de 12 semanas"
@@ -62,7 +73,12 @@ router.get("/analytics/weekly-volume", async (req, res) => {
     weekStart.setDate(date.getDate() + mondayOffset);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
-    const weekKey = `${weekStart.getFullYear()}-W${String(Math.ceil((weekStart.getTime() - new Date(weekStart.getFullYear(), 0, 1).getTime()) / (7 * 86400000))).padStart(2, "0")}`;
+
+    // ISO week number calculation
+    const jan4 = new Date(weekStart.getFullYear(), 0, 4);
+    const dayOfYear = Math.floor((weekStart.getTime() - jan4.getTime()) / 86400000);
+    const weekNum = Math.ceil((dayOfYear + jan4.getDay() + 1) / 7);
+    const weekKey = `${weekStart.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 
     if (!weeks[weekKey]) {
       weeks[weekKey] = {
@@ -115,11 +131,21 @@ router.get("/analytics/muscle-breakdown", async (req, res) => {
     );
   }
 
-  // Validate max 90 days
+  // Validate date format
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
+  // Validate max 90 days — check for invalid dates
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Fechas inválidas"
+    );
+  }
   const diffDays = (end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
-  if (diffDays > 90) {
+  if (diffDays > 90 || diffDays < 0) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
       "Rango máximo de 90 días"

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
@@ -7,6 +8,10 @@ import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
 const db = admin.firestore();
+
+// Max guards for unbounded reads
+const MAX_MODULES_PER_COURSE = 20;
+const MAX_SESSIONS_PER_MODULE = 50;
 
 // GET /workout/daily
 router.get("/workout/daily", async (req, res) => {
@@ -42,6 +47,7 @@ router.get("/workout/daily", async (req, res) => {
   // Resolve the target session based on delivery type
   let targetModuleId: string | null = null;
   let targetSessionId: string | null = null;
+  let completedSessionIds: Set<string> | null = null;
 
   if (deliveryType === "one_on_one") {
     // One-on-one: check plans assigned to this user for the current week
@@ -71,12 +77,13 @@ router.get("/workout/daily", async (req, res) => {
     targetSessionId = planData.currentSessionId ?? null;
   } else {
     // Low-ticket: resolve from course modules structure
-    // Get all modules ordered
+    // Guard: max modules
     const modulesSnap = await db
       .collection("courses")
       .doc(courseId)
       .collection("modules")
       .orderBy("order", "asc")
+      .limit(MAX_MODULES_PER_COURSE)
       .get();
 
     if (modulesSnap.empty) {
@@ -92,7 +99,7 @@ router.get("/workout/daily", async (req, res) => {
       return;
     }
 
-    // Gather all sessions across modules to determine progress
+    // Gather all sessions across modules — guard: max sessions per module
     const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number }> = [];
     for (const mod of modulesSnap.docs) {
       const sessionsSnap = await db
@@ -102,6 +109,7 @@ router.get("/workout/daily", async (req, res) => {
         .doc(mod.id)
         .collection("sessions")
         .orderBy("order", "asc")
+        .limit(MAX_SESSIONS_PER_MODULE)
         .get();
 
       for (const sess of sessionsSnap.docs) {
@@ -137,10 +145,10 @@ router.get("/workout/daily", async (req, res) => {
       .where("courseId", "==", courseId)
       .get();
 
-    const completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
+    completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
 
     // Find the next uncompleted session
-    const nextSession = allSessions.find((s) => !completedSessionIds.has(s.sessionId));
+    const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
 
     if (!nextSession) {
       res.json({
@@ -310,13 +318,16 @@ router.get("/workout/daily", async (req, res) => {
     };
   });
 
-  // Compute progress
-  const completedForProgress = await db
-    .collection("users")
-    .doc(auth.userId)
-    .collection("sessionHistory")
-    .where("courseId", "==", courseId)
-    .get();
+  // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch
+  const completedCount = completedSessionIds
+    ? completedSessionIds.size
+    : (await db
+        .collection("users")
+        .doc(auth.userId)
+        .collection("sessionHistory")
+        .where("courseId", "==", courseId)
+        .count()
+        .get()).data().count;
 
   res.json({
     data: {
@@ -331,7 +342,7 @@ router.get("/workout/daily", async (req, res) => {
         exercises,
       },
       progress: {
-        completed: completedForProgress.size,
+        completed: completedCount,
         total: null,
       },
     },
@@ -366,9 +377,20 @@ router.get("/workout/courses/:courseId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Access control: verify user has the course or is the creator
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = userDoc.data()?.courses ?? {};
+  const hasAccess = courses[req.params.courseId];
+
   const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const isCreator = courseDoc.data()?.creatorId === auth.userId;
+
+  if (!hasAccess && !isCreator) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
   res.json({ data: { id: courseDoc.id, ...courseDoc.data() } });
@@ -397,7 +419,8 @@ router.post("/workout/complete", async (req, res) => {
       userNotes: "optional_string",
       plannedSnapshot: "optional_object",
     },
-    req.body
+    req.body,
+    { maxArrayLength: 50 }
   );
 
   // Extract date from completedAt for idempotency key
@@ -425,6 +448,16 @@ router.post("/workout/complete", async (req, res) => {
     sets?: Array<{ reps?: number; weight?: number; intensity?: string | null; rir?: number | null }>;
     [key: string]: unknown;
   }>;
+
+  // Cap exercises at 50, sets per exercise at 20
+  if (exercises.length > 50) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 50 ejercicios por sesión", "exercises");
+  }
+  for (const ex of exercises) {
+    if (ex.sets && ex.sets.length > 20) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 20 sets por ejercicio", "exercises");
+    }
+  }
 
   // Pre-fetch existing PRs for all exercises to compare
   const exerciseKeys = exercises
@@ -472,20 +505,16 @@ router.post("/workout/complete", async (req, res) => {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 1) {
-      // Yesterday — continue streak
       newStreak = previousStreak + 1;
     } else if (diffDays === 0) {
-      // Same day — keep current streak
       newStreak = previousStreak;
     } else {
-      // Gap — reset to 1
       newStreak = 1;
     }
   }
 
   const newLongest = Math.max(newStreak, previousLongest);
 
-  // flameLevel: 0=inactive, 1=3+ days, 2=7+ days, 3=14+ days
   let flameLevel = 0;
   if (newStreak >= 14) flameLevel = 3;
   else if (newStreak >= 7) flameLevel = 2;
@@ -526,7 +555,6 @@ router.post("/workout/complete", async (req, res) => {
     const exerciseKey = exerciseKeys[i];
     if (!exerciseKey) continue;
 
-    // Compute best estimated 1RM across all sets
     let bestEstimate1RM = 0;
     let bestSet: { weight: number; reps: number; intensity: string | null } | null = null;
 
@@ -535,7 +563,6 @@ router.post("/workout/complete", async (req, res) => {
       const reps = set.reps ?? 0;
       if (weight <= 0 || reps <= 0) continue;
 
-      // Simplified Epley: weight × (1 + 0.0333 × reps)
       const estimate = weight * (1 + 0.0333 * reps);
 
       if (estimate > bestEstimate1RM) {
@@ -544,7 +571,6 @@ router.post("/workout/complete", async (req, res) => {
       }
     }
 
-    // Check if this is a new PR
     const existingPr = existingPrMap[exerciseKey];
     const existingEstimate = existingPr?.estimate1RM ?? 0;
 
@@ -616,13 +642,15 @@ router.post("/workout/complete", async (req, res) => {
 
   await batch.commit();
 
-  // Delete checkpoint if exists (non-blocking)
+  // Delete checkpoint if exists (non-blocking, log errors)
   db.collection("users")
     .doc(auth.userId)
     .collection("activeSession")
     .doc("current")
     .delete()
-    .catch(() => {});
+    .catch((err) => {
+      functions.logger.error("Failed to delete checkpoint after completion", err);
+    });
 
   res.json({
     data: {
@@ -722,7 +750,15 @@ router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
   const entries = (data.entries ?? []) as unknown[];
 
   // Paginate in-memory (entries stored as array)
-  const pageToken = parseInt(req.query.pageToken as string) || 0;
+  const rawPageToken = req.query.pageToken as string | undefined;
+  let pageToken = 0;
+  if (rawPageToken) {
+    const parsed = parseInt(rawPageToken, 10);
+    if (isNaN(parsed) || parsed < 0) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "pageToken inválido", "pageToken");
+    }
+    pageToken = parsed;
+  }
   const limit = 50;
   const slice = entries.slice(pageToken, pageToken + limit);
 
@@ -823,7 +859,6 @@ router.get("/workout/session/active", async (req, res) => {
   if (savedAt) {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
-      // Stale — delete and return null
       doc.ref.delete().catch(() => {});
       res.json({ data: { checkpoint: null } });
       return;

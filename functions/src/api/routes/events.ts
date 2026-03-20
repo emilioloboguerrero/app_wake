@@ -2,8 +2,8 @@ import { Router } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
+import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
+import { checkRateLimit, checkIpRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
@@ -30,6 +30,9 @@ async function verifyEventOwnership(
 
 // GET /events/:eventId (no auth — draft events return 404)
 router.get("/events/:eventId", async (req, res) => {
+  // IP-based rate limiting for public endpoint
+  await checkIpRateLimit(req, 60);
+
   const doc = await db.collection("events").doc(req.params.eventId).get();
   if (!doc.exists || doc.data()?.status === "draft") {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
@@ -65,6 +68,26 @@ router.get("/events/:eventId", async (req, res) => {
 
 // POST /events/:eventId/register (no auth — supports unauthenticated)
 router.post("/events/:eventId/register", async (req, res) => {
+  // IP-based rate limiting (10 RPM) for public endpoint
+  await checkIpRateLimit(req, 10);
+
+  // Validate registration body with explicit fields
+  const body = validateBody<{
+    email?: string;
+    displayName?: string;
+    phoneNumber?: string;
+    fieldValues?: Record<string, unknown>;
+  }>(
+    {
+      email: "optional_string",
+      displayName: "optional_string",
+      phoneNumber: "optional_string",
+      fieldValues: "optional_object",
+    },
+    req.body,
+    { maxStringLength: 500 }
+  );
+
   const eventDoc = await db.collection("events").doc(req.params.eventId).get();
   if (!eventDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
@@ -98,7 +121,10 @@ router.post("/events/:eventId/register", async (req, res) => {
         .doc(req.params.eventId)
         .collection("waitlist")
         .add({
-          ...req.body,
+          email: body.email ?? null,
+          displayName: body.displayName ?? null,
+          phoneNumber: body.phoneNumber ?? null,
+          fieldValues: body.fieldValues ?? {},
           created_at: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -120,7 +146,10 @@ router.post("/events/:eventId/register", async (req, res) => {
     .doc(req.params.eventId)
     .collection("registrations")
     .add({
-      ...req.body,
+      email: body.email ?? null,
+      displayName: body.displayName ?? null,
+      phoneNumber: body.phoneNumber ?? null,
+      fieldValues: body.fieldValues ?? {},
       check_in_token: checkInToken,
       checked_in: false,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -184,8 +213,24 @@ router.post("/creator/events", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ title: string }>(
-    { title: "string" },
+  const body = validateBody<{
+    title: string;
+    description?: string;
+    date?: string;
+    location?: string;
+    maxRegistrations?: number;
+    fields?: unknown[];
+    capacity?: number;
+  }>(
+    {
+      title: "string",
+      description: "optional_string",
+      date: "optional_string",
+      location: "optional_string",
+      maxRegistrations: "optional_number",
+      fields: "optional_array",
+      capacity: "optional_number",
+    },
     req.body
   );
 
@@ -224,8 +269,16 @@ router.patch("/creator/events/:eventId", async (req, res) => {
     );
   }
 
+  // Allowlist editable fields
+  const allowedFields = ["title", "description", "date", "location", "maxRegistrations", "fields", "capacity", "image_url"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
   await doc.ref.update({
-    ...req.body,
+    ...updates,
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -353,6 +406,9 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
     { storagePath: "string" },
     req.body
   );
+
+  // Validate storage path prefix
+  validateStoragePath(storagePath, `event_images/${req.params.eventId}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -555,12 +611,16 @@ router.post(
     const waitlistData = waitlistDoc.data()!;
     const checkInToken = crypto.randomUUID();
 
+    // Only copy safe fields from waitlist entry
     const regRef = await db
       .collection("event_signups")
       .doc(req.params.eventId)
       .collection("registrations")
       .add({
-        ...waitlistData,
+        email: waitlistData.email ?? null,
+        displayName: waitlistData.displayName ?? null,
+        phoneNumber: waitlistData.phoneNumber ?? null,
+        fieldValues: waitlistData.fieldValues ?? {},
         check_in_token: checkInToken,
         checked_in: false,
         admitted_from_waitlist: true,

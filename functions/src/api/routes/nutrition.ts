@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, pickFields, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -14,6 +14,11 @@ router.get("/nutrition/diary", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { date, startDate, endDate } = req.query as Record<string, string>;
+
+  // Validate date formats
+  if (date) validateDateFormat(date, "date");
+  if (startDate) validateDateFormat(startDate, "startDate");
+  if (endDate) validateDateFormat(endDate, "endDate");
 
   let query: admin.firestore.Query = db
     .collection("users")
@@ -50,8 +55,12 @@ router.post("/nutrition/diary", async (req, res) => {
     foods: unknown[];
   }>(
     { date: "string", meal_type: "string", foods: "array" },
-    req.body
+    req.body,
+    { maxArrayLength: 100 }
   );
+
+  // Validate date format
+  validateDateFormat(body.date, "date");
 
   const docRef = await db
     .collection("users")
@@ -82,8 +91,25 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Entrada no encontrada");
   }
 
-  const updates = { ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() };
-  await docRef.update(updates);
+  // Allowlist fields instead of spreading req.body
+  const allowedFields = ["date", "meal_type", "foods", "notes", "totalCalories", "totalProtein", "totalCarbs", "totalFat"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  // Validate date if provided
+  if (typeof updates.date === "string") validateDateFormat(updates.date, "date");
+  // Validate foods array length if provided
+  if (Array.isArray(updates.foods) && updates.foods.length > 100) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "foods excede el máximo de 100 elementos", "foods");
+  }
+
+  await docRef.update({
+    ...updates,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
   res.json({ data: { updated: true } });
 });
@@ -153,7 +179,6 @@ router.get("/nutrition/foods/search", async (req, res) => {
   }
 
   // Call FatSecret via the existing Gen1 function's token logic
-  // We need FatSecret credentials from environment/secrets
   const { FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET } = process.env;
   if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
     throw new WakeApiServerError(
@@ -303,20 +328,42 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
   res.json({ data: result });
 });
 
-// GET /nutrition/saved-foods
+// GET /nutrition/saved-foods — paginated with limit
 router.get("/nutrition/saved-foods", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const snapshot = await db
+  const pageToken = req.query.pageToken as string | undefined;
+  const limit = 200;
+
+  let query: admin.firestore.Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("saved_foods")
     .orderBy("created_at", "desc")
-    .get();
+    .limit(limit + 1);
 
-  const foods = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  res.json({ data: foods });
+  if (pageToken) {
+    const cursorDoc = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("saved_foods")
+      .doc(pageToken)
+      .get();
+    if (cursorDoc.exists) {
+      query = query.startAfter(cursorDoc);
+    }
+  }
+
+  const snapshot = await query.get();
+  const docs = snapshot.docs.slice(0, limit);
+  const hasMore = snapshot.docs.length > limit;
+
+  res.json({
+    data: docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    nextPageToken: hasMore ? docs[docs.length - 1].id : null,
+    hasMore,
+  });
 });
 
 // POST /nutrition/saved-foods
@@ -324,12 +371,40 @@ router.post("/nutrition/saved-foods", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Validate and allowlist fields
+  const body = validateBody<{
+    name: string;
+    foodId?: string;
+    servingUnit?: string;
+    numberOfUnits?: number;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    brand?: string;
+    barcode?: string;
+  }>(
+    {
+      name: "string",
+      foodId: "optional_string",
+      servingUnit: "optional_string",
+      numberOfUnits: "optional_number",
+      calories: "optional_number",
+      protein: "optional_number",
+      carbs: "optional_number",
+      fat: "optional_number",
+      brand: "optional_string",
+      barcode: "optional_string",
+    },
+    req.body
+  );
+
   const docRef = await db
     .collection("users")
     .doc(auth.userId)
     .collection("saved_foods")
     .add({
-      ...req.body,
+      ...body,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -362,6 +437,7 @@ router.get("/nutrition/assignment", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+  if (req.query.date) validateDateFormat(date, "date");
 
   let assignmentQuery: admin.firestore.Query = db
     .collection("nutrition_assignments")

@@ -47,14 +47,25 @@ router.post("/api-keys", async (req, res) => {
   }
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ name: string; scope: string[] }>(
-    { name: "string", scope: "array" },
-    req.body
+  // Include useCase in the validated schema; add length/scope caps
+  const body = validateBody<{ name: string; scope: string[]; useCase?: string }>(
+    { name: "string", scope: "array", useCase: "optional_string" },
+    req.body,
+    { maxStringLength: 100, maxArrayLength: 10 }
   );
 
+  // Validate name length
+  if (body.name.length > 100) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Nombre de API key demasiado largo (máx 100 caracteres)", "name"
+    );
+  }
+
+  // Validate scope entries
   const validScopes = ["read", "write", "creator"];
   for (const s of body.scope) {
-    if (!validScopes.includes(s)) {
+    if (typeof s !== "string" || !validScopes.includes(s)) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400,
         `Scope inválido: ${s}. Valores permitidos: ${validScopes.join(", ")}`,
@@ -73,7 +84,7 @@ router.post("/api-keys", async (req, res) => {
 
   // Generate key_<12 hex chars> ID per spec
   const keyId = `key_${crypto.randomBytes(6).toString("hex")}`;
-  const useCase = typeof req.body.useCase === "string" ? req.body.useCase.trim() : null;
+  const useCase = body.useCase?.trim() || null;
 
   const docData: Record<string, unknown> = {
     creatorId: auth.userId,

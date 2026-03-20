@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -13,6 +13,8 @@ function requireCreator(auth: { role: string }): void {
     throw new WakeApiServerError("FORBIDDEN", 403, "Acceso restringido a creadores");
   }
 }
+
+const TIME_RE = /^\d{2}:\d{2}$/;
 
 // ─── Creator Availability & Bookings (§7.7) ────────────────────────────────
 
@@ -60,42 +62,68 @@ router.post("/creator/availability/slots", async (req, res) => {
     req.body
   );
 
+  // Validate date format
+  validateDateFormat(body.date, "date");
+
+  // Validate time format HH:MM
+  if (!TIME_RE.test(body.startTime)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "startTime debe tener formato HH:MM", "startTime");
+  }
+  if (!TIME_RE.test(body.endTime)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "endTime debe tener formato HH:MM", "endTime");
+  }
+
+  // Enforce minimum duration >= 15 minutes
+  if (body.durationMinutes < 15) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "La duración mínima es de 15 minutos", "durationMinutes"
+    );
+  }
+
   // Parse start/end into minutes since midnight
   const [startH, startM] = body.startTime.split(":").map(Number);
   const [endH, endM] = body.endTime.split(":").map(Number);
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
 
-  if (endMinutes <= startMinutes || body.durationMinutes < 5) {
+  if (endMinutes <= startMinutes) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR",
       400,
-      "Rango de tiempo inválido o duración muy corta"
+      "Rango de tiempo inválido"
     );
   }
 
-  // Generate slots
+  // Generate slots — cap at 100 per day
   const slots: Array<{
-    startUtc: string;
-    endUtc: string;
+    startLocal: string;
+    endLocal: string;
     durationMinutes: number;
     booked: boolean;
   }> = [];
 
   let cursor = startMinutes;
   while (cursor + body.durationMinutes <= endMinutes) {
+    if (slots.length >= 100) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "Máximo 100 slots por día"
+      );
+    }
+
     const slotStartH = Math.floor(cursor / 60);
     const slotStartM = cursor % 60;
     const slotEndCursor = cursor + body.durationMinutes;
     const slotEndH = Math.floor(slotEndCursor / 60);
     const slotEndM = slotEndCursor % 60;
 
-    const startUtc = `${body.date}T${String(slotStartH).padStart(2, "0")}:${String(slotStartM).padStart(2, "0")}:00.000Z`;
-    const endUtc = `${body.date}T${String(slotEndH).padStart(2, "0")}:${String(slotEndM).padStart(2, "0")}:00.000Z`;
+    const startLocal = `${body.date}T${String(slotStartH).padStart(2, "0")}:${String(slotStartM).padStart(2, "0")}:00.000Z`;
+    const endLocal = `${body.date}T${String(slotEndH).padStart(2, "0")}:${String(slotEndM).padStart(2, "0")}:00.000Z`;
 
     slots.push({
-      startUtc,
-      endUtc,
+      startLocal,
+      endLocal,
       durationMinutes: body.durationMinutes,
       booked: false,
     });
@@ -136,8 +164,8 @@ router.delete("/creator/availability/slots", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ date: string; startUtc: string | null }>(
-    { date: "string", startUtc: "optional_string" },
+  const body = validateBody<{ date: string; startLocal: string | null }>(
+    { date: "string", startLocal: "optional_string" },
     req.body
   );
 
@@ -149,7 +177,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
     return;
   }
 
-  if (!body.startUtc) {
+  if (!body.startLocal) {
     // Delete all slots for the day
     await docRef.update({
       [`days.${body.date}`]: admin.firestore.FieldValue.delete(),
@@ -161,7 +189,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
     const dayData = days[body.date];
     if (dayData?.slots) {
       dayData.slots = dayData.slots.filter(
-        (s: { startUtc: string }) => s.startUtc !== body.startUtc
+        (s: { startLocal?: string; startUtc?: string }) => (s.startLocal ?? s.startUtc) !== body.startLocal
       );
       await docRef.update({
         [`days.${body.date}`]: dayData,
@@ -189,7 +217,6 @@ router.get("/creator/bookings", async (req, res) => {
     .limit(limit + 1);
 
   if (date) {
-    // Filter to a specific day: slotStartUtc between day start and end
     const dayStart = `${date}T00:00:00.000Z`;
     const dayEnd = `${date}T23:59:59.999Z`;
     query = db
@@ -277,9 +304,16 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
     );
   }
 
+  // Validate date formats
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
   // Validate max 60 days range
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Fechas inválidas");
+  }
   const diffDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
   if (diffDays > 60 || diffDays < 0) {
     throw new WakeApiServerError(
@@ -305,17 +339,16 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
     { availableSlots: Array<{ startUtc: string; endUtc: string; durationMinutes: number }> }
   > = {};
 
-  // Filter days within range and only unbooked slots
   for (const [dateKey, dayData] of Object.entries(allDays)) {
     if (dateKey >= startDate && dateKey <= endDate) {
-      const day = dayData as { slots?: Array<{ startUtc: string; endUtc: string; durationMinutes: number; booked: boolean }> };
+      const day = dayData as { slots?: Array<{ startUtc?: string; startLocal?: string; endUtc?: string; endLocal?: string; durationMinutes: number; booked: boolean }> };
       const available = (day.slots ?? []).filter((s) => !s.booked);
       if (available.length > 0) {
         filteredDays[dateKey] = {
-          availableSlots: available.map(({ startUtc, endUtc, durationMinutes }) => ({
-            startUtc,
-            endUtc,
-            durationMinutes,
+          availableSlots: available.map((s) => ({
+            startUtc: s.startUtc ?? s.startLocal ?? "",
+            endUtc: s.endUtc ?? s.endLocal ?? "",
+            durationMinutes: s.durationMinutes,
           })),
         };
       }
@@ -330,7 +363,7 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
   });
 });
 
-// POST /bookings — create a booking
+// POST /bookings — create a booking (uses Firestore transaction)
 router.post("/bookings", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -350,66 +383,74 @@ router.post("/bookings", async (req, res) => {
     req.body
   );
 
-  // Verify creator availability doc exists and slot is available
-  const availRef = db.collection("creator_availability").doc(body.creatorId);
-  const availDoc = await availRef.get();
-
-  if (!availDoc.exists) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Creador no encontrado");
-  }
-
-  const days = availDoc.data()?.days ?? {};
-  // Extract date from slotStartUtc (YYYY-MM-DD)
   const slotDate = body.slotStartUtc.substring(0, 10);
-  const dayData = days[slotDate];
 
-  if (!dayData?.slots) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Horario no encontrado");
-  }
+  // Use a transaction to atomically check and mark the slot as booked
+  const availRef = db.collection("creator_availability").doc(body.creatorId);
 
-  const slotIndex = dayData.slots.findIndex(
-    (s: { startUtc: string; endUtc: string }) =>
-      s.startUtc === body.slotStartUtc && s.endUtc === body.slotEndUtc
-  );
+  const bookingId = await db.runTransaction(async (tx) => {
+    const availDoc = await tx.get(availRef);
 
-  if (slotIndex === -1) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Horario no encontrado");
-  }
+    if (!availDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Creador no encontrado");
+    }
 
-  if (dayData.slots[slotIndex].booked) {
-    throw new WakeApiServerError("CONFLICT", 409, "Este horario ya fue reservado");
-  }
+    const days = availDoc.data()?.days ?? {};
+    const dayData = days[slotDate];
 
-  // Mark slot as booked
-  dayData.slots[slotIndex].booked = true;
-  await availRef.update({
-    [`days.${slotDate}`]: dayData,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    if (!dayData?.slots) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Horario no encontrado");
+    }
+
+    const slotIndex = dayData.slots.findIndex(
+      (s: { startUtc?: string; startLocal?: string; endUtc?: string; endLocal?: string }) =>
+        (s.startUtc ?? s.startLocal) === body.slotStartUtc && (s.endUtc ?? s.endLocal) === body.slotEndUtc
+    );
+
+    if (slotIndex === -1) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Horario no encontrado");
+    }
+
+    if (dayData.slots[slotIndex].booked) {
+      throw new WakeApiServerError("CONFLICT", 409, "Este horario ya fue reservado");
+    }
+
+    // Mark slot as booked within transaction
+    dayData.slots[slotIndex].booked = true;
+    tx.update(availRef, {
+      [`days.${slotDate}`]: dayData,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Create booking within transaction
+    const bookingRef = db.collection("call_bookings").doc();
+    tx.set(bookingRef, {
+      creatorId: body.creatorId,
+      clientUserId: auth.userId,
+      clientDisplayName: null, // Will be set after transaction
+      courseId: body.courseId ?? null,
+      slotStartUtc: body.slotStartUtc,
+      slotEndUtc: body.slotEndUtc,
+      status: "scheduled",
+      callLink: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    return bookingRef.id;
   });
 
-  // Get client display name
+  // Update client display name (non-blocking, outside transaction)
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const clientDisplayName = userDoc.data()?.displayName ?? null;
-
-  // Create booking
-  const now = new Date().toISOString();
-  const bookingRef = await db.collection("call_bookings").add({
-    creatorId: body.creatorId,
-    clientUserId: auth.userId,
-    clientDisplayName,
-    courseId: body.courseId ?? null,
-    slotStartUtc: body.slotStartUtc,
-    slotEndUtc: body.slotEndUtc,
-    status: "scheduled",
-    callLink: null,
-    createdAt: now,
-  });
+  if (clientDisplayName) {
+    db.collection("call_bookings").doc(bookingId).update({ clientDisplayName }).catch(() => {});
+  }
 
   res.status(201).json({
     data: {
-      bookingId: bookingRef.id,
+      bookingId,
       status: "scheduled",
-      createdAt: now,
+      createdAt: new Date().toISOString(),
     },
   });
 });
@@ -427,12 +468,10 @@ router.get("/bookings/:bookingId", async (req, res) => {
 
   const data = doc.data()!;
 
-  // Must be either the client or the creator
   if (data.clientUserId !== auth.userId && data.creatorId !== auth.userId) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta reserva");
   }
 
-  // Get creator display name
   const creatorDoc = await db.collection("users").doc(data.creatorId).get();
   const creatorDisplayName = creatorDoc.data()?.displayName ?? null;
 
@@ -467,6 +506,11 @@ router.delete("/bookings/:bookingId", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "Solo puedes cancelar tus propias reservas");
   }
 
+  // Only allow cancellation of scheduled bookings
+  if (data.status !== "scheduled") {
+    throw new WakeApiServerError("CONFLICT", 409, "Solo se pueden cancelar reservas en estado 'scheduled'");
+  }
+
   // Mark booking as cancelled
   await docRef.update({ status: "cancelled" });
 
@@ -480,8 +524,8 @@ router.delete("/bookings/:bookingId", async (req, res) => {
     const dayData = days[slotDate];
     if (dayData?.slots) {
       const slot = dayData.slots.find(
-        (s: { startUtc: string; endUtc: string }) =>
-          s.startUtc === data.slotStartUtc && s.endUtc === data.slotEndUtc
+        (s: { startUtc?: string; startLocal?: string; endUtc?: string; endLocal?: string }) =>
+          (s.startUtc ?? s.startLocal) === data.slotStartUtc && (s.endUtc ?? s.endLocal) === data.slotEndUtc
       );
       if (slot) {
         slot.booked = false;

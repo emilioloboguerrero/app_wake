@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
+import * as functions from "firebase-functions";
 import { MercadoPagoConfig, Preference, Payment, PreApproval } from "mercadopago";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
@@ -48,7 +49,7 @@ function buildExternalReference(
 function parseExternalReference(reference: string): ParsedReference {
   const parts = reference.split(REFERENCE_DELIMITER);
   if (parts.length !== 4 || parts[0] !== REFERENCE_VERSION) {
-    throw new Error(`Invalid external_reference: ${reference}`);
+    throw new Error("Invalid external reference format");
   }
   const [, userId, courseId, paymentTypeRaw] = parts;
   if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
@@ -384,7 +385,9 @@ router.post("/payments/webhook", async (req: Request, res) => {
         .collection("subscriptions")
         .doc(preapprovalId)
         .set(updateData, { merge: true });
-    } catch { /* log and continue */ }
+    } catch (err) {
+      functions.logger.error("Error processing subscription_preapproval webhook", err);
+    }
 
     res.status(200).send("OK");
     return;
@@ -436,8 +439,25 @@ router.post("/payments/webhook", async (req: Request, res) => {
   }
 
   // Fetch payment from MercadoPago
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let paymentData: any;
+  interface MercadoPagoPaymentData {
+    status?: string;
+    external_reference?: string;
+    subscription_id?: string;
+    preapproval_id?: string;
+    date_approved?: string;
+    date_created?: string;
+    transaction_amount?: number;
+    currency_id?: string;
+    preapproval?: {
+      id?: string;
+      external_reference?: string;
+    };
+    payment?: {
+      status?: string;
+    };
+  }
+
+  let paymentData: MercadoPagoPaymentData | null = null;
 
   try {
     if (webhookType === "subscription_authorized_payment") {
@@ -447,18 +467,19 @@ router.post("/payments/webhook", async (req: Request, res) => {
         { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } }
       );
       if (!resp.ok) throw new Error(`Fetch authorized payment failed: ${resp.status}`);
-      paymentData = await resp.json();
-      if (!paymentData.status) paymentData.status = paymentData.payment?.status || "approved";
-      if (!paymentData.external_reference && paymentData.preapproval?.external_reference) {
-        paymentData.external_reference = paymentData.preapproval.external_reference;
+      const rawData = (await resp.json()) as MercadoPagoPaymentData;
+      if (!rawData.status) rawData.status = rawData.payment?.status || "approved";
+      if (!rawData.external_reference && rawData.preapproval?.external_reference) {
+        rawData.external_reference = rawData.preapproval.external_reference;
       }
-      if (!paymentData.preapproval_id && paymentData.preapproval?.id) {
-        paymentData.preapproval_id = paymentData.preapproval.id;
+      if (!rawData.preapproval_id && rawData.preapproval?.id) {
+        rawData.preapproval_id = rawData.preapproval.id;
       }
+      paymentData = rawData;
     } else {
       const client = getClient();
       const payment = new Payment(client);
-      paymentData = await payment.get({ id: paymentId }) || {};
+      paymentData = (await payment.get({ id: paymentId }) as MercadoPagoPaymentData) || {};
     }
   } catch (apiError: unknown) {
     const errType = classifyError(apiError);
@@ -722,13 +743,24 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  // Record cancellation feedback if provided
+  // Record cancellation feedback if provided (validate size)
   if (survey?.answers) {
     try {
+      // Validate survey answers: must be array, max 20 entries, each max 500 chars
+      const answers = survey.answers;
+      if (!Array.isArray(answers) || answers.length > 20) {
+        throw new Error("Invalid survey answers");
+      }
+      for (const answer of answers) {
+        if (typeof answer === "string" && answer.length > 500) {
+          throw new Error("Survey answer too long");
+        }
+      }
+
       const surveyRecord: Record<string, unknown> = {
         userId: auth.userId,
         subscriptionId,
-        answers: survey.answers,
+        answers,
         source: (survey.source as string) ?? "in_app_cancel_flow_v1",
         statusAfter: "cancelled",
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),

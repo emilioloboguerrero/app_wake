@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -56,13 +56,38 @@ router.patch("/users/me", async (req, res) => {
     "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
   ];
 
+  const stringFields = new Set([
+    "displayName", "username", "country", "city", "gender",
+    "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
+  ]);
+  const numberFields = new Set(["height", "weight"]);
+
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) {
+      const value = req.body[field];
+
+      // Type validation per field
+      if (stringFields.has(field)) {
+        if (typeof value !== "string" || value.length > 200) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un string de máximo 200 caracteres`, field
+          );
+        }
+      } else if (numberFields.has(field)) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1000) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un número entre 0 y 1000`, field
+          );
+        }
+      }
+
       if (field === "weight") {
-        updates["bodyweight"] = req.body[field];
+        updates["bodyweight"] = value;
       } else {
-        updates[field] = req.body[field];
+        updates[field] = value;
       }
     }
   }
@@ -82,7 +107,7 @@ router.patch("/users/me", async (req, res) => {
 // POST /users/me/profile-picture/upload-url
 router.post("/users/me/profile-picture/upload-url", async (req, res) => {
   const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
 
   const { contentType } = validateBody<{ contentType: string }>(
     { contentType: "string" },
@@ -122,6 +147,9 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     { storagePath: "string" },
     req.body
   );
+
+  // CRITICAL: Validate storage path prefix to prevent path traversal
+  validateStoragePath(storagePath, `profile_pictures/${auth.userId}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -185,6 +213,30 @@ router.patch("/creator/profile", async (req, res) => {
   if (typeof cards !== "object" || cards === null || Array.isArray(cards)) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400, "cards debe ser un objeto", "cards"
+    );
+  }
+
+  // Validate cards object size and depth
+  const cardsJson = JSON.stringify(cards);
+  if (cardsJson.length > 10_000) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards excede el tamaño máximo de 10KB", "cards"
+    );
+  }
+
+  // Check max depth of 3
+  function checkDepth(obj: unknown, depth: number): boolean {
+    if (depth > 3) return false;
+    if (typeof obj === "object" && obj !== null) {
+      for (const val of Object.values(obj as Record<string, unknown>)) {
+        if (!checkDepth(val, depth + 1)) return false;
+      }
+    }
+    return true;
+  }
+  if (!checkDepth(cards, 1)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards excede la profundidad máxima permitida", "cards"
     );
   }
 

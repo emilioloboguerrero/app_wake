@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -89,20 +89,34 @@ router.delete("/creator/clients/:clientId", async (req, res) => {
   res.status(204).send();
 });
 
-// GET /creator/programs
+// GET /creator/programs — paginated
 router.get("/creator/programs", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const snapshot = await db
+  const pageToken = req.query.pageToken as string | undefined;
+  const limit = 100;
+
+  let query: admin.firestore.Query = db
     .collection("courses")
     .where("creatorId", "==", auth.userId)
     .orderBy("created_at", "desc")
-    .get();
+    .limit(limit + 1);
+
+  if (pageToken) {
+    const cursor = await db.collection("courses").doc(pageToken).get();
+    if (cursor.exists) query = query.startAfter(cursor);
+  }
+
+  const snapshot = await query.get();
+  const docs = snapshot.docs.slice(0, limit);
+  const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    nextPageToken: hasMore ? docs[docs.length - 1].id : null,
+    hasMore,
   });
 });
 
@@ -112,13 +126,36 @@ router.post("/creator/programs", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ title: string; deliveryType: string }>(
-    { title: "string", deliveryType: "string" },
+  // Only destructure validated fields
+  const body = validateBody<{
+    title: string;
+    deliveryType: string;
+    description?: string;
+    weekly?: boolean;
+    price?: number;
+    access_duration?: string;
+    discipline?: string;
+  }>(
+    {
+      title: "string",
+      deliveryType: "string",
+      description: "optional_string",
+      weekly: "optional_boolean",
+      price: "optional_number",
+      access_duration: "optional_string",
+      discipline: "optional_string",
+    },
     req.body
   );
 
   const docRef = await db.collection("courses").add({
-    ...body,
+    title: body.title,
+    deliveryType: body.deliveryType,
+    ...(body.description !== undefined && { description: body.description }),
+    ...(body.weekly !== undefined && { weekly: body.weekly }),
+    ...(body.price !== undefined && { price: body.price }),
+    ...(body.access_duration !== undefined && { access_duration: body.access_duration }),
+    ...(body.discipline !== undefined && { discipline: body.discipline }),
     creatorId: auth.userId,
     status: "draft",
     created_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -141,8 +178,19 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
+  // Allowlist fields — never allow creatorId, status overwrite
+  const allowedFields = [
+    "title", "description", "deliveryType", "weekly", "price",
+    "access_duration", "discipline", "image_url", "creatorName",
+  ];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
   await docRef.update({
-    ...req.body,
+    ...updates,
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -159,6 +207,16 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
     { status: "string" },
     req.body
   );
+
+  // Validate status against allowlist
+  const allowedStatuses = ["draft", "active", "archived"];
+  if (!allowedStatuses.includes(status)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `Estado inválido. Valores permitidos: ${allowedStatuses.join(", ")}`,
+      "status"
+    );
+  }
 
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
@@ -250,6 +308,9 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
     { storagePath: "string" },
     req.body
   );
+
+  // CRITICAL: Validate storage path prefix to prevent path traversal
+  validateStoragePath(storagePath, `course_images/${req.params.programId}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -344,12 +405,36 @@ router.post("/creator/nutrition/meals", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Validate and allowlist meal fields
+  const body = validateBody<{
+    name: string;
+    description?: string;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    items?: unknown[];
+    category?: string;
+  }>(
+    {
+      name: "string",
+      description: "optional_string",
+      calories: "optional_number",
+      protein: "optional_number",
+      carbs: "optional_number",
+      fat: "optional_number",
+      items: "optional_array",
+      category: "optional_string",
+    },
+    req.body
+  );
+
   const docRef = await db
     .collection("creator_nutrition_library")
     .doc(auth.userId)
     .collection("meals")
     .add({
-      ...req.body,
+      ...body,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -374,8 +459,16 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
   }
 
+  // Allowlist meal fields
+  const allowedFields = ["name", "description", "calories", "protein", "carbs", "fat", "items", "category"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
   await docRef.update({
-    ...req.body,
+    ...updates,
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -427,12 +520,34 @@ router.post("/creator/nutrition/plans", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Validate and allowlist plan fields
+  const body = validateBody<{
+    name: string;
+    description?: string;
+    dailyCalories?: number;
+    dailyProteinG?: number;
+    dailyCarbsG?: number;
+    dailyFatG?: number;
+    categories?: unknown[];
+  }>(
+    {
+      name: "string",
+      description: "optional_string",
+      dailyCalories: "optional_number",
+      dailyProteinG: "optional_number",
+      dailyCarbsG: "optional_number",
+      dailyFatG: "optional_number",
+      categories: "optional_array",
+    },
+    req.body
+  );
+
   const docRef = await db
     .collection("creator_nutrition_library")
     .doc(auth.userId)
     .collection("plans")
     .add({
-      ...req.body,
+      ...body,
       creatorId: auth.userId,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -478,8 +593,16 @@ router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
+  // Allowlist plan fields
+  const allowedFields = ["name", "description", "dailyCalories", "dailyProteinG", "dailyCarbsG", "dailyFatG", "categories"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
   await docRef.update({
-    ...req.body,
+    ...updates,
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -699,8 +822,9 @@ router.post("/creator/plans", async (req, res) => {
     req.body
   );
 
+  // Only use validated title field
   const planRef = await db.collection("plans").add({
-    ...body,
+    title: body.title,
     creatorId: auth.userId,
     created_at: admin.firestore.FieldValue.serverTimestamp(),
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -790,7 +914,15 @@ router.patch("/creator/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  await docRef.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  // Allowlist fields
+  const allowedFields = ["title", "description", "status"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await docRef.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { planId: doc.id, updated: true } });
 });
 
@@ -857,7 +989,8 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
   );
 
   const ref = await db.collection("plans").doc(req.params.planId).collection("modules").add({
-    ...body,
+    title: body.title,
+    order: body.order,
     created_at: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -879,7 +1012,15 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  // Allowlist: title, order
+  const allowedFields = ["title", "order"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { moduleId: doc.id, updated: true } });
 });
 
@@ -919,8 +1060,8 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  const body = validateBody<{ title: string; order: number }>(
-    { title: "string", order: "number" },
+  const body = validateBody<{ title: string; order: number; isRestDay?: boolean }>(
+    { title: "string", order: "number", isRestDay: "optional_boolean" },
     req.body
   );
 
@@ -930,7 +1071,12 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
     .collection("modules")
     .doc(req.params.moduleId)
     .collection("sessions")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({
+      title: body.title,
+      order: body.order,
+      ...(body.isRestDay !== undefined && { isRestDay: body.isRestDay }),
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
   res.status(201).json({ data: { sessionId: ref.id } });
 });
@@ -994,7 +1140,15 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  // Allowlist: title, order, isRestDay
+  const allowedFields = ["title", "order", "isRestDay"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { sessionId: doc.id, updated: true } });
 });
 
@@ -1036,7 +1190,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", as
   res.status(204).send();
 });
 
-// POST exercises and sets for plan sessions
+// POST exercises for plan sessions — with validateBody
 router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
@@ -1047,6 +1201,23 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
+  const body = validateBody<{
+    name: string;
+    order: number;
+    libraryId?: string;
+    primaryMuscles?: unknown[];
+    notes?: string;
+  }>(
+    {
+      name: "string",
+      order: "number",
+      libraryId: "optional_string",
+      primaryMuscles: "optional_array",
+      notes: "optional_string",
+    },
+    req.body
+  );
+
   const ref = await db
     .collection("plans")
     .doc(req.params.planId)
@@ -1055,7 +1226,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     .collection("sessions")
     .doc(req.params.sessionId)
     .collection("exercises")
-    .add({ ...req.body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { exerciseId: ref.id } });
 });
@@ -1076,7 +1247,15 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId);
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  // Allowlist exercise fields
+  const allowedFields = ["name", "order", "libraryId", "primaryMuscles", "notes", "videoUrl", "thumbnailUrl"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
 });
 
@@ -1104,6 +1283,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
   res.status(204).send();
 });
 
+// POST sets — with validateBody
 router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
@@ -1114,13 +1294,34 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
+  const body = validateBody<{
+    order: number;
+    reps?: number;
+    weight?: number;
+    intensity?: string;
+    rir?: number;
+    restSeconds?: number;
+    type?: string;
+  }>(
+    {
+      order: "number",
+      reps: "optional_number",
+      weight: "optional_number",
+      intensity: "optional_string",
+      rir: "optional_number",
+      restSeconds: "optional_number",
+      type: "optional_string",
+    },
+    req.body
+  );
+
   const ref = await db
     .collection("plans").doc(req.params.planId)
     .collection("modules").doc(req.params.moduleId)
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...req.body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { setId: ref.id } });
 });
@@ -1142,7 +1343,15 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets").doc(req.params.setId);
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  // Allowlist set fields
+  const allowedFields = ["order", "reps", "weight", "intensity", "rir", "restSeconds", "type"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { setId: req.params.setId, updated: true } });
 });
 
@@ -1196,7 +1405,7 @@ router.post("/creator/library/sessions", async (req, res) => {
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("sessions")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ title: body.title, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { sessionId: ref.id } });
 });
@@ -1232,7 +1441,14 @@ router.patch("/creator/library/sessions/:sessionId", async (req, res) => {
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  const allowedFields = ["title", "order", "isRestDay"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { updated: true } });
 });
 
@@ -1250,17 +1466,22 @@ router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
   res.status(204).send();
 });
 
-// Library session exercise/set CRUD
+// Library session exercise/set CRUD — with allowlisted fields
 router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  const body = validateBody<{ name: string; order: number; libraryId?: string; primaryMuscles?: unknown[]; notes?: string }>(
+    { name: "string", order: "number", libraryId: "optional_string", primaryMuscles: "optional_array", notes: "optional_string" },
+    req.body
+  );
+
   const ref = await db
     .collection("creator_libraries").doc(auth.userId)
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises")
-    .add({ ...req.body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { exerciseId: ref.id } });
 });
@@ -1275,7 +1496,14 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId);
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  const allowedFields = ["name", "order", "libraryId", "primaryMuscles", "notes", "videoUrl", "thumbnailUrl"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
 });
 
@@ -1302,12 +1530,17 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  const body = validateBody<{ order: number; reps?: number; weight?: number; intensity?: string; rir?: number; restSeconds?: number; type?: string }>(
+    { order: "number", reps: "optional_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string" },
+    req.body
+  );
+
   const ref = await db
     .collection("creator_libraries").doc(auth.userId)
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...req.body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { setId: ref.id } });
 });
@@ -1323,7 +1556,14 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets").doc(req.params.setId);
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  const allowedFields = ["order", "reps", "weight", "intensity", "rir", "restSeconds", "type"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { setId: req.params.setId, updated: true } });
 });
 
@@ -1369,7 +1609,7 @@ router.post("/creator/library/modules", async (req, res) => {
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("modules")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ title: body.title, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { moduleId: ref.id } });
 });
@@ -1394,7 +1634,14 @@ router.patch("/creator/library/modules/:moduleId", async (req, res) => {
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
 
-  await ref.update({ ...req.body, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  const allowedFields = ["title", "order"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
   res.json({ data: { updated: true } });
 });
 
@@ -1444,11 +1691,16 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     })
   );
 
-  // Find all plan sessions that reference this library session
+  // Find all plan sessions that reference this library session — guard at 100 plans max
   const plansSnap = await db
     .collection("plans")
     .where("creatorId", "==", auth.userId)
+    .limit(100)
     .get();
+
+  if (plansSnap.size >= 100) {
+    console.warn(`Creator ${auth.userId} has 100+ plans; propagation capped.`);
+  }
 
   let updatedCount = 0;
   const batchSize = 450;
@@ -1463,7 +1715,6 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
         .get();
 
       for (const sessionDoc of sessionsSnap.docs) {
-        // Update the session metadata from library
         batch.update(sessionDoc.ref, {
           title: libSessionData.title ?? sessionDoc.data().title,
           updated_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -1471,7 +1722,6 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
         batchCount++;
         if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
-        // Delete existing exercises + sets, then recreate from library
         const existingExSnap = await sessionDoc.ref.collection("exercises").get();
         for (const exDoc of existingExSnap.docs) {
           const existingSetsSnap = await exDoc.ref.collection("sets").get();
@@ -1485,7 +1735,6 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
           if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
         }
 
-        // Recreate exercises + sets from library
         for (const ex of exercises) {
           const newExRef = sessionDoc.ref.collection("exercises").doc();
           batch.set(newExRef, { ...ex.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
@@ -1529,7 +1778,6 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
 
   const libModuleData = libModuleDoc.data()!;
 
-  // Fetch library module's sessions with exercises + sets
   const libSessionsSnap = await libModuleRef.collection("sessions").orderBy("order", "asc").get();
   const libSessions = await Promise.all(
     libSessionsSnap.docs.map(async (sDoc) => {
@@ -1544,11 +1792,16 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
     })
   );
 
-  // Find all plan modules that reference this library module
+  // Guard at 100 plans max
   const plansSnap = await db
     .collection("plans")
     .where("creatorId", "==", auth.userId)
+    .limit(100)
     .get();
+
+  if (plansSnap.size >= 100) {
+    console.warn(`Creator ${auth.userId} has 100+ plans; propagation capped.`);
+  }
 
   let updatedCount = 0;
   const batchSize = 450;
@@ -1561,7 +1814,6 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
       .get();
 
     for (const moduleDoc of modulesSnap.docs) {
-      // Update module metadata
       batch.update(moduleDoc.ref, {
         title: libModuleData.title ?? moduleDoc.data().title,
         updated_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -1569,7 +1821,6 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
       batchCount++;
       if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
-      // Delete existing sessions + exercises + sets
       const existingSessionsSnap = await moduleDoc.ref.collection("sessions").get();
       for (const sDoc of existingSessionsSnap.docs) {
         const exSnap = await sDoc.ref.collection("exercises").get();
@@ -1589,7 +1840,6 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
         if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
       }
 
-      // Recreate sessions + exercises + sets from library
       for (const libSession of libSessions) {
         const newSessionRef = moduleDoc.ref.collection("sessions").doc();
         batch.set(newSessionRef, { ...libSession.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
@@ -1702,7 +1952,8 @@ router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", a
   const courseRef = db.collection("courses").doc(req.params.programId);
   await courseRef.update({
     [`planAssignments.${req.params.weekKey}`]: {
-      ...body,
+      planId: body.planId,
+      moduleId: body.moduleId,
       assignedAt: new Date().toISOString(),
     },
   });
