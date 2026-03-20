@@ -43,6 +43,7 @@ service firebase.storage {
     }
     
     // Program tutorial videos
+    // Creator role enforcement is at the API layer via signed URLs
     match /courses/{programId}/tutorials/{screenName}/{fileName} {
       // Allow authenticated users to read tutorial videos
       allow read: if request.auth != null;
@@ -53,6 +54,7 @@ service firebase.storage {
     }
     
     // Session images
+    // Creator role enforcement is at the API layer via signed URLs
     match /courses/{programId}/modules/{moduleId}/sessions/{fileName} {
       // Allow authenticated users to read session images
       allow read: if request.auth != null;
@@ -101,10 +103,15 @@ service firebase.storage {
 
     // Legal documents (publicly readable, admin-only write)
     match /legal-documents/{fileName} {
-      // Allow anyone to read legal documents (no authentication required)
       allow read: if true;
-      
-      // TODO: Restrict write to admin users once Admin SDK or custom claims are set up
+      allow write: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+    }
+
+    // Legacy legal documents path (publicly readable)
+    match /legal/{fileName} {
+      allow read: if true;
       allow write: if request.auth != null
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType == 'application/pdf';
@@ -121,6 +128,7 @@ service firebase.storage {
     }
 
     // Event cover images — publicly readable, authenticated write
+    // Creator role enforcement is at the API layer via signed URLs
     match /events/{eventId}/{fileName} {
       allow read: if true;
       allow write: if request.auth != null

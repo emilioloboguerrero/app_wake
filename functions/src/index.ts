@@ -32,22 +32,25 @@ const fatSecretClientSecret = functions.params.defineSecret(
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
 // ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
-const rateLimitStore = new Map<string, {count: number; resetAt: number}>();
+const gen1RateStore = new Map<string, {count: number; resetAt: number}>();
 
-function checkRateLimit(key: string): boolean {
+function checkGen1RateLimit(key: string, maxPerMinute = 10): void {
   const now = Date.now();
-  const window = 60_000;
-  const max = 10;
-  const entry = rateLimitStore.get(key);
+  const entry = gen1RateStore.get(key);
   if (!entry || now >= entry.resetAt) {
-    rateLimitStore.set(key, {count: 1, resetAt: now + window});
-    return true;
+    gen1RateStore.set(key, {count: 1, resetAt: now + 60_000});
+    return;
   }
-  if (entry.count >= max) {
-    return false;
+  entry.count++;
+  if (entry.count > maxPerMinute) {
+    const err = new Error("Too many requests") as Error & {statusCode: number};
+    err.statusCode = 429;
+    throw err;
   }
-  entry.count += 1;
-  return true;
+}
+
+function isGen1RateLimitError(err: unknown): boolean {
+  return err instanceof Error && (err as Error & {statusCode?: number}).statusCode === 429;
 }
 
 // ─── Input validation helpers ────────────────────────────────────────────────
@@ -55,55 +58,19 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BARCODE_RE = /^\d{8,14}$/;
 const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 
-function isValidEmail(v: unknown): v is string {
-  return typeof v === "string" && EMAIL_RE.test(v);
-}
-
-function isValidCourseId(v: unknown): v is string {
-  return typeof v === "string" && COURSE_ID_RE.test(v);
-}
-
-function isValidBarcode(v: unknown): v is string {
-  return typeof v === "string" && BARCODE_RE.test(v);
-}
-
-// ─── Auth validation ─────────────────────────────────────────────────────────
-async function validateAuthToken(req: Request): Promise<string> {
-  const authHeader = req.get("Authorization") || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) {
-    throw Object.assign(new Error("Token de autenticación requerido"), {
-      httpStatus: 401,
-      code: "UNAUTHENTICATED",
-    });
-  }
+// ─── Gen1 auth helper ────────────────────────────────────────────────────────
+async function verifyGen1Auth(request: Request): Promise<string | null> {
+  const header = request.headers?.authorization;
+  if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) return null;
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await admin.auth().verifyIdToken(header.slice(7));
     return decoded.uid;
   } catch {
-    throw Object.assign(new Error("Token inválido o expirado"), {
-      httpStatus: 401,
-      code: "UNAUTHENTICATED",
-    });
+    return null;
   }
 }
 
-function sendAuthError(res: Response): void {
-  res.status(401).json({
-    error: {code: "UNAUTHENTICATED", message: "Token de autenticación requerido"},
-  });
-}
-
-function sendRateLimitError(res: Response): void {
-  res.status(429).json({
-    error: {
-      code: "RATE_LIMITED",
-      message: "Demasiadas solicitudes. Intenta en un momento.",
-    },
-  });
-}
-
-// ─── Mercado Pago client ──────────────────────────────────────────────────────
+// Simple Mercado Pago client
 const getClient = () => {
   const token = mercadopagoAccessToken.value();
 
@@ -164,15 +131,6 @@ function toErrorMessage(error: unknown): string {
   }
 }
 
-const buildReferenceBase = (
-  version: string,
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string => {
-  return [version, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
-};
-
 function buildExternalReference(
   userId: string,
   courseId: string,
@@ -186,7 +144,7 @@ function buildExternalReference(
     throw new Error("Identifiers cannot contain the reference delimiter '|'");
   }
 
-  const reference = buildReferenceBase(REFERENCE_VERSION, userId, courseId, paymentType);
+  const reference = [REFERENCE_VERSION, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
 
   if (reference.length > REFERENCE_MAX_LENGTH) {
     throw new Error("external_reference exceeds Mercado Pago length limit");
@@ -231,6 +189,8 @@ function parseExternalReference(reference: string): ParsedReference {
   };
 }
 
+
+// Helper: Calculate expiration date from access duration (same as app)
 function calculateExpirationDate(
   accessDuration: string,
   options: {from?: Date | string} = {}
@@ -242,7 +202,7 @@ function calculateExpirationDate(
     "yearly": 365,
   };
 
-  const days = durations[accessDuration] || 30;
+  const days = durations[accessDuration] || 30; // Default to 30 days
   const now = new Date();
   let base = options.from ? new Date(options.from) : now;
 
@@ -257,6 +217,7 @@ function calculateExpirationDate(
   return expirationDate.toISOString();
 }
 
+// Helper: Check if user already owns course (same as app)
 async function checkUserOwnsCourse(
   userId: string,
   courseId: string
@@ -276,6 +237,7 @@ async function checkUserOwnsCourse(
       return false;
     }
 
+    // Check: active status and not expired
     const isActive = courseData.status === "active";
     const isNotExpired = new Date(courseData.expires_at) > new Date();
 
@@ -286,6 +248,7 @@ async function checkUserOwnsCourse(
   }
 }
 
+// Helper: Classify errors for proper handling
 function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
   if (!error || typeof error !== "object") {
     return "RETRYABLE";
@@ -293,6 +256,7 @@ function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
 
   const err = error as {code?: string; message?: string};
 
+  // Network errors
   if (
     err.code === "ECONNRESET" ||
     err.code === "ETIMEDOUT" ||
@@ -303,6 +267,7 @@ function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
     return "RETRYABLE";
   }
 
+  // Validation errors
   if (
     err.message?.includes("not found") ||
     err.message?.includes("missing") ||
@@ -312,17 +277,19 @@ function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
     return "NON_RETRYABLE";
   }
 
+  // Firestore errors
   if (err.code === "permission-denied" || err.code === "not-found") {
     return "NON_RETRYABLE";
   }
 
+  // Default to retryable for unknown errors
   return "RETRYABLE";
 }
 
-// ─── createPaymentPreference ──────────────────────────────────────────────────
+// Create unique payment preference
 export const createPaymentPreference = functions
   .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -332,40 +299,30 @@ export const createPaymentPreference = functions
       return;
     }
 
-    let authedUserId: string;
-    try {
-      authedUserId = await validateAuthToken(request);
-    } catch {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(authedUserId)) {
-      sendRateLimitError(response);
-      return;
-    }
-
-    const {courseId} = request.body || {};
-
-    if (!isValidCourseId(courseId)) {
-      response.status(400).json({
-        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
-      });
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
       return;
     }
 
     try {
+      checkGen1RateLimit(`createPaymentPreference_${userId}`);
+
+      const {courseId} = request.body || {};
+      if (!courseId || !COURSE_ID_RE.test(courseId)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
+        return;
+      }
+
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
         return;
       }
 
-      const externalReference = buildExternalReference(authedUserId, courseId, "otp");
+      const externalReference = buildExternalReference(userId, courseId, "otp");
 
       const client = getClient();
       const preference = new Preference(client);
@@ -383,25 +340,26 @@ export const createPaymentPreference = functions
       });
 
       functions.logger.info("Payment preference created", {
-        userId: authedUserId,
+        userId,
         courseId,
         externalReference,
       });
 
       response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
       functions.logger.error("createPaymentPreference error", error);
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message},
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"}});
     }
   });
 
-// ─── createSubscriptionCheckout ───────────────────────────────────────────────
+// Create subscription dynamically (without pre-created plan)
 export const createSubscriptionCheckout = functions
   .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -411,63 +369,45 @@ export const createSubscriptionCheckout = functions
       return;
     }
 
-    let authedUserId: string;
-    try {
-      authedUserId = await validateAuthToken(request);
-    } catch {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(authedUserId)) {
-      sendRateLimitError(response);
-      return;
-    }
-
-    const {courseId, payer_email: payerEmail} = request.body || {};
-
-    if (!isValidCourseId(courseId)) {
-      response.status(400).json({
-        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
-      });
-      return;
-    }
-
-    if (!payerEmail || !isValidEmail(payerEmail)) {
-      response.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Se requiere un email de pago válido",
-          field: "payer_email",
-        },
-      });
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
       return;
     }
 
     try {
+      checkGen1RateLimit(`createSubscriptionCheckout_${userId}`);
+
+      const {courseId, payer_email: payerEmail} = request.body || {};
+
+      if (!courseId || !COURSE_ID_RE.test(courseId)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"}});
+        return;
+      }
+
+      if (!payerEmail || !EMAIL_RE.test(payerEmail)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Formato de email inválido", field: "payer_email"}});
+        return;
+      }
+
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Course not found"}});
         return;
       }
 
       if (!course.price) {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "Precio del curso no encontrado"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Course price not found"}});
         return;
       }
 
-      const userDoc = await db.collection("users").doc(authedUserId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
+      const user = userDoc.data();
 
-      if (!userDoc.exists) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Usuario no encontrado"},
-        });
+      if (!user) {
+        response.status(404).json({error: {code: "NOT_FOUND", message: "User not found"}});
         return;
       }
 
@@ -475,7 +415,8 @@ export const createSubscriptionCheckout = functions
       const preapproval = new PreApproval(client);
 
       const startDate = new Date(Date.now() + 5 * 60 * 1000);
-      const externalRef = buildExternalReference(authedUserId, courseId, "sub");
+
+      const externalRef = buildExternalReference(userId, courseId, "sub");
 
       const result = await preapproval.create({
         body: {
@@ -495,11 +436,12 @@ export const createSubscriptionCheckout = functions
       });
 
       if (result.init_point && result.id) {
-        functions.logger.info("Subscription created", {
-          init_point: result.init_point,
-          subscription_id: result.id,
-          external_reference: externalRef,
-        });
+        functions.logger.info(
+          "Subscription created dynamically with init_point:",
+          result.init_point
+        );
+        functions.logger.info("Subscription ID (preapproval_id):", result.id);
+        functions.logger.info("External reference:", externalRef);
 
         let nextBillingDate: string | null = null;
 
@@ -524,14 +466,14 @@ export const createSubscriptionCheckout = functions
 
         const subscriptionRef = db
           .collection("users")
-          .doc(authedUserId)
+          .doc(userId)
           .collection("subscriptions")
           .doc(result.id);
 
         await subscriptionRef.set(
           {
             subscription_id: result.id,
-            user_id: authedUserId,
+            user_id: userId,
             course_id: courseId,
             course_title: course.title || "Subscription",
             status: "pending",
@@ -546,20 +488,17 @@ export const createSubscriptionCheckout = functions
           {merge: true}
         );
 
-        response.json({
-          data: {
-            init_point: result.init_point,
-            subscription_id: result.id,
-          },
-        });
+        response.json({data: {init_point: result.init_point, subscription_id: result.id}});
         return;
       }
 
       functions.logger.error("PreApproval API did not return init_point");
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: "No se pudo crear el enlace de pago"},
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Failed to create subscription checkout URL"}});
     } catch (error: unknown) {
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
       const message = toErrorMessage(error);
       functions.logger.error("Error creating subscription:", error);
 
@@ -572,23 +511,15 @@ export const createSubscriptionCheckout = functions
         normalizedMessage.includes("must belong to this site");
 
       if (requiresAlternateEmail) {
-        response.status(409).json({
-          error: {
-            code: "CONFLICT",
-            message: "Por favor ingresa tu correo de Mercado Pago",
-          },
-          requireAlternateEmail: true,
-        });
+        response.status(409).json({error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"}});
         return;
       }
 
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: message || "Error al crear la suscripción"},
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"}});
     }
   });
 
-// ─── processPaymentWebhook ────────────────────────────────────────────────────
+// Webhook handler - processes payment and assigns courses to users
 export const processPaymentWebhook = functions
   .runWith({secrets: [mercadopagoWebhookSecret, mercadopagoAccessToken]})
   .https.onRequest(async (request: Request, response: Response) => {
@@ -736,23 +667,32 @@ export const processPaymentWebhook = functions
         dataId: request.body?.data?.id,
       });
 
+      // Handle both payment and subscription webhooks
       const webhookType = request.body?.type;
       const webhookAction = request.body?.action;
 
       let paymentId: string | null = null;
 
+      // Handle payment webhooks
       if (webhookType === "payment") {
+        // Handle both payment.created and payment.updated
         if (
           webhookAction !== "payment.created" &&
           webhookAction !== "payment.updated"
         ) {
-          functions.logger.info("Skipping non-payment webhook action:", webhookAction);
+          functions.logger.info(
+            "Skipping non-payment webhook action:",
+            webhookAction
+          );
           response.status(200).send("OK");
           return;
         }
 
+        // Extract payment ID
         paymentId = request.body?.data?.id;
       } else if (webhookType === "subscription_authorized_payment") {
+        // Handle subscription authorized payment webhook
+        // This is sent when a payment is authorized for a subscription
         if (webhookAction !== "created") {
           functions.logger.info(
             "Skipping non-created subscription_authorized_payment:",
@@ -762,13 +702,21 @@ export const processPaymentWebhook = functions
           return;
         }
 
+        // Extract payment ID from subscription_authorized_payment
+        // Note: This is an authorized payment ID, not a regular payment ID
         paymentId = request.body?.data?.id;
-        functions.logger.info("Processing subscription authorized payment:", paymentId);
+
+        functions.logger.info(
+          "Processing subscription authorized payment:",
+          paymentId
+        );
       } else if (webhookType === "subscription_preapproval") {
         const preapprovalId = request.body?.data?.id;
 
         if (!preapprovalId) {
-          functions.logger.warn("subscription_preapproval webhook missing preapproval ID");
+          functions.logger.warn(
+            "subscription_preapproval webhook missing preapproval ID"
+          );
           response.status(200).send("OK");
           return;
         }
@@ -776,6 +724,7 @@ export const processPaymentWebhook = functions
         try {
           const client = getClient();
           const preapproval = new PreApproval(client);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const preapprovalData =
             await preapproval.get({id: preapprovalId}) as MercadoPagoPreapproval;
           const externalReference = preapprovalData?.external_reference;
@@ -813,7 +762,6 @@ export const processPaymentWebhook = functions
             preapprovalData?.auto_recurring?.next_payment_date ||
             null;
 
-          // Allowlisted fields only — never spread arbitrary webhook data
           const updateData: Record<string, unknown> = {
             status: preapprovalData?.status || "pending",
             transaction_amount: preapprovalData?.auto_recurring?.transaction_amount || null,
@@ -854,7 +802,12 @@ export const processPaymentWebhook = functions
         response.status(200).send("OK");
         return;
       } else {
-        functions.logger.info("Skipping unknown webhook type:", webhookType, webhookAction);
+        // Unknown webhook type
+        functions.logger.info(
+          "Skipping unknown webhook type:",
+          webhookType,
+          webhookAction
+        );
         response.status(200).send("OK");
         return;
       }
@@ -867,15 +820,22 @@ export const processPaymentWebhook = functions
 
       functions.logger.info("Processing payment:", paymentId);
 
+      // Fix #6: Check if payment.updated/subscription.updated and
+      // payment.created/subscription.created already processed
       const processedPaymentsRef = db
         .collection("processed_payments")
         .doc(paymentId);
 
+      // Check for duplicate webhook events (updated after created)
+      // Smart duplicate detection: allow reprocessing if status changed from pending to approved
       if (webhookAction === "payment.updated" || webhookAction === "updated") {
         const processedDoc = await processedPaymentsRef.get();
         if (processedDoc.exists) {
           const processedStatus = processedDoc.data()?.status;
-
+          
+          // Allow reprocessing if previous status was pending/in_process/processing (for async payments like PSE/Bancolombia)
+          // "processing" status means the transaction started but payment wasn't approved yet
+          // This handles the case where payment.created had status "pending" and payment.updated has status "approved"
           if (processedStatus === "pending" || processedStatus === "in_process" || processedStatus === "processing") {
             functions.logger.info(
               "Payment status changed from pending/in_process/processing, allowing reprocessing:",
@@ -883,11 +843,17 @@ export const processPaymentWebhook = functions
               "Previous status:",
               processedStatus
             );
+            // Continue processing - don't skip
           } else if (processedStatus === "approved") {
-            functions.logger.info("Payment already processed and approved, skipping:", paymentId);
+            // Already processed and approved - skip to prevent duplicate processing
+            functions.logger.info(
+              "Payment already processed and approved, skipping:",
+              paymentId
+            );
             response.status(200).send("OK");
             return;
           } else {
+            // Failed/rejected - don't reprocess
             functions.logger.info(
               "Payment already processed with status:",
               processedStatus,
@@ -898,6 +864,7 @@ export const processPaymentWebhook = functions
             return;
           }
         } else {
+          // payment.created/subscription.created was missed - process updated as fallback
           functions.logger.info(
             "Created event was missed, processing updated event as fallback:",
             paymentId,
@@ -906,6 +873,8 @@ export const processPaymentWebhook = functions
         }
       }
 
+      // Fetch payment details from Mercado Pago API FIRST
+      // We need to check the status before creating any documents
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let paymentData: any;
       let paymentSource: "payment" | "authorized_payment" = "payment";
@@ -977,14 +946,7 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      functions.logger.info("Payment data", {
-        paymentId,
-        paymentSource,
-        status: paymentData.status,
-        external_reference: paymentData.external_reference,
-        preapproval_id: paymentData.preapproval_id,
-      });
-
+      // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {
         functions.logger.info(
           "Payment not approved, status:",
@@ -992,13 +954,21 @@ export const processPaymentWebhook = functions
           "Payment ID:",
           paymentId
         );
-
+        
+        // For pending/in_process payments, don't mark as processed
+        // This allows the payment.updated webhook to process it when status becomes "approved"
         if (paymentData?.status === "pending" || paymentData?.status === "in_process") {
-          functions.logger.info("Payment is pending/in_process, waiting for approval:", paymentId);
+          functions.logger.info(
+            "Payment is pending/in_process, waiting for approval:",
+            paymentId
+          );
+          
+          // DON'T mark as processed - allow payment.updated to process when approved
           response.status(200).send("OK");
           return;
         }
-
+        
+        // For failed/rejected payments, mark as processed to prevent reprocessing
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: paymentData?.status || "unknown",
@@ -1008,16 +978,23 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      const alreadyProcessed = await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+      // Payment is approved - now check for duplicates and mark as processing
+      // Use Firestore transaction for atomic idempotency check
+      const alreadyProcessed = await db.runTransaction(async (transaction) => {
         const processedDoc = await transaction.get(processedPaymentsRef);
 
         if (processedDoc.exists) {
           const existingStatus = processedDoc.data()?.status;
+          // If it was already processed and approved, skip
           if (existingStatus === "approved") {
-            return true;
+            return true; // Already processed
           }
+          // If it exists with processing/pending/in_process status, allow reprocessing
+          // This handles the case where payment.created had status "pending" and payment.updated has status "approved"
+          // We'll update it to "processing" and continue
         }
 
+        // Mark as processing (atomic check-and-set)
         transaction.set(
           processedPaymentsRef,
           {
@@ -1028,11 +1005,14 @@ export const processPaymentWebhook = functions
           {merge: true}
         );
 
-        return false;
+        return false; // Not processed yet, continue
       });
 
       if (alreadyProcessed) {
-        functions.logger.info("Payment already processed and approved, skipping:", paymentId);
+        functions.logger.info(
+          "Payment already processed and approved, skipping:",
+          paymentId
+        );
         response.status(200).send("OK");
         return;
       }
@@ -1090,17 +1070,29 @@ export const processPaymentWebhook = functions
         });
       }
 
-      functions.logger.info("Processing approved payment", {
+      functions.logger.info("Parsed external reference", {
         paymentId,
-        userId,
-        courseId,
-        isSubscription,
-        paymentType: parsedReference.version,
+        externalReference,
+        paymentType,
+        version: parsedReference.version,
       });
 
+      functions.logger.info(
+        "Processing approved payment:",
+        paymentId,
+        "User:",
+        userId,
+        "Course:",
+        courseId,
+        "Is Subscription:",
+        isSubscription
+      );
+
+      // Validate user exists - Fix #5: Return 200 to prevent retries
       const userDoc = await db.collection("users").doc(userId).get();
       if (!userDoc.exists) {
         functions.logger.error("User not found:", userId);
+        // Mark as processed with error status to prevent retries
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "error",
@@ -1108,6 +1100,7 @@ export const processPaymentWebhook = functions
           error_message: "User not found",
           payment_type: paymentType,
         });
+        // Return 200 to prevent retries
         response.status(200).send("OK");
         return;
       }
@@ -1117,9 +1110,11 @@ export const processPaymentWebhook = functions
       const userName =
         userData?.display_name ?? userData?.name ?? userData?.fullName ?? null;
 
+      // Validate course exists - Fix #5: Return 200 to prevent retries
       const courseDoc = await db.collection("courses").doc(courseId).get();
       if (!courseDoc.exists) {
         functions.logger.error("Course not found:", courseId);
+        // Mark as processed with error status to prevent retries
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "error",
@@ -1127,6 +1122,7 @@ export const processPaymentWebhook = functions
           error_message: "Course not found",
           payment_type: paymentType,
         });
+        // Return 200 to prevent retries
         response.status(200).send("OK");
         return;
       }
@@ -1135,13 +1131,21 @@ export const processPaymentWebhook = functions
       const courseTitle = courseDetails?.title || "Untitled Course";
       const courseAccessDuration = courseDetails?.access_duration;
 
+      // Check if user already owns course (same as app logic)
       const existingPurchase = await checkUserOwnsCourse(userId, courseId);
+
+      // Determine if this is a subscription renewal
       const isRenewal = existingPurchase && isSubscription;
 
       if (isRenewal) {
-        functions.logger.info("Subscription renewal detected:", userId, courseId);
+        // Subscription renewal: extend expiration date
+        functions.logger.info(
+          "Subscription renewal detected:",
+          userId,
+          courseId
+        );
 
-        const currentCourse = existingPurchase ? (userData?.courses || {})[courseId] : null;
+        const currentCourse = existingPurchase ? (userDoc.data()?.courses || {})[courseId] : null;
         const currentExpiration = currentCourse?.expires_at ?? null;
         const expirationDate = calculateExpirationDate(courseAccessDuration, {
           from: currentExpiration ?? undefined,
@@ -1153,31 +1157,27 @@ export const processPaymentWebhook = functions
           currentExpiration
         );
 
+        // Update existing course with new expiration date
         const userRef = db.collection("users").doc(userId);
-        const existingCourseData = (userData?.courses || {})[courseId] || {};
+        const courses = (userData?.courses || {});
 
-        // Allowlist renewal fields — no spread of arbitrary data
+        courses[courseId] = {
+          ...courses[courseId],
+          expires_at: expirationDate,
+          status: "active",
+          // Keep existing data
+        };
+
         await userRef.update({
-          [`courses.${courseId}`]: {
-            access_duration: existingCourseData.access_duration ?? courseAccessDuration,
-            expires_at: expirationDate,
-            status: "active",
-            purchased_at: existingCourseData.purchased_at ?? new Date().toISOString(),
-            deliveryType: existingCourseData.deliveryType ?? courseDetails?.deliveryType ?? "low_ticket",
-            title: existingCourseData.title ?? courseTitle,
-            image_url: existingCourseData.image_url ?? courseDetails?.image_url ?? null,
-            discipline: existingCourseData.discipline ?? courseDetails?.discipline ?? "General",
-            creatorName: existingCourseData.creatorName ?? courseDetails?.creatorName ?? courseDetails?.creator_name ?? "Unknown Creator",
-            completedTutorials: existingCourseData.completedTutorials ?? {
-              dailyWorkout: [],
-              warmup: [],
-              workoutExecution: [],
-              workoutCompletion: [],
-            },
-          },
+          courses: courses,
         });
 
-        functions.logger.info("Subscription renewed successfully:", paymentId, "New expiration:", expirationDate);
+        functions.logger.info(
+          "✅ Subscription renewed successfully:",
+          paymentId,
+          "New expiration:",
+          expirationDate
+        );
 
         const subscriptionId =
           paymentData.subscription_id || paymentData.preapproval_id;
@@ -1202,11 +1202,12 @@ export const processPaymentWebhook = functions
             );
         }
 
+        // Mark payment as processed
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "approved",
-          userId,
-          courseId,
+          userId: userId,
+          courseId: courseId,
           isSubscription: true,
           isRenewal: true,
           payment_type: paymentType,
@@ -1221,11 +1222,13 @@ export const processPaymentWebhook = functions
       }
 
       if (existingPurchase && !isSubscription) {
+        // User already owns course (not a subscription renewal)
         functions.logger.info(
           "User already owns course, skipping assignment:",
           userId,
           courseId
         );
+        // Mark as processed
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "already_owned",
@@ -1242,8 +1245,14 @@ export const processPaymentWebhook = functions
         return;
       }
 
+      // Initial purchase (one-time or subscription)
+      // Validate course has access_duration - Fix #5: Return 200 to prevent retries
       if (!courseAccessDuration) {
-        functions.logger.error("Course missing access_duration:", courseId);
+        functions.logger.error(
+          "Course missing access_duration:",
+          courseId
+        );
+        // Mark as processed with error status to prevent retries
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "error",
@@ -1257,6 +1266,7 @@ export const processPaymentWebhook = functions
           state: "failed",
           payment_type: paymentType,
         });
+        // Return 200 to prevent retries
 
         response.status(200).send("OK");
         return;
@@ -1266,41 +1276,61 @@ export const processPaymentWebhook = functions
         paymentData?.subscription_id || paymentData?.preapproval_id || null;
 
       const expirationDate = calculateExpirationDate(courseAccessDuration);
-      functions.logger.info("Using calculated expiration date for new purchase:", expirationDate);
+      functions.logger.info(
+        "Using calculated expiration date for new purchase:",
+        expirationDate
+      );
 
-      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+      // Fix #3: Use Firestore transaction for atomic course assignment
+      await db.runTransaction(async (transaction) => {
+        // Get user document
         const userRef = db.collection("users").doc(userId);
-        const freshUserDoc = await transaction.get(userRef);
+        const userDoc = await transaction.get(userRef);
 
-        if (!freshUserDoc.exists) {
+        if (!userDoc.exists) {
           throw new Error("User not found");
         }
 
-        const freshUserData = freshUserDoc.data();
-        const courses = freshUserData?.courses || {};
+        const userData = userDoc.data();
+        const courses = userData?.courses || {};
 
+        // Check if course already assigned (atomic check)
         if (courses[courseId]) {
           const courseData = courses[courseId];
           const isActive = courseData.status === "active";
           const isNotExpired = new Date(courseData.expires_at) > new Date();
 
           if (isActive && isNotExpired) {
-            functions.logger.info("Course already assigned, skipping:", userId, courseId);
-            return;
+            // Already assigned - skip
+            functions.logger.info(
+              "Course already assigned, skipping:",
+              userId,
+              courseId
+            );
+            return; // Exit transaction
           }
         }
 
-        // Allowlisted fields only for new course assignment
+        // Add course to user (atomic write)
         courses[courseId] = {
+          // Access control
           access_duration: courseAccessDuration,
           expires_at: expirationDate,
           status: "active",
           purchased_at: new Date().toISOString(),
+
+          // Delivery type: PWA uses this for one_on_one vs low_ticket (version/load path)
           deliveryType: courseDetails?.deliveryType ?? "low_ticket",
+
+          // Minimal cached data for display
           title: courseDetails?.title || "Untitled Course",
           image_url: courseDetails?.image_url || null,
           discipline: courseDetails?.discipline || "General",
-          creatorName: courseDetails?.creatorName || courseDetails?.creator_name || "Unknown Creator",
+          creatorName: courseDetails?.creatorName ||
+            courseDetails?.creator_name ||
+            "Unknown Creator",
+
+          // Tutorial completion tracking
           completedTutorials: {
             dailyWorkout: [],
             warmup: [],
@@ -1309,10 +1339,11 @@ export const processPaymentWebhook = functions
           },
         };
 
+        // Update user document (atomic write)
         transaction.update(userRef, {
-          courses,
+          courses: courses,
           purchased_courses: [
-            ...new Set([...(freshUserData?.purchased_courses || []), courseId]),
+            ...new Set([...(userData?.purchased_courses || []), courseId]),
           ],
         });
 
@@ -1341,14 +1372,15 @@ export const processPaymentWebhook = functions
           );
         }
 
+        // Mark payment as processed (atomic write)
         transaction.set(
           processedPaymentsRef,
           {
             processed_at: admin.firestore.FieldValue.serverTimestamp(),
             status: "approved",
-            userId,
-            courseId,
-            isSubscription,
+            userId: userId,
+            courseId: courseId,
+            isSubscription: isSubscription,
             isRenewal: false,
             payment_type: paymentType,
             userEmail,
@@ -1360,7 +1392,7 @@ export const processPaymentWebhook = functions
         );
 
         functions.logger.info(
-          "Payment processed successfully:",
+          "✅ Payment processed successfully:",
           paymentId,
           "Course assigned to user:",
           userId,
@@ -1374,16 +1406,20 @@ export const processPaymentWebhook = functions
       const message = toErrorMessage(error);
       functions.logger.error("Error in webhook:", error);
 
+      // Fix #4: Classify errors and return appropriate status codes
       const errorType = classifyError(error);
 
       switch (errorType) {
       case "RETRYABLE":
+        // Network errors, API timeouts, etc.
         functions.logger.warn("Retryable error, returning 500 for retry");
         response.status(500).send("Error");
         break;
 
       case "NON_RETRYABLE":
+        // Validation errors, missing data, etc.
         functions.logger.warn("Non-retryable error, returning 200 to prevent retry");
+        // Mark as processed to prevent retries
         try {
           const processedPaymentsRef = db
             .collection("processed_payments")
@@ -1401,15 +1437,15 @@ export const processPaymentWebhook = functions
         break;
 
       default:
+        // Unknown errors - be safe and return 500
         response.status(500).send("Error");
       }
     }
   });
 
-// ─── updateSubscriptionStatus ─────────────────────────────────────────────────
 export const updateSubscriptionStatus = functions
   .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -1420,26 +1456,19 @@ export const updateSubscriptionStatus = functions
     }
 
     if (request.method !== "POST") {
-      response.status(405).json({
-        error: {code: "VALIDATION_ERROR", message: "Method not allowed"},
-      });
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
       return;
     }
 
-    let authedUserId: string;
-    try {
-      authedUserId = await validateAuthToken(request);
-    } catch {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(authedUserId)) {
-      sendRateLimitError(response);
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      response.status(401).json({error: {code: "UNAUTHENTICATED", message: "Autenticación requerida"}});
       return;
     }
 
     try {
+      checkGen1RateLimit(`updateSubscriptionStatus_${userId}`);
+
       const {
         subscriptionId,
         action,
@@ -1452,46 +1481,39 @@ export const updateSubscriptionStatus = functions
       } = request.body || {};
 
       if (!subscriptionId || typeof subscriptionId !== "string") {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "subscriptionId requerido", field: "subscriptionId"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "subscriptionId es requerido", field: "subscriptionId"}});
         return;
       }
 
       if (!action || typeof action !== "string") {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "action requerido", field: "action"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "action es requerido", field: "action"}});
         return;
       }
 
+      const ALLOWED_ACTIONS = ["cancel", "pause", "resume"] as const;
       const actionToStatus: Record<string, string> = {
         cancel: "cancelled",
         pause: "paused",
         resume: "authorized",
       };
 
-      const targetStatus = actionToStatus[action];
-
-      if (!targetStatus) {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "Acción no soportada", field: "action"},
-        });
+      if (!ALLOWED_ACTIONS.includes(action as typeof ALLOWED_ACTIONS[number])) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Unsupported action. Must be cancel, pause, or resume", field: "action"}});
         return;
       }
 
+      const targetStatus = actionToStatus[action];
+
       const subscriptionRef = db
         .collection("users")
-        .doc(authedUserId)
+        .doc(userId)
         .collection("subscriptions")
         .doc(subscriptionId);
 
       const subscriptionDoc = await subscriptionRef.get();
 
       if (!subscriptionDoc.exists) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Suscripción no encontrada"},
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Subscription not found for user"}});
         return;
       }
 
@@ -1507,7 +1529,6 @@ export const updateSubscriptionStatus = functions
         },
       });
 
-      // Allowlisted fields only
       const updateData: Record<string, unknown> = {
         status: targetStatus,
         last_action: action,
@@ -1542,9 +1563,8 @@ export const updateSubscriptionStatus = functions
 
           const payerEmail = subscriptionData?.payer_email ?? survey?.payerEmail ?? undefined;
 
-          // Allowlisted survey fields only
           const surveyRecord: Record<string, unknown> = {
-            userId: authedUserId,
+            userId,
             subscriptionId,
             answers: survey.answers,
             source: survey?.source ?? "in_app_cancel_flow_v1",
@@ -1579,18 +1599,22 @@ export const updateSubscriptionStatus = functions
 
       response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
+      if (isGen1RateLimitError(error)) {
+        response.status(429).json({error: {code: "RATE_LIMITED", message: "Too many requests"}});
+        return;
+      }
       functions.logger.error("Error updating subscription status:", error);
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message},
-      });
+      response.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error al actualizar el estado de la suscripción"}});
     }
   });
 
-// ─── lookupUserForCreatorInvite ───────────────────────────────────────────────
+
+/**
+ * Lookup user by email or username for creator invite (one-on-one client add).
+ * Only creators can call this. Returns user info for confirmation before enrollment.
+ */
 export const lookupUserForCreatorInvite = functions.https.onCall(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async (data: any, context: functions.https.CallableContext) => {
+  async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
@@ -1599,7 +1623,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
     }
 
     const creatorId = context.auth.uid;
-    const {emailOrUsername} = data || {};
+    const { emailOrUsername } = data || {};
 
     if (!emailOrUsername || typeof emailOrUsername !== "string") {
       throw new functions.https.HttpsError(
@@ -1616,6 +1640,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       );
     }
 
+    // Check caller is creator or admin
     const creatorDoc = await db.collection("users").doc(creatorId).get();
     const role = creatorDoc.exists
       ? (creatorDoc.data()?.role as string | undefined)
@@ -1633,6 +1658,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
     let username = "";
     let userDocData: Record<string, unknown> | null = null;
 
+    // If input looks like email, try Firebase Auth lookup first
     if (trimmed.includes("@")) {
       try {
         const authUser = await admin.auth().getUserByEmail(trimmed);
@@ -1640,10 +1666,11 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
         email = authUser.email || trimmed;
         displayName = authUser.displayName || "";
       } catch (_err) {
-        // User not found by email — fall through to username lookup
+        // User not found by email - fall through to username lookup
       }
     }
 
+    // If not found by email, try Firestore username lookup
     if (!userId) {
       const usersSnapshot = await db
         .collection("users")
@@ -1662,6 +1689,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       }
     }
 
+    // Enrich from Firestore if we found by email (or to get full profile for any path)
     if (userId) {
       const userDoc = await db.collection("users").doc(userId).get();
       if (userDoc.exists) {
@@ -1682,6 +1710,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       );
     }
 
+    // Build extra profile fields for creator preview
     let age: number | null = null;
     let gender = "";
     let country = "";
@@ -1694,17 +1723,21 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       age =
         typeof ageVal === "number" && !Number.isNaN(ageVal) ? ageVal : null;
       if (age == null && d.birthDate) {
-        const raw = d.birthDate as {toDate?: () => Date} | string;
+        const raw = d.birthDate as { toDate?: () => Date } | string;
         const birthDate =
           typeof raw === "object" && raw?.toDate
             ? raw.toDate()
             : new Date(raw as string);
         if (!isNaN(birthDate.getTime())) {
-          age = new Date().getFullYear() - birthDate.getFullYear();
-          const monthDiff = new Date().getMonth() - birthDate.getMonth();
+          age =
+            new Date().getFullYear() -
+            birthDate.getFullYear();
+          const monthDiff =
+            new Date().getMonth() - birthDate.getMonth();
           if (
             monthDiff < 0 ||
-            (monthDiff === 0 && new Date().getDate() < birthDate.getDate())
+            (monthDiff === 0 &&
+              new Date().getDate() < birthDate.getDate())
           ) {
             age--;
           }
@@ -1715,10 +1748,14 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       city = String(d.city ?? d.location ?? "");
       const h = d.height;
       height =
-        h != null && (typeof h === "number" || typeof h === "string") ? h : null;
+        h != null && (typeof h === "number" || typeof h === "string")
+          ? h
+          : null;
       const w = d.bodyweight ?? d.weight;
       weight =
-        w != null && (typeof w === "number" || typeof w === "string") ? w : null;
+        w != null && (typeof w === "number" || typeof w === "string")
+          ? w
+          : null;
     }
 
     return {
@@ -1736,34 +1773,17 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
   }
 );
 
-// ─── onUserCreated ────────────────────────────────────────────────────────────
-export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
-  // Allowlisted fields only — never spread the Firebase Auth user object
-  const userDoc: Record<string, unknown> = {
-    role: "user",
-    email: user.email ?? null,
-    displayName: user.displayName ?? null,
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-  };
-
-  try {
-    await db.collection("users").doc(user.uid).set(userDoc, {merge: true});
-    functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
-  } catch (error) {
-    functions.logger.error("onUserCreated: failed to bootstrap user doc", {
-      uid: user.uid,
-      error: toErrorMessage(error),
-    });
-  }
-});
-
-// ─── Nutrition (FatSecret proxy) ──────────────────────────────────────────────
+// ============================================
+// NUTRITION (FatSecret proxy) — Step 2
+// ============================================
+// Optional: set this only if FatSecret requires a single whitelisted IP (then use
+// Serverless VPC connector + Cloud NAT). With 0.0.0.0/0 and ::/0 in FatSecret, leave empty.
 const NUTRITION_VPC_CONNECTOR = "";
 
-const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000;
+const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
 const fatSecretTokenCache = new Map<
   string,
-  {token: string; expiresAt: number}
+  { token: string; expiresAt: number }
 >();
 
 async function getFatSecretToken(
@@ -1772,7 +1792,10 @@ async function getFatSecretToken(
   scope: string = "basic"
 ): Promise<string> {
   const cached = fatSecretTokenCache.get(scope);
-  if (cached && Date.now() < cached.expiresAt - FATSECRET_TOKEN_BUFFER_MS) {
+  if (
+    cached &&
+    Date.now() < cached.expiresAt - FATSECRET_TOKEN_BUFFER_MS
+  ) {
     return cached.token;
   }
 
@@ -1812,7 +1835,7 @@ async function getFatSecretToken(
 
   const expiresAt =
     Date.now() + (typeof data.expires_in === "number" ? data.expires_in : 86400) * 1000;
-  fatSecretTokenCache.set(scope, {token: data.access_token, expiresAt});
+  fatSecretTokenCache.set(scope, { token: data.access_token, expiresAt });
   return data.access_token;
 }
 
@@ -1834,7 +1857,7 @@ const nutritionRunOptions: functions.RuntimeOptions = {
 
 export const nutritionFoodSearch = functions
   .runWith(nutritionRunOptions)
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     setNutritionCors(response);
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -1849,9 +1872,7 @@ export const nutritionFoodSearch = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1862,18 +1883,12 @@ export const nutritionFoodSearch = functions
         region = "ES",
         language = "es",
       } = request.body || {};
-
       if (!search_expression || typeof search_expression !== "string") {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "search_expression es requerido", field: "search_expression"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression es requerido", field: "search_expression"}});
         return;
       }
-
       if (search_expression.length > 200) {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "search_expression demasiado largo (máx 200 caracteres)", field: "search_expression"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression demasiado largo (máx 200 caracteres)", field: "search_expression"}});
         return;
       }
 
@@ -1904,26 +1919,21 @@ export const nutritionFoodSearch = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodSearch error", error);
-      response.status(502).json({
-        error: {code: "SERVICE_UNAVAILABLE", message: message || "Búsqueda de alimentos falló"},
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
     }
   });
 
 export const nutritionFoodGet = functions
   .runWith(nutritionRunOptions)
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     setNutritionCors(response);
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -1938,9 +1948,7 @@ export const nutritionFoodGet = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1950,15 +1958,13 @@ export const nutritionFoodGet = functions
         language = "es",
         include_sub_categories,
       } = request.body || {};
-
       if (food_id === undefined || food_id === null || food_id === "") {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "food_id es requerido", field: "food_id"},
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "food_id es requerido", field: "food_id"}});
         return;
       }
 
-      const scope = include_sub_categories === true ? "premier" : "basic";
+      const scope =
+        include_sub_categories === true ? "premier" : "basic";
       const token = await getFatSecretToken(clientId, clientSecret, scope);
       const params = new URLSearchParams({
         food_id: String(food_id),
@@ -1988,26 +1994,21 @@ export const nutritionFoodGet = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodGet error", error);
-      response.status(502).json({
-        error: {code: "SERVICE_UNAVAILABLE", message: message || "Detalle de alimento falló"},
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
     }
   });
 
 export const nutritionBarcodeLookup = functions
   .runWith(nutritionRunOptions)
-  .https.onRequest(async (request: Request, response: Response) => {
+  .https.onRequest(async (request, response) => {
     setNutritionCors(response);
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -2022,9 +2023,7 @@ export const nutritionBarcodeLookup = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -2033,19 +2032,16 @@ export const nutritionBarcodeLookup = functions
         region = "ES",
         language = "es",
       } = request.body || {};
-
-      if (!isValidBarcode(barcode)) {
-        response.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "El código de barras debe contener entre 8 y 14 dígitos",
-            field: "barcode",
-          },
-        });
+      if (!barcode || typeof barcode !== "string" || !BARCODE_RE.test(barcode.trim())) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "El código de barras debe contener entre 8 y 14 dígitos", field: "barcode"}});
         return;
       }
 
-      const token = await getFatSecretToken(clientId, clientSecret, "basic barcode");
+      const token = await getFatSecretToken(
+        clientId,
+        clientSecret,
+        "basic barcode"
+      );
       const params = new URLSearchParams({
         barcode: barcode.trim(),
         format: "json",
@@ -2071,31 +2067,55 @@ export const nutritionBarcodeLookup = functions
           status: res.status,
           body: errBody,
         });
-        response.status(502).json({
-          error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"},
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionBarcodeLookup error", error);
-      response.status(502).json({
-        error: {code: "SERVICE_UNAVAILABLE", message: message || "Búsqueda por código de barras falló"},
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
     }
   });
 
-// ─── sendEventConfirmationEmail ───────────────────────────────────────────────
+// ─── onUserCreated ────────────────────────────────────────────────────────────
+// Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
+// Creates the Firestore user doc so all downstream reads have a document to work with.
+export const onUserCreated = functions.auth.user().onCreate(async (user) => {
+  // Allowlisted fields only — never spread the Firebase Auth user object
+  const userDoc: Record<string, unknown> = {
+    role: "user",
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  if (user.email) userDoc.email = user.email;
+  if (user.displayName) userDoc.displayName = user.displayName;
+
+  try {
+    await db.collection("users").doc(user.uid).set(userDoc, {merge: true});
+    functions.logger.info("onUserCreated: user doc created", {uid: user.uid});
+  } catch (err: unknown) {
+    functions.logger.error("onUserCreated: failed to create user doc", {
+      uid: user.uid,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+// ─── sendEventConfirmationEmail ────────────────────────────────────────────
+// Fires on every new registration and sends an HTML email with the event
+// title, a personalised greeting, and a QR code the attendee can use for
+// check-in. Requires RESEND_API_KEY secret and the event to have
+// settings.confirmation_email set to a "from" address (e.g. "Wake Events
+// <events@wakelab.co>").
 export const sendEventConfirmationEmail = functions
   .runWith({secrets: ["RESEND_API_KEY"]})
   .firestore.document("event_signups/{eventId}/registrations/{regId}")
-  .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
+  .onCreate(async (snap, context) => {
     const {eventId, regId} = context.params;
     const reg = snap.data() as Record<string, unknown>;
 
+    // Resolve recipient email: V2 stores responses map, V1 has flat email field
     let toEmail: string | null = null;
     if (typeof reg.email === "string" && reg.email) {
       toEmail = reg.email;
@@ -2112,6 +2132,7 @@ export const sendEventConfirmationEmail = functions
       return null;
     }
 
+    // Load event doc
     const eventSnap = await db.doc(`events/${eventId}`).get();
     if (!eventSnap.exists) {
       functions.logger.warn("sendEventConfirmationEmail: event not found", {eventId});
@@ -2132,6 +2153,7 @@ export const sendEventConfirmationEmail = functions
     const checkInToken = reg.check_in_token as string | undefined;
     const eventImageUrl = (event.image_url as string | undefined) ?? "";
 
+    // Resolve first name
     let firstName = "";
     if (typeof reg.nombre === "string" && reg.nombre) {
       firstName = reg.nombre.split(" ")[0];
@@ -2145,6 +2167,7 @@ export const sendEventConfirmationEmail = functions
 
     const greeting = firstName ? `¡Hola, ${firstName}!` : "¡Hola!";
 
+    // QR code image URL (api.qrserver.com, no server-side dependency)
     const qrData = checkInToken
       ? encodeURIComponent(JSON.stringify({eventId, token: checkInToken}))
       : encodeURIComponent(regId);
@@ -2218,4 +2241,3 @@ export const sendEventConfirmationEmail = functions
 
     return null;
   });
-

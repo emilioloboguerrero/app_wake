@@ -313,15 +313,6 @@ service cloud.firestore {
       );
     }
 
-    match /users/{userId}/diary/{entryId} {
-      allow read, write: if isOwner(userId);
-      allow read: if creatorHasClientAccess(userId);
-    }
-
-    match /users/{userId}/meals/{mealId} {
-      allow read, write: if isOwner(userId);
-    }
-
     // Client nutrition plan content: per-assignment copy (doc id = assignmentId).
     // Client can read their copy; creator (assignedBy) can read/write.
     match /client_nutrition_plan_content/{assignmentId} {
@@ -393,34 +384,14 @@ service cloud.firestore {
     }
 
     // ============================================
-    // USER SUBCOLLECTIONS (missing from user block)
-    // ============================================
-
-    // MercadoPago subscription records — owner read, server write only
-    match /users/{userId}/subscriptions/{subId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Per-exercise last performance (quick lookup)
-    match /users/{userId}/exerciseLastPerformance/{key} {
-      allow read, write: if isOwner(userId);
-    }
-
-    // Saved foods (user's personal food library)
-    match /users/{userId}/saved_foods/{foodId} {
-      allow read, write: if isOwner(userId);
-    }
-
-    // ============================================
     // PLANS (one-on-one delivery)
     // ============================================
     match /plans/{planId} {
-      // Creator owner and admin can read/write; enrolled user (has a one_on_one_clients doc pointing to this plan) can read
+      // Creator owner and admin can read/write; enrolled client can read their assigned plan
       allow read: if isSignedIn() && (
         resource.data.creatorId == request.auth.uid ||
         isAdmin() ||
-        creatorHasClientAccess(request.auth.uid)
+        resource.data.get('clientUserId', '') == request.auth.uid
       );
       allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
       allow update: if isSignedIn() && (
@@ -430,12 +401,22 @@ service cloud.firestore {
         resource.data.creatorId == request.auth.uid || isAdmin()
       );
       match /modules/{moduleId} {
-        allow read, write: if isSignedIn() && (
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
+          || get(/databases/$(database)/documents/plans/$(planId)).data.get('clientUserId', '') == request.auth.uid
+          || isAdmin()
+        );
+        allow write: if isSignedIn() && (
           get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
           || isAdmin()
         );
         match /sessions/{sessionId} {
-          allow read, write: if isSignedIn() && (
+          allow read: if isSignedIn() && (
+            get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
+            || get(/databases/$(database)/documents/plans/$(planId)).data.get('clientUserId', '') == request.auth.uid
+            || isAdmin()
+          );
+          allow write: if isSignedIn() && (
             get(/databases/$(database)/documents/plans/$(planId)).data.creatorId == request.auth.uid
             || isAdmin()
           );

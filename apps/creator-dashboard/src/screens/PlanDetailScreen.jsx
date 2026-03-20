@@ -17,6 +17,7 @@ import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import { cacheConfig } from '../config/queryClient';
 import './PlanDetailScreen.css';
 
 const PlanDetailScreen = () => {
@@ -50,6 +51,7 @@ const PlanDetailScreen = () => {
     queryKey: ['plans', planId],
     queryFn: () => plansService.getPlanById(planId),
     enabled: !!user && !!planId && planId !== 'new',
+    ...cacheConfig.activeProgram,
   });
 
   const { data: modulesData, isLoading: modulesLoading } = useQuery({
@@ -68,6 +70,7 @@ const PlanDetailScreen = () => {
       );
     },
     enabled: !!user && !!planId && planId !== 'new',
+    ...cacheConfig.programStructure,
   });
 
   const loading = planLoading || modulesLoading;
@@ -264,6 +267,8 @@ const PlanDetailScreen = () => {
         showToast(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`, 'error');
       } else if (propagated > 0) {
         showToast(`Cambios propagados correctamente a ${propagated} usuario(s).`, 'success');
+      } else {
+        showToast('No había usuarios afectados para propagar.', 'success');
       }
       setHasMadeChanges(false);
     } catch (err) {

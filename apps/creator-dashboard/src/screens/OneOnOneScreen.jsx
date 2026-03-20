@@ -21,7 +21,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
   const navigate = useNavigate();
   const queryClientHook = useQueryClient();
 
-  const { data: clients = [], isLoading: loading } = useQuery({
+  const { data: clients = [], isLoading: loading, isError: isClientsError } = useQuery({
     queryKey: queryKeys.clients.byCreator(user?.uid),
     queryFn: () => oneOnOneService.getClientsByCreator(user.uid),
     enabled: !!user?.uid,
@@ -220,6 +220,10 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           <div className="one-on-one-sidebar-content">
             {loading ? (
               <ScreenSkeleton />
+            ) : isClientsError ? (
+              <div className="one-on-one-sidebar-empty">
+                <p>Error al cargar los clientes. Recarga la página.</p>
+              </div>
             ) : filteredClients.length === 0 ? (
               <div className="one-on-one-sidebar-empty">
                 <p>

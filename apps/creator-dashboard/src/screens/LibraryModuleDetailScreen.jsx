@@ -167,12 +167,14 @@ const LibraryModuleDetailScreen = () => {
       return { module: mod, sessions: validSessions };
     },
     enabled: !!user && !!moduleId,
+    ...cacheConfig.programStructure,
   });
 
   const { data: allSessionsData } = useQuery({
     queryKey: queryKeys.library.sessions(user?.uid),
     queryFn: () => libraryService.getSessionLibrary(user.uid),
     enabled: !!user && !!moduleQueryData?.module,
+    ...cacheConfig.programStructure,
   });
 
   const module = moduleQueryData?.module ?? null;
@@ -205,7 +207,12 @@ const LibraryModuleDetailScreen = () => {
     const overId = over.id.toString();
 
     if (activeId.startsWith('available-') && overId === 'module-list') {
-      await addSessionToModule(active.data.current.session);
+      try {
+        await addSessionToModule(active.data.current.session);
+      } catch (err) {
+        logger.error('Error in drag-add session:', err);
+        showToast('Error al agregar la sesión', 'error');
+      }
       return;
     }
 
@@ -216,7 +223,12 @@ const LibraryModuleDetailScreen = () => {
       if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
         const newSessions = arrayMove(sessions, activeIndex, overIndex);
         setSessions(newSessions);
-        await updateSessionOrder(newSessions);
+        try {
+          await updateSessionOrder(newSessions);
+        } catch (err) {
+          logger.error('Error in drag-reorder sessions:', err);
+          showToast('Error al reordenar las sesiones', 'error');
+        }
       }
     }
   };

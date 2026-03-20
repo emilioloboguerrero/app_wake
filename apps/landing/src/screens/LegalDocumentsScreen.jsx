@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
 import './LegalDocumentsScreen.css';
 
-// PDF URLs from Firebase Storage
+// Public Firebase Storage URL builder — no token needed, storage rules allow public read on /legal-documents/*
+const STORAGE_BUCKET = 'wolf-20b8b.firebasestorage.app';
+const buildStorageUrl = (path) =>
+  `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media`;
+
 const LEGAL_DOCUMENTS = {
   terms: {
     title: 'Términos y Condiciones',
     description: 'Nuestros términos y condiciones para el uso de la aplicación de fitness Wake.',
-    url: 'https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F1%20-%20TE%CC%81RMINOS%20Y%20CONDICIONES%20DE%20USO%20WAKE.pdf?alt=media&token=500e1ddd-c126-43ba-bb0d-e8b4e571b49c',
+    url: buildStorageUrl('legal/1 - TE\u0301RMINOS Y CONDICIONES DE USO WAKE.pdf'),
     icon: '📄',
     lastUpdated: 'Octubre 2025'
   },
   privacy: {
     title: 'Política de Tratamiento de Datos Personales',
     description: 'Cómo recopilamos, usamos y protegemos tu información personal.',
-    url: 'https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F2%20-%20POLI%CC%81TICA%20DE%20TRATAMIENTO%20DE%20DATOS%20PERSONALES%20WAKE.pdf?alt=media&token=5cd87b24-bb70-4daa-b2cf-16f31c46cef7',
+    url: buildStorageUrl('legal/2 - POLI\u0301TICA DE TRATAMIENTO DE DATOS PERSONALES WAKE.pdf'),
     icon: '🔒',
     lastUpdated: 'Octubre 2025'
   },
   refund: {
     title: 'Política de Reembolsos, Retracto y Reversión de Pago',
     description: 'Nuestra política respecto a reembolsos y cancelaciones.',
-    url: 'https://firebasestorage.googleapis.com/v0/b/wolf-20b8b.firebasestorage.app/o/legal%2F3-%20POLI%CC%81TICA%20DE%20REEMBOLSOS%2C%20RETRACTO%20Y%20REVERSIO%CC%81N%20DE%20PAGO%20WAKE.pdf?alt=media&token=da5f7fe3-f699-46cb-8fd9-5e0da2e7efb6',
+    url: buildStorageUrl('legal/3- POLI\u0301TICA DE REEMBOLSOS, RETRACTO Y REVERSIO\u0301N DE PAGO WAKE.pdf'),
     icon: '💰',
     lastUpdated: 'Octubre 2025'
   }
