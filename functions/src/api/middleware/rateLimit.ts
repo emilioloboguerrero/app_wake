@@ -42,3 +42,43 @@ export async function checkRateLimit(
     throw err;
   }
 }
+
+export async function checkDailyRateLimit(
+  keyId: string,
+  limitPerDay: number
+): Promise<void> {
+  const now = Date.now();
+  const windowDay = Math.floor(now / 86_400_000);
+  const docId = `${keyId}_day_${windowDay}`;
+  const docRef = db.collection("rate_limit_windows").doc(docId);
+
+  const count = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+
+    if (!snap.exists) {
+      tx.set(docRef, {
+        count: 1,
+        expires_at: windowDay + 2,
+      });
+      return 1;
+    }
+
+    const current = (snap.data()?.count as number) || 0;
+    const newCount = current + 1;
+    tx.update(docRef, { count: newCount });
+    return newCount;
+  });
+
+  if (count > limitPerDay) {
+    const msInDay = 86_400_000;
+    const secondsRemaining = Math.ceil((msInDay - (now % msInDay)) / 1000);
+    const err = new WakeApiServerError(
+      "RATE_LIMITED",
+      429,
+      "Límite diario de solicitudes excedido. Intenta mañana."
+    );
+    (err as WakeApiServerError & { retryAfter: number }).retryAfter =
+      secondsRemaining;
+    throw err;
+  }
+}

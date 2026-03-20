@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from "express";
 import swaggerUi from "swagger-ui-express";
 import { generateOpenApiSpec } from "../openapi.js";
 import { WakeApiServerError } from "./errors.js";
+import { validateAuth, enforceScope } from "./middleware/auth.js";
+import { checkDailyRateLimit } from "./middleware/rateLimit.js";
 
 import profileRouter from "./routes/profile.js";
 import nutritionRouter from "./routes/nutrition.js";
@@ -50,6 +52,31 @@ app.get("/v1/health", (_req: Request, res: Response) => {
 
 // ─── Swagger UI ────────────────────────────────────────────────────────────
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(generateOpenApiSpec()));
+
+// ─── Auth + Scope enforcement + Daily rate limit (all /v1/* except health) ─
+app.use("/v1", async (req: Request, _res: Response, next: NextFunction) => {
+  // Skip auth for health endpoint (already handled above) and OPTIONS
+  if (req.path === "/health" || req.method === "OPTIONS") {
+    next();
+    return;
+  }
+
+  try {
+    await validateAuth(req);
+
+    // Scope enforcement: read-scoped API keys cannot make non-GET requests
+    enforceScope(req);
+
+    // Daily rate limit for API keys: 1,000 requests/day
+    if (req.auth?.authType === "apikey" && req.auth.keyId) {
+      await checkDailyRateLimit(req.auth.keyId, 1000);
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─── Route mounting ────────────────────────────────────────────────────────
 app.use("/v1", profileRouter);

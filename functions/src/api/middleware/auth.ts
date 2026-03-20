@@ -23,6 +23,11 @@ declare global {
 const db = admin.firestore();
 
 export async function validateAuth(req: Request): Promise<AuthResult> {
+  // Return cached result if already validated in this request
+  if (req.auth) {
+    return req.auth;
+  }
+
   const header = req.headers.authorization;
 
   if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) {
@@ -35,13 +40,45 @@ export async function validateAuth(req: Request): Promise<AuthResult> {
 
   const token = header.slice(7);
 
+  let result: AuthResult;
+
   // API key path
   if (token.startsWith("wk_live_") || token.startsWith("wk_test_")) {
-    return validateApiKey(token);
+    result = await validateApiKey(token);
+  } else {
+    // Firebase ID token path
+    result = await validateFirebaseToken(token, req);
   }
 
-  // Firebase ID token path
-  return validateFirebaseToken(token, req);
+  // Cache on request object for subsequent calls
+  req.auth = result;
+  return result;
+}
+
+/**
+ * Middleware that checks API key scope against the HTTP method.
+ * Must run after validateAuth has set req.auth.
+ * - `read` scope: only GET allowed
+ * - `write` / `creator` scope: all methods allowed
+ * - Firebase auth (no scope): no restriction
+ */
+export function enforceScope(req: Request): void {
+  const auth = req.auth;
+  if (!auth || auth.authType !== "apikey") return;
+
+  const scopes = auth.scope || ["read"];
+
+  // `write` and `creator` scopes allow all methods
+  if (scopes.includes("write") || scopes.includes("creator")) return;
+
+  // `read` scope: only GET allowed
+  if (scopes.includes("read") && req.method !== "GET") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "API key scope does not allow write operations"
+    );
+  }
 }
 
 async function validateApiKey(key: string): Promise<AuthResult> {
