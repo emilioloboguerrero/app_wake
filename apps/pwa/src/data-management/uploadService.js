@@ -1,4 +1,7 @@
 // Upload Service - Handles batch uploading of workout sessions
+// TODO: uploadSession is a no-op — it generates an ID and cleans up local storage but never
+// posts to any API. The actual completion flow goes through sessionService.js → POST /workout/complete.
+// Connect this to POST /workout/complete or delete this service if the queue path is retired.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '../utils/logger.js';
 class UploadService {

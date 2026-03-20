@@ -569,30 +569,6 @@ class WorkoutProgressService {
   }
 
   /**
-   * Get user's all progress
-   */
-  async getUserAllProgress(userId) {
-    try {
-      return await apiService.getUserAllProgress(userId);
-    } catch (error) {
-      logger.error('❌ Failed to get user all progress:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get course statistics
-   */
-  async getCourseStatistics(courseId) {
-    try {
-      return await apiService.getCourseStatistics(courseId);
-    } catch (error) {
-      logger.error('❌ Failed to get course statistics:', error);
-      return { sessions: [], stats: null };
-    }
-  }
-
-  /**
    * Get next available session for a course based on progress (SIMPLE APPROACH)
    */
   async getNextAvailableSession(userId, courseId) {

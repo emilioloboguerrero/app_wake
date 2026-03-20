@@ -8,8 +8,8 @@ import Constants from 'expo-constants';
 import logger from '../utils/logger'; 
 import * as Crypto from 'expo-crypto';
 
-// Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // Dynamic import for Apple Sign-In (only loaded when needed)
 let appleAuth = null;

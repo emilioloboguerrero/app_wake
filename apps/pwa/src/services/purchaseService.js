@@ -1,6 +1,7 @@
 import apiClient from '../utils/apiClient';
 import { createError } from '../utils/errorHandler';
 import { calculateExpirationDate } from '../utils/durationHelper';
+import apiService from './apiService';
 import logger from '../utils/logger';
 
 class PurchaseService {
@@ -295,55 +296,8 @@ class PurchaseService {
     }
   }
 
-  /**
-   * Get all purchased courses for a user
-   * @param {string} userId - User ID
-   * @returns {Promise<Array>} Array of purchased courses with details
-   */
   async getUserActiveCourses(userId) {
-    try {
-      const result = await apiClient.get('/users/me/full');
-      const userData = result?.data;
-      if (!userData?.courses) return [];
-      const now = new Date();
-      return Object.entries(userData.courses)
-        .filter(([, e]) => e.is_trial || (e.status === 'active' && (!e.expires_at || new Date(e.expires_at) > now)))
-        .map(([courseId, e]) => {
-          const isTrial = e.is_trial === true;
-          const expiresAt = e.expires_at || null;
-          const trialState = isTrial
-            ? (expiresAt && new Date(expiresAt) > now ? 'active' : 'expired')
-            : null;
-          return {
-            courseId,
-            courseData: {
-              status: e.status,
-              access_duration: e.access_duration,
-              expires_at: e.expires_at,
-              purchased_at: e.purchased_at,
-              deliveryType: e.deliveryType,
-              title: e.title,
-              image_url: e.image_url,
-              is_trial: e.is_trial,
-              trial_consumed: e.trial_consumed,
-            },
-            purchasedAt: e.purchased_at || null,
-            courseDetails: {
-              id: courseId,
-              title: e.title || 'Curso sin título',
-              image_url: e.image_url || '',
-              discipline: e.discipline || 'General',
-              creatorName: e.creatorName || null,
-            },
-            trialInfo: isTrial ? { state: trialState, expiresAt } : null,
-            trialHistory: null,
-            isTrialCourse: isTrial,
-          };
-        });
-    } catch (error) {
-      logger.error('Error getting active courses:', error);
-      return [];
-    }
+    return apiService.getUserActiveCourses(userId);
   }
 
   /**

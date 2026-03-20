@@ -2,7 +2,7 @@
  * Nutrition Firestore service — user diary, assignments, plan (read).
  * Phase 3: fully migrated to API.
  */
-import apiClient from '../utils/apiClient';
+import apiClient, { WakeApiError } from '../utils/apiClient';
 import logger from '../utils/logger';
 import { queryClient } from '../config/queryClient';
 

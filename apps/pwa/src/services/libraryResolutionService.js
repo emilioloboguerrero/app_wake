@@ -105,33 +105,36 @@ class LibraryResolutionService {
     if (!creatorId || !modules || modules.length === 0) return versions;
 
     try {
+      const modulePromises = [];
+      const sessionPromises = [];
+      const seenSessions = new Set();
+
       for (const module of modules) {
         if (module.libraryModuleRef) {
-          try {
-            const result = await apiClient.get(`/library/modules/${module.libraryModuleRef}`, { params: { creatorId } });
-            if (result?.data) {
-              versions.modules[module.libraryModuleRef] = result.data.version || 0;
-            }
-          } catch (error) {
-            logger.warn('Could not fetch library module version:', error);
-          }
+          const ref = module.libraryModuleRef;
+          modulePromises.push(
+            apiClient.get(`/library/modules/${ref}`, { params: { creatorId } })
+              .then(result => { if (result?.data) versions.modules[ref] = result.data.version || 0; })
+              .catch(error => logger.warn('Could not fetch library module version:', error))
+          );
         }
 
         if (module.sessions) {
           for (const session of module.sessions) {
-            if (session.librarySessionRef && !versions.sessions[session.librarySessionRef]) {
-              try {
-                const result = await apiClient.get(`/library/sessions/${session.librarySessionRef}`, { params: { creatorId } });
-                if (result?.data) {
-                  versions.sessions[session.librarySessionRef] = result.data.version || 0;
-                }
-              } catch (error) {
-                logger.warn('Could not fetch library session version:', error);
-              }
+            if (session.librarySessionRef && !seenSessions.has(session.librarySessionRef)) {
+              seenSessions.add(session.librarySessionRef);
+              const ref = session.librarySessionRef;
+              sessionPromises.push(
+                apiClient.get(`/library/sessions/${ref}`, { params: { creatorId } })
+                  .then(result => { if (result?.data) versions.sessions[ref] = result.data.version || 0; })
+                  .catch(error => logger.warn('Could not fetch library session version:', error))
+              );
             }
           }
         }
       }
+
+      await Promise.all([...modulePromises, ...sessionPromises]);
     } catch (error) {
       logger.error('Error extracting library versions:', error);
     }
@@ -148,37 +151,43 @@ class LibraryResolutionService {
     const changedSessions = [];
 
     try {
+      const promises = [];
+
       if (storedVersions.modules) {
         for (const [moduleId, storedVersion] of Object.entries(storedVersions.modules)) {
-          try {
-            const result = await apiClient.get(`/library/modules/${moduleId}`, { params: { creatorId } });
-            if (result?.data) {
-              const currentVersion = result.data.version || 0;
-              if (currentVersion !== storedVersion) {
-                changedModules.push({ moduleId, oldVersion: storedVersion, newVersion: currentVersion });
-              }
-            }
-          } catch (error) {
-            logger.warn('Could not check library module version:', error);
-          }
+          promises.push(
+            apiClient.get(`/library/modules/${moduleId}`, { params: { creatorId } })
+              .then(result => {
+                if (result?.data) {
+                  const currentVersion = result.data.version || 0;
+                  if (currentVersion !== storedVersion) {
+                    changedModules.push({ moduleId, oldVersion: storedVersion, newVersion: currentVersion });
+                  }
+                }
+              })
+              .catch(error => logger.warn('Could not check library module version:', error))
+          );
         }
       }
 
       if (storedVersions.sessions) {
         for (const [sessionId, storedVersion] of Object.entries(storedVersions.sessions)) {
-          try {
-            const result = await apiClient.get(`/library/sessions/${sessionId}`, { params: { creatorId } });
-            if (result?.data) {
-              const currentVersion = result.data.version || 0;
-              if (currentVersion !== storedVersion) {
-                changedSessions.push({ sessionId, oldVersion: storedVersion, newVersion: currentVersion });
-              }
-            }
-          } catch (error) {
-            logger.warn('Could not check library session version:', error);
-          }
+          promises.push(
+            apiClient.get(`/library/sessions/${sessionId}`, { params: { creatorId } })
+              .then(result => {
+                if (result?.data) {
+                  const currentVersion = result.data.version || 0;
+                  if (currentVersion !== storedVersion) {
+                    changedSessions.push({ sessionId, oldVersion: storedVersion, newVersion: currentVersion });
+                  }
+                }
+              })
+              .catch(error => logger.warn('Could not check library session version:', error))
+          );
         }
       }
+
+      await Promise.all(promises);
     } catch (error) {
       logger.error('Error checking library versions:', error);
     }

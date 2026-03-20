@@ -29,7 +29,7 @@ class SessionRecoveryService {
   async detectAndRecoverSessions() {
     try {
       // Check for active session
-      const activeSessionData = await AsyncStorage.getItem('active_session');
+      const activeSessionData = await AsyncStorage.getItem('current_session');
       if (activeSessionData) {
         const sessionData = JSON.parse(activeSessionData);
         await this.handleIncompleteSession(sessionData);
@@ -57,11 +57,11 @@ class SessionRecoveryService {
 
   /**
    * Attempt to recover an in-progress workout from the server checkpoint.
-   * Called only when no local active_session was found and the user is authenticated.
+   * Called only when no local current_session was found and the user is authenticated.
    */
   async recoverFromServerCheckpoint() {
     try {
-      const response = await apiClient.get('/workout/session/active');
+      const response = await apiClient.get('/workout/checkpoint');
       if (!response || !response.data) {
         return;
       }
@@ -71,10 +71,10 @@ class SessionRecoveryService {
 
       // Write the server checkpoint into AsyncStorage under the key that the
       // existing localStorage recovery path already watches.
-      await AsyncStorage.setItem('active_session', JSON.stringify(checkpoint));
+      await AsyncStorage.setItem('current_session', JSON.stringify(checkpoint));
 
       // Re-run recovery now that the data is present locally.
-      const restored = await AsyncStorage.getItem('active_session');
+      const restored = await AsyncStorage.getItem('current_session');
       if (restored) {
         const sessionData = JSON.parse(restored);
         await this.handleIncompleteSession(sessionData);
@@ -127,7 +127,7 @@ class SessionRecoveryService {
       await this.addToUploadQueue(sessionData);
       
       // Clear active session
-      await AsyncStorage.removeItem('active_session');
+      await AsyncStorage.removeItem('current_session');
       
     } catch (error) {
       logger.error('❌ Failed to auto-complete session:', error);
@@ -140,7 +140,7 @@ class SessionRecoveryService {
   async discardOldSession(sessionData) {
     try {
       // Remove all traces of old session
-      await AsyncStorage.removeItem('active_session');
+      await AsyncStorage.removeItem('current_session');
       await AsyncStorage.removeItem('session_metadata');
       
       // Remove backup sessions
@@ -312,7 +312,7 @@ class SessionRecoveryService {
    */
   async getRecoveryStatus() {
     try {
-      const activeSession = await AsyncStorage.getItem('active_session');
+      const activeSession = await AsyncStorage.getItem('current_session');
       const metadata = await AsyncStorage.getItem('session_metadata');
       const queueStatus = await uploadService.getUploadQueueStatus();
       

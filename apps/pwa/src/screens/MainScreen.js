@@ -30,7 +30,6 @@ import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
-import { trackScreenView } from '../services/monitoringService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
@@ -528,11 +527,6 @@ const MainScreen = ({ navigation, route }) => {
       return { booking, course, creatorName };
     });
   }, [upcomingBookingsData, purchasedCourses]);
-
-  // Track screen view on mount
-  useEffect(() => {
-    trackScreenView('MainScreen');
-  }, []);
 
   // Handle refresh parameter from navigation (e.g., after purchase)
   useEffect(() => {

@@ -64,13 +64,15 @@ class AuthService {
       
       const userCredential = await Promise.race([signInPromise, timeoutPromise]);
 
-      // Wait a bit longer to ensure Firebase auth state propagates and onAuthStateChanged fires
-      // This helps AuthContext's onAuthStateChanged listener fire before we return
-      await new Promise(resolve => setTimeout(resolve, 150));
-      
-      const finalUser = auth.currentUser || userCredential.user;
+      // Wait for onAuthStateChanged to fire so AuthContext picks up the new user
+      await new Promise((resolve) => {
+        const unsub = onAuthStateChanged(auth, () => {
+          unsub();
+          resolve();
+        });
+      });
 
-      return finalUser || userCredential.user;
+      return auth.currentUser || userCredential.user;
     } catch (error) {
       logger.error('[AUTH] Sign in error:', error.code, error.message);
       // Don't use handleNetworkOperation for web - it can cause freezes

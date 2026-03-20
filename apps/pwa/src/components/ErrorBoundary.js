@@ -23,21 +23,7 @@ class ErrorBoundary extends React.Component {
       errorInfo: errorInfo
     });
 
-    // In production, you might want to send this to a crash reporting service
-    // Skip on web (monitoring service uses React Native Firebase)
-    if (currentConfig.enableCrashReporting && typeof window === 'undefined') {
-      try {
-        const { reportError } = require('../services/monitoringService');
-        reportError(error, {
-          component: 'ErrorBoundary',
-          errorInfo: errorInfo?.componentStack,
-          timestamp: new Date().toISOString()
-        });
-      } catch (e) {
-        // Monitoring service not available (e.g., on web)
-        logger.warn('Monitoring service not available for error reporting');
-      }
-    }
+    // Crash reporting placeholder — monitoringService was removed (no-op, used unavailable packages).
   }
 
   handleRetry = () => {

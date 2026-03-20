@@ -24,18 +24,17 @@ class ProgressQueryService {
         };
       }
       
-      // Get session history for completed sessions
-      const sessions = [];
+      // Get session history for completed sessions in parallel
+      let sessions = [];
       if (progressData.allSessionsCompleted) {
-        for (const sessionId of progressData.allSessionsCompleted) {
-          const sessionData = await exerciseHistoryService.getSessionHistory(userId, sessionId);
-          if (sessionData) {
-            sessions.push({
-              id: sessionId,
-              ...sessionData
-            });
-          }
-        }
+        const results = await Promise.all(
+          progressData.allSessionsCompleted.map(sessionId =>
+            exerciseHistoryService.getSessionHistory(userId, sessionId)
+              .then(data => data ? { id: sessionId, ...data } : null)
+              .catch(() => null)
+          )
+        );
+        sessions = results.filter(Boolean);
       }
       
       // Calculate progress analytics
@@ -63,25 +62,28 @@ class ProgressQueryService {
       // Get all course progress for user
       const allCourseProgress = await userProgressService.getAllCourseProgress(userId);
       
-      // Get recent sessions from all courses
-      const allSessions = [];
+      // Get recent sessions from all courses in parallel
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
-      
+
+      const fetchPromises = [];
       for (const [courseId, courseProgress] of Object.entries(allCourseProgress)) {
         if (courseProgress.allSessionsCompleted) {
           for (const sessionId of courseProgress.allSessionsCompleted) {
-            const sessionData = await exerciseHistoryService.getSessionHistory(userId, sessionId);
-            if (sessionData && new Date(sessionData.completedAt) >= cutoffDate) {
-              allSessions.push({
-                id: sessionId,
-                courseId: courseId,
-                ...sessionData
-              });
-            }
+            fetchPromises.push(
+              exerciseHistoryService.getSessionHistory(userId, sessionId)
+                .then(data => {
+                  if (data && new Date(data.completedAt) >= cutoffDate) {
+                    return { id: sessionId, courseId, ...data };
+                  }
+                  return null;
+                })
+                .catch(() => null)
+            );
           }
         }
       }
+      const allSessions = (await Promise.all(fetchPromises)).filter(Boolean);
       
       // Sort all sessions by date
       allSessions.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));

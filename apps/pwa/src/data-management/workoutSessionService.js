@@ -1,4 +1,9 @@
 // Workout Session Service - Manages local workout sessions with auto-save
+// TODO: This subsystem is disconnected from the actual completion flow.
+// It writes to active_session, session_backup_N, session_metadata, upload_queue, and pending_session_*
+// AsyncStorage keys, but addToUploadQueue feeds into uploadService.uploadSession which is a no-op.
+// The actual session persistence goes through sessionService.js → POST /workout/complete.
+// Audit callers and either connect this to POST /workout/complete or remove.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../services/apiService';
 import logger from '../utils/logger.js';

@@ -162,7 +162,7 @@ class SessionService {
       return sessionState;
 
     } catch (error) {
-      logger.error('❌ Error getting current session:', error);
+      logger.error('Error getting current session:', error);
       return {
         session: null,
         workout: null,
@@ -198,7 +198,7 @@ class SessionService {
       return newState;
       
     } catch (error) {
-      logger.error('❌ Error selecting session:', error);
+      logger.error('Error selecting session:', error);
       throw error;
     }
   }
@@ -249,7 +249,7 @@ class SessionService {
             actualSessionData.startTime = currentSession.startTime;
           }
         } catch (error) {
-          logger.warn('⚠️ Could not get current session for startTime:', error);
+          logger.warn('Could not get current session for startTime:', error);
         }
       }
       
@@ -276,7 +276,7 @@ class SessionService {
           sessionMuscleVolumes = this.calculateSimpleMuscleVolumes(actualSessionData, workoutForVolume);
         }
       } catch (error) {
-        logger.error('❌ Error calculating muscle volumes:', error);
+        logger.error('Error calculating muscle volumes:', error);
       }
 
       // Clear cache to force refresh
@@ -291,7 +291,7 @@ class SessionService {
       };
 
     } catch (error) {
-      logger.error('❌ Error completing session:', error);
+      logger.error('Error completing session:', error);
       throw error;
     }
   }
@@ -350,14 +350,14 @@ class SessionService {
     
     const convertedSession = {
       sessionId: sessionId,
-      completionDocId: uniqueDocId, // Add unique document ID for Firestore
+      completionDocId: uniqueDocId,
       userId: userId,
       courseId: courseId,
       sessionName: workout.title || 'Workout Session',
-      startTime: workout.startTime || new Date().toISOString(), // Use workout startTime if available, otherwise current time
+      startTime: workout.startTime || new Date().toISOString(),
       completedAt: new Date().toISOString(),
       duration: 0,
-      exercises: workout.exercises.map(exercise => {
+      exercises: workout.exercises.map((exercise, index) => {
         // Properly resolve libraryId from exercise data
         let libraryId = exercise.libraryId;
         
@@ -368,7 +368,7 @@ class SessionService {
         
         // If still no libraryId, skip this exercise (don't default to 'unknown')
         if (!libraryId) {
-          logger.warn('⚠️ Skipping exercise - no libraryId found:', exercise);
+          logger.warn('Skipping exercise - no libraryId found:', exercise);
           return null;
         }
         
@@ -389,9 +389,9 @@ class SessionService {
           }) : [];
         
         const processedExercise = {
-          exerciseId: exercise.id || exercise.exerciseId || `exercise_${Date.now()}`,
+          exerciseId: exercise.id || exercise.exerciseId || `exercise_${Date.now()}_${index}`,
           exerciseName: exercise.name || exercise.exerciseName || 'Unknown Exercise',
-          libraryId: libraryId, // ✅ Now properly resolved
+          libraryId: libraryId, // Now properly resolved
           primary: exercise.primary, // CRITICAL: Include primary field for exercise resolution
           sets: processedSets
         };
@@ -416,7 +416,7 @@ class SessionService {
       return result;
       
     } catch (error) {
-      logger.error('❌ Error adding session data:', error);
+      logger.error('Error adding session data:', error);
       throw error;
     }
   }
@@ -450,7 +450,7 @@ class SessionService {
 
       return stats;
     } catch (error) {
-      logger.error('❌ Error calculating stats:', error);
+      logger.error('Error calculating stats:', error);
       return {
         totalExercises: 0,
         totalSets: 0,
@@ -465,12 +465,10 @@ class SessionService {
    * Clear cache
    */
   clearCache(userId, courseId) {
-    const progressCacheKey = `progress_${userId}_${courseId}`;
-    this.cache.delete(progressCacheKey);
-    const prefix = `${userId}_${courseId}`;
+    const prefix = `${userId}|${courseId}`;
     const toDelete = [];
     for (const key of this.cache.keys()) {
-      if (key === prefix || (typeof key === 'string' && key.startsWith(prefix + '_'))) toDelete.push(key);
+      if (key === prefix || (typeof key === 'string' && key.startsWith(prefix + '|'))) toDelete.push(key);
     }
     toDelete.forEach((k) => this.cache.delete(k));
   }

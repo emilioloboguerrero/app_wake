@@ -199,27 +199,7 @@ class CourseDownloadService {
    */
   async downloadCourse(courseId, userId) {
     try {
-      // ✅ NEW: Check if week changed (only for weekly programs)
-      // Check without downloading first to see if week changed
-      let courseMetadata = await apiService.getCourse(courseId);
-      if (courseMetadata?.weekly === true) {
-        const currentWeek = getMondayWeek();
-        const storedWeek = await this.getStoredWeek(courseId);
-        
-        if (storedWeek && storedWeek !== currentWeek) {
-          // Clear local cache to force fresh download
-          await this.deleteCourse(courseId);
-          
-          // Use internal download to prevent recursion
-          await this.downloadCourseInternal(courseId, userId);
-          
-          // Update stored week
-          await this.updateStoredWeek(courseId, currentWeek);
-          
-          return true;
-        }
-      }
-      
+      // Fetch course data once and reuse
       let courseData = null;
       try {
         courseData = await apiService.getCourse(courseId);
@@ -227,6 +207,19 @@ class CourseDownloadService {
       } catch (error) {
         logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
+      }
+
+      // Check if week changed (only for weekly programs)
+      if (courseData.weekly === true) {
+        const currentWeek = getMondayWeek();
+        const storedWeek = await this.getStoredWeek(courseId);
+
+        if (storedWeek && storedWeek !== currentWeek) {
+          await this.deleteCourse(courseId);
+          await this.downloadCourseInternal(courseId, userId);
+          await this.updateStoredWeek(courseId, currentWeek);
+          return true;
+        }
       }
 
       const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';

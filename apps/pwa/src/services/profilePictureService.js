@@ -53,6 +53,18 @@ class ProfilePictureService {
 
           canvas.toBlob(
             (blob) => {
+              if (blob.size > 204800) {
+                // Re-compress at lower quality to meet 200KB limit
+                canvas.toBlob(
+                  (smallerBlob) => {
+                    const url = URL.createObjectURL(smallerBlob || blob);
+                    resolve(url);
+                  },
+                  'image/jpeg',
+                  0.5
+                );
+                return;
+              }
               const url = URL.createObjectURL(blob);
               resolve(url);
             },
@@ -167,6 +179,11 @@ class ProfilePictureService {
       // Convert URI to blob for upload
       const response = await fetch(compressedUri);
       const blob = await response.blob();
+
+      // Revoke the object URL created during compression to prevent memory leak
+      if (compressedUri.startsWith('blob:')) {
+        URL.revokeObjectURL(compressedUri);
+      }
 
       // Upload directly to Firebase Storage via signed URL
       const uploadResponse = await fetch(data.uploadUrl, {

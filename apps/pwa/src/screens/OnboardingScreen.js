@@ -37,7 +37,6 @@ import countriesList from '../../assets/data/countries.json';
 import citiesBundle from '../../assets/data/cities.json';
 
 import { sanitizeInput } from '../utils/validation.js';
-import { trackUserRegistration } from '../services/monitoringService';
 import { isPWA } from '../utils/platform';
 import { 
   validateDisplayName, 
@@ -1341,9 +1340,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       // System fields: mark base profile done, keep new onboarding flow pending
       userData.profileCompleted = true;
       userData.onboardingCompleted = false;
-      
-      // Track user registration
-      trackUserRegistration();
       
       // Initialize general tutorials
       userData.generalTutorials = {

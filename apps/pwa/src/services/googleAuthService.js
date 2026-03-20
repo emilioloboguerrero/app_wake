@@ -8,8 +8,8 @@ import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
 
-// Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // Dynamic import for Google Sign-In (only loaded when needed)
 let GoogleSignin = null;

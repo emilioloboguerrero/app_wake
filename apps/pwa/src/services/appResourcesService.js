@@ -16,11 +16,13 @@ import logger from '../utils/logger';
 class AppResourcesService {
   constructor() {
     this._cache = null;
+    this._cachedAt = 0;
     this._loadingPromise = null;
+    this._maxAgeMs = 5 * 60 * 1000;
   }
 
   async _loadResources() {
-    if (this._cache) {
+    if (this._cache && (Date.now() - this._cachedAt) < this._maxAgeMs) {
       return this._cache;
     }
 
@@ -44,6 +46,7 @@ class AppResourcesService {
           intensityVideos: a.intensity ?? {},
         };
         this._cache = resources;
+        this._cachedAt = Date.now();
         return resources;
       } catch (error) {
         logger.error('❌ Error loading app resources:', error);
