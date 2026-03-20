@@ -151,7 +151,7 @@ applyViewportHeightOnce();
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
 let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
-let auth, webStorageService;
+let auth;
 
 // Function to load heavy components (called when not on login route)
 // Made async to prevent blocking the main thread
@@ -166,7 +166,6 @@ const loadHeavyComponents = async () => {
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
           ErrorBoundary = require('./components/ErrorBoundary').default;
           auth = require('./config/firebase').auth;
-          webStorageService = require('./services/webStorageService').default;
         } catch (error) {
           logger.error('[APP] ❌ Error loading heavy components:', error);
           // Don't throw - let the app continue with partial loading
@@ -430,20 +429,11 @@ export default function App() {
       if (!mounted) return;
 
       // Guard: Only run if components are loaded
-      if (!webStorageService || !auth) {
+      if (!auth) {
         return;
       }
 
       try {
-        // Initialize web storage service first (critical for web)
-        // Don't await - let it initialize in background with timeout
-        Promise.race([
-          webStorageService.init(),
-          new Promise(resolve => setTimeout(resolve, 2000)) // 2 second timeout
-        ]).catch((error) => {
-          if (mounted) safeLog('warn', 'Web storage initialization failed (non-critical):', error);
-        });
-
         // Initialize React Query IndexedDB persistence (non-blocking)
         try {
           const { initQueryPersistence } = require('./config/queryPersistence.web');
@@ -622,7 +612,6 @@ export default function App() {
       if (!StatusBar) StatusBar = require('expo-status-bar').StatusBar;
       if (!auth) auth = require('./config/firebase').auth;
       if (!logger) logger = require('./utils/logger').default;
-      if (!webStorageService) webStorageService = require('./services/webStorageService').default;
     } catch (syncError) {
       logger.error('[APP] Synchronous load failed:', syncError);
     }

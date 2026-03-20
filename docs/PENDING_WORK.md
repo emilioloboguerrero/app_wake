@@ -146,20 +146,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 7. hybridDataService Deletion
-
-`hybridDataService` is the legacy offline cache. **Ready to execute** — all 7 domains are confirmed migrated (section 1 complete). Deletion steps:
-
-```bash
-rm apps/pwa/src/services/hybridDataService.js
-grep -r "hybridDataService" apps/pwa/src/  # remove all remaining imports
-# Also delete webStorageService if only used by hybridDataService
-firebase deploy --only hosting
-```
-
----
-
-## 8. Audit Findings — Deferred Architectural Items
+## 7. Audit Findings — Deferred Architectural Items
 
 All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
 
@@ -173,9 +160,8 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 ## Priority Order
 
-1. **Section 7** — Delete hybridDataService (ready to execute now that all migrations are complete)
-2. **Section 6** — Complete staging setup (needed for QA validation)
-3. **Section 2** — Server-side filtering (when creators hit scale thresholds)
-4. **Section 3** — Web notifications (nice-to-have, not blocking)
-5. **Section 5** — Developer portal (when third-party devs need it)
-6. **Section 4** — Video exchange (future feature)
+1. **Section 6** — Complete staging setup (needed for QA validation)
+2. **Section 2** — Server-side filtering (when creators hit scale thresholds)
+3. **Section 3** — Web notifications (nice-to-have, not blocking)
+4. **Section 5** — Developer portal (when third-party devs need it)
+5. **Section 4** — Video exchange (future feature)
