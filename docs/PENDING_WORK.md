@@ -67,39 +67,7 @@ Acceptable at current scale. Need server-side endpoints when creators grow past 
 
 ---
 
-## 3. Web Notification System (NOT IMPLEMENTED)
-
-Entire system is specced but not started. No code exists. Required pieces:
-
-### Infrastructure
-- Generate VAPID keys (`npx web-push generate-vapid-keys`), store in Firebase Secret Manager
-- Add `web-push` to `functions/package.json`
-
-### Firestore Collections (new)
-- `users/{userId}/web_push_subscriptions/{subscriptionId}` — endpoint, keys, userAgent, isActive
-- `workout_timers/{timerId}` — userId, type, metadata, endAt, status (pending/sent/cancelled)
-
-### Cloud Functions (new, add to `functions/src/index.ts`)
-- `registerWebPushSubscription` — stores push subscription per user
-- `sendTestWebPush` — sends test notification to all user's active subscriptions
-- `scheduleRestTimerNotification` — creates a workout_timers doc with endAt timestamp
-- `processRestTimerNotifications` — Pub/Sub scheduled function (every 1 minute), queries pending timers where `endAt <= now + 30s`, sends web push, marks as sent
-
-### Client (new)
-- `apps/pwa/src/services/notificationService.web.js` — requests permission, creates push subscription, registers with backend, exposes `scheduleRestTimerNotification()`
-- Update `sw.js` with `push` and `notificationclick` event handlers
-- Wire `initializeNotifications` in AuthContext on login
-
-### Firestore Index
-- Collection: `workout_timers`, Fields: `status` (Asc), `endAt` (Asc)
-
-### Integration Point
-- WorkoutExecutionScreen rest timer: on timer start, call `scheduleRestTimerNotification({ endAtIso, metadata: { exerciseName, durationMs } })`
-- User gets OS notification "Descanso terminado — Vuelve a {exerciseName}" when PWA is backgrounded
-
----
-
-## 4. Video Exchange System (NOT IMPLEMENTED — Future)
+## 3. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -116,7 +84,7 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 5. Developer Portal (NOT BUILT)
+## 4. Developer Portal (NOT BUILT)
 
 API key management backend is complete (CRUD, SHA-256 storage, scope enforcement, rate limiting). But the developer portal UI is not built.
 
@@ -134,7 +102,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 6. Staging Environment — Incomplete Setup
+## 5. Staging Environment — Incomplete Setup
 
 `.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
 
@@ -146,7 +114,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 7. Audit Findings — Deferred Architectural Items
+## 6. Audit Findings — Deferred Architectural Items
 
 All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
 
@@ -160,8 +128,7 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 ## Priority Order
 
-1. **Section 6** — Complete staging setup (needed for QA validation)
+1. **Section 5** — Complete staging setup (needed for QA validation)
 2. **Section 2** — Server-side filtering (when creators hit scale thresholds)
-3. **Section 3** — Web notifications (nice-to-have, not blocking)
-4. **Section 5** — Developer portal (when third-party devs need it)
-5. **Section 4** — Video exchange (future feature)
+3. **Section 4** — Developer portal (when third-party devs need it)
+4. **Section 3** — Video exchange (future feature)

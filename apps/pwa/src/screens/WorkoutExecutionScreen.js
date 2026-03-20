@@ -2519,8 +2519,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (selectedRestSeconds > 0) {
       setIsRestPaused(false);
       setRestSecondsRemaining(selectedRestSeconds);
+
+      // Schedule push notification for when rest ends (web only)
+      if (Platform.OS === 'web') {
+        const endAt = new Date(Date.now() + selectedRestSeconds * 1000);
+        const exerciseName = workout?.exercises?.[currentExerciseIndex]?.name || 'tu ejercicio';
+        import('../services/notificationService.web.js').then((mod) => {
+          mod.scheduleRestTimerNotification({
+            endAtIso: endAt.toISOString(),
+            metadata: { exerciseName, durationMs: selectedRestSeconds * 1000 },
+          });
+        }).catch(() => {});
+      }
     }
-  }, [selectedRestSeconds]);
+  }, [selectedRestSeconds, workout, currentExerciseIndex]);
 
   isRestPausedRef.current = isRestPaused;
 

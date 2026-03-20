@@ -233,6 +233,14 @@
         {"fieldPath": "completed_at", "order": "DESCENDING"}
       ]
     }
+    {
+      "collectionGroup": "workout_timers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "endAt", "order": "ASCENDING"}
+      ]
+    }
   ],
   "fieldOverrides": []
 }

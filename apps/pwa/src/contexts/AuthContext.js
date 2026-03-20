@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import logger from '../utils/logger';
-import { isSafariWeb } from '../utils/platform';
+import { isSafariWeb, isWeb } from '../utils/platform';
 
 const AuthContext = createContext({});
 
@@ -56,6 +56,14 @@ export const AuthProvider = ({ children }) => {
       unsubscribe();
     };
   }, [initialized]);
+
+  // Initialize web push notifications on login (web only)
+  useEffect(() => {
+    if (!isWeb || !user?.uid) return;
+    import('../services/notificationService.web.js').then((mod) => {
+      mod.initializeNotifications(user.uid);
+    }).catch(() => {});
+  }, [user?.uid]);
 
   const value = React.useMemo(() => ({
     user,

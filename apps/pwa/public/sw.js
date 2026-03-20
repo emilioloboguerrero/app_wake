@@ -67,6 +67,43 @@ registerRoute(
   new NetworkOnly()
 );
 
+// ─── Push notifications ──────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = { title: 'Wake', body: '' };
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (_) {
+    data.body = event.data ? event.data.text() : '';
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Wake', {
+      body: data.body || '',
+      icon: '/app/icon-192.png',
+      badge: '/app/icon-192.png',
+      data: { url: '/app' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/app';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes('/app') && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
+});
+
 // ─── Install: do NOT skipWaiting ──────────────────────────────────────────
 // Per OFFLINE_ARCHITECTURE.md §5.4: activate on next load to avoid
 // mid-session cache/bundle version mismatch

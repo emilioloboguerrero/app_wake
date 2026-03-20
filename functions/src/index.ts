@@ -9,7 +9,9 @@ import type {Request, Response} from "express";
 import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
 import {Resend} from "resend";
 import {onRequest} from "firebase-functions/v2/https";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import {defineSecret} from "firebase-functions/params";
+import * as webpush from "web-push";
 import {app} from "./api/app.js";
 
 if (!admin.apps.length) {
@@ -2438,6 +2440,100 @@ export const sendEventConfirmationEmail = functions
     return null;
   });
 
+// ─── VAPID keys for web push ──────────────────────────────────────────────
+const vapidPublicKey = defineSecret("VAPID_PUBLIC_KEY");
+const vapidPrivateKey = defineSecret("VAPID_PRIVATE_KEY");
+
+// ─── Scheduled: process rest timer notifications every 1 minute ───────────
+export const processRestTimerNotifications = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: "us-central1",
+    secrets: [vapidPublicKey, vapidPrivateKey],
+  },
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const windowEnd = admin.firestore.Timestamp.fromMillis(
+      now.toMillis() + 30_000
+    );
+
+    const pendingSnap = await db
+      .collection("workout_timers")
+      .where("status", "==", "pending")
+      .where("endAt", "<=", windowEnd)
+      .get();
+
+    if (pendingSnap.empty) return;
+
+    const pub = vapidPublicKey.value();
+    const priv = vapidPrivateKey.value();
+    if (!pub || !priv) {
+      functions.logger.error("VAPID keys not configured");
+      return;
+    }
+
+    webpush.setVapidDetails("mailto:soporte@wakelab.co", pub, priv);
+
+    for (const timerDoc of pendingSnap.docs) {
+      const timer = timerDoc.data();
+      const userId = timer.userId as string;
+      const metadata = (timer.metadata || {}) as Record<string, unknown>;
+      const exerciseName = (metadata.exerciseName as string) || "tu ejercicio";
+
+      const subsSnap = await db
+        .collection("users")
+        .doc(userId)
+        .collection("web_push_subscriptions")
+        .where("isActive", "==", true)
+        .get();
+
+      const payload = JSON.stringify({
+        title: "Descanso terminado",
+        body: `Vuelve a ${exerciseName}`,
+      });
+
+      const deactivateIds: string[] = [];
+
+      await Promise.all(
+        subsSnap.docs.map(async (subDoc) => {
+          const sub = subDoc.data();
+          try {
+            await webpush.sendNotification(
+              { endpoint: sub.endpoint, keys: sub.keys },
+              payload
+            );
+          } catch (err: unknown) {
+            const status = (err as { statusCode?: number }).statusCode;
+            if (status === 410 || status === 404) {
+              deactivateIds.push(subDoc.id);
+            }
+          }
+        })
+      );
+
+      // Mark timer as sent
+      await timerDoc.ref.update({ status: "sent" });
+
+      // Deactivate expired subscriptions
+      if (deactivateIds.length > 0) {
+        const batch = db.batch();
+        for (const id of deactivateIds) {
+          batch.update(
+            db.collection("users").doc(userId)
+              .collection("web_push_subscriptions").doc(id),
+            { isActive: false }
+          );
+        }
+        await batch.commit();
+      }
+    }
+
+    functions.logger.info(
+      `Processed ${pendingSnap.size} rest timer notification(s)`
+    );
+  }
+);
+
 // ─── Gen2 API ─────────────────────────────────────────────────────────────
 // Single Gen2 function export — Express routes live in src/api/routes/
 
@@ -2460,6 +2556,8 @@ export const api = onRequest(
       resendApiKeyV2,
       mercadopagoAccessTokenV2,
       mercadopagoWebhookSecretV2,
+      vapidPublicKey,
+      vapidPrivateKey,
     ],
   },
   app

@@ -17,6 +17,7 @@ import analyticsRouter from "./routes/analytics.js";
 import apiKeysRouter from "./routes/apiKeys.js";
 import appResourcesRouter from "./routes/appResources.js";
 import bookingsRouter from "./routes/bookings.js";
+import notificationsRouter from "./routes/notifications.js";
 
 export const app = express();
 
@@ -114,6 +115,7 @@ app.use("/v1", analyticsRouter);
 app.use("/v1", apiKeysRouter);
 app.use("/v1", appResourcesRouter);
 app.use("/v1", bookingsRouter);
+app.use("/v1", notificationsRouter);
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
