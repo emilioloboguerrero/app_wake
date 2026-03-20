@@ -69,6 +69,33 @@ service cloud.firestore {
       match /bodyLog/{dateStr} {
         allow read, write: if isOwner(userId);
       }
+
+      // Nutrition diary entries (creator can read for their clients)
+      match /diary/{entryId} {
+        allow read, write: if isOwner(userId);
+        allow read: if creatorHasClientAccess(userId);
+      }
+
+      // User meals
+      match /meals/{mealId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // MercadoPago subscription records — owner read, server write only
+      match /subscriptions/{subId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Per-exercise last performance (quick lookup)
+      match /exerciseLastPerformance/{key} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Saved foods (user's personal food library)
+      match /saved_foods/{foodId} {
+        allow read, write: if isOwner(userId);
+      }
     }
     
     // Creator-client access: doc id = creatorId_userId; allows creator to read/update that user's document (e.g. set access end date)
@@ -319,8 +346,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         resource.data.creator_id == request.auth.uid || isAdmin()
       );
-      // Allow public signup form to increment registration_count (no other fields may change)
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registration_count']);
+      // registration_count is managed by Cloud Functions (sendEventConfirmationEmail) — no client update
       allow delete: if isSignedIn() && (
         resource.data.creator_id == request.auth.uid || isAdmin()
       );

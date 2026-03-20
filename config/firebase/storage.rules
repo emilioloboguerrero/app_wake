@@ -25,7 +25,7 @@ service firebase.storage {
     }
     
     // Program images (e.g., courses/{programId}/image.jpg)
-    // Upload enforcement is at the API layer via signed URLs
+    // Upload enforcement at API layer — see signed URL flow in CLAUDE.md
     match /courses/{programId}/{fileName} {
       // Allow authenticated users to read program images and intro videos
       allow read: if request.auth != null;
@@ -111,7 +111,7 @@ service firebase.storage {
     }
     
     // Progress photos — private to the owner
-    // Upload enforcement is at the API layer via signed URLs
+    // Upload enforcement at API layer — see signed URL flow in CLAUDE.md
     match /progress_photos/{userId}/{allPaths=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null
