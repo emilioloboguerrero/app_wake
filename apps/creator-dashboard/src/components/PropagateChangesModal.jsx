@@ -53,11 +53,11 @@ const PropagateChangesModal = ({
                 <div className="propagate-modal-options">
                   <div className="propagate-option">
                     <h3 className="propagate-option-title">Propagar cambios</h3>
-                    <p className="propagate-option-desc"><strong>Todos</strong> verán esta versión actualizada. Se pierden las personalizaciones.</p>
+                    <p className="propagate-option-desc">Los cambios se aplican a todos los programas que usen esta sesion. Los clientes con copias personalizadas no se ven afectados.</p>
                   </div>
                   <div className="propagate-option">
                     <h3 className="propagate-option-title">No propagar</h3>
-                    <p className="propagate-option-desc">Cada usuario <strong>conserva su versión</strong>. Solo las nuevas asignaciones usan la actualizada.</p>
+                    <p className="propagate-option-desc">Cada usuario <strong>conserva su version</strong>. Solo las nuevas asignaciones usan la actualizada.</p>
                   </div>
                 </div>
               </div>

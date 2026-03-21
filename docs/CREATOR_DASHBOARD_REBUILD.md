@@ -344,7 +344,7 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   4. Week volume: "Revisa el volumen muscular por semana para equilibrar tu programacion."
 
 #### 2H. Library Screens
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Files:**
 - `apps/creator-dashboard/src/screens/LibraryManagementScreen.jsx` + `.css`
 - `apps/creator-dashboard/src/screens/LibrarySessionDetailScreen.jsx` + `.css`
@@ -355,23 +355,23 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 - `apps/creator-dashboard/src/screens/CreateLibraryModuleScreen.jsx` + `.css`
 
 **Tasks — Virtualization:**
-- [ ] Apply `VirtualList` (Phase 1B) to exercise list in `LibraryExercisesScreen` and `LibraryManagementScreen` exercises tab (can exceed 50+ items)
+- [x] Apply `VirtualList` (Phase 1B) to exercise list in `LibraryExercisesScreen` and `LibraryManagementScreen` exercises tab (can exceed 50+ items)
 
 **Tasks — Error States:**
-- [ ] LibraryManagementScreen: FullScreenError if library query fails. Per-tab empty states.
-- [ ] Session/Module detail: FullScreenError if item load fails. Toast on save/delete failures.
-- [ ] Exercise completeness: keep existing yellow badge pattern (working correctly).
+- [x] LibraryManagementScreen: FullScreenError if library query fails. Per-tab empty states.
+- [x] Session/Module detail: FullScreenError if item load fails. Toast on save/delete failures.
+- [x] Exercise completeness: keep existing yellow badge pattern (working correctly).
 
 **Tasks — Copy Pass:**
-- [ ] Empty states:
+- [x] Empty states:
   - No exercises: "Tu biblioteca de ejercicios esta vacia. Crea ejercicios y usalos en tus sesiones."
   - No sessions: "Sin sesiones guardadas. Crea una sesion y reutilizala en multiples programas."
   - No modules: "Los modulos agrupan sesiones. Crea uno para organizar mejor tu biblioteca."
-- [ ] Completeness warning: "A este ejercicio le falta: {missing items}. No es obligatorio, pero mejora la experiencia de tus clientes."
-- [ ] Propagation: "Los cambios se aplican a todos los programas que usen esta sesion. Los clientes con copias personalizadas no se ven afectados."
+- [x] Completeness warning: "A este ejercicio le falta: {missing items}. No es obligatorio, pero mejora la experiencia de tus clientes."
+- [x] Propagation: "Los cambios se aplican a todos los programas que usen esta sesion. Los clientes con copias personalizadas no se ven afectados."
 
 **Tasks — Tutorial:**
-- [ ] LibraryManagementScreen (screenKey: "library"):
+- [x] LibraryManagementScreen (screenKey: "library"):
   1. Tabs: "Ejercicios son los bloques basicos. Sesiones combinan ejercicios. Modulos agrupan sesiones."
   2. Completeness: "El punto amarillo significa que al ejercicio le falta video, musculos o equipamiento. Funciona igual, pero queda mejor completo."
   3. Drag: "Puedes arrastrar modulos para reordenarlos. Las sesiones se arrastran dentro de los modulos."

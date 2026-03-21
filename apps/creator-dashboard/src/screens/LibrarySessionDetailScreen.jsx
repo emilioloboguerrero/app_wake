@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { FullScreenError } from '../components/ui';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
@@ -2690,20 +2691,17 @@ const LibrarySessionDetailScreen = () => {
 
   if (error || !session) {
     return (
-      <DashboardLayout 
+      <DashboardLayout
         screenName="Sesión"
         showBackButton={true}
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-error">
-            <p>{error || 'Sesión no encontrada'}</p>
-            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
-              Volver a Contenido
-            </button>
-          </div>
-        </div>
+        <FullScreenError
+          title="No se pudo cargar la sesion"
+          message={error || 'Sesion no encontrada'}
+          onRetry={() => navigate(0)}
+        />
       </DashboardLayout>
     );
   }
