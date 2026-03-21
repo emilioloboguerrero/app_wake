@@ -310,34 +310,34 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   3. Program card: "Cada programa muestra cuantos clientes estan inscritos y su tasa de completitud."
 
 #### 2G. Program Detail Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/ProgramDetailScreen.jsx` + `.css`
 **Current:** ~9000 LOC. Three tabs (Lab, Config, Content), drag-drop builder.
 
 **Tasks — Decomposition:**
-- [ ] Extract into separate files under `src/components/program/`:
-  - [ ] `ProgramLabTab.jsx` — analytics charts (enrollments, sessions, completion)
-  - [ ] `ProgramConfigTab.jsx` — metadata form (name, description, type, duration, image)
-  - [ ] `ProgramContentTab.jsx` — structure editor (modules, sessions, exercises)
-  - [ ] `ProgramExerciseEditor.jsx` — exercise editing panel
-  - [ ] `ProgramWeekRow.jsx` — single week row in content view
-- [ ] Main `ProgramDetailScreen.jsx` should drop to <500 LOC
+- [x] Extract into separate files under `src/components/program/`:
+  - [x] `ProgramLabTab.jsx` — analytics charts (enrollments, sessions, completion)
+  - [x] `ProgramConfigTab.jsx` — metadata form (name, description, type, duration, image)
+  - [x] `ProgramContentTab.jsx` — structure editor (modules, sessions, exercises)
+  - [x] `ProgramExerciseEditor.jsx` — exercise editing panel
+  - [x] `ProgramWeekRow.jsx` — single week row in content view
+- [x] Main `ProgramDetailScreen.jsx` should drop to <500 LOC
 
 **Tasks — Error States:**
-- [ ] FullScreenError if program load fails ("No pudimos cargar este programa. Puede que haya sido eliminado.").
-- [ ] Per-tab errors: analytics fail → show error in Lab tab only, content loads fine.
-- [ ] Drag-drop failures: Toast ("No pudimos mover esa sesion. Intenta de nuevo.").
-- [ ] Image upload failure: Toast with specific message.
-- [ ] Save failures: Toast ("Los cambios no se guardaron. Revisa tu conexion.").
+- [x] FullScreenError if program load fails ("No pudimos cargar este programa. Puede que haya sido eliminado.").
+- [x] Per-tab errors: analytics fail → show error in Lab tab only, content loads fine.
+- [x] Drag-drop failures: Toast ("No pudimos mover esa sesion. Intenta de nuevo.").
+- [x] Image upload failure: Toast with specific message.
+- [x] Save failures: Toast ("Los cambios no se guardaron. Revisa tu conexion.").
 
 **Tasks — Copy Pass:**
-- [ ] Tab names: "Estadisticas", "Configuracion", "Contenido"
-- [ ] Empty content: "Este programa no tiene contenido todavia. Agrega una semana para empezar a construir."
-- [ ] Empty analytics: "Cuando tengas clientes inscritos, aqui vas a ver como van."
-- [ ] Drag hint: "Arrastra sesiones desde tu biblioteca al dia que quieras."
+- [x] Tab names: "Estadisticas", "Configuracion", "Contenido"
+- [x] Empty content: "Este programa no tiene contenido todavia. Agrega una semana para empezar a construir."
+- [x] Empty analytics: "Cuando tengas clientes inscritos, aqui vas a ver como van."
+- [x] Drag hint: "Arrastra sesiones desde tu biblioteca al dia que quieras."
 
 **Tasks — Tutorial:**
-- [ ] ProgramDetailScreen (screenKey: "program-detail"):
+- [x] ProgramDetailScreen (screenKey: "program-detail"):
   1. Tabs: "Estadisticas te muestra como van tus clientes. Configuracion es la info del programa. Contenido es donde armas la estructura."
   2. Content editor: "Cada fila es un dia de la semana. Arrastra sesiones desde la biblioteca o crea nuevas directo aca."
   3. Library sidebar: "Tu biblioteca aparece al costado. Arrastra lo que necesites al programa."
