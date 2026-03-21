@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
+import { usePrograms } from '../hooks/usePrograms';
+import oneOnOneService from '../services/oneOnOneService';
 import './CommandPalette.css';
 
-const COMMANDS = [
+const STATIC_COMMANDS = [
   {
     group: 'Ir a',
     items: [
@@ -24,14 +28,11 @@ const COMMANDS = [
   },
 ];
 
-const ALL_ITEMS = COMMANDS.flatMap(g => g.items.map(item => ({ ...item, group: g.group })));
-
 function fuzzyMatch(label, query) {
   if (!query) return true;
   return label.toLowerCase().includes(query.toLowerCase());
 }
 
-// SVG icons
 const SearchIcon = () => (
   <svg className="cp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -51,20 +52,95 @@ const CreateIcon = () => (
   </svg>
 );
 
+const ClientIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+);
+
+const ProgramIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+    <line x1="8" y1="21" x2="16" y2="21"/>
+    <line x1="12" y1="17" x2="12" y2="21"/>
+  </svg>
+);
+
+function iconForGroup(group) {
+  switch (group) {
+    case 'Crear': return <CreateIcon />;
+    case 'Clientes': return <ClientIcon />;
+    case 'Programas': return <ProgramIcon />;
+    default: return <NavIcon />;
+  }
+}
+
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const filteredItems = ALL_ITEMS.filter(item => fuzzyMatch(item.label, query));
+  const { data: programs, isError: programsError } = usePrograms();
+  const { data: clients, isError: clientsError } = useQuery({
+    queryKey: ['clients', user?.uid],
+    queryFn: () => oneOnOneService.getClientsByCreator(),
+    enabled: !!user,
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Group filtered items
-  const groupedFiltered = COMMANDS.map(g => ({
-    group: g.group,
-    items: filteredItems.filter(i => i.group === g.group),
-  })).filter(g => g.items.length > 0);
+  const hasError = programsError || clientsError;
+
+  const allCommands = useMemo(() => {
+    const groups = [...STATIC_COMMANDS];
+
+    if (clients?.length) {
+      groups.push({
+        group: 'Clientes',
+        items: clients.map(c => ({
+          id: `client-${c.id || c.clientUserId}`,
+          label: c.displayName || c.name || c.email || 'Cliente',
+          path: `/products?tab=clientes&client=${c.id || c.clientUserId}`,
+          hint: '',
+        })),
+      });
+    }
+
+    if (programs?.length) {
+      groups.push({
+        group: 'Programas',
+        items: programs.map(p => ({
+          id: `program-${p.id}`,
+          label: p.title || p.name || 'Programa',
+          path: `/products?program=${p.id}`,
+          hint: '',
+        })),
+      });
+    }
+
+    return groups;
+  }, [clients, programs]);
+
+  const allItems = useMemo(
+    () => allCommands.flatMap(g => g.items.map(item => ({ ...item, group: g.group }))),
+    [allCommands]
+  );
+
+  const filteredItems = useMemo(
+    () => allItems.filter(item => fuzzyMatch(item.label, query)),
+    [allItems, query]
+  );
+
+  const groupedFiltered = useMemo(
+    () => allCommands.map(g => ({
+      group: g.group,
+      items: filteredItems.filter(i => i.group === g.group),
+    })).filter(g => g.items.length > 0),
+    [allCommands, filteredItems]
+  );
 
   const handleOpen = useCallback(() => {
     setOpen(true);
@@ -82,7 +158,6 @@ export default function CommandPalette() {
     navigate(item.path);
   }, [handleClose, navigate]);
 
-  // Global keyboard shortcut
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -98,14 +173,12 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', handler);
   }, [open, handleOpen, handleClose]);
 
-  // Focus input when opened
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
-  // Keyboard navigation inside palette
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -130,7 +203,6 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', handler);
   }, [open, filteredItems, selectedIndex, handleClose, handleSelect]);
 
-  // Reset selection when query changes
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
@@ -138,6 +210,8 @@ export default function CommandPalette() {
   if (!open) return null;
 
   let flatIndex = 0;
+  const showEmpty = query && filteredItems.length === 0 && !hasError;
+  const showError = query && hasError && filteredItems.length === 0;
 
   return (
     <div className="cp-overlay" onClick={handleClose}>
@@ -155,6 +229,16 @@ export default function CommandPalette() {
           />
         </div>
         <div className="cp-results">
+          {showEmpty && (
+            <div className="cp-empty-state">
+              No encontramos resultados para &lsquo;{query}&rsquo;.
+            </div>
+          )}
+          {showError && (
+            <div className="cp-error-state">
+              No pudimos buscar. Intenta de nuevo.
+            </div>
+          )}
           {groupedFiltered.map(group => (
             <div key={group.group}>
               <div className="cp-group-label">{group.group}</div>
@@ -170,10 +254,10 @@ export default function CommandPalette() {
                     onClick={() => handleSelect(item)}
                   >
                     <span className="cp-item-icon">
-                      {item.group === 'Crear' ? <CreateIcon /> : <NavIcon />}
+                      {iconForGroup(item.group)}
                     </span>
                     <span className="cp-item-label">{item.label}</span>
-                    <span className="cp-item-hint">{item.hint}</span>
+                    {item.hint && <span className="cp-item-hint">{item.hint}</span>}
                   </div>
                 );
               })}
