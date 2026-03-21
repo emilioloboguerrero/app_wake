@@ -17,6 +17,21 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
+const auth = admin.auth();
+
+async function ensureAuthUser(uid, email, displayName, password) {
+  try {
+    await auth.getUser(uid);
+    console.log(`  Auth user ${uid} already exists, skipping`);
+  } catch (e) {
+    if (e.code === 'auth/user-not-found') {
+      await auth.createUser({ uid, email, displayName, password });
+      console.log(`  Auth user ${uid} created (${email})`);
+    } else {
+      throw e;
+    }
+  }
+}
 
 function isoDate(offsetDays) {
   const d = new Date();
@@ -34,6 +49,11 @@ async function seed() {
   const today = isoDate(0);
   const yesterday = isoDate(-1);
   const twoDaysAgo = isoDate(-2);
+
+  // --- Auth accounts ---
+  console.log('Creating Auth accounts...');
+  await ensureAuthUser('seed-creator-001', 'creator@test.com', 'Test Creator', 'okokok');
+  await ensureAuthUser('seed-user-001', 'user@test.com', 'Test User', 'okokok');
 
   // --- users/seed-creator-001 ---
   console.log('Creating creator user...');
