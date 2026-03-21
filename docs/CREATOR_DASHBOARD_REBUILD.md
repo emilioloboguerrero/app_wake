@@ -437,7 +437,7 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 
 **Tasks — Copy Pass:**
 - [x] Empty plan: "Este cliente no tiene un plan asignado. Asignale uno desde Planificacion."
-- [ ] No calls: "Sin llamadas agendadas con {nombre}." (no calls UI exists yet)
+- [x] No calls: "Sin llamadas agendadas con {nombre}."
 - [x] No lab data: "{nombre} no ha registrado datos todavia. Los vas a ver aca cuando empiece."
 
 **Tasks — Tutorial:**
