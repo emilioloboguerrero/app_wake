@@ -14,13 +14,45 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
-// GET /creator/clients — paginated 50/page
+// GET /creator/clients — paginated 50/page, optional ?programId=X filter
 router.get("/creator/clients", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  const programId = req.query.programId as string | undefined;
   const pageToken = req.query.pageToken as string | undefined;
+
+  if (programId) {
+    // Server-side filtering: fetch all clients, look up each user's courses,
+    // return only those enrolled in the requested program.
+    let query: admin.firestore.Query = db
+      .collection("one_on_one_clients")
+      .where("creatorId", "==", auth.userId)
+      .orderBy("created_at", "desc");
+
+    const snapshot = await query.get();
+
+    const results: Record<string, unknown>[] = [];
+    for (const d of snapshot.docs) {
+      const clientData = d.data();
+      const userDoc = await db.collection("users").doc(clientData.userId).get();
+      const courses = userDoc.data()?.courses ?? {};
+      const enrollment = courses[programId];
+      if (enrollment && enrollment.deliveryType === "one_on_one") {
+        results.push({
+          id: d.id,
+          ...clientData,
+          enrolledProgram: { courseId: programId, ...enrollment },
+        });
+      }
+    }
+
+    res.json({ data: results });
+    return;
+  }
+
+  // Default: paginated list without filtering
   const limit = 50;
 
   let query: admin.firestore.Query = db
@@ -1377,6 +1409,47 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
 });
 
 // ─── Library Sessions CRUD ──────────────────────────────────────────────
+
+// GET /creator/library/exercises — deduplicated exercises across all library sessions
+router.get("/creator/library/exercises", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const sessionsSnap = await db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .get();
+
+  const seen = new Map<string, Record<string, unknown>>();
+
+  await Promise.all(
+    sessionsSnap.docs.map(async (sessionDoc) => {
+      const exercisesSnap = await sessionDoc.ref
+        .collection("exercises")
+        .orderBy("order", "asc")
+        .get();
+
+      for (const eDoc of exercisesSnap.docs) {
+        const data = eDoc.data();
+        const key = data.name || eDoc.id;
+        if (key && !seen.has(key)) {
+          seen.set(key, {
+            id: eDoc.id,
+            name: data.name || "",
+            primaryMuscles: data.primaryMuscles || [],
+            video_url: data.videoUrl || data.video_url || null,
+            muscle_activation: data.muscle_activation || null,
+            implements: data.implements || null,
+          });
+        }
+      }
+    })
+  );
+
+  res.json({ data: Array.from(seen.values()) });
+});
 
 // GET /creator/library/sessions
 router.get("/creator/library/sessions", async (req, res) => {

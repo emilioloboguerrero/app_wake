@@ -20,7 +20,6 @@ router.get("/api-keys", async (req, res) => {
   const snapshot = await db
     .collection("api_keys")
     .where("creatorId", "==", auth.userId)
-    .where("status", "==", "active")
     .get();
 
   // Never return keyHash
@@ -30,6 +29,7 @@ router.get("/api-keys", async (req, res) => {
       keyId: d.id,
       name: data.name,
       scope: data.scope,
+      status: data.status,
       createdAt: data.createdAt,
       lastUsedAt: data.lastUsedAt ?? null,
       ...(data.useCase ? { useCase: data.useCase } : {}),
@@ -104,7 +104,7 @@ router.post("/api-keys", async (req, res) => {
   res.status(201).json({
     data: {
       keyId,
-      key: rawKey,
+      rawKey,
       name: body.name,
       scope: body.scope,
       status,

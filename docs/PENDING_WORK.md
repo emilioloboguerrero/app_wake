@@ -56,18 +56,7 @@ If a migration fails: `git revert <commit>` the service file, deploy hosting onl
 
 ---
 
-## 2. Creator Dashboard — Server-Side Filtering Needed
-
-Acceptable at current scale. Need server-side endpoints when creators grow past thresholds.
-
-| Service Method | Current Pattern | Endpoint Needed | Trigger |
-|---|---|---|---|
-| `clientProgramService.getClientProgramsForProgram(programId)` | Fetches ALL clients, filters client-side | `GET /creator/clients?programId=X` | Creator has 200+ clients |
-| `libraryService.getExercises()` | Fetches ALL sessions, extracts exercises | `GET /creator/library/exercises` | Creator has 200+ library sessions |
-
----
-
-## 3. Video Exchange System (NOT IMPLEMENTED — Future)
+## 2. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -84,7 +73,7 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 4. Staging Environment — Incomplete Setup
+## 3. Staging Environment — Incomplete Setup
 
 `.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
 
@@ -96,20 +85,13 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 5. Audit Findings — Deferred Architectural Items
+## 4. Audit Findings — Resolved
 
-All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
-
-| Item | Current State | Resolves When |
-|---|---|---|
-| ~~PWA screens with direct `firestoreService` imports~~ | Resolved — zero direct Firestore calls remain | Section 1 complete |
-| `clientProgramService` server-side filtering | Client-side filtering works at current scale | Section 2 endpoints built |
-| `libraryService.getExercises()` batch endpoint | Client-side extraction works at current scale | Section 2 endpoints built |
+All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. Server-side filtering endpoints (`GET /creator/clients?programId=X`, `GET /creator/library/exercises`) are now implemented.
 
 ---
 
 ## Priority Order
 
-1. **Section 4** — Complete staging setup (needed for QA validation)
-2. **Section 2** — Server-side filtering (when creators hit scale thresholds)
-3. **Section 3** — Video exchange (future feature)
+1. **Section 3** — Complete staging setup (needed for QA validation)
+2. **Section 2** — Video exchange (future feature)

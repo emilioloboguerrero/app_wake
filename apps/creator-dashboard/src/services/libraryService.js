@@ -1,27 +1,9 @@
 import apiClient from '../utils/apiClient';
 
 class LibraryService {
-  // Returns all unique exercises aggregated from all library sessions.
-  // Each item: { id, name, primaryMuscles, video_url, muscle_activation, implements }
   async getExercises() {
-    const sessions = await this.getSessionLibrary();
-    const seen = new Map();
-    for (const session of sessions) {
-      for (const ex of session.exercises || []) {
-        const key = ex.name || ex.exerciseId || ex.id;
-        if (key && !seen.has(key)) {
-          seen.set(key, {
-            id: ex.exerciseId || ex.id || key,
-            name: ex.name || '',
-            primaryMuscles: ex.primaryMuscles || [],
-            video_url: ex.video_url || ex.video || null,
-            muscle_activation: ex.muscle_activation || null,
-            implements: ex.implements || null,
-          });
-        }
-      }
-    }
-    return Array.from(seen.values());
+    const res = await apiClient.get('/creator/library/exercises');
+    return res.data || [];
   }
 
   // Returns exercise libraries (exercises_library collection docs) for a creator.

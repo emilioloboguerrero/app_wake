@@ -566,6 +566,14 @@ service cloud.firestore {
     }
 
     // ============================================
+    // WRITE ACCESS REQUESTS (developer portal)
+    // ============================================
+    match /write_access_requests/{requestId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ============================================
     // DEFAULT RULE — deny everything not explicitly covered
     // ============================================
     match /{document=**} {

@@ -15,18 +15,15 @@ class ClientProgramService {
     return programs.find((p) => p.courseId === programId) ?? null;
   }
 
-  // TODO: Replace with server-side filtering (?programId=X) when endpoint supports it
   async getClientProgramsForProgram(programId) {
-    const res = await apiClient.get('/creator/clients');
+    const res = await apiClient.get('/creator/clients', {
+      params: { programId },
+    });
     const clients = res.data || [];
-    const results = [];
-    for (const client of clients) {
-      const enrolled = (client.enrolledPrograms || []).find((p) => p.courseId === programId);
-      if (enrolled) {
-        results.push({ clientId: client.clientId, ...enrolled });
-      }
-    }
-    return results;
+    return clients.map((c) => ({
+      clientId: c.userId,
+      ...c.enrolledProgram,
+    }));
   }
 
   async deleteClientProgram(programId, clientId) {
