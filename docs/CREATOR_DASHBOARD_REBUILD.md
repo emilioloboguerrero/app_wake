@@ -511,15 +511,15 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   - [x] Tooltip: "Replay tutorial"
 
 ### 3B. Command Palette Polish
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/components/CommandPalette.jsx` + `.css`
 
 **Tasks:**
-- [ ] Verify it opens with Cmd/Ctrl+K
-- [ ] Verify search covers: screens, clients, programs, actions
-- [ ] Error state: if search fails, show inline message ("No pudimos buscar. Intenta de nuevo.")
-- [ ] Empty state: "No encontramos resultados para '{query}'."
-- [ ] Verify animations: fade+scale entrance, spring easing
+- [x] Verify it opens with Cmd/Ctrl+K
+- [x] Verify search covers: screens, clients, programs, actions
+- [x] Error state: if search fails, show inline message ("No pudimos buscar. Intenta de nuevo.")
+- [x] Empty state: "No encontramos resultados para '{query}'."
+- [x] Verify animations: fade+scale entrance, spring easing
 
 ### 3C. Global Copy Audit
 **Status:** [ ] Not started
