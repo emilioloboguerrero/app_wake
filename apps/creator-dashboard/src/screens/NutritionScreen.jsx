@@ -14,6 +14,9 @@ import {
   SkeletonCard,
   NumberTicker,
   ProgressRing,
+  SpotlightTutorial,
+  InlineError,
+  FullScreenError,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
 import '../components/PropagateChangesModal.css';
@@ -22,6 +25,24 @@ import './NutritionScreen.css';
 const TAB_ITEMS = [
   { id: 'recetas', label: 'Recetas' },
   { id: 'planes', label: 'Planes' },
+];
+
+const TUTORIAL_STEPS = [
+  {
+    selector: '.ns-navbar-row .tubelight-navbar',
+    title: 'Recetas y planes',
+    body: 'Recetas son tus comidas individuales. Planes son combinaciones de recetas para una semana.',
+  },
+  {
+    selector: '.ns-add-btn',
+    title: 'Crear contenido',
+    body: 'Crea recetas con busqueda de alimentos integrada. Los macros se calculan automaticamente.',
+  },
+  {
+    selector: '.ns-panel-right',
+    title: 'Asignar planes',
+    body: 'Una vez que tengas un plan, puedes asignarlo directamente a un cliente desde su perfil.',
+  },
 ];
 
 function MacroRing({ label, grams, total, color }) {
@@ -80,14 +101,14 @@ export default function NutritionScreen({ clientId = null }) {
   const nutritionCache = cacheConfig.otherPrograms;
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const { data: meals = [], isLoading: mealsLoading, isError: mealsError } = useQuery({
+  const { data: meals = [], isLoading: mealsLoading, isError: mealsError, refetch: refetchMeals } = useQuery({
     queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...nutritionCache,
   });
 
-  const { data: plans = [], isLoading: plansLoading, isError: plansError } = useQuery({
+  const { data: plans = [], isLoading: plansLoading, isError: plansError, refetch: refetchPlans } = useQuery({
     queryKey: queryKeys.nutrition.plans(creatorId),
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
@@ -215,6 +236,18 @@ export default function NutritionScreen({ clientId = null }) {
     }
   };
 
+  if (mealsError && plansError) {
+    return (
+      <DashboardLayout screenName="Nutrición">
+        <FullScreenError
+          title="No pudimos cargar la nutrición"
+          message="Hubo un problema cargando tus recetas y planes. Revisa tu conexion e intenta de nuevo."
+          onRetry={() => { refetchMeals(); refetchPlans(); }}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout screenName="Nutrición">
       <div className="ns-root">
@@ -240,7 +273,7 @@ export default function NutritionScreen({ clientId = null }) {
             }}
           >
             <span className="ns-add-btn-plus">+</span>
-            {activeTab === 'recetas' ? 'Nueva receta' : 'Nuevo plan'}
+            {activeTab === 'recetas' ? 'Crear receta' : 'Crear plan'}
           </button>
         </div>
 
@@ -281,16 +314,20 @@ export default function NutritionScreen({ clientId = null }) {
                 </div>
               ) : listError ? (
                 <div className="ns-list-empty">
-                  <p>No se pudo cargar la lista. Intenta de nuevo.</p>
+                  <InlineError
+                    message={activeTab === 'recetas'
+                      ? 'No pudimos cargar tus recetas. Revisa tu conexion e intenta de nuevo.'
+                      : 'No pudimos cargar tus planes. Revisa tu conexion e intenta de nuevo.'}
+                  />
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="ns-list-empty">
                   {searchQuery ? (
                     <p>Sin resultados para «{searchQuery}»</p>
                   ) : activeTab === 'recetas' ? (
-                    <p>Aún no tienes recetas. Crea tu primera para empezar.</p>
+                    <p>Tu biblioteca de recetas esta vacia. Crea tu primera receta y empieza a armar planes.</p>
                   ) : (
-                    <p>Aún no tienes planes nutricionales.</p>
+                    <p>Todavia no tienes planes de nutricion. Crea uno y asignalo a tus clientes.</p>
                   )}
                 </div>
               ) : (
@@ -609,6 +646,8 @@ export default function NutritionScreen({ clientId = null }) {
           </div>
         </div>
       </Modal>
+
+      <SpotlightTutorial screenKey="nutrition" steps={TUTORIAL_STEPS} />
     </DashboardLayout>
   );
 }
