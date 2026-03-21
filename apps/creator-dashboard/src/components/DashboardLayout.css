@@ -287,11 +287,14 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  transition: background var(--duration-fast) ease;
+  transition:
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) var(--spring, cubic-bezier(0.22,1,0.36,1));
 }
 
 .dl-user:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
 }
 
 .dl-user__avatar-img {
