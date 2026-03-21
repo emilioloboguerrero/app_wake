@@ -340,7 +340,7 @@ const ClientProgramScreen = () => {
     setIsAssigningNutrition(true);
     try {
       if (assignmentId) {
-        await nutritionDb.updateAssignment(assignmentId, {
+        await nutritionDb.updateAssignment(client.clientUserId, assignmentId, {
           startDate: startDate || null,
           endDate: noEndDate ? null : (endDate || null),
         });
