@@ -139,45 +139,45 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 ### Parallel Group A (independent screens)
 
 #### 2A. Dashboard Screen (Inicio)
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/DashboardScreen.jsx` + `.css`
 **Current:** ~9000 LOC. Draggable widget grid, 6 widgets, tutorial spotlight.
 
 **Tasks — Decomposition:**
-- [ ] Extract widget components into separate files under `src/components/dashboard/`:
-  - [ ] `ClientsWidget.jsx` — avatar grid + count
-  - [ ] `CallsWidget.jsx` — upcoming calls list
-  - [ ] `RevenueWidget.jsx` — use new RevenueCard component (Phase 1D)
-  - [ ] `AdherenceWidget.jsx` — ProgressRing + percentage
-  - [ ] `SessionsWidget.jsx` — completed sessions count
-  - [ ] `UpcomingCallsWidget.jsx` — detailed call list
-- [ ] Main `DashboardScreen.jsx` should drop to <500 LOC after extraction
+- [x] Extract widget components into separate files under `src/components/dashboard/`:
+  - [x] `ClientsWidget.jsx` — avatar grid + count
+  - [x] `CallsWidget.jsx` — upcoming calls list
+  - [x] `RevenueWidget.jsx` — use new RevenueCard component (Phase 1D)
+  - [x] `AdherenceWidget.jsx` — ProgressRing + percentage
+  - [x] `SessionsWidget.jsx` — completed sessions count
+  - [x] `UpcomingCallsWidget.jsx` — detailed call list
+- [x] Main `DashboardScreen.jsx` should drop to <500 LOC after extraction
 
 **Tasks — Layout:**
-- [ ] Implement BentoGrid layout (already using BentoGrid/BentoCard) — verify it's a proper bento box layout with varied card sizes
-- [ ] Widget sizes: Revenue and Clients should be `2x1` (wide), others `1x1`
-- [ ] Keep drag-to-reorder with dnd-kit
+- [x] Implement BentoGrid layout (already using BentoGrid/BentoCard) — verify it's a proper bento box layout with varied card sizes
+- [x] Widget sizes: Revenue and Clients should be `2x1` (wide), others `1x1`
+- [x] Keep drag-to-reorder with dnd-kit
 
 **Tasks — Revenue Widget:**
-- [ ] Replace current revenue card with new RevenueCard from Phase 1D
-- [ ] Toggle: low-ticket shows revenue, one-on-one shows client+call count
-- [ ] Selectable date range
+- [x] Replace current revenue card with new RevenueCard from Phase 1D
+- [x] Toggle: low-ticket shows revenue, one-on-one shows client+call count
+- [x] Selectable date range
 
 **Tasks — Error States:**
-- [ ] Each widget: if query fails, show inline error inside the widget card ("No pudimos cargar tus ingresos. Toca para reintentar.") with retry
-- [ ] If ALL queries fail: show FullScreenError ("Algo no está funcionando. Revisa tu conexion e intenta de nuevo.")
-- [ ] Loading: each widget shows SkeletonCard independently
+- [x] Each widget: if query fails, show inline error inside the widget card ("No pudimos cargar tus ingresos. Toca para reintentar.") with retry
+- [x] If ALL queries fail: show FullScreenError ("Algo no está funcionando. Revisa tu conexion e intenta de nuevo.")
+- [x] Loading: each widget shows SkeletonCard independently
 
 **Tasks — Copy Pass:**
-- [ ] Widget titles: keep short and clear ("Clientes activos", "Llamadas esta semana", "Ingresos netos", "Adherencia", "Sesiones completadas")
-- [ ] Empty states per widget:
+- [x] Widget titles: keep short and clear ("Clientes activos", "Llamadas esta semana", "Ingresos netos", "Adherencia", "Sesiones completadas")
+- [x] Empty states per widget:
   - No clients: "Todavia no tienes clientes. Invita al primero desde Clientes."
   - No calls: "Sin llamadas programadas. Configura tu disponibilidad."
   - No revenue: "Cuando vendas tu primer programa, aqui vas a ver tus ingresos."
   - No sessions: "Tus clientes no han completado sesiones aun."
 
 **Tasks — Tutorial:**
-- [ ] Update SpotlightTutorial steps for dashboard (screenKey: "dashboard"):
+- [x] Update SpotlightTutorial steps for dashboard (screenKey: "dashboard"):
   1. Widget grid: "Este es tu centro de control. Puedes arrastrar las tarjetas para organizar tu dashboard."
   2. Revenue card: "Aqui ves tus ingresos. Toca para ver el desglose completo."
   3. Clients card: "Tu roster de clientes activos. Clickea cualquier avatar para ir a su perfil."
