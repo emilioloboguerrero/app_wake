@@ -184,27 +184,27 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   4. Feedback button: "Algo que no funcione o que quieras ver? Mandanos feedback directo desde aca."
 
 #### 2B. Nutrition Screen + Editors
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Files:**
 - `apps/creator-dashboard/src/screens/NutritionScreen.jsx` + `.css`
 - `apps/creator-dashboard/src/screens/MealEditorScreen.jsx` + `.css`
 - `apps/creator-dashboard/src/screens/PlanEditorScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] NutritionScreen: FullScreenError if meals AND plans queries fail. Inline error per tab if only one fails.
-- [ ] MealEditorScreen: FullScreenError if meal load fails. Toast on save failure ("No pudimos guardar la receta. Intenta de nuevo."). InlineError on field validation.
-- [ ] PlanEditorScreen: same pattern as MealEditorScreen.
+- [x] NutritionScreen: FullScreenError if meals AND plans queries fail. Inline error per tab if only one fails.
+- [x] MealEditorScreen: FullScreenError if meal load fails. Toast on save failure ("No pudimos guardar la receta. Intenta de nuevo."). InlineError on field validation.
+- [x] PlanEditorScreen: same pattern as MealEditorScreen.
 
 **Tasks — Copy Pass:**
-- [ ] Empty states:
+- [x] Empty states:
   - No meals: "Tu biblioteca de recetas esta vacia. Crea tu primera receta y empieza a armar planes."
   - No plans: "Todavia no tienes planes de nutricion. Crea uno y asignalo a tus clientes."
-- [ ] CTA buttons: "Crear receta", "Crear plan"
-- [ ] Toast messages: "Receta guardada", "Plan guardado", "Receta eliminada"
-- [ ] Error toasts: "No pudimos guardar los cambios. Revisa tu conexion."
+- [x] CTA buttons: "Crear receta", "Crear plan"
+- [x] Toast messages: "Receta guardada", "Plan guardado", "Receta eliminada"
+- [x] Error toasts: "No pudimos guardar los cambios. Revisa tu conexion."
 
 **Tasks — Tutorial:**
-- [ ] NutritionScreen (screenKey: "nutrition"):
+- [x] NutritionScreen (screenKey: "nutrition"):
   1. Tabs: "Recetas son tus comidas individuales. Planes son combinaciones de recetas para una semana."
   2. Create button: "Crea recetas con busqueda de alimentos integrada. Los macros se calculan automaticamente."
   3. Plan assignment: "Una vez que tengas un plan, puedes asignarlo directamente a un cliente desde su perfil."
