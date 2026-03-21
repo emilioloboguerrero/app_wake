@@ -81,6 +81,7 @@ export default function EventCheckinScreen() {
     } catch (err) {
       logger.error('[Checkin] lookup failed', err);
       setResult({ type: 'error' });
+      showToast('Error al procesar el check-in. Intenta de nuevo.', 'error');
     }
 
     setScannerState('idle');
@@ -227,8 +228,7 @@ export default function EventCheckinScreen() {
                             <polyline className="ec-check-tick" points="14,26 22,34 38,18" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">¡Check-in confirmado!</h2>
-                        <p className="ec-result-name">{getRegName(result.reg)}</p>
+                        <h2 className="ec-result-title">Listo, {getRegName(result.reg)} esta adentro.</h2>
                       </>
                     )}
                     {result.type === 'already' && (
@@ -240,11 +240,10 @@ export default function EventCheckinScreen() {
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">Ya hizo check-in</h2>
-                        <p className="ec-result-name">{getRegName(result.reg)}</p>
+                        <h2 className="ec-result-title">{getRegName(result.reg)} ya habia hecho check-in.</h2>
                         {result.reg.checked_in_at && (
                           <p className="ec-result-sub">
-                            Entró a las {formatCheckinTime(result.reg.checked_in_at)}
+                            Entro a las {formatCheckinTime(result.reg.checked_in_at)}
                           </p>
                         )}
                       </>
@@ -258,8 +257,8 @@ export default function EventCheckinScreen() {
                             <line x1="9" y1="9" x2="15" y2="15" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">QR no válido</h2>
-                        <p className="ec-result-sub">No se encontró este registro</p>
+                        <h2 className="ec-result-title">QR no valido</h2>
+                        <p className="ec-result-sub">No reconocimos ese codigo. Pide al asistente que muestre su QR de nuevo.</p>
                       </>
                     )}
                     {result.type === 'error' && (
@@ -271,7 +270,7 @@ export default function EventCheckinScreen() {
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">Error de conexión</h2>
+                        <h2 className="ec-result-title">Error de conexion</h2>
                         <p className="ec-result-sub">Intenta de nuevo</p>
                       </>
                     )}

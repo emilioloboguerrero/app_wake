@@ -12,9 +12,10 @@ import {
   verticalListSortingStrategy, arrayMove
 } from '@dnd-kit/sortable';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import { GlowingEffect, SkeletonCard } from '../components/ui';
+import { GlowingEffect, SkeletonCard, InlineError } from '../components/ui';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
   FIELD_TYPES, DEFAULT_FIELD_IDS, DEFAULT_FIELDS,
@@ -40,6 +41,7 @@ export default function EventEditorScreen() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -62,7 +64,7 @@ export default function EventEditorScreen() {
 
   // UI state
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentEventId, setCurrentEventId] = useState(eventId || null);
@@ -192,9 +194,13 @@ export default function EventEditorScreen() {
   }
 
   async function handleSave(targetStatus = status) {
-    if (!title.trim()) { setSaveError('El título es obligatorio'); return; }
+    const errors = {};
+    if (!title.trim()) errors.title = 'El titulo es obligatorio';
+    if (!date) errors.date = 'La fecha es obligatoria';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setFieldErrors({});
     setSaving(true);
-    setSaveError(null);
     try {
       let evId = currentEventId;
       let isNewDoc = false;
@@ -253,7 +259,7 @@ export default function EventEditorScreen() {
       setStatus(targetStatus);
     } catch (err) {
       logger.error('[EventEditor] save failed', err);
-      setSaveError('Error al guardar. Intenta de nuevo.');
+      showToast('Error al guardar el evento. Intenta de nuevo.', 'error');
       setUploadProgress(null);
     } finally {
       setSaving(false);
@@ -334,8 +340,6 @@ export default function EventEditorScreen() {
           </div>
         </div>
 
-        {saveError && <p className="ee-save-error">{saveError}</p>}
-
         {/* Two-panel layout */}
         <div className="ee-panels">
           {/* ── Left: Metadata ── */}
@@ -392,8 +396,10 @@ export default function EventEditorScreen() {
                 className="ee-input"
                 placeholder="Ej. Run Club Marzo 2026"
                 value={title}
-                onChange={e => setTitle(e.target.value)}
+                onChange={e => { setTitle(e.target.value); setFieldErrors(prev => ({ ...prev, title: undefined })); }}
+                aria-describedby={fieldErrors.title ? 'title-error' : undefined}
               />
+              <InlineError message={fieldErrors.title} field="title" />
             </div>
 
             {/* Description */}
@@ -410,13 +416,14 @@ export default function EventEditorScreen() {
 
             {/* Date */}
             <div className="ee-field-group">
-              <label className="ee-label">Fecha</label>
+              <label className="ee-label">Fecha <span className="ee-required">*</span></label>
               <DatePicker
                 value={date}
-                onChange={e => setDate(e.target.value)}
+                onChange={e => { setDate(e.target.value); setFieldErrors(prev => ({ ...prev, date: undefined })); }}
                 placeholder="Selecciona la fecha del evento"
                 allowFuture
               />
+              <InlineError message={fieldErrors.date} field="date" />
             </div>
 
             {/* Location */}
@@ -435,10 +442,11 @@ export default function EventEditorScreen() {
               <label className="ee-label">Cupos máximos</label>
               <NumberStepper
                 value={maxRegistrations}
-                onChange={setMaxRegistrations}
+                onChange={(v) => { setMaxRegistrations(v); setFieldErrors(prev => ({ ...prev, capacity: undefined })); }}
                 placeholder="Ilimitado"
                 min={1}
               />
+              <InlineError message={fieldErrors.capacity} field="capacity" />
             </div>
 
             {/* Confirmation message */}

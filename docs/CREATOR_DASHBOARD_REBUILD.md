@@ -210,7 +210,7 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   3. Plan assignment: "Una vez que tengas un plan, puedes asignarlo directamente a un cliente desde su perfil."
 
 #### 2C. Events Screens
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Files:**
 - `apps/creator-dashboard/src/screens/EventsScreen.jsx` + `.css`
 - `apps/creator-dashboard/src/screens/EventEditorScreen.jsx` + `.css`
@@ -218,22 +218,22 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 - `apps/creator-dashboard/src/screens/EventCheckinScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] EventsScreen: FullScreenError if events query fails. Per-tab empty states.
-- [ ] EventEditorScreen: Toast on save failure. InlineError on field validation (title required, date required, capacity must be positive).
-- [ ] EventResultsScreen: FullScreenError if registrations query fails.
-- [ ] EventCheckinScreen: Specific error for QR scan failure ("No reconocimos ese codigo. Pide al asistente que muestre su QR de nuevo."). Toast on check-in failure.
+- [x] EventsScreen: FullScreenError if events query fails. Per-tab empty states.
+- [x] EventEditorScreen: Toast on save failure. InlineError on field validation (title required, date required, capacity must be positive).
+- [x] EventResultsScreen: FullScreenError if registrations query fails.
+- [x] EventCheckinScreen: Specific error for QR scan failure ("No reconocimos ese codigo. Pide al asistente que muestre su QR de nuevo."). Toast on check-in failure.
 
 **Tasks — Copy Pass:**
-- [ ] Empty states:
+- [x] Empty states:
   - No active events: "No tienes eventos activos. Crea uno y compartelo con tu audiencia."
   - No drafts: "Ningun borrador guardado."
   - No past events: "Aqui van a aparecer tus eventos pasados con sus resultados."
   - No registrations: "Nadie se ha registrado todavia. Comparte el link de tu evento."
-- [ ] Check-in success: "Listo, {nombre} esta adentro."
-- [ ] Check-in already done: "{nombre} ya habia hecho check-in."
+- [x] Check-in success: "Listo, {nombre} esta adentro."
+- [x] Check-in already done: "{nombre} ya habia hecho check-in."
 
 **Tasks — Tutorial:**
-- [ ] EventsScreen (screenKey: "events"):
+- [x] EventsScreen (screenKey: "events"):
   1. Event list: "Tus eventos aparecen organizados por estado. Los activos son los que estan abiertos para registro."
   2. Create button: "Crea eventos con campos personalizados. Cada registro genera un QR unico para check-in."
   3. Results: "Despues del evento, revisa quien asistio y descarga los datos."

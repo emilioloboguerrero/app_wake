@@ -11,11 +11,19 @@ import {
   ProgressRing,
   SkeletonCard,
   AnimatedList,
+  FullScreenError,
+  SpotlightTutorial,
 } from '../components/ui';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import './EventsScreen.css';
+
+const TUTORIAL_STEPS = [
+  { selector: '[data-tutorial="events-list"]', title: 'Tus eventos', body: 'Tus eventos aparecen organizados por estado. Los activos son los que estan abiertos para registro.' },
+  { selector: '[data-tutorial="events-create"]', title: 'Crear evento', body: 'Crea eventos con campos personalizados. Cada registro genera un QR unico para check-in.' },
+  { selector: '[data-tutorial="events-results"]', title: 'Resultados', body: 'Despues del evento, revisa quien asistio y descarga los datos.' },
+];
 
 const NAV_TABS = [
   { id: 'active', label: 'Activos' },
@@ -126,7 +134,7 @@ export default function EventsScreen() {
             <div className="es-header-text">
               <h1 className="es-title">Eventos</h1>
             </div>
-            <button className="es-primary-btn" onClick={() => navigate('/events/new')}>
+            <button className="es-primary-btn" data-tutorial="events-create" onClick={() => navigate('/events/new')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -136,6 +144,7 @@ export default function EventsScreen() {
           </div>
 
           {/* ── Nav tabs ── */}
+          <div data-tutorial="events-list">
           <TubelightNavBar
             items={NAV_TABS}
             activeId={activeFilter}
@@ -149,10 +158,11 @@ export default function EventsScreen() {
               {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : isError ? (
-            <div className="es-empty">
-              <p className="es-empty-title">Error al cargar eventos</p>
-              <p className="es-empty-sub">Intenta recargar la página</p>
-            </div>
+            <FullScreenError
+              title="No pudimos cargar tus eventos"
+              message="Verifica tu conexion e intenta de nuevo."
+              onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user?.uid) })}
+            />
           ) : filtered.length === 0 ? (
             <div className="es-empty">
               <div className="es-empty-icon">
@@ -164,10 +174,16 @@ export default function EventsScreen() {
                 </svg>
               </div>
               <p className="es-empty-title">
-                {activeFilter === 'all' ? 'Sin eventos' : `Sin eventos ${NAV_TABS.find(t => t.id === activeFilter)?.label.toLowerCase()}`}
+                {activeFilter === 'active' && 'No tienes eventos activos'}
+                {activeFilter === 'draft' && 'Ningun borrador guardado'}
+                {activeFilter === 'closed' && 'Sin eventos pasados'}
               </p>
-              <p className="es-empty-sub">Crea tu primer evento para empezar a recibir registros</p>
-              {activeFilter === 'all' && (
+              <p className="es-empty-sub">
+                {activeFilter === 'active' && 'Crea uno y compartelo con tu audiencia.'}
+                {activeFilter === 'draft' && 'Los borradores que guardes van a aparecer aca.'}
+                {activeFilter === 'closed' && 'Aqui van a aparecer tus eventos pasados con sus resultados.'}
+              </p>
+              {activeFilter === 'active' && (
                 <button className="es-primary-btn" onClick={() => navigate('/events/new')}>
                   Crear primer evento
                 </button>
@@ -262,6 +278,7 @@ export default function EventsScreen() {
                       <div className="es-actions">
                         <button
                           className="es-btn es-btn--primary"
+                          data-tutorial="events-results"
                           onClick={(e) => { e.stopPropagation(); navigate(`/events/${ev.id}/results`); }}
                         >
                           Gestionar
@@ -367,6 +384,9 @@ export default function EventsScreen() {
               })}
             </AnimatedList>
           )}
+          </div>
+
+          <SpotlightTutorial screenKey="events" steps={TUTORIAL_STEPS} />
         </div>
       </DashboardLayout>
     </ErrorBoundary>
