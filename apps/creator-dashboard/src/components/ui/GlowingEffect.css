@@ -21,17 +21,17 @@
   border: var(--border-width, 1px) solid transparent;
 
   background:
-    radial-gradient(circle, rgba(255,255,255,0.2) 10%, transparent 20%),
+    radial-gradient(circle, #dd7bbb 10%, transparent 20%),
     radial-gradient(circle at 40% 40%, rgba(255,255,255,0.15) 5%, transparent 15%),
-    radial-gradient(circle at 60% 60%, rgba(255,255,255,0.12) 10%, transparent 20%),
-    radial-gradient(circle at 40% 60%, rgba(255,255,255,0.1) 10%, transparent 20%),
+    radial-gradient(circle at 60% 60%, #5a922c 10%, transparent 20%),
+    radial-gradient(circle at 40% 60%, #4c7894 10%, transparent 20%),
     repeating-conic-gradient(
       from 236.84deg at 50% 50%,
-      rgba(255,255,255,0.2) 0%,
+      #dd7bbb 0%,
       rgba(255,255,255,0.15) calc(25% / 5),
-      rgba(255,255,255,0.12) calc(50% / 5),
-      rgba(255,255,255,0.1) calc(75% / 5),
-      rgba(255,255,255,0.2) calc(100% / 5)
+      #5a922c calc(50% / 5),
+      #4c7894 calc(75% / 5),
+      #dd7bbb calc(100% / 5)
     );
   background-attachment: fixed;
 
