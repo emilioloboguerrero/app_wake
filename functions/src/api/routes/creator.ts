@@ -411,6 +411,52 @@ router.get("/creator/clients/:clientId/activity", async (req, res) => {
   });
 });
 
+// ─── Instagram Feed (Behold.so) ───────────────────────────────────────────
+
+const instagramCache: Record<string, { data: unknown; expiresAt: number }> = {};
+const INSTAGRAM_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+// GET /creator/instagram-feed
+router.get("/creator/instagram-feed", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const beholdFeedId = userDoc.data()?.beholdFeedId;
+
+  if (!beholdFeedId || typeof beholdFeedId !== "string") {
+    throw new WakeApiServerError(
+      "NOT_FOUND", 404, "No se encontró un feed de Instagram configurado"
+    );
+  }
+
+  // Check in-memory cache
+  const cached = instagramCache[auth.userId];
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json({ data: cached.data });
+    return;
+  }
+
+  const feedUrl = `https://feeds.behold.so/${encodeURIComponent(beholdFeedId)}`;
+  const response = await fetch(feedUrl);
+
+  if (!response.ok) {
+    throw new WakeApiServerError(
+      "SERVICE_UNAVAILABLE", 503, "No se pudo obtener el feed de Instagram"
+    );
+  }
+
+  const feedData = await response.json();
+
+  instagramCache[auth.userId] = {
+    data: feedData,
+    expiresAt: Date.now() + INSTAGRAM_CACHE_TTL,
+  };
+
+  res.json({ data: feedData });
+});
+
 // ─── Creator Nutrition Library ─────────────────────────────────────────────
 
 // GET /creator/nutrition/meals
@@ -429,6 +475,26 @@ router.get("/creator/nutrition/meals", async (req, res) => {
   res.json({
     data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
   });
+});
+
+// GET /creator/nutrition/meals/:mealId
+router.get("/creator/nutrition/meals/:mealId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("meals")
+    .doc(req.params.mealId)
+    .get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
+  }
+
+  res.json({ data: { id: doc.id, ...doc.data() } });
 });
 
 // POST /creator/nutrition/meals
@@ -794,6 +860,46 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
   }
 
   res.status(201).json({ data: { assignmentId: assignmentRef.id } });
+});
+
+// PATCH /creator/clients/:clientId/nutrition/assignments/:assignmentId
+router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
+  const assignDoc = await assignRef.get();
+  if (!assignDoc.exists || assignDoc.data()?.creatorId !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
+  }
+
+  const allowedFields = ["status", "startDate", "endDate", "planId", "planName"];
+  const updates = pickFields(req.body, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  // If status is provided, validate it
+  if (updates.status !== undefined) {
+    const allowedStatuses = ["active", "paused", "completed"];
+    if (!allowedStatuses.includes(updates.status as string)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `Estado inválido. Valores permitidos: ${allowedStatuses.join(", ")}`,
+        "status"
+      );
+    }
+  }
+
+  await assignRef.update({
+    ...updates,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updated: true } });
 });
 
 // DELETE /creator/clients/:clientId/nutrition/assignments/:assignmentId
