@@ -17,6 +17,7 @@ import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import { cacheConfig } from '../config/queryClient';
 import './PlanDetailScreen.css';
 
@@ -323,8 +324,21 @@ const PlanDetailScreen = () => {
   if (!user) {
     return (
       <DashboardLayout screenName="Nuevo plan">
-        <div className="plan-page">
-          <div className="plan-loading">Cargando...</div>
+        <div className="plan-page" style={{ display: 'flex', gap: 24, padding: 24 }}>
+          <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ShimmerSkeleton width="100%" height="20px" borderRadius="6px" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <ShimmerSkeleton key={i} width="100%" height="40px" borderRadius="8px" />
+            ))}
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ShimmerSkeleton width="160px" height="22px" borderRadius="6px" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="100px" borderRadius="10px" />
+              ))}
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -373,8 +387,21 @@ const PlanDetailScreen = () => {
   if (loading) {
     return (
       <DashboardLayout screenName="Plan">
-        <div className="plan-page">
-          <div className="plan-loading">Cargando...</div>
+        <div className="plan-page" style={{ display: 'flex', gap: 24, padding: 24 }}>
+          <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ShimmerSkeleton width="100%" height="20px" borderRadius="6px" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <ShimmerSkeleton key={i} width="100%" height="40px" borderRadius="8px" />
+            ))}
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ShimmerSkeleton width="160px" height="22px" borderRadius="6px" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="100px" borderRadius="10px" />
+              ))}
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );

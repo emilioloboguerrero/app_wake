@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
 import { GlowingEffect } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -151,7 +152,24 @@ export default function EventCheckinScreen() {
   if (accessStatus === 'loading') {
     return (
       <DashboardLayout screenName="Check-in" showBackButton backPath="/events">
-        <div className="ec-loading">Cargando…</div>
+        <div className="ec-screen">
+          <div className="ec-content">
+            <div className="ec-event-header" style={{ opacity: 0.6 }}>
+              <ShimmerSkeleton width="48px" height="48px" borderRadius="8px" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                <ShimmerSkeleton width="160px" height="16px" borderRadius="4px" />
+                <ShimmerSkeleton width="220px" height="13px" borderRadius="4px" />
+              </div>
+            </div>
+            <div className="ec-scanner-card" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                <ShimmerSkeleton width="64px" height="64px" borderRadius="12px" />
+                <ShimmerSkeleton width="140px" height="14px" borderRadius="4px" />
+                <ShimmerSkeleton width="120px" height="36px" borderRadius="8px" />
+              </div>
+            </div>
+          </div>
+        </div>
       </DashboardLayout>
     );
   }

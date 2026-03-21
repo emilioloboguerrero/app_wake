@@ -9,6 +9,7 @@ import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import '../components/PropagateChangesModal.css';
 import './PlanSessionDetailScreen.css';
 
@@ -154,8 +155,13 @@ const PlanSessionDetailScreen = () => {
     return (
       <DashboardLayout screenName="Sesión" showBackButton backPath={`/plans/${planId}`}>
         <div className="plan-session-detail-container">
-          <div className="plan-session-detail-content">
-            <div className="plan-session-detail-loading">Cargando...</div>
+          <div className="plan-session-detail-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 48 }}>
+            <ShimmerSkeleton width="240px" height="22px" borderRadius="6px" />
+            <ShimmerSkeleton width="320px" height="14px" borderRadius="4px" />
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <ShimmerSkeleton width="160px" height="44px" borderRadius="10px" />
+              <ShimmerSkeleton width="160px" height="44px" borderRadius="10px" />
+            </div>
           </div>
         </div>
       </DashboardLayout>
