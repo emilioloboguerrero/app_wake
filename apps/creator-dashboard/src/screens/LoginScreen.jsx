@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
+import { InlineError } from '../components/ui/ErrorStates';
 import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
 import './LoginScreen.css';
@@ -11,6 +13,7 @@ const LoginScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isCreator, webOnboardingCompleted, loading, userRole } = useAuth();
+  const { showToast } = useToast();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,11 +98,17 @@ const LoginScreen = () => {
           break;
         case 'auth/wrong-password':
         case 'auth/invalid-credential':
-          setFormError('Correo o contraseña incorrectos');
+          setPasswordError('Email o contraseña incorrectos.');
           setShowForgotPassword(true);
           break;
         case 'auth/invalid-email':
           setEmailError('Correo no válido');
+          break;
+        case 'auth/user-disabled':
+          setPasswordError('Esta cuenta ha sido deshabilitada. Contacta soporte.');
+          break;
+        case 'auth/network-request-failed':
+          showToast('No pudimos conectar con el servidor. Revisa tu conexión.', 'error');
           break;
         case 'auth/too-many-requests':
           setFormError('Demasiados intentos. Espera un momento e intenta de nuevo');
@@ -213,7 +222,7 @@ const LoginScreen = () => {
 
         {/* Title */}
         <h1 className="ln-title">
-          {isSignUp ? 'Crear cuenta' : 'Bienvenido'}
+          {isSignUp ? 'Crear cuenta' : 'Entra a tu dashboard'}
         </h1>
 
         {/* Forgot sent confirmation */}
@@ -241,13 +250,13 @@ const LoginScreen = () => {
           <input
             className={`ln-input${emailError ? ' ln-input--error' : ''}`}
             type="email"
-            placeholder="Correo electrónico"
+            placeholder="Email"
             value={email}
             onChange={handleEmailChange}
             autoComplete="email"
             disabled={isLoading}
           />
-          {emailError && <p className="ln-field-error">{emailError}</p>}
+          <InlineError message={emailError} field="email" />
         </div>
 
         {/* Password */}
@@ -262,7 +271,7 @@ const LoginScreen = () => {
             disabled={isLoading}
             onKeyDown={(e) => { if (e.key === 'Enter' && !isSignUp) handleContinue(); }}
           />
-          {passwordError && <p className="ln-field-error">{passwordError}</p>}
+          <InlineError message={passwordError} field="password" />
         </div>
 
         {/* Terms (sign up only) */}
@@ -302,14 +311,14 @@ const LoginScreen = () => {
           {isLoading ? (
             <span className="ln-spinner" />
           ) : (
-            isSignUp ? 'Crear cuenta' : 'Iniciar sesión'
+            isSignUp ? 'Crear cuenta' : 'Entrar'
           )}
         </button>
 
         {/* Forgot password link */}
         {showForgotPassword && !isSignUp && (
           <button className="ln-link-btn" onClick={handleForgotPassword}>
-            ¿Olvidaste tu contraseña?
+            Olvidaste tu contraseña?
           </button>
         )}
 

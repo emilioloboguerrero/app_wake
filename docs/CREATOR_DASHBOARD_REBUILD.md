@@ -476,19 +476,19 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 - [x] Verify progress dots animation matches STANDARDS.md (pulse on current, opacity change on complete)
 
 #### 2L. Login Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/LoginScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] Wrong credentials: InlineError below password field ("Email o contrasena incorrectos.")
-- [ ] Network failure: Toast ("No pudimos conectar con el servidor. Revisa tu conexion.")
-- [ ] Account disabled: InlineError ("Esta cuenta ha sido deshabilitada. Contacta soporte.")
+- [x] Wrong credentials: InlineError below password field ("Email o contrasena incorrectos.")
+- [x] Network failure: Toast ("No pudimos conectar con el servidor. Revisa tu conexion.")
+- [x] Account disabled: InlineError ("Esta cuenta ha sido deshabilitada. Contacta soporte.")
 
 **Tasks — Copy Pass:**
-- [ ] Title: "Entra a tu dashboard"
-- [ ] Fields: "Email", "Contrasena"
-- [ ] CTA: "Entrar"
-- [ ] Forgot password: "Olvidaste tu contrasena?"
+- [x] Title: "Entra a tu dashboard"
+- [x] Fields: "Email", "Contrasena"
+- [x] CTA: "Entrar"
+- [x] Forgot password: "Olvidaste tu contrasena?"
 
 ---
 
