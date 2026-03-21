@@ -13,6 +13,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { FullScreenError } from '../components/ui';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -113,7 +114,7 @@ export default function MealEditorScreen() {
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
 
   const queryClient = useQueryClient();
-  const { data: mealData, isLoading: mealLoading, error: mealError } = useQuery({
+  const { data: mealData, isLoading: mealLoading, error: mealError, refetch: refetchMeal } = useQuery({
     queryKey: queryKeys.nutrition.meal(creatorId, mealId),
     queryFn: () => nutritionDb.getMealById(creatorId, mealId),
     enabled: !!mealId && mealId !== 'new' && !!creatorId,
@@ -145,7 +146,7 @@ export default function MealEditorScreen() {
         lastSavedRef.current = { name, itemsJson, video_url };
       } catch (e) {
         logger.error(e);
-        showToast('No se pudo guardar la receta. Intenta de nuevo.', 'error');
+        showToast('No pudimos guardar la receta. Intenta de nuevo.', 'error');
       }
     }, 700);
     return () => clearTimeout(t);
@@ -323,11 +324,11 @@ export default function MealEditorScreen() {
   if (mealError) {
     return (
       <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
-        <div className="library-session-detail-container">
-          <p style={{ color: 'rgba(255,100,100,0.9)', padding: 24 }}>
-            {mealError?.message || 'Error al cargar la receta. Intenta de nuevo.'}
-          </p>
-        </div>
+        <FullScreenError
+          title="No pudimos cargar la receta"
+          message="Hubo un problema cargando esta receta. Revisa tu conexion e intenta de nuevo."
+          onRetry={refetchMeal}
+        />
       </DashboardLayout>
     );
   }

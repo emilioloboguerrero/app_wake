@@ -21,6 +21,7 @@ import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { FullScreenError } from '../components/ui';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -226,7 +227,7 @@ export default function PlanEditorScreen() {
     ...cacheConfig.otherPrograms,
   });
 
-  const { data: planData, isLoading: planLoading } = useQuery({
+  const { data: planData, isLoading: planLoading, error: planError, refetch: refetchPlan } = useQuery({
     queryKey: isAssignmentScope
       ? ['nutrition', 'plan', 'assignment', assignmentId]
       : ['nutrition', 'plan', creatorId, planId],
@@ -357,7 +358,7 @@ export default function PlanEditorScreen() {
         lastSavedRef.current = { name, macros, categoriesJson };
       } catch (e) {
         logger.error(e);
-        showToast('No se pudo guardar el plan. Intenta de nuevo.', 'error');
+        showToast('No pudimos guardar los cambios. Revisa tu conexion.', 'error');
       }
     }, 700);
     return () => clearTimeout(t);
@@ -779,6 +780,18 @@ export default function PlanEditorScreen() {
             </div>
           </div>
         </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (planError) {
+    return (
+      <DashboardLayout screenName="Plan" showBackButton onBack={handleBack} backPath={returnTo || '/nutrition'} backState={returnState}>
+        <FullScreenError
+          title="No pudimos cargar el plan"
+          message="Hubo un problema cargando este plan. Revisa tu conexion e intenta de nuevo."
+          onRetry={refetchPlan}
+        />
       </DashboardLayout>
     );
   }
