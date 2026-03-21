@@ -9,12 +9,12 @@ Single source of truth for everything that has been designed/specified but not y
 The entire API infrastructure branch (`api-infrastructure`) has been built but **nothing has been tested end-to-end**. This must be validated before any new feature work begins.
 
 ### Approach
-1. Complete staging environment setup (Section 2)
-2. Deploy functions to staging
-3. Walk through every domain systematically — hit each endpoint, verify responses, check error handling
-4. Test both apps (PWA + creator dashboard) against the API
-5. Fix bugs found during testing
-6. Merge `api-infrastructure` into `main` once stable
+1. ~~Complete staging environment setup~~ — done, live at `https://wake-staging.web.app`
+2. Walk through every domain systematically — hit each endpoint, verify responses, check error handling
+3. Test both apps (PWA + creator dashboard) against the API
+4. Fix bugs found during testing
+5. Merge `api-infrastructure` into `main` once stable
+6. (Future) Add GitHub Actions CI/CD for auto-deploy to staging on push to `main`
 
 ### Testing Checklists
 
@@ -65,21 +65,7 @@ The entire API infrastructure branch (`api-infrastructure`) has been built but *
 
 ---
 
-## 2. Staging Environment — Setup Complete
-
-`.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Staging is live at `https://wake-staging.web.app`.
-
-- [x] Verify `wake-staging` Firebase project actually exists and has all services enabled (Firestore, Auth, Storage, Functions)
-- [x] Add secrets to staging Secret Manager: `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `RESEND_API_KEY`, MercadoPago sandbox credentials
-- [x] Fill in real Firebase config values in all 3 apps (PWA, creator-dashboard, landing)
-- [x] Populate staging with test data (2 users, 1 course, diary entries, session history, body log, readiness)
-- [x] Deploy functions to staging (all 10 functions live)
-- [x] Deploy hosting to staging (all 4 apps: landing, PWA, creator-dashboard, developer-portal)
-- [ ] (Future) Add GitHub Actions CI/CD for auto-deploy to staging on push to `main`
-
----
-
-## 3. PostHog Analytics System (NOT IMPLEMENTED)
+## 2. PostHog Analytics System (NOT IMPLEMENTED)
 
 Full-scale product analytics using PostHog. Goal: understand user behavior, feature usage, funnels, retention, and inform product decisions.
 
@@ -119,7 +105,7 @@ Full-scale product analytics using PostHog. Goal: understand user behavior, feat
 
 ---
 
-## 4. Feedback Board (NOT IMPLEMENTED)
+## 3. Feedback Board (NOT IMPLEMENTED)
 
 In-app feature request and bug report board for both PWA and creator dashboard. Users/creators propose features, others vote to prioritize.
 
@@ -173,7 +159,7 @@ Vote count maintained via Cloud Function or transaction (increment on vote, decr
 
 ---
 
-## 5. Email Sequence Infrastructure (NOT IMPLEMENTED)
+## 4. Email Sequence Infrastructure (NOT IMPLEMENTED)
 
 Event-driven email automation system. Goal: lay the infrastructure and trigger framework, not write all sequences yet.
 
@@ -242,7 +228,7 @@ Event-driven email automation system. Goal: lay the infrastructure and trigger f
 
 ---
 
-## 6. Creator Dashboard Rebuild (NOT STARTED)
+## 5. Creator Dashboard Rebuild (NOT STARTED)
 
 Full visual and UX rebuild of `apps/creator-dashboard`. Design direction is locked — see memory file `project_creator_dashboard_rebuild.md` for complete spec including nav architecture, screen briefs, onboarding flow, copy/propagation system, and revenue display logic.
 
@@ -256,11 +242,11 @@ Full visual and UX rebuild of `apps/creator-dashboard`. Design direction is lock
 
 ### Depends On
 - Stable, tested API (Section 1)
-- PostHog in place to measure creator engagement (Section 3)
+- PostHog in place to measure creator engagement (Section 2)
 
 ---
 
-## 7. Video Exchange System (NOT IMPLEMENTED — Future)
+## 6. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -279,10 +265,9 @@ Low. Implement after session notes are shipped and validated.
 
 ## Priority Order
 
-1. **Section 2** — Complete staging environment (prerequisite for testing)
-2. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
-3. **Section 3** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-4. **Section 5** — Email sequence infrastructure (lay the trigger framework while API is fresh)
-5. **Section 4** — Feedback board (self-contained feature, gives users a voice)
-6. **Section 6** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
-7. **Section 7** — Video exchange (future)
+1. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
+2. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
+3. **Section 4** — Email sequence infrastructure (lay the trigger framework while API is fresh)
+4. **Section 3** — Feedback board (self-contained feature, gives users a voice)
+5. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
+6. **Section 6** — Video exchange (future)
