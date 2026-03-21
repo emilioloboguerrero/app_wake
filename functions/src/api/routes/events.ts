@@ -528,6 +528,76 @@ router.post(
   }
 );
 
+// POST /creator/events/:eventId/checkin-by-token — check in by QR token
+router.post(
+  "/creator/events/:eventId/checkin-by-token",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    requireCreator(auth);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    await verifyEventOwnership(req.params.eventId, auth.userId);
+
+    const { token } = validateBody<{ token: string }>(
+      { token: "string" },
+      req.body
+    );
+
+    const regsSnap = await db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .where("check_in_token", "==", token)
+      .limit(1)
+      .get();
+
+    if (regsSnap.empty) {
+      res.json({ data: { status: "invalid" } });
+      return;
+    }
+
+    const regDoc = regsSnap.docs[0];
+    const regData = regDoc.data();
+
+    if (regData.checked_in) {
+      res.json({
+        data: {
+          status: "already",
+          reg: {
+            registrationId: regDoc.id,
+            displayName: regData.displayName || null,
+            email: regData.email || null,
+            fieldValues: regData.fieldValues || {},
+            checked_in_at: regData.checked_in_at || null,
+          },
+        },
+      });
+      return;
+    }
+
+    await regDoc.ref.update({
+      checked_in: true,
+      checked_in_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const updated = await regDoc.ref.get();
+    const updatedData = updated.data()!;
+
+    res.json({
+      data: {
+        status: "success",
+        reg: {
+          registrationId: regDoc.id,
+          displayName: updatedData.displayName || null,
+          email: updatedData.email || null,
+          fieldValues: updatedData.fieldValues || {},
+          checked_in_at: updatedData.checked_in_at || null,
+        },
+      },
+    });
+  }
+);
+
 // DELETE /creator/events/:eventId/registrations/:regId — remove a registration
 router.delete(
   "/creator/events/:eventId/registrations/:regId",
