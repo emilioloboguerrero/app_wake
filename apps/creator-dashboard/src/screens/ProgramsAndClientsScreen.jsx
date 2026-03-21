@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from '../components/DashboardLayout';
 import {
   GlowingEffect,
@@ -217,48 +218,192 @@ function NutricionTab({ clientDetail }) {
   );
 }
 
-function LabTab({ clientDetail }) {
-  if (!clientDetail) {
-    return (
-      <div className="tab-content">
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
+function LabSkeleton() {
+  return (
+    <div className="tab-content tab-lab">
+      <div className="lab-grid lab-grid--top">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
-    );
-  }
+      <div className="lab-grid lab-grid--charts">
+        <div className="lab-chart-card"><ShimmerSkeleton width="100%" height="180px" borderRadius="12px" /></div>
+        <div className="lab-chart-card"><ShimmerSkeleton width="100%" height="180px" borderRadius="12px" /></div>
+      </div>
+      <div className="lab-chart-card"><ShimmerSkeleton width="100%" height="140px" borderRadius="12px" /></div>
+    </div>
+  );
+}
+
+const LAB_CHART_TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(26,26,26,0.95)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: '8px',
+  fontSize: '12px',
+  color: '#fff',
+};
+
+const NUTRI_BARS = [
+  { key: 'calories', label: 'Calorías', unit: 'kcal' },
+  { key: 'protein', label: 'Proteína', unit: 'g' },
+  { key: 'carbs', label: 'Carbos', unit: 'g' },
+  { key: 'fat', label: 'Grasa', unit: 'g' },
+];
+
+function LabTab({ client, clientDetail }) {
+  const clientUserId = client?.clientUserId || client?.id;
+
+  const { data: labData, isLoading: isLabLoading } = useQuery({
+    queryKey: ['analytics', 'client-lab', clientUserId],
+    queryFn: () => apiClient.get(`/analytics/client/${clientUserId}/lab`),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    enabled: !!clientUserId,
+    select: (res) => res?.data ?? null,
+  });
+
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    if (labData || clientDetail) {
+      const t = setTimeout(() => setEntered(true), 50);
+      return () => clearTimeout(t);
+    }
+    setEntered(false);
+  }, [labData, clientDetail]);
+
+  if (!clientDetail || isLabLoading) return <LabSkeleton />;
 
   const bodyProgress = clientDetail.bodyProgressPercent ?? 0;
-  const readinessScore = clientDetail.readinessScore ?? 0;
+  const readinessScore = labData?.trends?.readinessAvg ?? clientDetail.readinessScore ?? 0;
+  const completionRate = labData?.completionRate ?? 0;
+  const weeklyVolume = labData?.trends?.weeklyVolume ?? [];
+  const bodyProgressData = (labData?.trends?.bodyProgress ?? [])
+    .filter((p) => p.weight != null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const nutrition = labData?.nutritionComparison ?? { actual: {}, target: {} };
+
+  const volumeChartData = weeklyVolume.map((w) => ({
+    name: w.week.slice(5),
+    series: w.totalSets,
+    sesiones: w.sessions,
+  }));
+
+  const bodyChartData = bodyProgressData.map((p) => ({
+    name: p.date.slice(5),
+    peso: p.weight,
+  }));
 
   return (
     <div className="tab-content tab-lab">
-      <div className="lab-card">
-        <GlowingEffect />
-        <div className="lab-card__ring-wrap">
-          <ProgressRing
-            percent={bodyProgress}
-            size={88}
-            strokeWidth={6}
-            color="rgba(255,255,255,0.75)"
-            label={`${bodyProgress}%`}
-          />
+      {/* ── Top metric cards ── */}
+      <div className={`lab-grid lab-grid--top lab-entrance ${entered ? 'lab-entrance--in' : ''}`}>
+        <div className="lab-card">
+          <GlowingEffect />
+          <div className="lab-card__ring-wrap">
+            <ProgressRing
+              percent={bodyProgress}
+              size={80}
+              strokeWidth={6}
+              color="rgba(255,255,255,0.75)"
+              label={`${bodyProgress}%`}
+            />
+          </div>
+          <div className="lab-card__info">
+            <span className="lab-card__metric-label">Progreso corporal</span>
+            <span className="lab-card__metric-sub">vs. objetivo</span>
+          </div>
         </div>
-        <div className="lab-card__info">
-          <span className="lab-card__metric-label">Progreso corporal</span>
-          <span className="lab-card__metric-sub">vs. objetivo</span>
+
+        <div className="lab-card">
+          <GlowingEffect />
+          <div className="lab-card__ticker-wrap">
+            <NumberTicker value={readinessScore} suffix="/10" decimals={1} />
+          </div>
+          <div className="lab-card__info">
+            <span className="lab-card__metric-label">Readiness</span>
+            <span className="lab-card__metric-sub">Promedio 7 días</span>
+          </div>
+        </div>
+
+        <div className="lab-card">
+          <GlowingEffect />
+          <div className="lab-card__ring-wrap">
+            <ProgressRing
+              percent={completionRate > 100 ? 100 : completionRate}
+              size={80}
+              strokeWidth={6}
+              color="rgba(255,255,255,0.75)"
+              label={`${completionRate}`}
+            />
+          </div>
+          <div className="lab-card__info">
+            <span className="lab-card__metric-label">Sesiones completadas</span>
+            <span className="lab-card__metric-sub">Últimos 30 días</span>
+          </div>
         </div>
       </div>
 
-      <div className="lab-card">
-        <GlowingEffect />
-        <div className="lab-card__ticker-wrap">
-          <NumberTicker value={readinessScore} suffix="/10" decimals={1} />
+      {/* ── Charts row ── */}
+      <div className={`lab-grid lab-grid--charts lab-entrance ${entered ? 'lab-entrance--in' : ''}`} style={{ transitionDelay: '80ms' }}>
+        <div className="lab-chart-card">
+          <h4 className="lab-chart-card__title">Volumen semanal</h4>
+          <p className="lab-chart-card__sub">Series totales — últimas 8 semanas</p>
+          {volumeChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={170}>
+              <LineChart data={volumeChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} />
+                <Line type="monotone" dataKey="series" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="lab-chart-card__empty">Sin datos de volumen</p>
+          )}
         </div>
-        <div className="lab-card__info">
-          <span className="lab-card__metric-label">Readiness</span>
-          <span className="lab-card__metric-sub">Promedio últimos 7 días</span>
+
+        <div className="lab-chart-card">
+          <h4 className="lab-chart-card__title">Peso corporal</h4>
+          <p className="lab-chart-card__sub">Últimos 30 días</p>
+          {bodyChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={170}>
+              <LineChart data={bodyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis domain={['dataMin - 1', 'dataMax + 1']} tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} formatter={(v) => [`${v} kg`, 'Peso']} />
+                <Line type="monotone" dataKey="peso" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="lab-chart-card__empty">Sin registros de peso</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Nutrition comparison ── */}
+      <div className={`lab-chart-card lab-entrance ${entered ? 'lab-entrance--in' : ''}`} style={{ transitionDelay: '160ms' }}>
+        <h4 className="lab-chart-card__title">Nutrición: real vs. objetivo</h4>
+        <p className="lab-chart-card__sub">Promedio diario — últimos 7 días</p>
+        <div className="lab-nutri-bars">
+          {NUTRI_BARS.map(({ key, label, unit }) => {
+            const actual = nutrition.actual?.[key] ?? 0;
+            const target = nutrition.target?.[key] ?? 0;
+            const pct = target > 0 ? Math.min((actual / target) * 100, 100) : 0;
+            return (
+              <div key={key} className="lab-nutri-row">
+                <div className="lab-nutri-row__header">
+                  <span className="lab-nutri-row__label">{label}</span>
+                  <span className="lab-nutri-row__values">{actual} / {target} {unit}</span>
+                </div>
+                <div className="lab-nutri-row__track">
+                  <div
+                    className="lab-nutri-row__fill"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -446,7 +591,7 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail }) {
       <div className="profile-tab-body">
         {activeTab === 'plan' && <PlanTab clientDetail={isLoadingDetail ? null : clientDetail} />}
         {activeTab === 'nutricion' && <NutricionTab clientDetail={isLoadingDetail ? null : clientDetail} />}
-        {activeTab === 'lab' && <LabTab clientDetail={isLoadingDetail ? null : clientDetail} />}
+        {activeTab === 'lab' && <LabTab client={client} clientDetail={isLoadingDetail ? null : clientDetail} />}
         {activeTab === 'llamadas' && <LlamadasTab clientDetail={isLoadingDetail ? null : clientDetail} />}
       </div>
     </div>
