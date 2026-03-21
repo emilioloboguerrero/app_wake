@@ -1,0 +1,40 @@
+/* ─── Virtual List ────────────────────────────────────────────── */
+
+.virtual-list-container {
+  animation: virtual-list-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes virtual-list-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark-theme scrollbar */
+.virtual-list-container ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.virtual-list-container ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.virtual-list-container ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.virtual-list-container ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Firefox scrollbar */
+.virtual-list-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}

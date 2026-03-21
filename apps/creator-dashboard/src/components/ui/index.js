@@ -33,3 +33,6 @@ export { default as MenuDropdown } from './MenuDropdown';
 
 // 1L
 export { default as Tooltip } from './Tooltip';
+
+// 1M
+export { default as VirtualList } from './VirtualList';

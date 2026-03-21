@@ -90,16 +90,16 @@ These set up shared systems used by all subsequent phases.
 - [ ] Test: hover over elements with GlowingEffect → glow renders without gold
 
 ### 1B. Set Up react-window Virtualization
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Context:** `react-window` v2.2.3 is installed but unused. Needed for lists that can exceed ~50 items.
 **Files:**
 - `apps/creator-dashboard/src/components/ui/VirtualList.jsx` — new wrapper component
 **Tasks:**
-- [ ] Create `VirtualList` wrapper component that uses `react-window` `FixedSizeList`
-- [ ] Props: `items`, `renderItem`, `itemHeight`, `height` (container), `emptyState`
-- [ ] Style: transparent background, smooth scrollbar matching dark theme
-- [ ] Export from `src/components/ui/index.js`
-- [ ] Usage threshold: apply when list can exceed 50 items (client roster, exercise library, event registrations)
+- [x] Create `VirtualList` wrapper component that uses `react-window` `FixedSizeList`
+- [x] Props: `items`, `renderItem`, `itemHeight`, `height` (container), `emptyState`
+- [x] Style: transparent background, smooth scrollbar matching dark theme
+- [x] Export from `src/components/ui/index.js`
+- [x] Usage threshold: apply when list can exceed 50 items (client roster, exercise library, event registrations)
 
 ### 1C. Create Shared Error State Components
 **Status:** [ ] Not started
