@@ -4,64 +4,12 @@ Single source of truth for everything that has been designed/specified but not y
 
 ---
 
-## 1. API Migration — Complete
-
-The Phase 3 API infrastructure is complete (Express app, all routes, middleware, API clients, offline queue). **All seven domains are fully migrated.** Codebase audit (2026-03-20) confirmed zero direct Firestore SDK calls in PWA or creator dashboard services/screens/components (only `firebase/auth` and config imports remain, as expected). Zero `onSnapshot` listeners remain.
-
-### PWA Screens
-
-All screens migrated. No direct Firestore calls remain.
-
-| Screen | Direct Calls | API Domain | Status |
-|---|---|---|---|
-| `UpcomingCallDetailScreen.js` | booking reads | Creator/Bookings | Done |
-
-### Migration Domain Status
-
-| # | Domain | Status |
-|---|---|---|
-| 1 | Auth | Done |
-| 2 | Profile | Done |
-| 3 | Nutrition | Done |
-| 4 | Progress/Lab | Done |
-| 5 | Workout | Done |
-| 6 | Creator | Done |
-| 7 | Payments | Done |
-
-### Migration Procedure (per domain)
-
-For each remaining domain, follow this sequence:
-1. Deploy Cloud Function endpoint(s) to staging (`firebase use staging && firebase deploy --only functions`)
-2. Run staging validation (see checklists below)
-3. Rewrite service file internals: replace Firestore SDK calls with `apiClient` calls (keep same public interface)
-4. Smoke test locally against staging
-5. Deploy full stack to staging, validate
-6. Deploy to production (`firebase use wolf-20b8b && firebase deploy`)
-7. Verify in production
-
-### Staging Validation Checklists
-
-**Creator:**
-- [ ] Client list: `GET /creator/clients`
-- [ ] Client detail: session history, progress, activity
-- [ ] Program list, create, edit, duplicate
-- [ ] Library session: create, edit, delete
-- [x] Nutrition plan assignment
-- [ ] Booking management
-- [ ] Creator cannot access another creator's data (verify with two test accounts)
-
-### Rollback
-
-If a migration fails: `git revert <commit>` the service file, deploy hosting only. Cloud Function endpoints stay deployed (harmless). Debug root cause before retrying.
-
----
-
-## 2. API Testing & QA (NOT STARTED)
+## 1. API Testing & QA (NOT STARTED)
 
 The entire API infrastructure branch (`api-infrastructure`) has been built but **nothing has been tested end-to-end**. This must be validated before any new feature work begins.
 
 ### Approach
-1. Complete staging environment setup (Section 3)
+1. Complete staging environment setup (Section 2)
 2. Deploy functions to staging
 3. Walk through every domain systematically — hit each endpoint, verify responses, check error handling
 4. Test both apps (PWA + creator dashboard) against the API
@@ -117,19 +65,21 @@ The entire API infrastructure branch (`api-infrastructure`) has been built but *
 
 ---
 
-## 3. Staging Environment — Incomplete Setup
+## 2. Staging Environment — Setup Complete
 
-`.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
+`.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Staging is live at `https://wake-staging.web.app`.
 
-- [ ] Verify `wake-staging` Firebase project actually exists and has all services enabled (Firestore, Auth, Storage, Functions)
-- [ ] Add secrets to staging Secret Manager: `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `RESEND_API_KEY`, MercadoPago sandbox credentials
-- [ ] Populate staging with test data (2 users, 1 course, diary entries, session history, body log, readiness)
-- [ ] Validate staging deploy works end-to-end before first domain migration
+- [x] Verify `wake-staging` Firebase project actually exists and has all services enabled (Firestore, Auth, Storage, Functions)
+- [x] Add secrets to staging Secret Manager: `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `RESEND_API_KEY`, MercadoPago sandbox credentials
+- [x] Fill in real Firebase config values in all 3 apps (PWA, creator-dashboard, landing)
+- [x] Populate staging with test data (2 users, 1 course, diary entries, session history, body log, readiness)
+- [x] Deploy functions to staging (all 10 functions live)
+- [x] Deploy hosting to staging (all 4 apps: landing, PWA, creator-dashboard, developer-portal)
 - [ ] (Future) Add GitHub Actions CI/CD for auto-deploy to staging on push to `main`
 
 ---
 
-## 4. PostHog Analytics System (NOT IMPLEMENTED)
+## 3. PostHog Analytics System (NOT IMPLEMENTED)
 
 Full-scale product analytics using PostHog. Goal: understand user behavior, feature usage, funnels, retention, and inform product decisions.
 
@@ -169,7 +119,7 @@ Full-scale product analytics using PostHog. Goal: understand user behavior, feat
 
 ---
 
-## 5. Feedback Board (NOT IMPLEMENTED)
+## 4. Feedback Board (NOT IMPLEMENTED)
 
 In-app feature request and bug report board for both PWA and creator dashboard. Users/creators propose features, others vote to prioritize.
 
@@ -223,7 +173,7 @@ Vote count maintained via Cloud Function or transaction (increment on vote, decr
 
 ---
 
-## 6. Email Sequence Infrastructure (NOT IMPLEMENTED)
+## 5. Email Sequence Infrastructure (NOT IMPLEMENTED)
 
 Event-driven email automation system. Goal: lay the infrastructure and trigger framework, not write all sequences yet.
 
@@ -292,7 +242,7 @@ Event-driven email automation system. Goal: lay the infrastructure and trigger f
 
 ---
 
-## 7. Creator Dashboard Rebuild (NOT STARTED)
+## 6. Creator Dashboard Rebuild (NOT STARTED)
 
 Full visual and UX rebuild of `apps/creator-dashboard`. Design direction is locked — see memory file `project_creator_dashboard_rebuild.md` for complete spec including nav architecture, screen briefs, onboarding flow, copy/propagation system, and revenue display logic.
 
@@ -305,12 +255,12 @@ Full visual and UX rebuild of `apps/creator-dashboard`. Design direction is lock
 - New creator onboarding (7-step immersive flow)
 
 ### Depends On
-- Stable, tested API (Section 2)
-- PostHog in place to measure creator engagement (Section 4)
+- Stable, tested API (Section 1)
+- PostHog in place to measure creator engagement (Section 3)
 
 ---
 
-## 8. Video Exchange System (NOT IMPLEMENTED — Future)
+## 7. Video Exchange System (NOT IMPLEMENTED — Future)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
@@ -327,18 +277,12 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 9. Audit Findings — Resolved
-
-All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. Server-side filtering endpoints (`GET /creator/clients?programId=X`, `GET /creator/library/exercises`) are now implemented.
-
----
-
 ## Priority Order
 
-1. **Section 3** — Complete staging environment (prerequisite for testing)
-2. **Section 2** — Test & stabilize API infrastructure (everything depends on this)
-3. **Section 4** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-4. **Section 6** — Email sequence infrastructure (lay the trigger framework while API is fresh)
-5. **Section 5** — Feedback board (self-contained feature, gives users a voice)
-6. **Section 7** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
-7. **Section 8** — Video exchange (future)
+1. **Section 2** — Complete staging environment (prerequisite for testing)
+2. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
+3. **Section 3** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
+4. **Section 5** — Email sequence infrastructure (lay the trigger framework while API is fresh)
+5. **Section 4** — Feedback board (self-contained feature, gives users a voice)
+6. **Section 6** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
+7. **Section 7** — Video exchange (future)

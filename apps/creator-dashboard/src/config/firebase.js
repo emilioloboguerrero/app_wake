@@ -19,14 +19,13 @@ const productionConfig = {
 };
 
 // Staging Firebase project: wake-staging
-// TODO: Fill in real values once the wake-staging project is created in Firebase Console
 const stagingConfig = {
-  apiKey: "TODO",
+  apiKey: "AIzaSyDFd0v35FQhWefCmROGeX9B8SqbYN6GFlk",
   authDomain: "wake-staging.firebaseapp.com",
   projectId: "wake-staging",
   storageBucket: "wake-staging.firebasestorage.app",
-  messagingSenderId: "TODO",
-  appId: "TODO"
+  messagingSenderId: "950952211622",
+  appId: "1:950952211622:web:3ca95c3e0860ea87323067"
 };
 
 const firebaseEnv = import.meta.env.VITE_FIREBASE_ENV;

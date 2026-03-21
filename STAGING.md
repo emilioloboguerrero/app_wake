@@ -1,6 +1,6 @@
 # Wake — Staging Runbook
 
-Project alias for staging: `wolf-dev`
+Project alias for staging: `wake-staging`
 Production project: `wolf-20b8b`
 
 ---
@@ -9,12 +9,12 @@ Production project: `wolf-20b8b`
 
 Before running anything, confirm the following:
 
-- `wolf-dev` project exists in Firebase Console
+- `wake-staging` project exists in Firebase Console
 - `gcloud auth application-default login` has been run on this machine
 - All required secrets are set on the **staging** project:
 
 ```bash
-firebase use wolf-dev
+firebase use wake-staging
 firebase functions:secrets:set MERCADOPAGO_WEBHOOK_SECRET
 firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN
 firebase functions:secrets:set FATSECRET_CLIENT_ID
@@ -29,7 +29,7 @@ firebase functions:secrets:set RESEND_API_KEY
 Run these commands in order:
 
 ```bash
-firebase use wolf-dev
+firebase use wake-staging
 firebase deploy --only firestore:rules,firestore:indexes,storage
 npm run seed:staging
 ```
@@ -41,7 +41,7 @@ npm run seed:staging
 ## 3. Deploy Functions to Staging
 
 ```bash
-npm --prefix functions run build && firebase use wolf-dev && firebase deploy --only functions
+npm --prefix functions run build && firebase use wake-staging && firebase deploy --only functions
 ```
 
 ---
@@ -70,7 +70,7 @@ The script exits 0 if all 6 domains pass, 1 if any fail. Fix failures before pro
 ## 5. Deploy Full Stack to Staging
 
 ```bash
-firebase use wolf-dev && firebase deploy
+firebase use wake-staging && firebase deploy
 ```
 
 This deploys functions, hosting, Firestore rules, indexes, and Storage rules together.
@@ -80,7 +80,7 @@ This deploys functions, hosting, Firestore rules, indexes, and Storage rules tog
 ## 6. Rollback
 
 ```bash
-firebase use wolf-dev && git stash && firebase deploy --only functions
+firebase use wake-staging && git stash && firebase deploy --only functions
 ```
 
 The git stash reverts uncommitted function changes. If a commit was already made, use `git revert <commit> --no-edit` in place of `git stash`, then redeploy.

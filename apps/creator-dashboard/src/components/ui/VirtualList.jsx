@@ -1,4 +1,4 @@
-import { FixedSizeList } from 'react-window';
+import { List } from 'react-window';
 import './VirtualList.css';
 
 export default function VirtualList({
@@ -14,7 +14,7 @@ export default function VirtualList({
 
   return (
     <div className="virtual-list-container">
-      <FixedSizeList
+      <List
         height={height}
         itemCount={items.length}
         itemSize={itemHeight}
@@ -23,7 +23,7 @@ export default function VirtualList({
         style={{ background: 'transparent' }}
       >
         {({ index, style }) => renderItem(items[index], index, style)}
-      </FixedSizeList>
+      </List>
     </div>
   );
 }

@@ -805,6 +805,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const { isMuted, toggleMute } = useVideo();
   
   // Debug: Log the workout object received
+  logger.log('[WorkoutExecution] Workout received:', {
     hasWorkout: !!initialWorkout,
     hasExercises: !!initialWorkout?.exercises,
     exercisesLength: initialWorkout?.exercises?.length,
@@ -1794,12 +1795,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         return;
       }
 
-      hasVideoPlayer: !!videoPlayer, 
-      canStartVideo, 
-      isVideoPaused,
-      hasVideoUri: !!videoUri 
-    });
-    
       if (canStartVideo) {
         // Use a small delay to avoid race conditions with video loading
         const timeoutStartTime = performance.now();
@@ -1853,9 +1848,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 });
             }
             const playInitDuration = performance.now() - playStartTime;
+            logger.debug(`[VIDEO] [CHECKPOINT] Video play() initiated - took ${playInitDuration.toFixed(2)}ms`);
           } else {
-              isVideoPaused, 
-              isCurrentlyPlaying 
+            logger.log('Video already in desired state:', {
+              isVideoPaused,
+              isCurrentlyPlaying
             });
           }
         } catch (error) {
@@ -1865,13 +1862,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }, 150); // Small delay to let video player initialize and avoid race conditions
 
     } else {
+      logger.log('Video not ready:', {
           reason: !canStartVideo ? 'tutorial blocking' : 'unknown'
         });
         const effectDuration = performance.now() - effectStartTime;
+        logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) skipped (not ready) - took ${effectDuration.toFixed(2)}ms`);
       }
-      
+
       // Final checkpoint for effect setup
       const effectSetupDuration = performance.now() - effectStartTime;
+      logger.debug(`[EFFECT] [CHECKPOINT] useEffect(videoSync) setup completed - took ${effectSetupDuration.toFixed(2)}ms`);
     }, 0); // Defer entire effect to avoid blocking commit phase
     
     // Return cleanup function to clear timeouts
@@ -3120,10 +3120,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       }
 
-        from: currentExercise.name,
-        to: selectedExercise.name
-      });
-
       // Close modal
       handleCloseSwapModal();
 
@@ -3519,13 +3515,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const dragDistance = Math.abs(translationY);
     const direction = translationY > 0 ? 1 : -1;
     
-      translationY,
-      dragDistance,
-      direction,
-      currentIndex,
-      threshold: cardHeight * 0.3
-    });
-    
     if (dragDistance < cardHeight * 0.3) {
       return null; // Not enough movement
     }
@@ -3550,9 +3539,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const newExercises = [...prev];
       const [movedExercise] = newExercises.splice(fromIndex, 1);
       newExercises.splice(toIndex, 0, movedExercise);
-        movedExercise: movedExercise.name,
-        newOrder: newExercises.map(ex => ex.name)
-      });
       return newExercises;
     });
   };
@@ -3917,13 +3903,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                    
                    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
                    const currentUser = user || auth.currentUser;
-                     userFromHook: !!user,
-                     userUidFromHook: user?.uid,
-                     firebaseCurrentUser: !!auth.currentUser,
-                     firebaseCurrentUserUid: auth.currentUser?.uid,
-                     currentUserToUse: !!currentUser,
-                     currentUserUid: currentUser?.uid
-                   });
                    
                    if (currentUser?.uid && course?.courseId) {
                      // Save all current exercise data before completing
@@ -3942,16 +3921,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      
                      // Complete the session using new session manager
                     // Update workout with actual set data for muscle volume calculation
-                    
-                    // 🔍 VOLUME DEBUG: Log complete setData before creating workoutWithSetData
-                      setDataKeys: Object.keys(setData),
-                      setDataValues: Object.entries(setData).map(([key, value]) => ({
-                        key,
-                        value,
-                        hasIntensity: !!value.intensity,
-                        intensityValue: value.intensity
-                      }))
-                    });
                     
                     const workoutWithSetData = {
                       ...workout,
@@ -3988,11 +3957,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       { plannedWorkout: workout, userNotes: sessionNotes }
                     );
                      
-                       hasResult: !!result,
-                       resultKeys: result ? Object.keys(result) : null,
-                       resultType: typeof result
-                     });
-                     
                      if (result) {
                        // Clear checkpoint on successful completion
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
@@ -4002,23 +3966,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                        }).catch(err => logger.warn('Failed to load apiClient for session cleanup', err));
 
                        const { sessionData, stats, sessionMuscleVolumes, personalRecords = [] } = result;
-
-                         hasNavigation: !!navigation,
-                         hasNavigate: !!(navigation && typeof navigation.navigate === 'function'),
-                         navigationType: typeof navigation
-                       });
                        
                        // Navigate to completion screen with session data
-                         hasCourse: !!course,
-                         hasWorkout: !!workout,
-                         hasSessionData: !!sessionData,
-                         hasStats: !!stats,
-                         personalRecordsCount: personalRecords?.length || 0,
-                         hasSessionMuscleVolumes: !!sessionMuscleVolumes,
-                         courseId: course?.courseId,
-                         workoutId: workout?.id
-                       });
-                       
                        try {
                          navigation.navigate('WorkoutCompletion', {
                            course: course,
@@ -4512,14 +4461,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
       const currentUser = user || auth.currentUser;
-        userFromHook: !!user,
-        userUidFromHook: user?.uid,
-        firebaseCurrentUser: !!auth.currentUser,
-        firebaseCurrentUserUid: auth.currentUser?.uid,
-        effectiveUserUid: currentUser?.uid
-      });
-      
-      
+
       // Load previous session data
       const loadDataStartTime = performance.now();
       await loadPreviousSessionData(currentUser);
@@ -4591,13 +4533,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
       const currentUser = resolvedUser || user || auth.currentUser;
-        userFromHook: !!user,
-        userUidFromHook: user?.uid,
-        firebaseCurrentUser: !!auth.currentUser,
-        firebaseCurrentUserUid: auth.currentUser?.uid,
-        resolvedUserUid: resolvedUser?.uid,
-        effectiveUserUid: currentUser?.uid
-      });
       
       // Check if user exists before proceeding
       if (!currentUser?.uid) {
@@ -4651,11 +4586,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           const historyDuration = performance.now() - historyStartTime;
 
           if (lastPerformanceData && lastPerformanceData.bestSet) {
-              lastPerformedAt: lastPerformanceData.lastPerformedAt,
-              totalSets: lastPerformanceData.totalSets,
-              bestSet: lastPerformanceData.bestSet
-            });
-
             // Attach previous data (best set of last session) to exercise
             exercise.previousData = {
               bestSet: lastPerformanceData.bestSet,
@@ -4685,20 +4615,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         logger.warn(`[ASYNC] ⚠️ SLOW: Promise.all() took ${promiseAllDuration.toFixed(2)}ms (threshold: 5000ms)`);
       }
       
-      try {
-          exercisesCount: workout?.exercises?.length || 0,
-          exercises: (workout?.exercises || []).map((ex, idx) => ({
-            index: idx,
-            name: ex?.name,
-            hasPreviousData: !!ex?.previousData,
-            previousData: ex?.previousData || null,
-            objectives: ex?.objectives || [],
-            measures: ex?.measures || []
-          }))
-        });
-      } catch (snapshotError) {
-        logger.error('❌ [Objectives] Error logging PreviousData snapshot:', snapshotError);
-      }
       const totalDuration = performance.now() - asyncStartTime;
       if (totalDuration > 10000) {
         logger.warn(`[ASYNC] ⚠️ SLOW: loadPreviousSessionData() took ${totalDuration.toFixed(2)}ms (threshold: 10000ms)`);
@@ -4759,19 +4675,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Prefer bestSet (single summary of last performance); fallback to legacy per-set array if present
       const prevSetData = previousData?.bestSet || previousData?.sets?.[currentSetIndex];
 
-      try {
-          metricName,
-          exerciseIndex: currentExerciseIndex,
-          setIndex: currentSetIndex,
-          hasPreviousData: !!previousData,
-          previousData,
-          usingBestSet: !!previousData?.bestSet,
-          prevSetData,
-          measures: currentExercise.measures || []
-        });
-      } catch (logError) {
-        logger.error('❌ [Objectives] Error logging previous metric debug:', logError);
-      }
       
       if (prevSetData && currentExercise.measures) {
         const parts = [];
@@ -4830,31 +4733,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
     const set = exercise.sets[currentSetIndex];
 
-      name: exercise.name,
-      index: currentExerciseIndex,
-      hasPrimary: !!exercise.primary,
-      primaryKeys: exercise.primary ? Object.keys(exercise.primary) : [],
-    });
-      setIndex: currentSetIndex,
-      reps: set?.reps,
-      intensity: set?.intensity,
-    });
-
     // Check 2: Set has reps and intensity objectives
     if (!set?.reps || !set?.intensity) {
-        reps: set?.reps,
-        intensity: set?.intensity,
-      });
       return null;
     }
 
     // Parse objectives
     const objectiveReps = oneRepMaxService.parseReps(set.reps);
     const objectiveIntensity = oneRepMaxService.parseIntensity(set.intensity);
-
-      objectiveReps,
-      objectiveIntensity,
-    });
 
     if (!objectiveIntensity) {
       return null;
@@ -4868,13 +4754,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const exerciseName = exercise.primary[libraryId];
     const exerciseKey = `${libraryId}_${exerciseName}`;
 
-      exerciseKey,
-      libraryId,
-      exerciseName,
-    });
-
     const estimate = oneRepMaxEstimates?.[exerciseKey]?.current;
-
 
     if (!estimate) {
       return null;
@@ -5083,15 +4963,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const currentExercise = getCurrentExercise();
   const currentSet = getCurrentSet();
 
-  // Debug: log implements for current exercise
-    index: currentExerciseIndex,
-    name: currentExercise?.name,
-    rawImplements: currentExercise?.implements ?? null,
-    isArray: Array.isArray(currentExercise?.implements),
-    length: Array.isArray(currentExercise?.implements)
-      ? currentExercise.implements.length
-      : 'n/a',
-  });
 
   // Build muscle activation volumes for current exercise (for silhouette)
   const muscleVolumesForCurrentExercise = useMemo(() => {
@@ -5109,15 +4980,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     });
     return volumes;
   }, [currentExercise]);
-
-
-    loading, 
-    currentExercise: currentExercise?.name, 
-    currentSet: currentSet?.id,
-    workoutExercises: workout?.exercises?.length,
-    currentExerciseIndex,
-    currentSetIndex
-  });
 
   // TEST VERSION 2: Early returns re-enabled (simple conditionals, shouldn't block)
   // Early returns after all hooks
@@ -5902,20 +5764,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   const suggestion = getWeightSuggestion();
                   const hasWeightSuggestion = suggestion !== null;
                   
-                  try {
-                    const currentExercise = workout?.exercises?.[currentExerciseIndex];
-                    const previousData = currentExercise?.previousData;
-                      index: currentExerciseIndex,
-                      name: currentExercise?.name,
-                      objectives: currentExercise?.objectives || [],
-                      measures: currentExercise?.measures || [],
-                      hasPreviousData: !!previousData,
-                      previousData,
-                      courseWeightSuggestionsFlag: !!course?.weight_suggestions
-                    });
-                  } catch (snapshotError) {
-                    logger.error('❌ [Objectives] Error logging current exercise snapshot:', snapshotError);
-                  }
                   
                   // Get all objectives (no filtering)
                   const objectives = workout?.exercises?.[currentExerciseIndex]?.objectives || [];
@@ -6557,14 +6405,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       </Modal>
 
       {/* Exercise Detail Modal - Use startTransition for non-urgent rendering */}
-      {(() => {
-        const exerciseModalStartTime = performance.now();
-          isExerciseDetailModalVisible,
-          hasModalExerciseData: !!modalExerciseData,
-          modalExerciseData
-        });
-        return null;
-      })()}
       {isExerciseDetailModalVisible && modalExerciseData && (
         <React.Suspense fallback={null}>
       <ExerciseDetailModal
