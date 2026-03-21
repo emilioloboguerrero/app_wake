@@ -21,18 +21,19 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { BentoGrid, BentoCard, SpotlightTutorial } from '../components/ui';
+import { FullScreenError } from '../components/ui/ErrorStates';
 import {
-  BentoGrid,
-  BentoCard,
-  GlowingEffect,
-  NumberTicker,
-  ProgressRing,
-  AnimatedList,
-  SkeletonCard,
-  SpotlightTutorial,
-} from '../components/ui';
+  ClientsWidget,
+  CallsWidget,
+  RevenueWidget,
+  AdherenceWidget,
+  SessionsWidget,
+  UpcomingCallsWidget,
+} from '../components/dashboard';
 import { cacheConfig } from '../config/queryClient';
 import apiClient from '../utils/apiClient';
+import '../components/creator/RevenueCard.css';
 import './DashboardScreen.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -41,9 +42,9 @@ const LAYOUT_KEY = 'wake_dashboard_layout';
 const WIDGET_ORDER_KEY = 'wake_dashboard_widget_order';
 
 const DEFAULT_WIDGET_ORDER = [
+  'revenue',
   'clients',
   'calls',
-  'revenue',
   'adherence',
   'sessions',
   'upcoming-calls',
@@ -51,21 +52,37 @@ const DEFAULT_WIDGET_ORDER = [
 
 const TUTORIAL_STEPS = [
   {
-    selector: '.widget-adherence',
-    title: 'Tasa de adherencia',
-    body: 'Aquí ves cuántos de tus clientes están siguiendo su plan al pie de la letra. Un número alto = programa que funciona.',
+    selector: '.ds-bento--compact, .ds-bento--wide',
+    title: 'Tu centro de control',
+    body: 'Este es tu centro de control. Puedes arrastrar las tarjetas para organizar tu dashboard.',
   },
   {
-    selector: '.widget-calls',
-    title: 'Llamadas esta semana',
-    body: 'Tus próximas sesiones en un vistazo. Nunca más te sorprenda una llamada sin preparación.',
+    selector: '.widget-revenue',
+    title: 'Tus ingresos',
+    body: 'Aqui ves tus ingresos. Toca para ver el desglose completo.',
   },
   {
-    selector: '.ds-layout-toggle',
-    title: 'Cambia la vista',
-    body: 'Alterna entre vista Compacta (2 columnas) y Amplia (3 columnas) según cuánta información quieras ver de un vistazo.',
+    selector: '.widget-clients',
+    title: 'Tus clientes',
+    body: 'Tu roster de clientes activos. Clickea cualquier avatar para ir a su perfil.',
+  },
+  {
+    selector: '.spt-fab',
+    title: 'Feedback',
+    body: 'Algo que no funcione o que quieras ver? Mandanos feedback directo desde aca.',
   },
 ];
+
+const WIDGET_CONFIG = {
+  revenue: { span: '2x1', className: 'widget-revenue', Component: RevenueWidget },
+  clients: { span: '2x1', className: 'widget-clients', Component: ClientsWidget },
+  calls: { span: '1x1', className: 'widget-calls', Component: CallsWidget },
+  adherence: { span: '1x1', className: 'widget-adherence', Component: AdherenceWidget },
+  sessions: { span: '1x1', className: 'widget-sessions', Component: SessionsWidget },
+  'upcoming-calls': { span: '1x1', className: 'widget-upcoming-calls', Component: UpcomingCallsWidget },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getStoredLayout() {
   try {
@@ -84,85 +101,24 @@ function getStoredWidgetOrder() {
     if (!Array.isArray(parsed) || parsed.length !== DEFAULT_WIDGET_ORDER.length) {
       return DEFAULT_WIDGET_ORDER;
     }
-    const valid = DEFAULT_WIDGET_ORDER.every(id => parsed.includes(id));
-    return valid ? parsed : DEFAULT_WIDGET_ORDER;
+    return DEFAULT_WIDGET_ORDER.every(id => parsed.includes(id)) ? parsed : DEFAULT_WIDGET_ORDER;
   } catch {
     return DEFAULT_WIDGET_ORDER;
   }
 }
 
-function formatTime(iso) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
-
-function formatDate(iso) {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
-  } catch {
-    return '';
-  }
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-function WidgetLabel({ children }) {
-  return <p className="ds-widget-label">{children}</p>;
-}
-
-function WidgetTitle({ children }) {
-  return <p className="ds-widget-title">{children}</p>;
-}
-
-function WidgetEmpty({ message }) {
-  return <p className="ds-widget-empty">{message}</p>;
-}
-
-function CallItem({ booking }) {
-  const clientName = booking?.clientName ?? booking?.userName ?? 'Cliente';
-  const startAt = booking?.startAt ?? booking?.scheduledAt ?? null;
-  return (
-    <div className="ds-call-item">
-      <div className="ds-call-item__avatar">{clientName.charAt(0).toUpperCase()}</div>
-      <div className="ds-call-item__info">
-        <span className="ds-call-item__name">{clientName}</span>
-        <span className="ds-call-item__time">
-          {startAt ? `${formatDate(startAt)} · ${formatTime(startAt)}` : 'Sin horario'}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function DragHandle({ listeners, attributes }) {
   return (
-    <button
-      className="ds-drag-handle"
-      aria-label="Arrastrar widget"
-      {...listeners}
-      {...attributes}
-    >
+    <button className="ds-drag-handle" aria-label="Arrastrar widget" {...listeners} {...attributes}>
       <GripVertical size={14} />
     </button>
   );
 }
 
-// ── Sortable Widget Wrapper ──────────────────────────────────────────────────
-
 function SortableWidget({ id, span, className, children }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -172,208 +128,10 @@ function SortableWidget({ id, span, className, children }) {
   };
 
   return (
-    <BentoCard
-      ref={setNodeRef}
-      span={span}
-      className={`${className} ds-sortable-widget`}
-      style={style}
-    >
+    <BentoCard ref={setNodeRef} span={span} className={`${className} ds-sortable-widget`} style={style}>
       <DragHandle listeners={listeners} attributes={attributes} />
       {children}
     </BentoCard>
-  );
-}
-
-// ── Static Widget Content (used in both sortable + drag overlay) ─────────────
-
-function WidgetClients({ revenueQuery, oneOnOne }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner">
-        <WidgetTitle>One-on-one</WidgetTitle>
-        {revenueQuery.isLoading ? (
-          <SkeletonCard />
-        ) : revenueQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar los datos." />
-        ) : oneOnOne.clientCount === 0 ? (
-          <WidgetEmpty message="Aún no tienes clientes one-on-one. ¡A conseguir el primero!" />
-        ) : (
-          <>
-            <p className="ds-widget-number">
-              <NumberTicker value={oneOnOne.clientCount} />
-            </p>
-            <WidgetLabel>
-              {oneOnOne.clientCount === 1 ? 'cliente activo' : 'clientes activos'}
-              {oneOnOne.callCount > 0 && (
-                <> · {oneOnOne.callCount} {oneOnOne.callCount === 1 ? 'llamada' : 'llamadas'}</>
-              )}
-            </WidgetLabel>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function WidgetCalls({ bookingsQuery, callCountThisWeek, nextCallTime }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner">
-        <WidgetTitle>Llamadas esta semana</WidgetTitle>
-        {bookingsQuery.isLoading ? (
-          <SkeletonCard />
-        ) : bookingsQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar las llamadas." />
-        ) : (
-          <>
-            <p className="ds-widget-number">
-              <NumberTicker value={callCountThisWeek} />
-            </p>
-            {callCountThisWeek === 0
-              ? <WidgetEmpty message="Sin llamadas programadas esta semana." />
-              : (
-                <>
-                  <WidgetLabel>{callCountThisWeek === 1 ? 'llamada' : 'llamadas'}</WidgetLabel>
-                  {nextCallTime && (
-                    <p className="ds-widget-next-call">Próxima: {nextCallTime}</p>
-                  )}
-                </>
-              )
-            }
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function formatCOP(value) {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function WidgetRevenue({ revenueQuery, lowTicket }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner">
-        <WidgetTitle>Ventas low-ticket</WidgetTitle>
-        {revenueQuery.isLoading ? (
-          <SkeletonCard />
-        ) : revenueQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar los ingresos." />
-        ) : lowTicket.netRevenue === 0 && lowTicket.salesCount === 0 ? (
-          <WidgetEmpty message="Aquí verás tus ingresos cuando empiecen a llegar." />
-        ) : (
-          <>
-            <p className="ds-widget-number ds-widget-number--revenue">
-              {formatCOP(lowTicket.netRevenue)}
-            </p>
-            <WidgetLabel>
-              <NumberTicker value={lowTicket.salesCount} /> {lowTicket.salesCount === 1 ? 'venta' : 'ventas'}
-            </WidgetLabel>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function WidgetAdherence({ adherenceQuery, overallAdherence, byProgram }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner ds-widget-inner--adherence">
-        <WidgetTitle>Tasa de adherencia</WidgetTitle>
-        {adherenceQuery.isLoading ? (
-          <SkeletonCard />
-        ) : adherenceQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar los datos de adherencia." />
-        ) : overallAdherence === 0 && byProgram.length === 0 ? (
-          <WidgetEmpty message="Sin datos de adherencia aún. Los verás cuando tus clientes completen sesiones." />
-        ) : (
-          <>
-            <div className="ds-adherence-ring">
-              <ProgressRing
-                percent={overallAdherence}
-                size={96}
-                strokeWidth={6}
-                color="rgba(255,255,255,0.85)"
-                label={`${Math.round(overallAdherence)}%`}
-              />
-            </div>
-            <WidgetLabel>de adherencia promedio</WidgetLabel>
-            {byProgram.length > 0 && (
-              <div className="ds-adherence-breakdown">
-                {byProgram.map(p => (
-                  <div key={p.programId} className="ds-adherence-breakdown__item">
-                    <span className="ds-adherence-breakdown__title">{p.title || 'Programa'}</span>
-                    <span className="ds-adherence-breakdown__value">{p.adherence}%</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function WidgetSessions({ adherenceQuery, sessionsCompleted }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner">
-        <WidgetTitle>Sesiones completadas</WidgetTitle>
-        {adherenceQuery.isLoading ? (
-          <SkeletonCard />
-        ) : adherenceQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar las sesiones." />
-        ) : (
-          <>
-            <p className="ds-widget-number">
-              <NumberTicker value={sessionsCompleted} />
-            </p>
-            {sessionsCompleted === 0
-              ? <WidgetEmpty message="Las sesiones completadas por tus clientes aparecerán aquí." />
-              : <WidgetLabel>{sessionsCompleted === 1 ? 'sesión completada' : 'sesiones completadas'}</WidgetLabel>
-            }
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function WidgetUpcomingCalls({ bookingsQuery, upcomingBookings }) {
-  return (
-    <>
-      <GlowingEffect />
-      <div className="ds-widget-inner">
-        <WidgetTitle>Próximas llamadas</WidgetTitle>
-        {bookingsQuery.isLoading ? (
-          <SkeletonCard />
-        ) : bookingsQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar las llamadas agendadas." />
-        ) : upcomingBookings.length === 0 ? (
-          <WidgetEmpty message="No hay llamadas agendadas. Comparte tu link de disponibilidad con tus clientes." />
-        ) : (
-          <div className="ds-upcoming-list">
-            <AnimatedList stagger={70}>
-              {upcomingBookings.slice(0, 3).map((booking, i) => (
-                <CallItem key={booking.id ?? i} booking={booking} />
-              ))}
-            </AnimatedList>
-          </div>
-        )}
-      </div>
-    </>
   );
 }
 
@@ -390,6 +148,8 @@ const DashboardScreen = () => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const isWide = layout === 'wide';
+
   const toggleLayout = useCallback(() => {
     setLayout(prev => {
       const next = prev === 'compact' ? 'wide' : 'compact';
@@ -398,15 +158,13 @@ const DashboardScreen = () => {
     });
   }, []);
 
-  const handleDragStart = useCallback((event) => {
-    setActiveId(event.active.id);
-  }, []);
+  const handleDragStart = useCallback((e) => setActiveId(e.active.id), []);
+  const handleDragCancel = useCallback(() => setActiveId(null), []);
 
   const handleDragEnd = useCallback((event) => {
     setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
     setWidgetOrder(prev => {
       const oldIndex = prev.indexOf(active.id);
       const newIndex = prev.indexOf(over.id);
@@ -415,10 +173,6 @@ const DashboardScreen = () => {
       try { localStorage.setItem(WIDGET_ORDER_KEY, JSON.stringify(next)); } catch { /* noop */ }
       return next;
     });
-  }, []);
-
-  const handleDragCancel = useCallback(() => {
-    setActiveId(null);
   }, []);
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -481,9 +235,16 @@ const DashboardScreen = () => {
 
   const nextCallTime = useMemo(() => {
     if (!upcomingBookings.length) return null;
-    const next = upcomingBookings[0];
-    const t = next.startAt ?? next.scheduledAt;
-    return t ? `${formatDate(t)} · ${formatTime(t)}` : null;
+    const t = upcomingBookings[0].startAt ?? upcomingBookings[0].scheduledAt;
+    if (!t) return null;
+    try {
+      const d = new Date(t);
+      const date = d.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
+      const time = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+      return `${date} \u00B7 ${time}`;
+    } catch {
+      return null;
+    }
   }, [upcomingBookings]);
 
   const lowTicket = useMemo(() => {
@@ -511,36 +272,45 @@ const DashboardScreen = () => {
     [byProgram]
   );
 
-  const isWide = layout === 'wide';
+  const programs = useMemo(
+    () => revenueQuery.data?.data?.programs ?? [],
+    [revenueQuery.data]
+  );
 
-  // ── Widget config map ────────────────────────────────────────────────────
+  // ── All queries failed → FullScreenError ────────────────────────────────
 
-  const widgetProps = useMemo(() => ({
+  const allFailed = bookingsQuery.isError && revenueQuery.isError && adherenceQuery.isError;
+
+  const handleRetryAll = useCallback(() => {
+    bookingsQuery.refetch();
+    revenueQuery.refetch();
+    adherenceQuery.refetch();
+  }, [bookingsQuery, revenueQuery, adherenceQuery]);
+
+  if (allFailed) {
+    return (
+      <ErrorBoundary>
+        <DashboardLayout screenName="Inicio">
+          <FullScreenError
+            title="Algo no esta funcionando"
+            message="Revisa tu conexion e intenta de nuevo."
+            onRetry={handleRetryAll}
+          />
+        </DashboardLayout>
+      </ErrorBoundary>
+    );
+  }
+
+  // ── Widget props ────────────────────────────────────────────────────────
+
+  const widgetProps = {
+    revenue: { revenueQuery, lowTicket, oneOnOne, programs },
     clients: { revenueQuery, oneOnOne },
     calls: { bookingsQuery, callCountThisWeek, nextCallTime },
-    revenue: { revenueQuery, lowTicket },
     adherence: { adherenceQuery, overallAdherence, byProgram },
     sessions: { adherenceQuery, sessionsCompleted },
     'upcoming-calls': { bookingsQuery, upcomingBookings },
-  }), [
-    revenueQuery, oneOnOne, lowTicket,
-    bookingsQuery, callCountThisWeek, nextCallTime, upcomingBookings,
-    adherenceQuery, overallAdherence, byProgram, sessionsCompleted,
-  ]);
-
-  const WIDGET_CONFIG = {
-    clients: { span: '1x1', className: 'widget-clients', Component: WidgetClients },
-    calls: { span: '1x1', className: 'widget-calls', Component: WidgetCalls },
-    revenue: { spanWide: '1x1', spanCompact: '2x1', className: 'widget-revenue', Component: WidgetRevenue },
-    adherence: { spanWide: '1x2', spanCompact: '2x1', className: 'widget-adherence', Component: WidgetAdherence },
-    sessions: { span: '1x1', className: 'widget-sessions', Component: WidgetSessions },
-    'upcoming-calls': { span: '2x1', className: 'widget-upcoming-calls', Component: WidgetUpcomingCalls },
   };
-
-  function getSpan(config) {
-    if (config.span) return config.span;
-    return isWide ? config.spanWide : config.spanCompact;
-  }
 
   function renderOverlayContent() {
     if (!activeId) return null;
@@ -548,7 +318,7 @@ const DashboardScreen = () => {
     if (!config) return null;
     const { Component } = config;
     return (
-      <BentoCard span={getSpan(config)} className={`${config.className} ds-drag-overlay`}>
+      <BentoCard span={config.span} className={`${config.className} ds-drag-overlay`}>
         <Component {...widgetProps[activeId]} />
       </BentoCard>
     );
@@ -558,8 +328,6 @@ const DashboardScreen = () => {
     <ErrorBoundary>
       <DashboardLayout screenName="Inicio">
         <div className={`ds-canvas ds-canvas--${layout}`}>
-
-          {/* ── Layout toggle ─────────────────────────────────────── */}
           <div className="ds-toolbar">
             <button
               className="ds-layout-toggle"
@@ -567,15 +335,11 @@ const DashboardScreen = () => {
               aria-label={isWide ? 'Vista compacta' : 'Vista amplia'}
               title={isWide ? 'Vista compacta' : 'Vista amplia'}
             >
-              {isWide
-                ? <LayoutGrid size={14} />
-                : <Columns3 size={14} />
-              }
+              {isWide ? <LayoutGrid size={14} /> : <Columns3 size={14} />}
               <span>{isWide ? 'Compacto' : 'Amplio'}</span>
             </button>
           </div>
 
-          {/* ── Widget grid ───────────────────────────────────────── */}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -590,12 +354,7 @@ const DashboardScreen = () => {
                   if (!config) return null;
                   const { Component } = config;
                   return (
-                    <SortableWidget
-                      key={id}
-                      id={id}
-                      span={getSpan(config)}
-                      className={config.className}
-                    >
+                    <SortableWidget key={id} id={id} span={config.span} className={config.className}>
                       <Component {...widgetProps[id]} />
                     </SortableWidget>
                   );
@@ -603,15 +362,11 @@ const DashboardScreen = () => {
               </BentoGrid>
             </SortableContext>
 
-            <DragOverlay dropAnimation={{
-              duration: 280,
-              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-            }}>
+            <DragOverlay dropAnimation={{ duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
               {renderOverlayContent()}
             </DragOverlay>
           </DndContext>
 
-          {/* ── Tutorial ──────────────────────────────────────────── */}
           <SpotlightTutorial screenKey="dashboard" steps={TUTORIAL_STEPS} />
         </div>
       </DashboardLayout>
