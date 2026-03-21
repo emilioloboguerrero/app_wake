@@ -1,7 +1,9 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from '../components/DashboardLayout';
+import SessionAssignmentModal from '../components/SessionAssignmentModal';
 import {
   GlowingEffect,
   ScrollableDisplayCards,
@@ -12,9 +14,12 @@ import {
   ProgressRing,
   NumberTicker,
   SpotlightTutorial,
-  MenuDropdown,
+  Toast,
+  VirtualList,
 } from '../components/ui/index.js';
+import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import { cacheConfig } from '../config/queryClient';
 import './ProgramsAndClientsScreen.css';
@@ -32,25 +37,66 @@ const TUTORIAL_STEPS = [
   {
     selector: '.clientes-roster',
     title: 'Tu lista de clientes',
-    body: 'Aquí aparecen todos tus clientes activos. Haz clic en uno para ver su perfil completo.',
+    body: 'Tu lista de clientes. El punto verde significa que estan activos esta semana.',
+  },
+  {
+    selector: '.clientes-profile-tabs',
+    title: 'Pestanas de detalle',
+    body: 'Planificacion para ver su programa. Nutricion para su plan alimenticio. Lab para sus metricas. Llamadas para agendar.',
   },
   {
     selector: '.clientes-highlights',
     title: 'Destacados del cliente',
-    body: 'El mejor PR, consistencia semanal y lectura de nutrición — todo de un vistazo.',
+    body: 'De un vistazo: su ultimo PR, que tan constante es, y como va con la nutricion.',
   },
   {
-    selector: '.clientes-profile-tabs',
-    title: 'Pestañas de detalle',
-    body: 'Navega entre planificación, nutrición, métricas de lab y llamadas agendadas.',
+    selector: '.profile-quick-actions',
+    title: 'Acciones rapidas',
+    body: 'Acciones rapidas para asignar sesiones o agendar llamadas sin salir de la pantalla.',
   },
 ];
+
+const VIRTUAL_ROSTER_THRESHOLD = 50;
+const ROSTER_ITEM_HEIGHT = 50;
 
 function getInitial(name) {
   return (name || '?').charAt(0).toUpperCase();
 }
 
-function RosterRow({ client, isSelected, onClick }) {
+function formatAccessDate(dateStr) {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
+function getDaysRemaining(dateStr) {
+  if (!dateStr) return null;
+  try {
+    const end = new Date(dateStr);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+  } catch {
+    return null;
+  }
+}
+
+function toInputDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    return d.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+}
+
+function RosterRow({ client, isSelected, onClick, style }) {
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
   const isActive = client.status !== 'inactive';
 
@@ -60,6 +106,7 @@ function RosterRow({ client, isSelected, onClick }) {
       className={`roster-row ${isSelected ? 'roster-row--active' : ''}`}
       onClick={onClick}
       aria-current={isSelected ? 'true' : undefined}
+      style={style}
     >
       {isSelected && <span className="roster-row__accent-bar" aria-hidden="true" />}
       <div className="roster-row__avatar" aria-hidden="true">
@@ -103,11 +150,8 @@ function EmptyRoster() {
           <path d="M6 42c0-9.941 8.059-18 18-18s18 8.059 18 18" stroke="rgba(255,255,255,0.2)" strokeWidth="2" strokeLinecap="round" />
         </svg>
       </div>
-      <p className="clientes-empty-state__title">Todavía no tienes clientes</p>
-      <p className="clientes-empty-state__body">Invita a tu primer cliente y empieza a transformar vidas.</p>
-      <button type="button" className="clientes-empty-state__cta">
-        Invita a tu primer cliente →
-      </button>
+      <p className="clientes-empty-state__title">Todavia no tienes clientes</p>
+      <p className="clientes-empty-state__body">Invita a tu primer cliente desde el boton de arriba.</p>
     </div>
   );
 }
@@ -132,7 +176,140 @@ function ProfileTopSkeleton() {
   );
 }
 
-function PlanTab({ clientDetail }) {
+function ClientHighlightCard({ clientDetail }) {
+  if (!clientDetail) return null;
+
+  const prLabel = clientDetail.latestPR?.label || 'Sin PRs recientes';
+  const prDate = clientDetail.latestPR?.date || '';
+  const consistency = clientDetail.weeklyConsistency;
+  const nutritionAdherence = clientDetail.nutritionAdherence;
+  const hasNutritionPlan = clientDetail.nutritionPlan != null;
+
+  return (
+    <div className="clientes-highlights">
+      <div className="highlight-card">
+        <div className="highlight-card__item">
+          <div className="highlight-card__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <span className="highlight-card__label">Ultimo PR</span>
+          <span className="highlight-card__value">{prLabel}</span>
+          {prDate && <span className="highlight-card__sub">{prDate}</span>}
+        </div>
+
+        <div className="highlight-card__item">
+          <div className="highlight-card__ring">
+            <ProgressRing
+              percent={consistency ?? 0}
+              size={44}
+              strokeWidth={4}
+              color="rgba(255,255,255,0.75)"
+              label={consistency != null ? `${consistency}%` : '—'}
+            />
+          </div>
+          <span className="highlight-card__label">Consistencia</span>
+          <span className="highlight-card__value">
+            {consistency != null ? `${consistency}%` : 'Sin datos'}
+          </span>
+          <span className="highlight-card__sub">Esta semana</span>
+        </div>
+
+        <div className="highlight-card__item">
+          <div className="highlight-card__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M18 8H19C20.0609 8 21.0783 8.42143 21.8284 9.17157C22.5786 9.92172 23 10.9391 23 12C23 13.0609 22.5786 14.0783 21.8284 14.8284C21.0783 15.5786 20.0609 16 19 16H18M18 8H2V17H18V8ZM18 8V5L14 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <span className="highlight-card__label">Nutricion</span>
+          <span className="highlight-card__value">
+            {hasNutritionPlan
+              ? (nutritionAdherence != null ? `${nutritionAdherence}%` : 'Sin datos')
+              : 'Sin plan asignado'}
+          </span>
+          {hasNutritionPlan && <span className="highlight-card__sub">Adherencia</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccessManagement({ clientDetail, clientName, clientId }) {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [localDate, setLocalDate] = useState('');
+  const saveTimerRef = useRef(null);
+
+  const accessEndsAt = clientDetail?.accessEndsAt;
+  const daysRemaining = getDaysRemaining(accessEndsAt);
+
+  useEffect(() => {
+    setLocalDate(toInputDate(accessEndsAt));
+  }, [accessEndsAt]);
+
+  const updateAccessMutation = useMutation({
+    mutationFn: (newDate) =>
+      apiClient.patch(`/creator/clients/${clientId}`, { accessEndsAt: newDate }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+    },
+    onError: () => {
+      showToast('No pudimos actualizar la fecha de acceso. Intenta de nuevo.', 'error');
+      setLocalDate(toInputDate(accessEndsAt));
+    },
+  });
+
+  const handleDateChange = useCallback((e) => {
+    const newDate = e.target.value;
+    setLocalDate(newDate);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      if (newDate) updateAccessMutation.mutate(newDate);
+    }, 800);
+  }, [updateAccessMutation]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  const isExpired = daysRemaining !== null && daysRemaining < 0;
+  const isWarning = daysRemaining !== null && daysRemaining >= 0 && daysRemaining < 7;
+
+  return (
+    <div className="access-management">
+      <div className="access-management__row">
+        <span className="access-management__label">Acceso hasta:</span>
+        <input
+          type="date"
+          className="access-management__date-input"
+          value={localDate}
+          onChange={handleDateChange}
+          aria-label="Fecha de acceso"
+        />
+        {daysRemaining !== null && !isExpired && (
+          <span className="access-management__days">
+            {daysRemaining} {daysRemaining === 1 ? 'dia' : 'dias'} restantes
+          </span>
+        )}
+      </div>
+      {isWarning && (
+        <p className="access-management__warning">
+          El acceso de {clientName} vence en {daysRemaining} {daysRemaining === 1 ? 'dia' : 'dias'}.
+        </p>
+      )}
+      {isExpired && (
+        <p className="access-management__expired">
+          Acceso vencido desde {formatAccessDate(accessEndsAt)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PlanTab({ clientDetail, clientName, clientId }) {
   if (!clientDetail) {
     return (
       <div className="tab-content tab-plan">
@@ -162,11 +339,11 @@ function PlanTab({ clientDetail }) {
           );
         })}
       </div>
-      {clientDetail.accessEndsAt && (
-        <div className="plan-access-pill">
-          Acceso hasta: <strong>{clientDetail.accessEndsAt}</strong>
-        </div>
-      )}
+      <AccessManagement
+        clientDetail={clientDetail}
+        clientName={clientName}
+        clientId={clientId}
+      />
     </div>
   );
 }
@@ -185,7 +362,7 @@ function NutricionTab({ clientDetail }) {
   if (!plan) {
     return (
       <div className="tab-content tab-empty">
-        <p className="tab-empty__text">Sin plan de nutrición asignado todavía.</p>
+        <p className="tab-empty__text">Sin plan de nutricion asignado todavia.</p>
       </div>
     );
   }
@@ -194,10 +371,10 @@ function NutricionTab({ clientDetail }) {
     <div className="tab-content tab-nutricion">
       <div className="nutricion-card">
         <GlowingEffect />
-        <h4 className="nutricion-card__title">{plan.name || 'Plan de nutrición'}</h4>
+        <h4 className="nutricion-card__title">{plan.name || 'Plan de nutricion'}</h4>
         <div className="macro-row">
           <div className="macro-pill macro-pill--protein">
-            <span className="macro-pill__label">Proteína</span>
+            <span className="macro-pill__label">Proteina</span>
             <span className="macro-pill__value">{plan.proteinG ?? '—'}g</span>
           </div>
           <div className="macro-pill macro-pill--carbs">
@@ -209,7 +386,7 @@ function NutricionTab({ clientDetail }) {
             <span className="macro-pill__value">{plan.fatG ?? '—'}g</span>
           </div>
           <div className="macro-pill macro-pill--kcal">
-            <span className="macro-pill__label">Calorías</span>
+            <span className="macro-pill__label">Calorias</span>
             <span className="macro-pill__value">{plan.calories ?? '—'}</span>
           </div>
         </div>
@@ -244,8 +421,8 @@ const LAB_CHART_TOOLTIP_STYLE = {
 };
 
 const NUTRI_BARS = [
-  { key: 'calories', label: 'Calorías', unit: 'kcal' },
-  { key: 'protein', label: 'Proteína', unit: 'g' },
+  { key: 'calories', label: 'Calorias', unit: 'kcal' },
+  { key: 'protein', label: 'Proteina', unit: 'g' },
   { key: 'carbs', label: 'Carbos', unit: 'g' },
   { key: 'fat', label: 'Grasa', unit: 'g' },
 ];
@@ -295,7 +472,6 @@ function LabTab({ client, clientDetail }) {
 
   return (
     <div className="tab-content tab-lab">
-      {/* ── Top metric cards ── */}
       <div className={`lab-grid lab-grid--top lab-entrance ${entered ? 'lab-entrance--in' : ''}`}>
         <div className="lab-card">
           <GlowingEffect />
@@ -321,7 +497,7 @@ function LabTab({ client, clientDetail }) {
           </div>
           <div className="lab-card__info">
             <span className="lab-card__metric-label">Readiness</span>
-            <span className="lab-card__metric-sub">Promedio 7 días</span>
+            <span className="lab-card__metric-sub">Promedio 7 dias</span>
           </div>
         </div>
 
@@ -338,16 +514,15 @@ function LabTab({ client, clientDetail }) {
           </div>
           <div className="lab-card__info">
             <span className="lab-card__metric-label">Sesiones completadas</span>
-            <span className="lab-card__metric-sub">Últimos 30 días</span>
+            <span className="lab-card__metric-sub">Ultimos 30 dias</span>
           </div>
         </div>
       </div>
 
-      {/* ── Charts row ── */}
       <div className={`lab-grid lab-grid--charts lab-entrance ${entered ? 'lab-entrance--in' : ''}`} style={{ transitionDelay: '80ms' }}>
         <div className="lab-chart-card">
           <h4 className="lab-chart-card__title">Volumen semanal</h4>
-          <p className="lab-chart-card__sub">Series totales — últimas 8 semanas</p>
+          <p className="lab-chart-card__sub">Series totales — ultimas 8 semanas</p>
           {volumeChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={170}>
               <LineChart data={volumeChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -364,7 +539,7 @@ function LabTab({ client, clientDetail }) {
 
         <div className="lab-chart-card">
           <h4 className="lab-chart-card__title">Peso corporal</h4>
-          <p className="lab-chart-card__sub">Últimos 30 días</p>
+          <p className="lab-chart-card__sub">Ultimos 30 dias</p>
           {bodyChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={170}>
               <LineChart data={bodyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -380,10 +555,9 @@ function LabTab({ client, clientDetail }) {
         </div>
       </div>
 
-      {/* ── Nutrition comparison ── */}
       <div className={`lab-chart-card lab-entrance ${entered ? 'lab-entrance--in' : ''}`} style={{ transitionDelay: '160ms' }}>
-        <h4 className="lab-chart-card__title">Nutrición: real vs. objetivo</h4>
-        <p className="lab-chart-card__sub">Promedio diario — últimos 7 días</p>
+        <h4 className="lab-chart-card__title">Nutricion: real vs. objetivo</h4>
+        <p className="lab-chart-card__sub">Promedio diario — ultimos 7 dias</p>
         <div className="lab-nutri-bars">
           {NUTRI_BARS.map(({ key, label, unit }) => {
             const actual = nutrition.actual?.[key] ?? 0;
@@ -424,7 +598,7 @@ function LlamadasTab({ clientDetail }) {
   if (calls.length === 0) {
     return (
       <div className="tab-content tab-empty">
-        <p className="tab-empty__text">No hay llamadas agendadas todavía.</p>
+        <p className="tab-empty__text">No hay llamadas agendadas todavia.</p>
       </div>
     );
   }
@@ -453,59 +627,76 @@ function LlamadasTab({ clientDetail }) {
   );
 }
 
-function ProfilePanel({ client, clientDetail, isLoadingDetail }) {
+function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, refetchDetail }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('plan');
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const tabBodyRef = useRef(null);
 
+  const clientId = client.id || client.clientUserId;
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
   const isActive = client.status !== 'inactive';
 
-  const highlightItems = useMemo(() => {
-    if (!clientDetail) return [];
-    return [
-      {
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ),
-        title: 'Mejor PR',
-        description: clientDetail.latestPR?.label || 'Sin datos aún',
-        date: clientDetail.latestPR?.date || '',
-      },
-      {
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M22 12H18L15 21L9 3L6 12H2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ),
-        title: 'Consistencia semanal',
-        description: clientDetail.weeklyConsistency != null ? `${clientDetail.weeklyConsistency}%` : 'Sin datos',
-        date: 'Esta semana',
-      },
-      {
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M18 8H19C20.0609 8 21.0783 8.42143 21.8284 9.17157C22.5786 9.92172 23 10.9391 23 12C23 13.0609 22.5786 14.0783 21.8284 14.8284C21.0783 15.5786 20.0609 16 19 16H18M18 8H2V17H18V8ZM18 8V5L14 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ),
-        title: 'Nutrición hoy',
-        description: clientDetail.nutritionReadiness || 'Sin registro',
-        date: 'Adherencia',
-      },
-    ];
-  }, [clientDetail]);
+  const handleAssignSession = useCallback(() => {
+    setShowSessionModal(true);
+  }, []);
 
-  const menuItems = [];
+  const handleScheduleCall = useCallback(() => {
+    navigate('/availability');
+  }, [navigate]);
+
+  const handleViewProgram = useCallback(() => {
+    setActiveTab('plan');
+    if (tabBodyRef.current) {
+      tabBodyRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+
+  const handleSessionAssigned = useCallback((sessionData) => {
+    showToast('Sesion asignada correctamente', 'success');
+    setShowSessionModal(false);
+  }, [showToast]);
+
+  if (isDetailError) {
+    return (
+      <div className="profile-panel">
+        <div className="profile-top">
+          <div className="profile-identity">
+            <div className="profile-avatar">
+              {client.avatarUrl
+                ? <img src={client.avatarUrl} alt={name} className="profile-avatar__img" />
+                : <span className="profile-avatar__initial">{getInitial(name)}</span>}
+            </div>
+            <div className="profile-identity__info">
+              <h2 className="profile-identity__name">{name}</h2>
+            </div>
+          </div>
+        </div>
+        <div className="profile-detail-error">
+          <InlineError message="No pudimos cargar los datos de este cliente. Intenta de nuevo." />
+          {refetchDetail && (
+            <button
+              type="button"
+              className="profile-detail-error__retry"
+              onClick={refetchDetail}
+            >
+              Reintentar
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="profile-panel">
-      {/* ── Top section (not scrollable) ── */}
       <div className="profile-top">
         {isLoadingDetail ? (
           <ProfileTopSkeleton />
         ) : (
           <>
-            {/* Identity row */}
             <div className="profile-identity">
               <div className="profile-avatar">
                 {client.avatarUrl
@@ -531,54 +722,46 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail }) {
               </div>
             </div>
 
-            {/* Highlights carousel */}
-            <div className="clientes-highlights">
-              {highlightItems.length > 0 ? (
-                <ScrollableDisplayCards
-                  items={highlightItems}
-                  renderCard={(item) => ({
-                    icon: item.icon,
-                    title: item.title,
-                    description: item.description,
-                    date: item.date,
-                  })}
-                />
-              ) : (
-                <SkeletonCard />
-              )}
-            </div>
+            <ClientHighlightCard clientDetail={clientDetail} />
 
-            {/* Quick actions */}
-            <div className="profile-actions">
-              <button type="button" className="profile-actions__btn profile-actions__btn--primary">
+            <div className="profile-quick-actions">
+              <button
+                type="button"
+                className="quick-action-pill"
+                onClick={handleAssignSession}
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M15.05 5A5 5 0 0119 8.95M15.05 1A9 9 0 0123 8.94M22 16.92V19.92C22.0011 20.4833 21.7772 21.0235 21.3748 21.4215C20.9724 21.8195 20.4254 22.0442 19.86 22.04C16.5604 21.7049 13.4081 20.5791 10.6696 18.7508C8.12208 17.0818 5.97316 14.9329 4.30425 12.3854C2.47018 9.63416 1.34426 6.46832 1.01506 3.15303C1.01096 2.58907 1.23369 2.04367 1.62879 1.64282C2.02388 1.24197 2.56141 1.01669 3.12197 1.01316H6.1221C7.1156 1.00428 7.95743 1.71413 8.11204 2.69415C8.24762 3.62383 8.47875 4.53616 8.80197 5.41316C9.07217 6.1215 8.88946 6.9202 8.33797 7.44316L7.09204 8.68909C8.64957 11.3286 10.8116 13.4906 13.451 15.0482L14.6969 13.8022C15.2199 13.2507 16.0186 13.068 16.727 13.3382C17.604 13.6614 18.5163 13.8925 19.446 14.028C20.4367 14.1845 21.1516 15.0428 21.1354 16.0461L22 16.92Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Asignar sesion
+              </button>
+              <button
+                type="button"
+                className="quick-action-pill"
+                onClick={handleScheduleCall}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M22 16.92V19.92C22.0011 20.4833 21.7772 21.0235 21.3748 21.4215C20.9724 21.8195 20.4254 22.0442 19.86 22.04C16.56 21.705 13.408 20.579 10.67 18.751C8.122 17.082 5.973 14.933 4.304 12.385C2.47 9.634 1.344 6.468 1.015 3.153C1.011 2.589 1.234 2.044 1.629 1.643C2.024 1.242 2.561 1.017 3.122 1.013H6.122C7.116 1.004 7.957 1.714 8.112 2.694C8.248 3.624 8.479 4.536 8.802 5.413C9.072 6.122 8.889 6.920 8.338 7.443L7.092 8.689C8.650 11.329 10.812 13.491 13.451 15.048L14.697 13.802C15.220 13.251 16.019 13.068 16.727 13.338C17.604 13.661 18.516 13.893 19.446 14.028C20.437 14.185 21.152 15.043 21.135 16.046L22 16.92Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 Agendar llamada
               </button>
-              <button type="button" className="profile-actions__btn profile-actions__btn--ghost">
+              <button
+                type="button"
+                className="quick-action-pill"
+                onClick={handleViewProgram}
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M9 19V6L21 3V16M9 19C9 20.1046 8.10457 21 7 21C5.89543 21 5 20.1046 5 19C5 17.8954 5.89543 17 7 17C8.10457 17 9 17.8954 9 19ZM21 16C21 17.1046 20.1046 18 19 18C17.8954 18 17 17.1046 17 16C17 14.8954 17.8954 14 19 14C20.1046 14 21 14.8954 21 16Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M3 10H21" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M10 4V10" stroke="currentColor" strokeWidth="1.8" />
                 </svg>
-                Ver Lab
+                Ver programa
               </button>
-              <MenuDropdown
-                trigger={
-                  <button type="button" className="profile-actions__btn profile-actions__btn--ghost">
-                    Más
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ marginLeft: '4px' }}>
-                      <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                }
-                items={menuItems}
-              />
             </div>
           </>
         )}
       </div>
 
-      {/* ── Tab nav ── */}
       <div className="clientes-profile-tabs">
         <TubelightNavBar
           items={PROFILE_TABS}
@@ -587,13 +770,27 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail }) {
         />
       </div>
 
-      {/* ── Scrollable tab body ── */}
-      <div className="profile-tab-body">
-        {activeTab === 'plan' && <PlanTab clientDetail={isLoadingDetail ? null : clientDetail} />}
+      <div className="profile-tab-body" ref={tabBodyRef}>
+        {activeTab === 'plan' && (
+          <PlanTab
+            clientDetail={isLoadingDetail ? null : clientDetail}
+            clientName={name}
+            clientId={clientId}
+          />
+        )}
         {activeTab === 'nutricion' && <NutricionTab clientDetail={isLoadingDetail ? null : clientDetail} />}
         {activeTab === 'lab' && <LabTab client={client} clientDetail={isLoadingDetail ? null : clientDetail} />}
         {activeTab === 'llamadas' && <LlamadasTab clientDetail={isLoadingDetail ? null : clientDetail} />}
       </div>
+
+      <SessionAssignmentModal
+        isOpen={showSessionModal}
+        onClose={() => setShowSessionModal(false)}
+        selectedDate={new Date()}
+        creatorId={user?.uid}
+        onSessionAssigned={handleSessionAssigned}
+        onAddFromLibrary={() => setShowSessionModal(false)}
+      />
     </div>
   );
 }
@@ -602,8 +799,15 @@ const ProgramsAndClientsScreen = () => {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const rosterWrapRef = useRef(null);
+  const [rosterHeight, setRosterHeight] = useState(400);
 
-  const { data: clientsData, isLoading: isLoadingClients, isError: isClientsError } = useQuery({
+  const {
+    data: clientsData,
+    isLoading: isLoadingClients,
+    isError: isClientsError,
+    refetch: refetchClients,
+  } = useQuery({
     queryKey: ['clients', 'creator', user?.uid],
     queryFn: () => apiClient.get('/clients'),
     ...cacheConfig.userProfile,
@@ -613,7 +817,12 @@ const ProgramsAndClientsScreen = () => {
 
   const clients = clientsData || [];
 
-  const { data: clientDetailData, isLoading: isLoadingDetail } = useQuery({
+  const {
+    data: clientDetailData,
+    isLoading: isLoadingDetail,
+    isError: isDetailError,
+    refetch: refetchDetail,
+  } = useQuery({
     queryKey: ['client', selectedClientId],
     queryFn: () => apiClient.get('/clients/' + selectedClientId),
     ...cacheConfig.userProfile,
@@ -644,12 +853,37 @@ const ProgramsAndClientsScreen = () => {
   const handleClearSearch = useCallback(() => setSearch(''), []);
 
   const showEmptyState = !isLoadingClients && !isClientsError && clients.length === 0;
+  const useVirtualList = filteredClients.length >= VIRTUAL_ROSTER_THRESHOLD;
+
+  useEffect(() => {
+    if (useVirtualList && rosterWrapRef.current) {
+      const obs = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setRosterHeight(entry.contentRect.height);
+        }
+      });
+      obs.observe(rosterWrapRef.current);
+      return () => obs.disconnect();
+    }
+  }, [useVirtualList]);
+
+  const renderVirtualRow = useCallback((client, index, style) => {
+    const id = client.id || client.clientUserId;
+    return (
+      <RosterRow
+        key={id}
+        client={client}
+        isSelected={selectedClientId === id}
+        onClick={() => handleSelectClient(client)}
+        style={style}
+      />
+    );
+  }, [selectedClientId, handleSelectClient]);
 
   return (
     <DashboardLayout screenName="Clientes">
       <div className="clientes-screen">
 
-        {/* ── Left roster sidebar ── */}
         <aside className="clientes-roster">
           <div className="roster-search-wrap">
             <svg className="roster-search__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -659,7 +893,7 @@ const ProgramsAndClientsScreen = () => {
             <input
               type="text"
               className="roster-search__input"
-              placeholder="Buscar cliente…"
+              placeholder="Buscar cliente..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Buscar cliente"
@@ -669,22 +903,33 @@ const ProgramsAndClientsScreen = () => {
                 type="button"
                 className="roster-search__clear"
                 onClick={handleClearSearch}
-                aria-label="Limpiar búsqueda"
+                aria-label="Limpiar busqueda"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="roster-list-wrap">
+          <div className="roster-list-wrap" ref={rosterWrapRef}>
             {isLoadingClients ? (
               <RosterSkeleton />
             ) : isClientsError ? (
-              <p className="roster-no-match">No se pudieron cargar los clientes. Intenta de nuevo.</p>
+              <FullScreenError
+                title="No pudimos cargar tus clientes"
+                message="Revisa tu conexion e intenta de nuevo."
+                onRetry={refetchClients}
+              />
             ) : showEmptyState ? (
               <EmptyRoster />
             ) : filteredClients.length === 0 ? (
               <p className="roster-no-match">Sin coincidencias.</p>
+            ) : useVirtualList ? (
+              <VirtualList
+                items={filteredClients}
+                renderItem={renderVirtualRow}
+                itemHeight={ROSTER_ITEM_HEIGHT}
+                height={rosterHeight}
+              />
             ) : (
               <AnimatedList stagger={55}>
                 {filteredClients.map((client) => {
@@ -703,7 +948,6 @@ const ProgramsAndClientsScreen = () => {
           </div>
         </aside>
 
-        {/* ── Right profile panel ── */}
         <main className="clientes-profile">
           {!selectedClient && !isLoadingClients && clients.length > 0 && (
             <div className="profile-placeholder">
@@ -713,7 +957,7 @@ const ProgramsAndClientsScreen = () => {
                   <path d="M6 52c0-12.15 9.85-22 22-22s22 9.85 22 22" stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <p className="profile-placeholder__title">Selecciona un cliente</p>
-                <p className="profile-placeholder__sub">Haz clic en cualquier cliente para ver su perfil completo.</p>
+                <p className="profile-placeholder__sub">Selecciona un cliente de la lista para ver su perfil completo.</p>
               </div>
             </div>
           )}
@@ -723,6 +967,8 @@ const ProgramsAndClientsScreen = () => {
               client={selectedClient}
               clientDetail={clientDetailData ?? null}
               isLoadingDetail={isLoadingDetail}
+              isDetailError={isDetailError}
+              refetchDetail={refetchDetail}
             />
           )}
         </main>

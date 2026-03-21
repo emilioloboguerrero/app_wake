@@ -899,3 +899,195 @@
   background: rgba(224, 84, 84, 0.10);
   color: rgba(224, 84, 84, 0.75);
 }
+
+/* ── Client Highlight Card ──────────────────────────────── */
+
+.highlight-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 16px;
+  animation: enterUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.highlight-card__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.highlight-card__icon {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.highlight-card__ring {
+  /* ProgressRing fills this */
+}
+
+.highlight-card__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.25));
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+.highlight-card__value {
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  line-height: 1.3;
+}
+
+.highlight-card__sub {
+  font-size: clamp(10px, 2.2vw, 11px);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.25));
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+/* ── Quick Action Pills ─────────────────────────────────── */
+
+.profile-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-size: clamp(12px, 2.8vw, 13px);
+  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  transition: background 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.16s,
+              color 0.16s,
+              transform 0.12s;
+}
+
+.quick-action-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+}
+
+.quick-action-pill:active {
+  transform: scale(0.977);
+}
+
+/* ── Access Management ──────────────────────────────────── */
+
+.access-management {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: enterUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.access-management__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.access-management__label {
+  font-size: clamp(12px, 2.8vw, 13px);
+  font-weight: 600;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+.access-management__date-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--text-primary, #fff);
+  font-size: clamp(12px, 2.8vw, 13px);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  color-scheme: dark;
+}
+
+.access-management__date-input:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.access-management__days {
+  font-size: clamp(11px, 2.5vw, 12px);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.25));
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+.access-management__warning {
+  font-size: clamp(12px, 2.8vw, 13px);
+  color: rgba(255, 193, 7, 0.85);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.15);
+  border-radius: 8px;
+}
+
+.access-management__expired {
+  font-size: clamp(12px, 2.8vw, 13px);
+  color: rgba(224, 84, 84, 0.9);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(224, 84, 84, 0.08);
+  border: 1px solid rgba(224, 84, 84, 0.15);
+  border-radius: 8px;
+}
+
+/* ── Profile detail error ───────────────────────────────── */
+
+.profile-detail-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 28px;
+  animation: enterUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.profile-detail-error__retry {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  transition: background 0.18s, border-color 0.18s;
+}
+
+.profile-detail-error__retry:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.28);
+}
