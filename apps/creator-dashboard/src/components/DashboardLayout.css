@@ -367,6 +367,38 @@
   margin-left: 0;
 }
 
+/* ─── Tutorial replay button ─────────────────────────────────── */
+.dl-tutorial-replay {
+  position: fixed;
+  bottom: 72px;
+  right: 24px;
+  z-index: 1000;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--duration-fast) ease,
+    transform var(--duration-fast) var(--spring);
+  animation: enterUp 0.42s var(--spring) both;
+}
+
+.dl-tutorial-replay:hover {
+  color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-1px);
+}
+
+@keyframes enterUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ─── Feedback CTA button ────────────────────────────────────── */
 .feedback-cta-fixed {
   position: fixed;
