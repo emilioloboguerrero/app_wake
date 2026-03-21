@@ -9,6 +9,7 @@ import Modal from '../components/Modal';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import { VirtualList, FullScreenError } from '../components/ui';
 import libraryService from '../services/libraryService';
 import { cacheConfig } from '../config/queryClient';
 
@@ -945,20 +946,17 @@ const LibraryExercisesScreen = () => {
 
   if (error || !library) {
     return (
-      <DashboardLayout 
+      <DashboardLayout
         screenName="Entrenamiento"
         showBackButton={true}
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-exercises-content">
-          <div className="library-exercises-error">
-            <p>{error || 'Biblioteca no encontrada'}</p>
-            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
-              Volver a Contenido
-            </button>
-          </div>
-        </div>
+        <FullScreenError
+          title="No se pudo cargar la biblioteca"
+          message={error || 'Biblioteca no encontrada'}
+          onRetry={() => navigate(0)}
+        />
       </DashboardLayout>
     );
   }
@@ -1046,19 +1044,22 @@ const LibraryExercisesScreen = () => {
             )}
 
             <div className="library-exercises-sidebar-content">
-              {sidebarExercises.length === 0 ? (
-                <div className="library-exercises-sidebar-empty">
-                  <p>
-                    {searchQuery.trim() || selectedMuscles.size > 0 || filterSelectedImplements.size > 0
-                      ? 'No se encontraron ejercicios'
-                      : 'No hay ejercicios. Agrega uno para comenzar.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="library-exercises-sidebar-list">
-                  {sidebarExercises.map((exercise) => (
+              <VirtualList
+                items={sidebarExercises}
+                itemHeight={54}
+                height={Math.max(200, window.innerHeight - 400)}
+                emptyState={
+                  <div className="library-exercises-sidebar-empty">
+                    <p>
+                      {searchQuery.trim() || selectedMuscles.size > 0 || filterSelectedImplements.size > 0
+                        ? 'No se encontraron ejercicios'
+                        : 'Tu biblioteca de ejercicios esta vacia. Crea ejercicios y usalos en tus sesiones.'}
+                    </p>
+                  </div>
+                }
+                renderItem={(exercise, index, style) => (
+                  <div key={exercise.name} style={{ ...style, paddingRight: 16, paddingLeft: 16, paddingBottom: 8 }}>
                     <button
-                      key={exercise.name}
                       type="button"
                       className={`library-exercises-sidebar-item ${selectedExercise?.name === exercise.name ? 'library-exercises-sidebar-item-selected' : ''} ${isEditMode ? 'library-exercises-sidebar-item-edit' : ''}`}
                       onClick={() => {
@@ -1087,9 +1088,9 @@ const LibraryExercisesScreen = () => {
                       )}
                       <span className="library-exercises-sidebar-item-name">{exercise.name}</span>
                     </button>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )}
+              />
             </div>
           </div>
 

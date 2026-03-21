@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { GlowingEffect, SkeletonCard, TubelightNavBar, AnimatedList, SpotlightTutorial } from '../components/ui';
+import { GlowingEffect, SkeletonCard, TubelightNavBar, AnimatedList, SpotlightTutorial, VirtualList, FullScreenError } from '../components/ui';
 import libraryService from '../services/libraryService';
 import { cacheConfig, queryKeys } from '../config/queryClient';
 import './LibraryManagementScreen.css';
@@ -163,12 +163,8 @@ function ExerciseRow({ exercise }) {
           className={`lib-exercise-callout ${calloutOpen ? 'lib-exercise-callout--visible' : ''}`}
           aria-hidden={!calloutOpen}
         >
-          <p className="lib-callout-title">Campos pendientes:</p>
-          <ul className="lib-callout-list">
-            {missing.map((m) => (
-              <li key={m} className="lib-callout-item">{m}</li>
-            ))}
-          </ul>
+          <p className="lib-callout-title">A este ejercicio le falta: {missing.join(', ').toLowerCase()}.</p>
+          <p className="lib-callout-sub">No es obligatorio, pero mejora la experiencia de tus clientes.</p>
         </div>
       )}
     </div>
@@ -368,12 +364,12 @@ const LibraryManagementScreen = () => {
   const renderContent = () => {
     if (activeTab === 'ejercicios') {
       if (loadingEx) return <SkeletonRows count={6} />;
-      if (errorEx) return <EmptyState title="No se pudo cargar la biblioteca" subtitle="Verifica tu conexión e intenta de nuevo." />;
+      if (errorEx) return <FullScreenError title="No se pudo cargar la biblioteca" message="Verifica tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
       if (!filteredExercises.length) {
         return (
           <EmptyState
-            title="Tu biblioteca de ejercicios está vacía"
-            subtitle="Crea tu primera biblioteca para empezar a catalogar ejercicios con video y detalles musculares."
+            title="Tu biblioteca de ejercicios esta vacia"
+            subtitle="Crea ejercicios y usalos en tus sesiones."
             ctaLabel="Nueva biblioteca"
             onCta={() => navigate('/libraries')}
           />
@@ -381,23 +377,28 @@ const LibraryManagementScreen = () => {
       }
       return (
         <div className="lib-exercise-list">
-          <AnimatedList stagger={40}>
-            {filteredExercises.map((ex) => (
-              <ExerciseRow key={ex.id || ex.name} exercise={ex} />
-            ))}
-          </AnimatedList>
+          <VirtualList
+            items={filteredExercises}
+            itemHeight={62}
+            height={Math.max(300, window.innerHeight - 380)}
+            renderItem={(ex, index, style) => (
+              <div key={ex.id || ex.name} style={style}>
+                <ExerciseRow exercise={ex} />
+              </div>
+            )}
+          />
         </div>
       );
     }
 
     if (activeTab === 'sesiones') {
       if (loadingSess) return <SkeletonGrid count={6} cols={2} />;
-      if (errorSess) return <EmptyState title="No se pudieron cargar las sesiones" subtitle="Verifica tu conexión e intenta de nuevo." />;
+      if (errorSess) return <FullScreenError title="No se pudieron cargar las sesiones" message="Verifica tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
       if (!filteredSessions.length) {
         return (
           <EmptyState
-            title="Aún no tienes sesiones guardadas"
-            subtitle="Guarda tus mejores rutinas aquí y reutilízalas en cualquier programa que crees."
+            title="Sin sesiones guardadas"
+            subtitle="Crea una sesion y reutilizala en multiples programas."
             ctaLabel="Nueva sesión"
             onCta={() => navigate('/library/sessions/new')}
           />
@@ -429,12 +430,12 @@ const LibraryManagementScreen = () => {
 
     if (activeTab === 'modulos') {
       if (loadingMod) return <SkeletonRows count={5} />;
-      if (errorMod) return <EmptyState title="No se pudieron cargar los módulos" subtitle="Verifica tu conexión e intenta de nuevo." />;
+      if (errorMod) return <FullScreenError title="No se pudieron cargar los modulos" message="Verifica tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
       if (!filteredModules.length) {
         return (
           <EmptyState
-            title="Todavía no hay módulos en tu biblioteca"
-            subtitle="Los módulos te permiten agrupar sesiones por semana o bloque de entrenamiento."
+            title="Los modulos agrupan sesiones"
+            subtitle="Crea uno para organizar mejor tu biblioteca."
             ctaLabel="Nuevo módulo"
             onCta={() => navigate('/library/modules/new')}
           />
@@ -511,19 +512,24 @@ const LibraryManagementScreen = () => {
         screenKey="library"
         steps={[
           {
-            selector: '.lib-tabs',
-            title: 'Tu biblioteca',
-            body: 'Aquí guardas ejercicios, sesiones y módulos reutilizables para construir tus programas rápidamente.',
+            selector: '.tubelight-nav',
+            title: 'Tabs',
+            body: 'Ejercicios son los bloques basicos. Sesiones combinan ejercicios. Modulos agrupan sesiones.',
           },
           {
-            selector: '.lib-tab--ejercicios',
-            title: 'Completitud de ejercicios',
-            body: 'El punto de color indica si un ejercicio tiene toda la información necesaria. Haz clic en el punto ámbar para ver qué falta.',
+            selector: '.lib-completeness-dot',
+            title: 'Completitud',
+            body: 'El punto amarillo significa que al ejercicio le falta video, musculos o equipamiento. Funciona igual, pero queda mejor completo.',
           },
           {
-            selector: '.lib-tab--sesiones',
-            title: 'Sesiones arrastrables',
-            body: 'Arrastra las sesiones desde aquí directamente al calendario de un cliente para asignarlas.',
+            selector: '.lib-drag-handle',
+            title: 'Arrastrar',
+            body: 'Puedes arrastrar modulos para reordenarlos. Las sesiones se arrastran dentro de los modulos.',
+          },
+          {
+            selector: '.lib-primary-btn',
+            title: 'Reutilizar',
+            body: 'Todo lo que creas aca lo puedes usar en cualquier programa. Editar la fuente actualiza todos los programas conectados.',
           },
         ]}
       />
