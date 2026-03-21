@@ -2241,4 +2241,26 @@ router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey"
   res.status(204).send();
 });
 
+// GET /creator/username-check?username=... — check if username is available
+router.get("/creator/username-check", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const username = req.query.username as string | undefined;
+  if (!username || !username.trim()) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El parámetro username es requerido");
+  }
+
+  const snapshot = await db
+    .collection("users")
+    .where("username", "==", username.trim())
+    .limit(1)
+    .get();
+
+  const taken = snapshot.docs.some((doc) => doc.id !== auth.userId);
+
+  res.json({ data: { available: !taken } });
+});
+
 export default router;
