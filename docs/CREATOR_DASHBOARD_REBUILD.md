@@ -495,20 +495,20 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 ## Phase 3: Cross-Cutting Polish (SEQUENTIAL — touches many files)
 
 ### 3A. DashboardLayout Visual Polish
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/components/DashboardLayout.jsx` + `.css`
 
 **Tasks:**
-- [ ] Verify sidebar matches STANDARDS.md dark theme (canvas `#1a1a1a`, borders `rgba(255,255,255,0.07)`)
-- [ ] Nav items: verify hover states have translateY(-1px) + background lighten
-- [ ] Active nav item: verify glow/highlight indicator
-- [ ] Sidebar footer: verify profile button styling
-- [ ] Header (StickyHeader): verify parallax scroll effect, proper text shadows
-- [ ] Mobile menu toggle: verify smooth slide-in animation (spring easing)
-- [ ] Add "?" tutorial replay button to header (right side, next to feedback button)
-  - [ ] Icon: question mark in circle, `rgba(255,255,255,0.4)`, 32px
-  - [ ] On click: resets current screen's SpotlightTutorial localStorage key and triggers replay
-  - [ ] Tooltip: "Replay tutorial"
+- [x] Verify sidebar matches STANDARDS.md dark theme (canvas `#1a1a1a`, borders `rgba(255,255,255,0.07)`)
+- [x] Nav items: verify hover states have translateY(-1px) + background lighten
+- [x] Active nav item: verify glow/highlight indicator
+- [x] Sidebar footer: verify profile button styling
+- [x] Header (StickyHeader): verify parallax scroll effect, proper text shadows
+- [x] Mobile menu toggle: verify smooth slide-in animation (spring easing)
+- [x] Add "?" tutorial replay button to header (right side, next to feedback button)
+  - [x] Icon: question mark in circle, `rgba(255,255,255,0.4)`, 32px
+  - [x] On click: resets current screen's SpotlightTutorial localStorage key and triggers replay
+  - [x] Tooltip: "Replay tutorial"
 
 ### 3B. Command Palette Polish
 **Status:** [ ] Not started

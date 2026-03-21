@@ -29,6 +29,18 @@ export default function SpotlightTutorial({ screenKey, steps }) {
     }
   }, [storageKey, openTutorial]);
 
+  // Listen for replay requests from header button
+  useEffect(() => {
+    const handleReplay = (e) => {
+      if (e.detail?.screenKey === screenKey) {
+        localStorage.removeItem(storageKey);
+        openTutorial();
+      }
+    };
+    window.addEventListener('wake:tutorial-replay', handleReplay);
+    return () => window.removeEventListener('wake:tutorial-replay', handleReplay);
+  }, [screenKey, storageKey, openTutorial]);
+
   // Update cutout when step changes
   useEffect(() => {
     if (!visible) return;

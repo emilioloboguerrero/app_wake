@@ -198,6 +198,7 @@
   color: var(--text-primary);
   margin: 0;
   line-height: 1.2;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
 }
 
 .sticky-header-with-image .sticky-header-title {

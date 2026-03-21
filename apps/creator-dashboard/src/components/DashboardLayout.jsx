@@ -128,6 +128,7 @@ const DashboardLayout = ({
   backState = null,
   headerIcon = null,
   headerImageIcon = null,
+  tutorialScreenKey = null,
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -304,6 +305,11 @@ const DashboardLayout = ({
     item => !item.hideable || isNavVisible(item.key)
   );
 
+  const handleTutorialReplay = () => {
+    if (!tutorialScreenKey) return;
+    window.dispatchEvent(new CustomEvent('wake:tutorial-replay', { detail: { screenKey: tutorialScreenKey } }));
+  };
+
   const feedbackSidebarWidth = isMobile ? 0 : 220;
 
   const sidebarClasses = [
@@ -437,6 +443,23 @@ const DashboardLayout = ({
         />
         {children}
       </main>
+
+      {/* ── Tutorial replay button ────────────────────────────────── */}
+      {tutorialScreenKey && (
+        <Tooltip label="Repetir tutorial" placement="left">
+          <button
+            type="button"
+            className="dl-tutorial-replay"
+            onClick={handleTutorialReplay}
+            aria-label="Repetir tutorial"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
+              <text x="12" y="16.5" textAnchor="middle" fill="currentColor" fontSize="13" fontWeight="600">?</text>
+            </svg>
+          </button>
+        </Tooltip>
+      )}
 
       {/* ── Feedback button ───────────────────────────────────────── */}
       {!feedbackPanelOpen ? (
