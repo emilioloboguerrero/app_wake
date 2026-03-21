@@ -16,6 +16,7 @@
     "build:pwa": "node apps/pwa/scripts/bundle-cities.js && cross-env EXPO_PUBLIC_BASE_PATH=/app npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js && node scripts/rewrite-pwa-paths.js && node scripts/copy-pwa-public.js",
     "build:creator": "npm run build --prefix apps/creator-dashboard",
     "build:devportal": "npm run build --prefix apps/developer-portal",
+    "build:developers": "npm run build --prefix apps/developer-portal",
     "devportal:dev": "npm run dev --prefix apps/developer-portal",
     "build:pwa:staging": "node apps/pwa/scripts/bundle-cities.js && cross-env EXPO_PUBLIC_FIREBASE_ENV=staging EXPO_PUBLIC_BASE_PATH=/app npm run export:web --prefix apps/pwa && node scripts/inject-expo-script.js && node scripts/rewrite-pwa-paths.js && node scripts/copy-pwa-public.js",
     "build:creator:staging": "cross-env VITE_FIREBASE_ENV=staging npm run build --prefix apps/creator-dashboard",

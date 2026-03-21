@@ -1,29 +1,47 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import apiClient, { WakeApiError } from '../utils/apiClient';
+import { useNavigate } from 'react-router-dom';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { firestore } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function RequestWrite() {
+export default function RequestAccess() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [name, setName] = useState(location.state?.name || '');
+  const { user } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState(user?.email || '');
   const [useCase, setUseCase] = useState('');
+  const [scopes, setScopes] = useState(['write']);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
 
+  const toggleScope = (scope) => {
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
+    );
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (scopes.length === 0) {
+      setError('Selecciona al menos un alcance.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await apiClient.post('/api-keys', {
+      await addDoc(collection(firestore, 'write_access_requests'), {
         name: name.trim(),
-        scope: ['write'],
+        email: email.trim(),
         useCase: useCase.trim(),
+        requestedScopes: scopes,
+        userId: user?.uid || null,
+        status: 'pending',
+        createdAt: serverTimestamp(),
       });
       setSubmitted(true);
-    } catch (err) {
-      setError(err instanceof WakeApiError ? err.message : 'Error al enviar la solicitud');
+    } catch {
+      setError('Error al enviar la solicitud. Intenta de nuevo.');
     } finally {
       setSubmitting(false);
     }
@@ -33,13 +51,13 @@ export default function RequestWrite() {
     return (
       <div style={styles.centered}>
         <div style={styles.card}>
-          <div style={styles.checkmark}>✓</div>
+          <div style={styles.checkmark}>&#10003;</div>
           <h2 style={styles.successTitle}>Solicitud enviada</h2>
           <p style={styles.successText}>
-            Tu solicitud de acceso write será revisada por el equipo de Wake.
-            Recibirás una notificación por email cuando sea aprobada (máximo 48 horas).
+            Tu solicitud de acceso ser&aacute; revisada por el equipo de Wake.
+            Recibir&aacute;s una notificaci&oacute;n por email cuando sea aprobada (m&aacute;ximo 48 horas).
           </p>
-          <button onClick={() => navigate('/developers/keys')} style={styles.backBtn}>
+          <button onClick={() => navigate('/developers/api-keys')} style={styles.backBtn}>
             Volver a Claves API
           </button>
         </div>
@@ -49,47 +67,79 @@ export default function RequestWrite() {
 
   return (
     <div style={styles.container}>
-      <button onClick={() => navigate('/developers/keys')} style={styles.backLink}>
-        ← Volver a Claves API
+      <button onClick={() => navigate('/developers/api-keys')} style={styles.backLink}>
+        &larr; Volver a Claves API
       </button>
 
       <h1 style={styles.title}>Solicitar acceso write</h1>
       <p style={styles.subtitle}>
         Las claves con alcance <code style={styles.code}>write</code> permiten crear, modificar y eliminar
-        datos a través de la API. Requieren aprobación manual del equipo de Wake.
+        datos a trav&eacute;s de la API. Requieren aprobaci&oacute;n manual del equipo de Wake.
       </p>
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <div>
-          <label style={styles.label}>Nombre de la clave</label>
+          <label style={styles.label}>Nombre</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ej: Bot de Coaching AI"
+            placeholder="Tu nombre completo"
             style={styles.input}
             required
           />
         </div>
         <div>
-          <label style={styles.label}>Caso de uso</label>
+          <label style={styles.label}>Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="tu@email.com"
+            style={styles.input}
+            required
+          />
+        </div>
+        <div>
+          <label style={styles.label}>Alcances solicitados</label>
+          <div style={styles.scopeOptions}>
+            {['write', 'creator'].map((scope) => (
+              <label key={scope} style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={scopes.includes(scope)}
+                  onChange={() => toggleScope(scope)}
+                />
+                <div>
+                  <strong>{scope}</strong>
+                  <span style={styles.radioDesc}>
+                    {scope === 'write' && ' — Lectura y escritura de datos'}
+                    {scope === 'creator' && ' — Acceso a endpoints de creador'}
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={styles.label}>Descripci&oacute;n del caso de uso</label>
           <textarea
             value={useCase}
             onChange={(e) => setUseCase(e.target.value)}
-            placeholder="Describe cómo planeas usar el acceso de escritura. Por ejemplo: 'Un bot que registra automáticamente las comidas de mis clientes basándose en fotos.'"
+            placeholder="Describe c&oacute;mo planeas usar el acceso de escritura. Por ejemplo: 'Un bot que registra autom&aacute;ticamente las comidas de mis clientes bas&aacute;ndose en fotos.'"
             style={styles.textarea}
             rows={4}
             required
           />
           <p style={styles.hint}>
-            Sé específico sobre qué datos vas a escribir y por qué. Esto acelera la aprobación.
+            S&eacute; espec&iacute;fico sobre qu&eacute; datos vas a escribir y por qu&eacute;. Esto acelera la aprobaci&oacute;n.
           </p>
         </div>
 
         {error && <p style={styles.error}>{error}</p>}
 
         <div style={styles.actions}>
-          <button type="button" onClick={() => navigate('/developers/keys')} style={styles.cancelBtn}>
+          <button type="button" onClick={() => navigate('/developers/api-keys')} style={styles.cancelBtn}>
             Cancelar
           </button>
           <button type="submit" disabled={submitting} style={styles.submitBtn}>
@@ -215,6 +265,23 @@ const styles = {
     outline: 'none',
     resize: 'vertical',
     fontFamily: 'inherit',
+  },
+  scopeOptions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    cursor: 'pointer',
+  },
+  radioDesc: {
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: 400,
   },
   hint: {
     color: 'rgba(255,255,255,0.3)',

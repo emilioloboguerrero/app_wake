@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 const navItems = [
   { to: '/developers', label: 'Inicio', end: true },
-  { to: '/developers/reference', label: 'Referencia API' },
-  { to: '/developers/keys', label: 'Claves API' },
+  { to: '/developers/api-reference', label: 'Referencia API' },
+  { to: '/developers/api-keys', label: 'Claves API' },
   { to: '/developers/changelog', label: 'Changelog' },
 ];
 

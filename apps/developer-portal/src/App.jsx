@@ -5,7 +5,7 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Reference from './pages/Reference';
 import Keys from './pages/Keys';
-import RequestWrite from './pages/RequestWrite';
+import RequestAccess from './pages/RequestAccess';
 import Changelog from './pages/Changelog';
 
 export default function App() {
@@ -16,9 +16,9 @@ export default function App() {
           <Routes>
             <Route element={<Layout />}>
               <Route index element={<Home />} />
-              <Route path="reference" element={<Reference />} />
-              <Route path="keys" element={<Keys />} />
-              <Route path="keys/request-write" element={<RequestWrite />} />
+              <Route path="api-reference" element={<Reference />} />
+              <Route path="api-keys" element={<Keys />} />
+              <Route path="request-access" element={<RequestAccess />} />
               <Route path="changelog" element={<Changelog />} />
             </Route>
           </Routes>

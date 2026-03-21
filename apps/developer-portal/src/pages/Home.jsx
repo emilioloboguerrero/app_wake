@@ -10,7 +10,7 @@ export default function Home() {
         <h2 style={styles.sectionTitle}>Primeros pasos</h2>
         <div style={styles.steps}>
           <Step number="1" title="Obtén tu clave API">
-            Ve a <a href="/developers/keys" style={styles.link}>Claves API</a> y crea una nueva clave
+            Ve a <a href="/developers/api-keys" style={styles.link}>Claves API</a> y crea una nueva clave
             con alcance <code style={styles.code}>read</code>. Se activa inmediatamente.
           </Step>
           <Step number="2" title="Autentícate">

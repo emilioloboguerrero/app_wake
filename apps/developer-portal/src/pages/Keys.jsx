@@ -37,7 +37,7 @@ export default function Keys() {
     if (!newKeyName.trim()) return;
 
     if (newKeyScope === 'write') {
-      navigate('/developers/keys/request-write', { state: { name: newKeyName } });
+      navigate('/developers/request-access', { state: { name: newKeyName } });
       return;
     }
 
@@ -237,7 +237,7 @@ export default function Keys() {
                   )}
                 </td>
                 <td style={styles.td}>
-                  <code style={styles.code}>{(key.scope || []).join(', ')}</code>
+                  <code style={styles.code}>{(key.scopes || key.scope || []).join(', ')}</code>
                 </td>
                 <td style={styles.td}>
                   <span style={{ color: statusColors[key.status] || '#fff', fontSize: 12, fontWeight: 500 }}>

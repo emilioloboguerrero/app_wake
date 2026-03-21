@@ -84,25 +84,7 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
-## 4. Developer Portal (NOT BUILT)
-
-API key management backend is complete (CRUD, SHA-256 storage, scope enforcement, rate limiting). But the developer portal UI is not built.
-
-### What exists
-- `ApiKeysScreen` in creator dashboard — basic key management works
-
-### What's planned but not built
-- Separate app at `apps/developer-portal/` (Vite + React 18, base: `/developers`)
-- Pages: Home/Docs, API Reference, API Keys, Write Access Request form, Changelog
-- Auth: Firebase Auth, restricted to `role: creator` or `role: admin`
-- Interactive endpoint reference with request/response examples
-
-### Priority
-Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the full portal when third-party developers actually need it.
-
----
-
-## 5. Staging Environment — Incomplete Setup
+## 4. Staging Environment — Incomplete Setup
 
 `.firebaserc` has both aliases (`wolf-20b8b` + `wake-staging`). Environment-based Firebase config selection is implemented. Outstanding:
 
@@ -114,7 +96,7 @@ Low. The creator dashboard's ApiKeysScreen covers the functional need. Build the
 
 ---
 
-## 6. Audit Findings — Deferred Architectural Items
+## 5. Audit Findings — Deferred Architectural Items
 
 All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been resolved. These items were intentionally deferred as Phase 3 migration targets:
 
@@ -128,7 +110,6 @@ All 330 audit findings (23 CRITICAL, 76 HIGH, 128 MEDIUM, 103 LOW) have been res
 
 ## Priority Order
 
-1. **Section 5** — Complete staging setup (needed for QA validation)
+1. **Section 4** — Complete staging setup (needed for QA validation)
 2. **Section 2** — Server-side filtering (when creators hit scale thresholds)
-3. **Section 4** — Developer portal (when third-party devs need it)
-4. **Section 3** — Video exchange (future feature)
+3. **Section 3** — Video exchange (future feature)
