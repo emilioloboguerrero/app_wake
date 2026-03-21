@@ -426,22 +426,22 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   4. Quick actions: "Acciones rapidas para asignar sesiones o agendar llamadas sin salir de la pantalla."
 
 #### 2J. Client Program Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/ClientProgramScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] FullScreenError if client program load fails.
-- [ ] Per-tab errors (e.g., nutrition tab fails but planificacion works).
-- [ ] Assignment failures: Toast ("No pudimos asignar la sesion. Intenta de nuevo.").
-- [ ] Nutrition update failures: Toast (relies on Phase 0C fix).
+- [x] FullScreenError if client program load fails.
+- [x] Per-tab errors (e.g., nutrition tab fails but planificacion works).
+- [x] Assignment failures: Toast ("No pudimos asignar la sesion. Intenta de nuevo.").
+- [x] Nutrition update failures: Toast (relies on Phase 0C fix).
 
 **Tasks — Copy Pass:**
-- [ ] Empty plan: "Este cliente no tiene un plan asignado. Asignale uno desde Planificacion."
-- [ ] No calls: "Sin llamadas agendadas con {nombre}."
-- [ ] No lab data: "{nombre} no ha registrado datos todavia. Los vas a ver aca cuando empiece."
+- [x] Empty plan: "Este cliente no tiene un plan asignado. Asignale uno desde Planificacion."
+- [ ] No calls: "Sin llamadas agendadas con {nombre}." (no calls UI exists yet)
+- [x] No lab data: "{nombre} no ha registrado datos todavia. Los vas a ver aca cuando empiece."
 
 **Tasks — Tutorial:**
-- [ ] ClientProgramScreen (screenKey: "client-program"):
+- [x] ClientProgramScreen (screenKey: "client-program"):
   1. Week view: "La semana de tu cliente. Cada celda es un dia con las sesiones asignadas."
   2. Nutrition: "El plan de nutricion asignado con los macros objetivo y la adherencia real."
   3. Lab: "Metricas de progreso: peso corporal, volumen de entrenamiento, adherencia."

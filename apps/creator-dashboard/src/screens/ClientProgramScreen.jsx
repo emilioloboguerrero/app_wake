@@ -24,6 +24,8 @@ import clientNutritionPlanContentService from '../services/clientNutritionPlanCo
 import apiClient from '../utils/apiClient';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ScreenSkeleton from '../components/ScreenSkeleton';
+import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
+import SpotlightTutorial from '../components/ui/SpotlightTutorial';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -85,6 +87,12 @@ const TAB_CONFIG = [
   { key: 'planificacion', title: 'Planificación' },
   { key: 'nutricion', title: 'Nutrición' },
   { key: 'info', title: 'Info' },
+];
+
+const TUTORIAL_STEPS = [
+  { selector: '[data-tutorial="client-program-week"]', title: 'Semana del cliente', body: 'La semana de tu cliente. Cada celda es un dia con las sesiones asignadas.' },
+  { selector: '[data-tutorial="client-program-nutrition"]', title: 'Nutricion', body: 'El plan de nutricion asignado con los macros objetivo y la adherencia real.' },
+  { selector: '[data-tutorial="client-program-lab"]', title: 'Lab', body: 'Metricas de progreso: peso corporal, volumen de entrenamiento, adherencia.' },
 ];
 
 const ClientProgramScreen = () => {
@@ -212,14 +220,14 @@ const ClientProgramScreen = () => {
   const loadingClientUser = !isInfoTab ? false : !client?.clientUserId ? false : clientUserDoc === undefined;
 
   const isNutricionTab = TAB_CONFIG[currentTabIndex]?.key === 'nutricion';
-  const { data: nutritionPlans = [], isLoading: isNutritionLoading } = useQuery({
+  const { data: nutritionPlans = [], isLoading: isNutritionLoading, error: nutritionPlansError } = useQuery({
     queryKey: ['nutrition', 'plans', user?.uid],
     queryFn: () => nutritionDb.getPlansByCreator(user.uid),
     enabled: isNutricionTab && !!user?.uid,
     ...cacheConfig.programStructure,
   });
 
-  const { data: clientNutritionAssignments = [] } = useQuery({
+  const { data: clientNutritionAssignments = [], error: nutritionAssignmentsError } = useQuery({
     queryKey: ['nutrition', 'assignments', client?.clientUserId],
     queryFn: () => nutritionDb.getAssignmentsByUser(client.clientUserId),
     enabled: isNutricionTab && !!client?.clientUserId,
@@ -738,7 +746,7 @@ const ClientProgramScreen = () => {
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       logger.error('Error assigning session:', error);
-      showToast('Error al asignar la sesión', 'error');
+      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -879,7 +887,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
-      showToast('Error al asignar la sesión', 'error');
+      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningSession(false);
     }
@@ -1337,14 +1345,14 @@ const ClientProgramScreen = () => {
     switch (currentTab.key) {
       case 'lab':
         return (
-          <div className="client-program-tab-content client-program-tab-empty">
-            <p className="client-program-tab-empty-title">Estadísticas del cliente</p>
-            <p className="client-program-tab-empty-message">Próximamente podrás ver aquí métricas y progreso de este cliente.</p>
+          <div className="client-program-tab-content client-program-tab-empty" data-tutorial="client-program-lab">
+            <p className="client-program-tab-empty-title">Lab</p>
+            <p className="client-program-tab-empty-message">{clientName} no ha registrado datos todavia. Los vas a ver aca cuando empiece.</p>
           </div>
         );
       case 'planificacion':
         return (
-          <div className="client-program-planning-content">
+          <div className="client-program-planning-content" data-tutorial="client-program-week">
             {/* Layout: left (library - sessions/plans only), right (calendar). Program is chosen in Info tab. */}
             <div className="plan-structure-layout client-program-planning-layout">
               <div className="plan-structure-sidebars client-program-planning-left">
@@ -1483,6 +1491,14 @@ const ClientProgramScreen = () => {
           </div>
         );
       case 'nutricion': {
+        const nutritionTabError = nutritionPlansError || nutritionAssignmentsError;
+        if (nutritionTabError) {
+          return (
+            <div className="client-program-tab-content">
+              <InlineError message="No pudimos cargar la informacion de nutricion. Intenta recargar la pagina." />
+            </div>
+          );
+        }
         const currentNutritionAssignment = clientNutritionAssignments[0] || null;
         const currentPlanName = currentNutritionAssignment && nutritionPlans.find((p) => p.id === currentNutritionAssignment.planId)?.name;
         const nutritionStartDateStr = currentNutritionAssignment?.startDate
@@ -1496,7 +1512,7 @@ const ClientProgramScreen = () => {
           ? nutritionPlans.filter((p) => (p.name || '').toLowerCase().includes(nutritionPlanQ))
           : nutritionPlans;
         return (
-          <div className="client-program-nutricion-content">
+          <div className="client-program-nutricion-content" data-tutorial="client-program-nutrition">
             <div className="plan-structure-layout client-program-nutricion-layout">
               {/* Left panel: plans list (same structure as session-edit sidebar) */}
               <aside className="plan-structure-sidebars client-program-nutricion-sidebar">
@@ -1598,7 +1614,7 @@ const ClientProgramScreen = () => {
                           <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <p className="client-program-nutricion-empty-text">No tiene un plan nutricional asignado</p>
+                      <p className="client-program-nutricion-empty-text">Este cliente no tiene un plan asignado. Asignale uno desde Planificacion.</p>
                       <p className="client-program-nutricion-empty-hint">Arrastra un plan desde el panel izquierdo para asignarlo</p>
                     </div>
             ) : (
@@ -2153,15 +2169,11 @@ const ClientProgramScreen = () => {
     const errorBackPath = location.state?.returnTo || '/products?tab=clientes';
     return (
       <DashboardLayout screenName="Cliente">
-        <div className="client-program-error">
-          <p>{error || 'Cliente no encontrado'}</p>
-          <button 
-            className="client-program-back-button"
-            onClick={() => navigate(errorBackPath)}
-          >
-            Volver
-          </button>
-        </div>
+        <FullScreenError
+          title="No pudimos cargar este cliente"
+          message={error || 'Cliente no encontrado'}
+          onRetry={() => navigate(errorBackPath)}
+        />
       </DashboardLayout>
     );
   }
@@ -2233,6 +2245,8 @@ const ClientProgramScreen = () => {
         <div className="client-program-content">
           {renderTabContent()}
         </div>
+
+        <SpotlightTutorial screenKey="client-program" steps={TUTORIAL_STEPS} />
 
         {/* Session performance modal - used from Planificación (calendar cards and history-only cards) */}
         <SessionPerformanceModal
