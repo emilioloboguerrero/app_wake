@@ -522,15 +522,15 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 - [x] Verify animations: fade+scale entrance, spring easing
 
 ### 3C. Global Copy Audit
-**Status:** [ ] Not started
+**Status:** [x] Complete
 
 **Tasks:**
-- [ ] Audit every `showToast` call across all screens — ensure messages are specific and in casual Spanish
-- [ ] Audit every empty state — ensure fun, helpful copy (not just "No hay datos")
-- [ ] Audit every button/CTA — ensure clear, action-oriented copy
-- [ ] Audit every modal title and body — ensure conversational tone
-- [ ] Verify no English strings remain in user-facing UI
-- [ ] Verify no emojis in UI copy
+- [x] Audit every `showToast` call across all screens — ensure messages are specific and in casual Spanish
+- [x] Audit every empty state — ensure fun, helpful copy (not just "No hay datos")
+- [x] Audit every button/CTA — ensure clear, action-oriented copy
+- [x] Audit every modal title and body — ensure conversational tone
+- [x] Verify no English strings remain in user-facing UI
+- [x] Verify no emojis in UI copy
 
 ### 3D. Loading States Audit
 **Status:** [ ] Not started
