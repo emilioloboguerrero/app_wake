@@ -259,7 +259,7 @@ export default function EventEditorScreen() {
       setStatus(targetStatus);
     } catch (err) {
       logger.error('[EventEditor] save failed', err);
-      showToast('Error al guardar el evento. Intenta de nuevo.', 'error');
+      showToast('No pudimos guardar el evento. Intenta de nuevo.', 'error');
       setUploadProgress(null);
     } finally {
       setSaving(false);

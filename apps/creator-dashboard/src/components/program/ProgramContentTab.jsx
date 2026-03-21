@@ -578,7 +578,7 @@ const ProgramContentTab = ({
       setLibraryModules(mods);
     } catch (error) {
       logger.error('Error loading library modules:', error);
-      showToast('Error al cargar los modulos de la biblioteca', 'error');
+      showToast('No pudimos cargar los modulos de la biblioteca', 'error');
     } finally {
       setIsLoadingLibraryModules(false);
     }
@@ -614,7 +614,7 @@ const ProgramContentTab = ({
       handleCloseCopyModuleModal();
     } catch (err) {
       logger.error('Error creating module from library:', err);
-      showToast(`Error al agregar el modulo: ${err.message || 'Intenta de nuevo.'}`, 'error');
+      showToast(`No pudimos agregar el modulo. ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingModule(false);
     }
@@ -702,7 +702,7 @@ const ProgramContentTab = ({
       if (freshModules.length === 0) setIsModuleEditMode(false);
     } catch (err) {
       logger.error('Error deleting module:', err);
-      showToast(`Error al eliminar el modulo. Intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`, 'error');
+      showToast(`No pudimos eliminar el modulo. ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsDeletingModule(false);
     }
@@ -733,7 +733,7 @@ const ProgramContentTab = ({
       setLibrarySessions(sess);
     } catch (error) {
       logger.error('Error loading library sessions:', error);
-      showToast('Error al cargar las sesiones de la biblioteca', 'error');
+      showToast('No pudimos cargar las sesiones de la biblioteca', 'error');
     } finally {
       setIsLoadingLibrarySessions(false);
     }
@@ -863,7 +863,7 @@ const ProgramContentTab = ({
       if (freshSessions.length === 0) setIsSessionEditMode(false);
     } catch (err) {
       logger.error('Error deleting session:', err);
-      showToast(`Error al eliminar la sesion. Intenta de nuevo.${err.message ? ` Error: ${err.message}` : ''}`, 'error');
+      showToast(`No pudimos eliminar la sesion. ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -879,7 +879,7 @@ const ProgramContentTab = ({
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
     } catch (err) {
-      showToast(err?.message || 'Error al agregar semana', 'error');
+      showToast(err?.message || 'No pudimos agregar la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingWeek(false);
     }

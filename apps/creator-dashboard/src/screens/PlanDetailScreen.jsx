@@ -105,7 +105,7 @@ const PlanDetailScreen = () => {
       await queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
       setHasMadeChanges(true);
     } catch (err) {
-      showToast(err.message || 'Error al añadir semana', 'error');
+      showToast(err.message || 'No pudimos añadir la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingWeek(false);
     }
@@ -122,7 +122,7 @@ const PlanDetailScreen = () => {
       });
       navigate(`/plans/${p.id}`, { replace: true });
     } catch (err) {
-      showToast(err.message || 'Error al crear el plan', 'error');
+      showToast(err.message || 'No pudimos crear el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -141,7 +141,7 @@ const PlanDetailScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plans', planId] });
       setHasMadeChanges(true);
     } catch (err) {
-      showToast(err.message || 'Error al guardar', 'error');
+      showToast(err.message || 'No pudimos guardar los cambios. Intenta de nuevo.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -253,7 +253,7 @@ const PlanDetailScreen = () => {
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.error('Error finding affected users:', err);
-      showToast('Error al comprobar usuarios afectados.', 'error');
+      showToast('No pudimos comprobar los usuarios afectados.', 'error');
     }
   };
 
@@ -273,7 +273,7 @@ const PlanDetailScreen = () => {
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      showToast(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
+      showToast(`No pudimos propagar los cambios: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }

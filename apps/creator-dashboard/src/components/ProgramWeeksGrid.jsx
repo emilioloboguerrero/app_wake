@@ -173,7 +173,7 @@ const ProgramWeeksGrid = ({
         if (modAgain && sess) onSessionClick(modAgain, sess);
       }
     } catch (err) {
-      showToast(err.message || 'Error al crear la sesión', 'error');
+      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -211,7 +211,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      showToast(err.message || 'Error al asignar la sesión', 'error');
+      showToast(err.message || 'No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -246,7 +246,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      showToast(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'), 'error');
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -315,7 +315,7 @@ const ProgramWeeksGrid = ({
     } catch (err) {
       setIsMovingOrAddingItem(false);
       logger.warn('Session reorder failed:', err);
-      showToast(err?.message || 'Error al cambiar el orden', 'error');
+      showToast(err?.message || 'No pudimos cambiar el orden. Intenta de nuevo.', 'error');
     }
   };
 
@@ -345,7 +345,7 @@ const ProgramWeeksGrid = ({
     } catch (err) {
       setIsMovingOrAddingItem(false);
       logger.warn('Move session to week failed:', err);
-      showToast(err?.message || 'Error al mover la sesión', 'error');
+      showToast(err?.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -417,7 +417,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       await new Promise((r) => setTimeout(r, 0));
     } catch (err) {
-      showToast(err?.message || 'Error al asignar el plan', 'error');
+      showToast(err?.message || 'No pudimos asignar el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningPlan(false);
       setDragOverWeekId(null);

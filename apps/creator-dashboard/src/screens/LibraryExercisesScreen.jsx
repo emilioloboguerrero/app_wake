@@ -279,7 +279,7 @@ const LibraryExercisesScreen = () => {
     );
 
     if (exerciseExists) {
-      showToast('Ya existe un ejercicio con ese nombre. Por favor, elige otro nombre.', 'error');
+      showToast('Ya existe un ejercicio con ese nombre. Elige otro nombre.', 'error');
       return;
     }
 
@@ -294,7 +294,7 @@ const LibraryExercisesScreen = () => {
       handleCloseAddExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      showToast('Error al crear el ejercicio. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos crear el ejercicio. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingExercise(false);
     }
@@ -378,7 +378,7 @@ const LibraryExercisesScreen = () => {
       handleCloseDeleteModal();
     } catch (err) {
       logger.error('Error deleting exercise:', err);
-      showToast('Error al eliminar el ejercicio. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos eliminar el ejercicio. Intenta de nuevo.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -429,7 +429,7 @@ const LibraryExercisesScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('video/')) {
-      showToast('Por favor, selecciona un archivo de video válido', 'error');
+      showToast('Selecciona un archivo de video válido', 'error');
       return;
     }
 
@@ -493,7 +493,7 @@ const LibraryExercisesScreen = () => {
       logger.error('Error uploading video:', err);
       
       // Show more specific error message
-      let errorMessage = 'Error al subir el video. Por favor, intenta de nuevo.';
+      let errorMessage = 'No pudimos subir el video. Intenta de nuevo.';
       
       if (err.code) {
         switch (err.code) {
@@ -504,7 +504,7 @@ const LibraryExercisesScreen = () => {
             errorMessage = 'La subida fue cancelada.';
             break;
           case 'storage/unknown':
-            errorMessage = 'Error desconocido al subir el video. Verifica tu conexión.';
+            errorMessage = 'No pudimos subir el video. Verifica tu conexión.';
             break;
           case 'storage/quota-exceeded':
             errorMessage = 'Se ha excedido la cuota de almacenamiento.';
@@ -569,7 +569,7 @@ const LibraryExercisesScreen = () => {
       await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
     } catch (err) {
       logger.error('Error deleting video:', err);
-      showToast('Error al eliminar el video. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos eliminar el video. Intenta de nuevo.', 'error');
       try {
         await queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
       } catch (refetchError) {
@@ -750,7 +750,7 @@ const LibraryExercisesScreen = () => {
       setIsMuscleEditMode(false);
     } catch (err) {
       logger.error('Error saving muscles:', err);
-      showToast('Error al guardar los músculos. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos guardar los músculos. Intenta de nuevo.', 'error');
     } finally {
       setIsSavingMuscles(false);
     }
@@ -774,7 +774,7 @@ const LibraryExercisesScreen = () => {
       setIsImplementsEditMode(false);
     } catch (err) {
       logger.error('Error saving implements:', err);
-      showToast('Error al guardar los implementos. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos guardar los implementos. Intenta de nuevo.', 'error');
     } finally {
       setIsSavingImplements(false);
     }
@@ -864,7 +864,7 @@ const LibraryExercisesScreen = () => {
       setIsIconSelectorModalOpen(false);
     } catch (err) {
       logger.error('Error updating icon:', err);
-      showToast('Error al actualizar el ícono. Por favor, intenta de nuevo.', 'error');
+      showToast('No pudimos actualizar el ícono. Intenta de nuevo.', 'error');
     }
   };
 

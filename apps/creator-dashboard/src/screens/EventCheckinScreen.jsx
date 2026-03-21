@@ -81,7 +81,7 @@ export default function EventCheckinScreen() {
     } catch (err) {
       logger.error('[Checkin] lookup failed', err);
       setResult({ type: 'error' });
-      showToast('Error al procesar el check-in. Intenta de nuevo.', 'error');
+      showToast('No pudimos procesar el check-in. Intenta de nuevo.', 'error');
     }
 
     setScannerState('idle');

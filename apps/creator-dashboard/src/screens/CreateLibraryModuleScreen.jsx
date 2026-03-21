@@ -28,7 +28,7 @@ const CreateLibraryModuleScreen = () => {
       navigate(backPath, { state: backState });
     },
     onError: (err) => {
-      showToast(`Error al crear el módulo: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
+      showToast(`No pudimos crear el modulo: ${err.message || 'Intenta de nuevo.'}`, 'error');
     },
   });
 

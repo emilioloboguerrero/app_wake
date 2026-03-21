@@ -137,7 +137,7 @@ const PlanWeeksGrid = ({
         });
       }
     } catch (err) {
-      showToast(err.message || 'Error al crear la sesión', 'error');
+      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -185,7 +185,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
     } catch (err) {
       onModulesChange?.(prevModules);
-      showToast(err.message || 'Error al asignar la sesión', 'error');
+      showToast(err.message || 'No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     } finally {
       setAddingToModuleId(null);
       setAddingToDayIndex(null);
@@ -217,7 +217,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
     } catch (err) {
       logger.error('Error duplicating week:', err);
-      showToast(err.message || 'Error al duplicar la semana', 'error');
+      showToast(err.message || 'No pudimos duplicar la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsDuplicatingWeek(false);
       setDuplicatingWeekModuleId(null);
@@ -240,7 +240,7 @@ const PlanWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      showToast(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'), 'error');
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
     } finally {
       setIsDeleting(false);
     }

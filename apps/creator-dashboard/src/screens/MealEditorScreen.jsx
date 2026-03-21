@@ -162,7 +162,7 @@ export default function MealEditorScreen() {
     } catch (e) {
       logger.error('Food search failed', e);
       setMealFormSearchResults([]);
-      showToast('Error al buscar alimentos. Intenta de nuevo.', 'error');
+      showToast('No pudimos buscar alimentos. Intenta de nuevo.', 'error');
     } finally {
       setMealFormSearchLoading(false);
     }

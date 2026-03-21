@@ -423,7 +423,7 @@ export default function PlanEditorScreen() {
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      showToast(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
+      showToast(`No pudimos propagar los cambios: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }
@@ -453,7 +453,7 @@ export default function PlanEditorScreen() {
       setFoodSearchResults(foods);
     } catch (e) {
       setFoodSearchResults([]);
-      showToast('Error al buscar alimentos. Intenta de nuevo.', 'error');
+      showToast('No pudimos buscar alimentos. Intenta de nuevo.', 'error');
     } finally {
       setFoodSearchLoading(false);
     }

@@ -138,7 +138,7 @@ const PlanSessionDetailScreen = () => {
       navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`, { replace: true });
     } catch (err) {
       logger.error('Error detaching session for this week:', err);
-      showToast(err?.message || 'Error al aplicar solo a esta semana', 'error');
+      showToast(err?.message || 'No pudimos aplicar los cambios a esta semana. Intenta de nuevo.', 'error');
     } finally {
       setApplyingScope(false);
     }

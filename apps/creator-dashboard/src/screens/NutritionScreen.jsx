@@ -188,7 +188,7 @@ export default function NutritionScreen({ clientId = null }) {
       setNewMealName('');
       navigate(`/nutrition/meals/${mealId}`);
     } catch (e) {
-      showToast(e?.message || 'Error al crear la receta', 'error');
+      showToast(e?.message || 'No pudimos crear la receta. Intenta de nuevo.', 'error');
     } finally {
       setNewMealCreating(false);
     }
@@ -209,7 +209,7 @@ export default function NutritionScreen({ clientId = null }) {
       setPlanFormName('');
       navigate(`/nutrition/plans/${planId}`);
     } catch (e) {
-      showToast(e?.message || 'Error al crear el plan', 'error');
+      showToast(e?.message || 'No pudimos crear el plan. Intenta de nuevo.', 'error');
     } finally {
       setPlanFormCreating(false);
     }

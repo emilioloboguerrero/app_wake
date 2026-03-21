@@ -489,7 +489,7 @@ export default function EventResultsScreen() {
       };
     } catch (err) {
       logger.error('[EventResults] save failed', err);
-      showToast('Error al guardar el evento. Intenta de nuevo.', 'error');
+      showToast('No pudimos guardar el evento. Intenta de nuevo.', 'error');
       setUploadProgress(null);
     } finally {
       setSaving(false);
@@ -522,7 +522,7 @@ export default function EventResultsScreen() {
       queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
     } catch (err) {
       logger.error('[EventResults] check-in failed', err);
-      showToast('Error al hacer check-in', 'error');
+      showToast('No pudimos hacer el check-in. Intenta de nuevo.', 'error');
     }
   }
 
@@ -533,7 +533,7 @@ export default function EventResultsScreen() {
       setSelectedReg(null);
     } catch (err) {
       logger.error('[EventResults] delete registration failed', err);
-      showToast('Error al eliminar el registro', 'error');
+      showToast('No pudimos eliminar el registro. Intenta de nuevo.', 'error');
     }
   }
 
@@ -544,7 +544,7 @@ export default function EventResultsScreen() {
       queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
     } catch (err) {
       logger.error('[EventResults] admit failed', err);
-      showToast('Error al admitir desde lista de espera', 'error');
+      showToast('No pudimos admitir desde la lista de espera. Intenta de nuevo.', 'error');
     }
   }
 

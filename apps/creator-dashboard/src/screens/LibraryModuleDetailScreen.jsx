@@ -212,7 +212,7 @@ const LibraryModuleDetailScreen = () => {
         await addSessionToModule(active.data.current.session);
       } catch (err) {
         logger.error('Error in drag-add session:', err);
-        showToast('Error al agregar la sesión', 'error');
+        showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
       }
       return;
     }
@@ -228,7 +228,7 @@ const LibraryModuleDetailScreen = () => {
           await updateSessionOrder(newSessions);
         } catch (err) {
           logger.error('Error in drag-reorder sessions:', err);
-          showToast('Error al reordenar las sesiones', 'error');
+          showToast('No pudimos reordenar las sesiones. Intenta de nuevo.', 'error');
         }
       }
     }
@@ -258,7 +258,7 @@ const LibraryModuleDetailScreen = () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
-      showToast('Error al agregar la sesión', 'error');
+      showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -276,7 +276,7 @@ const LibraryModuleDetailScreen = () => {
       });
     } catch (err) {
       logger.error('Error updating session order:', err);
-      showToast('Error al actualizar el orden', 'error');
+      showToast('No pudimos actualizar el orden. Intenta de nuevo.', 'error');
     }
   };
 
@@ -315,7 +315,7 @@ const LibraryModuleDetailScreen = () => {
       setDeleteConfirmation('');
     } catch (err) {
       logger.error('Error removing session:', err);
-      showToast('Error al remover la sesión', 'error');
+      showToast('No pudimos remover la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsDeleting(false);
     }

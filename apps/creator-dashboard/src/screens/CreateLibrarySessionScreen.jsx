@@ -63,7 +63,7 @@ const CreateLibrarySessionScreen = () => {
           });
         } catch (uploadErr) {
           logger.error('Error uploading session image:', uploadErr);
-          showToast(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`, 'error');
+          showToast(`No pudimos subir la imagen: ${uploadErr.message || 'Intenta de nuevo.'}`, 'error');
         }
       }
     },
@@ -72,7 +72,7 @@ const CreateLibrarySessionScreen = () => {
       navigate(backPath, { state: backState });
     },
     onError: (err) => {
-      showToast(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`, 'error');
+      showToast(`No pudimos crear la sesion: ${err.message || 'Intenta de nuevo.'}`, 'error');
     },
   });
 

@@ -74,7 +74,7 @@ export default function EventsScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) }),
     onError: (err) => {
       logger.error('[EventsScreen] delete failed', err);
-      showToast('Error al eliminar el evento', 'error');
+      showToast('No pudimos eliminar el evento', 'error');
     },
   });
 
@@ -83,7 +83,7 @@ export default function EventsScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) }),
     onError: (err) => {
       logger.error('[EventsScreen] toggle status failed', err);
-      showToast('Error al cambiar el estado del evento', 'error');
+      showToast('No pudimos cambiar el estado del evento', 'error');
     },
   });
 
