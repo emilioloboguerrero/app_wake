@@ -280,6 +280,10 @@ const CreatorOnboardingScreen = () => {
         style={{ display: 'none' }}
       />
 
+      {error && step === 1 && (
+        <p className="ob-inline-error" role="alert">{error}</p>
+      )}
+
       <button
         className={`ob-cta ob-cta--primary${isUploading ? ' ob-cta--loading' : ''}`}
         onClick={handleProfileNext}
@@ -287,9 +291,13 @@ const CreatorOnboardingScreen = () => {
       >
         {isUploading
           ? <><span className="ob-spinner" aria-hidden /> Subiendo {Math.round(uploadPct)}%</>
-          : 'Continuar →'}
+          : error && step === 1
+            ? 'Reintentar →'
+            : 'Continuar →'}
       </button>
-      <button className="ob-skip-link" onClick={goNext}>Agrégala después →</button>
+      <button className="ob-skip-link" onClick={() => { setError(null); goNext(); }}>
+        {error && step === 1 ? 'Continuar sin foto →' : 'Agrégala después →'}
+      </button>
     </div>
   );
 
@@ -376,7 +384,7 @@ const CreatorOnboardingScreen = () => {
       <textarea
         ref={textareaRef}
         className="ob-textarea"
-        placeholder="Puedes ser breve — una frase está bien 😊"
+        placeholder="Puedes ser breve — una frase está bien"
         value={collected.howTheyFoundUs}
         onInput={handleTextareaInput}
         onChange={handleTextareaInput}
@@ -398,6 +406,7 @@ const CreatorOnboardingScreen = () => {
           "Hola. Construí Wake porque los mejores entrenadores merecen herramientas que estén a su altura. Gracias por estar aquí."
         </p>
         <div className="ob-founder-sig">
+          {/* TODO: Replace with actual handwritten signature image */}
           <span className="ob-founder-name">Emilio</span>
           <a href="mailto:hola@wake.co" className="ob-founder-email">hola@wake.co</a>
         </div>
@@ -476,7 +485,7 @@ const CreatorOnboardingScreen = () => {
       </div>
 
       {/* Global error toast (non-founder steps) */}
-      {error && step !== 6 && (
+      {error && step !== 6 && step !== 1 && (
         <div className="ob-error" role="alert">{error}</div>
       )}
     </div>

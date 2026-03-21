@@ -449,7 +449,7 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 ### Phase 2 — Standalone
 
 #### 2K. Onboarding Refinements
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/CreatorOnboardingScreen.jsx` + `.css`
 
 **Current flow (7 steps, 0-6):**
@@ -462,9 +462,9 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 6. Founder note — Emilio signature + "hola@wake.co"
 
 **Tasks:**
-- [ ] Step 0 (Bienvenida): Already exists. Verify animation quality matches STANDARDS.md. Polish if needed.
-- [ ] Step 6 (Founder note): Leave space for handwritten signature image. Add a clear placeholder comment in code: `{/* TODO: Replace with actual handwritten signature image */}`. Current uses Caveat font for "Emilio" — keep as fallback.
-- [ ] Copy review — verify all step copy matches fun/casual tone:
+- [x] Step 0 (Bienvenida): Already exists. Verify animation quality matches STANDARDS.md. Polish if needed.
+- [x] Step 6 (Founder note): Leave space for handwritten signature image. Add a clear placeholder comment in code: `{/* TODO: Replace with actual handwritten signature image */}`. Current uses Caveat font for "Emilio" — keep as fallback.
+- [x] Copy review — verify all step copy matches fun/casual tone:
   - Step 0: "Tu negocio de fitness, sin friccion." — keep
   - Step 1: "Tu cara conecta con tus clientes. No es obligatoria." — keep
   - Step 2: "Esto define como organizamos tu espacio." — keep
@@ -472,8 +472,8 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   - Step 4: "Un numero aproximado esta perfecto." — keep
   - Step 5: "Es opcional. Nos ayuda a crecer como tu." — keep
   - Step 6: verify founder message tone
-- [ ] Error handling: verify upload failures show inline error + allow retry or skip
-- [ ] Verify progress dots animation matches STANDARDS.md (pulse on current, opacity change on complete)
+- [x] Error handling: verify upload failures show inline error + allow retry or skip
+- [x] Verify progress dots animation matches STANDARDS.md (pulse on current, opacity change on complete)
 
 #### 2L. Login Screen
 **Status:** [ ] Not started
