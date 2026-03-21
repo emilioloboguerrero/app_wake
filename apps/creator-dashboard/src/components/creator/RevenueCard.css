@@ -1,0 +1,281 @@
+/* ─── Revenue Card ────────────────────────────────────────────── */
+
+.revenue-card {
+  padding: 0;
+}
+
+.revenue-card__inner {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+
+.revenue-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.revenue-card__label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.revenue-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.revenue-card__info-icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.revenue-card:hover .revenue-card__info-icon {
+  opacity: 1;
+}
+
+/* ─── Main Value ─────────────────────────────────────────────── */
+
+.revenue-card__value {
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.15;
+  margin-top: 4px;
+}
+
+.revenue-card__one-on-one-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.revenue-card__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.revenue-card__stat-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.revenue-card__stat-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  align-self: center;
+}
+
+/* ─── Secondary (1:1 summary when both types exist) ──────────── */
+
+.revenue-card__secondary {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 2px;
+}
+
+/* ─── Expanded Breakdown ─────────────────────────────────────── */
+
+.revenue-card__breakdown {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: revenueBreakdownEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes revenueBreakdownEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.revenue-card__breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.revenue-card__breakdown-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.revenue-card__breakdown-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.revenue-card__breakdown-row--fee .revenue-card__breakdown-value {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.revenue-card__breakdown-row--net .revenue-card__breakdown-label,
+.revenue-card__breakdown-row--net .revenue-card__breakdown-value {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.revenue-card__breakdown-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 2px 0;
+}
+
+/* ─── Per-Program Breakdown ──────────────────────────────────── */
+
+.revenue-card__programs {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.revenue-card__programs-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.revenue-card__program-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: revenueBreakdownEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.revenue-card__program-row:nth-child(2) { animation-delay: 50ms; }
+.revenue-card__program-row:nth-child(3) { animation-delay: 100ms; }
+.revenue-card__program-row:nth-child(4) { animation-delay: 150ms; }
+.revenue-card__program-row:nth-child(5) { animation-delay: 200ms; }
+
+.revenue-card__program-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.revenue-card__program-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ─── Date Range Selector ────────────────────────────────────── */
+
+.revenue-date-selector {
+  position: relative;
+}
+
+.revenue-date-selector__trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.revenue-date-selector__trigger:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.revenue-chevron {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.revenue-chevron--open {
+  transform: rotate(180deg);
+}
+
+.revenue-date-selector__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 160px;
+  background: #222;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: revenueDropdownEnter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes revenueDropdownEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.revenue-date-selector__option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.revenue-date-selector__option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.revenue-date-selector__option--active {
+  color: #ffffff;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+}

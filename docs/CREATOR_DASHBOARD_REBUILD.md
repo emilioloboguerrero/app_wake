@@ -116,19 +116,19 @@ These set up shared systems used by all subsequent phases.
 - [x] Toast errors already exist via `useToast()` — no new component needed for that level
 
 ### 1D. Create Revenue Display Component
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Context:** Revenue logic needs specific rules: low-ticket shows net revenue (15% Wake cut applied silently), one-on-one shows client/call count only (no revenue). Clicking card shows breakdown.
 **Files:**
 - `apps/creator-dashboard/src/components/creator/RevenueCard.jsx` — new file
 - `apps/creator-dashboard/src/components/creator/RevenueCard.css` — new file
 **Tasks:**
-- [ ] Component props: `{ programs, revenueData, dateRange, onDateRangeChange }`
-- [ ] **Default view (card):** Show net revenue number (gross × 0.85) with NumberTicker animation. Small info icon indicating breakdown available.
-- [ ] **Expanded view (on click):** Show breakdown — gross revenue, Wake fee (15%), net revenue. Per-program breakdown if multiple programs.
-- [ ] **Toggle in same widget:** Low-ticket programs show revenue. One-on-one shows client count + call count instead.
-- [ ] **Date range selector:** Options — last 7 days, last 30 days, last 90 days, this year, all time
-- [ ] Never show "Wake cut" or "commission" text — just show "Ingresos netos" and "Ingresos brutos"
-- [ ] Follow BentoCard styling for card wrapper
+- [x] Component props: `{ programs, revenueData, dateRange, onDateRangeChange }`
+- [x] **Default view (card):** Show net revenue number (gross × 0.85) with NumberTicker animation. Small info icon indicating breakdown available.
+- [x] **Expanded view (on click):** Show breakdown — gross revenue, Wake fee (15%), net revenue. Per-program breakdown if multiple programs.
+- [x] **Toggle in same widget:** Low-ticket programs show revenue. One-on-one shows client count + call count instead.
+- [x] **Date range selector:** Options — last 7 days, last 30 days, last 90 days, this year, all time
+- [x] Never show "Wake cut" or "commission" text — just show "Ingresos netos" and "Ingresos brutos"
+- [x] Follow BentoCard styling for card wrapper
 
 ---
 
