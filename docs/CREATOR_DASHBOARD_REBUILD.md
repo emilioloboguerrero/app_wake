@@ -102,18 +102,18 @@ These set up shared systems used by all subsequent phases.
 - [x] Usage threshold: apply when list can exceed 50 items (client roster, exercise library, event registrations)
 
 ### 1C. Create Shared Error State Components
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Context:** Need three levels of error handling on every screen. Create reusable components.
 **Files:**
 - `apps/creator-dashboard/src/components/ui/ErrorStates.jsx` — new file
 - `apps/creator-dashboard/src/components/ui/ErrorStates.css` — new file
 - `apps/creator-dashboard/src/components/ui/index.js` — add exports
 **Tasks:**
-- [ ] **InlineError** component: `({ message, field })` — small red text below a field. `rgba(224,84,84,0.9)`, 0.82rem, fade+translateY entrance
-- [ ] **FullScreenError** component: `({ title, message, onRetry, icon })` — centered on page. Icon (alert triangle), title, message, "Intentar de nuevo" button. Fade+translateY entrance. Use when entire page data fails to load.
-- [ ] Style all per STANDARDS.md (dark canvas, white opacity tones, spring easing)
-- [ ] Export: `InlineError`, `FullScreenError` from `ui/index.js`
-- [ ] Toast errors already exist via `useToast()` — no new component needed for that level
+- [x] **InlineError** component: `({ message, field })` — small red text below a field. `rgba(224,84,84,0.9)`, 0.82rem, fade+translateY entrance
+- [x] **FullScreenError** component: `({ title, message, onRetry, icon })` — centered on page. Icon (alert triangle), title, message, "Intentar de nuevo" button. Fade+translateY entrance. Use when entire page data fails to load.
+- [x] Style all per STANDARDS.md (dark canvas, white opacity tones, spring easing)
+- [x] Export: `InlineError`, `FullScreenError` from `ui/index.js`
+- [x] Toast errors already exist via `useToast()` — no new component needed for that level
 
 ### 1D. Create Revenue Display Component
 **Status:** [ ] Not started
