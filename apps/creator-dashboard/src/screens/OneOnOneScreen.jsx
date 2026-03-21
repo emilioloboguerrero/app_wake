@@ -402,7 +402,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
                 <span className="client-detail-value">{clientUserData.name || 'No disponible'}</span>
               </div>
               <div className="client-detail-row">
-                <span className="client-detail-label">Username:</span>
+                <span className="client-detail-label">Nombre de usuario:</span>
                 <span className="client-detail-value">{clientUserData.username || 'No disponible'}</span>
               </div>
               <div className="client-detail-row">

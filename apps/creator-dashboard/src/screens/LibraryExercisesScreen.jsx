@@ -1759,7 +1759,7 @@ const LibraryExercisesScreen = () => {
             light={true}
           />
           <p className="exercise-name-warning-text">
-            ⚠️ No podrás cambiar este nombre más tarde. Asegúrate de elegir el nombre correcto.
+            No podras cambiar este nombre mas tarde. Asegurate de elegir el nombre correcto.
           </p>
           <div className="modal-actions">
             <Button
