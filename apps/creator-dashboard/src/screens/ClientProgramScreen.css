@@ -381,6 +381,10 @@ body.header-scrolled .client-program-tab-bar {
   margin: 0;
 }
 
+.client-program-tab-calls-empty {
+  animation: cp-enter 0.4s cubic-bezier(0.22,1,0.36,1) both;
+}
+
 /* Nutrición tab — left + middle panel layout (same as Planificación / session-edit) */
 .client-program-nutricion-content {
   display: flex;

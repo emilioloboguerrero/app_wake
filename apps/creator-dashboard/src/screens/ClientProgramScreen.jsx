@@ -86,6 +86,7 @@ const TAB_CONFIG = [
   { key: 'lab', title: 'Lab' },
   { key: 'planificacion', title: 'Planificación' },
   { key: 'nutricion', title: 'Nutrición' },
+  { key: 'llamadas', title: 'Llamadas' },
   { key: 'info', title: 'Info' },
 ];
 
@@ -1950,6 +1951,13 @@ const ClientProgramScreen = () => {
           </div>
         );
       }
+      case 'llamadas':
+        return (
+          <div className="client-program-tab-content client-program-tab-empty client-program-tab-calls-empty">
+            <p className="client-program-tab-empty-title">Llamadas</p>
+            <p className="client-program-tab-empty-message">Sin llamadas agendadas con {clientName}.</p>
+          </div>
+        );
       case 'info':
         const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
         const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;
