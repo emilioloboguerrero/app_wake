@@ -55,6 +55,41 @@
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+/* "Solo para {nombre}" thin banner */
+.library-session-client-only-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.library-session-client-only-icon {
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.library-session-client-only-text {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+
+/* Library usage count */
+.library-session-usage-count {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
+
 /* Sidebar Styles */
 .library-session-sidebar {
   width: 360px;

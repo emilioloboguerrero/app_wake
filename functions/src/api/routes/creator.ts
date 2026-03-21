@@ -1839,6 +1839,93 @@ router.delete("/creator/library/modules/:moduleId", async (req, res) => {
 
 // ─── Library Propagation ──────────────────────────────────────────────────
 
+// GET /creator/library/sessions/:sessionId/affected
+router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const sessionId = req.params.sessionId;
+  const wantDetails = req.query.details === "true";
+
+  // Check plans that reference this library session
+  const plansSnap = await db
+    .collection("plans")
+    .where("creatorId", "==", auth.userId)
+    .limit(100)
+    .get();
+
+  let programCount = 0;
+  const affectedUserIdSet = new Set<string>();
+
+  for (const planDoc of plansSnap.docs) {
+    const modulesSnap = await planDoc.ref.collection("modules").get();
+    let planHasRef = false;
+    for (const moduleDoc of modulesSnap.docs) {
+      const sessionsSnap = await moduleDoc.ref.collection("sessions")
+        .where("libraryRef", "==", sessionId)
+        .limit(1)
+        .get();
+      if (!sessionsSnap.empty) {
+        planHasRef = true;
+        break;
+      }
+    }
+    if (planHasRef) programCount++;
+  }
+
+  // Check programs (courses) that reference this library session
+  const coursesSnap = await db
+    .collection("courses")
+    .where("creatorId", "==", auth.userId)
+    .limit(100)
+    .get();
+
+  for (const courseDoc of coursesSnap.docs) {
+    const modulesSnap = await courseDoc.ref.collection("modules").get();
+    for (const moduleDoc of modulesSnap.docs) {
+      const sessionsSnap = await moduleDoc.ref.collection("sessions")
+        .where("librarySessionRef", "==", sessionId)
+        .limit(1)
+        .get();
+      if (!sessionsSnap.empty) {
+        programCount++;
+        break;
+      }
+    }
+  }
+
+  // Find affected users (users enrolled in programs/plans referencing this session)
+  for (const courseDoc of coursesSnap.docs) {
+    const usersSnap = await db
+      .collection("users")
+      .where(`courses.${courseDoc.id}.status`, "==", "active")
+      .limit(200)
+      .get();
+    for (const userDoc of usersSnap.docs) {
+      affectedUserIdSet.add(userDoc.id);
+    }
+  }
+
+  const affectedUserIds = Array.from(affectedUserIdSet);
+
+  if (wantDetails && affectedUserIds.length > 0) {
+    const userDocs = await Promise.all(
+      affectedUserIds.slice(0, 50).map((uid) => db.collection("users").doc(uid).get())
+    );
+    const detailedUsers = userDocs
+      .filter((d) => d.exists)
+      .map((d) => ({
+        userId: d.id,
+        displayName: d.data()?.displayName || d.data()?.email || d.id,
+      }));
+    res.json({ data: { users: detailedUsers } });
+    return;
+  }
+
+  res.json({ data: { affectedUserIds, programCount } });
+});
+
 // POST /creator/library/sessions/:sessionId/propagate
 router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) => {
   const auth = await validateAuth(req);

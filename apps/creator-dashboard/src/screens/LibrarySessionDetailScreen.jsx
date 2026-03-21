@@ -398,6 +398,9 @@ const LibrarySessionDetailScreen = () => {
   const [isPropagating, setIsPropagating] = useState(false);
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
+  // Library usage count (how many programs/plans reference this session)
+  const [libraryUsageCount, setLibraryUsageCount] = useState(0);
+
   const handleHeaderImageSelect = async (item) => {
     if (!sessionId || !user) return;
     try {
@@ -2056,6 +2059,16 @@ const LibrarySessionDetailScreen = () => {
     }
   };
 
+  // Fetch library usage count on mount (library edit only — how many programs reference this session)
+  useEffect(() => {
+    if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit) return;
+    propagationService.findAffectedByLibrarySession(user.uid, sessionId)
+      .then(({ affectedUserIds, programCount }) => {
+        setLibraryUsageCount(programCount || affectedUserIds.length);
+      })
+      .catch((err) => logger.warn('Error fetching library usage count:', err));
+  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit]);
+
   // Fetch affected count when hasMadeChanges becomes true (library edit only; not for client or plan-instance edit)
   useEffect(() => {
     if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit || !hasMadeChanges) return;
@@ -2764,13 +2777,13 @@ const LibrarySessionDetailScreen = () => {
             </div>
           )}
           {(effectiveIsClientEdit || effectiveIsClientPlanEdit) && !isPlanInstanceEdit && (
-            <div className="library-session-client-edit-banner">
-              <span className="library-session-client-edit-banner-text">
-                {effectiveIsClientPlanEdit ? (
-                  <>Editando sesión de la semana solo para <strong>{clientName}</strong>. Los cambios solo afectan a esta semana para este cliente.</>
-                ) : (
-                  <>Editando sesión solo para <strong>{clientName}</strong>. Los cambios no afectan la biblioteca ni otros clientes.</>
-                )}
+            <div className="library-session-client-only-banner">
+              <svg className="library-session-client-only-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="library-session-client-only-text">
+                Solo para {clientName}
               </span>
               {effectiveIsClientEdit && hasClientCopy && (
                 <button
@@ -2913,6 +2926,11 @@ const LibrarySessionDetailScreen = () => {
                 <p className="library-session-main-subtitle">
                   Arrastra ejercicios desde el panel izquierdo o reorganiza los existentes
                 </p>
+                {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && libraryUsageCount > 0 && (
+                  <span className="library-session-usage-count">
+                    Usado en {libraryUsageCount} {libraryUsageCount === 1 ? 'programa' : 'programas'}
+                  </span>
+                )}
               </div>
               <div className="library-session-main-header-actions">
                 {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && propagateAffectedCount > 0 && (
