@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
+import { FullScreenError } from '../components/ui';
 import libraryService from '../services/libraryService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
@@ -345,24 +346,17 @@ const LibraryModuleDetailScreen = () => {
 
   if (error || !module) {
     return (
-      <DashboardLayout 
+      <DashboardLayout
         screenName="Módulo"
         showBackButton={true}
         backPath={backPath}
         backState={backState}
       >
-        <div className="lmd-page">
-          <div className="lmd-inner">
-            <div className="library-session-detail-container">
-              <div className="library-session-detail-error">
-                <p>{error || 'Módulo no encontrado'}</p>
-                <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
-                  Volver a Contenido
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <FullScreenError
+          title="No se pudo cargar el modulo"
+          message={error || 'Modulo no encontrado'}
+          onRetry={() => navigate(0)}
+        />
       </DashboardLayout>
     );
   }
