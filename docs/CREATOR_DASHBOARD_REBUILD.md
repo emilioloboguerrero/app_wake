@@ -380,25 +380,25 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 ### Parallel Group C (client screens — touch same service layer, run SEQUENTIALLY within group)
 
 #### 2I. Clients Screen (ProgramsAndClientsScreen)
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/ProgramsAndClientsScreen.jsx` + `.css`
 
 **Tasks — Client Highlight Card:**
-- [ ] Add 3-highlight activity card at top of client profile (right panel):
+- [x] Add 3-highlight activity card at top of client profile (right panel):
   1. **Latest PR:** Show most recent personal record — exercise name, weight, date. Query from `exerciseHistory`. If no PR in last 30 days, show "Sin PRs recientes".
   2. **Consistency:** Percentage of planned sessions completed in current week/month. Calculate: `(completedSessions / plannedSessions) × 100`. Show as ProgressRing.
   3. **Nutrition Adherence:** If client has nutrition plan assigned, show adherence % (average of days where actual calories were within ±10% of target). If no plan: "Sin plan asignado".
-- [ ] Card styling: 3-column row, each with icon + label + value. Subtle background `rgba(255,255,255,0.03)`, rounded 16px.
+- [x] Card styling: 3-column row, each with icon + label + value. Subtle background `rgba(255,255,255,0.03)`, rounded 16px.
 
 **Tasks — Quick Actions:**
-- [ ] Add quick action buttons in client header (below name/status):
+- [x] Add quick action buttons in client header (below name/status):
   - "Asignar sesion" → opens SessionAssignmentModal
   - "Agendar llamada" → navigates to availability with client preselected
   - "Ver programa" → scrolls to Planificacion tab
-- [ ] Style: small pill buttons, glass style (secondary button from STANDARDS.md)
+- [x] Style: small pill buttons, glass style (secondary button from STANDARDS.md)
 
 **Tasks — Access End-Date Management:**
-- [ ] In Planificacion tab, add access management section:
+- [x] In Planificacion tab, add access management section:
   - Display: "Acceso hasta: {date}" with days remaining count
   - DatePicker to extend/shorten access date
   - Auto-save on date change (useAutoSave pattern)
@@ -406,20 +406,20 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   - Expired state: red text "Acceso vencido desde {date}."
 
 **Tasks — Virtualization:**
-- [ ] Apply `VirtualList` to client roster (left sidebar) if creator has 50+ clients
+- [x] Apply `VirtualList` to client roster (left sidebar) if creator has 50+ clients
 
 **Tasks — Error States:**
-- [ ] Client list load failure: FullScreenError.
-- [ ] Client detail load failure: error in right panel only, left roster still works.
-- [ ] Action failures (assign, schedule): Toast with specific message.
+- [x] Client list load failure: FullScreenError.
+- [x] Client detail load failure: error in right panel only, left roster still works.
+- [x] Action failures (assign, schedule): Toast with specific message.
 
 **Tasks — Copy Pass:**
-- [ ] Empty roster: "Todavia no tienes clientes. Invita a tu primer cliente desde el boton de arriba."
-- [ ] No client selected: "Selecciona un cliente de la lista para ver su perfil completo."
-- [ ] Tab labels: "Planificacion", "Nutricion", "Lab", "Llamadas"
+- [x] Empty roster: "Todavia no tienes clientes. Invita a tu primer cliente desde el boton de arriba."
+- [x] No client selected: "Selecciona un cliente de la lista para ver su perfil completo."
+- [x] Tab labels: "Planificacion", "Nutricion", "Lab", "Llamadas"
 
 **Tasks — Tutorial:**
-- [ ] ProgramsAndClientsScreen (screenKey: "clients"):
+- [x] ProgramsAndClientsScreen (screenKey: "clients"):
   1. Roster: "Tu lista de clientes. El punto verde significa que estan activos esta semana."
   2. Tabs: "Planificacion para ver su programa. Nutricion para su plan alimenticio. Lab para sus metricas. Llamadas para agendar."
   3. Highlight card: "De un vistazo: su ultimo PR, que tan constante es, y como va con la nutricion."
