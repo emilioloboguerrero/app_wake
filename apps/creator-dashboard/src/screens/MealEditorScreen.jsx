@@ -12,6 +12,7 @@ import * as nutritionDb from '../services/nutritionFirestoreService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -292,7 +293,28 @@ export default function MealEditorScreen() {
     return (
       <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
         <div className="library-session-detail-container">
-          <p style={{ color: 'rgba(255,255,255,0.6)', padding: 24 }}>Cargando…</p>
+          <div className="library-session-sidebar" style={{ padding: 16 }}>
+            <ShimmerSkeleton width="100%" height="40px" borderRadius="8px" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="48px" borderRadius="8px" />
+              ))}
+            </div>
+          </div>
+          <div className="library-session-main" style={{ padding: 24 }}>
+            <ShimmerSkeleton width="200px" height="22px" borderRadius="6px" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ShimmerSkeleton width="48px" height="48px" borderRadius="8px" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <ShimmerSkeleton width="60%" height="14px" borderRadius="4px" />
+                    <ShimmerSkeleton width="40%" height="12px" borderRadius="4px" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );

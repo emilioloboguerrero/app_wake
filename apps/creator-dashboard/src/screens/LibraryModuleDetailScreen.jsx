@@ -6,6 +6,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
 import { FullScreenError } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import libraryService from '../services/libraryService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
@@ -336,7 +337,42 @@ const LibraryModuleDetailScreen = () => {
         <div className="lmd-page">
           <div className="lmd-inner">
             <div className="library-session-detail-container">
-              <div className="library-session-detail-loading">Cargando...</div>
+              <div className="library-session-sidebar">
+                <div className="library-session-sidebar-header">
+                  <ShimmerSkeleton width="160px" height="18px" borderRadius="6px" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 16px' }}>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <ShimmerSkeleton width="60px" height="60px" borderRadius="8px" />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <ShimmerSkeleton width="70%" height="14px" borderRadius="4px" />
+                        <ShimmerSkeleton width="40%" height="12px" borderRadius="4px" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="library-session-main">
+                <div className="library-session-main-header">
+                  <div>
+                    <ShimmerSkeleton width="200px" height="20px" borderRadius="6px" />
+                    <ShimmerSkeleton width="300px" height="14px" borderRadius="4px" />
+                  </div>
+                  <ShimmerSkeleton width="120px" height="36px" borderRadius="8px" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 0' }}>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <ShimmerSkeleton width="60px" height="60px" borderRadius="8px" />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <ShimmerSkeleton width="60%" height="14px" borderRadius="4px" />
+                        <ShimmerSkeleton width="30%" height="12px" borderRadius="4px" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

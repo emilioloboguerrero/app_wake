@@ -11,18 +11,16 @@ import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import './LabScreen.css';
 
 // ─── Skeleton primitives ──────────────────────────────────────────
-const Skeleton = ({ w = '100%', h = 16, radius = 6, style = {} }) => (
-  <div className="sk-block" style={{ width: w, height: h, borderRadius: radius, ...style }} />
-);
 
 const WidgetSkeleton = () => (
   <div className="ini-widget sk-widget">
-    <Skeleton w="60%" h={12} />
-    <Skeleton w="40%" h={32} style={{ marginTop: 12 }} />
-    <Skeleton w="80%" h={8} style={{ marginTop: 10 }} />
+    <ShimmerSkeleton width="60%" height="12px" borderRadius="4px" />
+    <ShimmerSkeleton width="40%" height="32px" borderRadius="6px" />
+    <ShimmerSkeleton width="80%" height="8px" borderRadius="4px" />
   </div>
 );
 

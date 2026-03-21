@@ -1,11 +1,13 @@
-import React from 'react';
+import ShimmerSkeleton from './ui/ShimmerSkeleton';
 import './ScreenSkeleton.css';
 
 export function Skeleton({ width = '100%', height = '1rem', borderRadius = '6px', className = '' }) {
   return (
-    <div
-      className={`skeleton-block ${className}`}
-      style={{ width, height, borderRadius }}
+    <ShimmerSkeleton
+      width={width}
+      height={height}
+      borderRadius={borderRadius}
+      className={className}
     />
   );
 }
@@ -16,8 +18,8 @@ export function CardSkeleton({ count = 3 }) {
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="skeleton-card">
           <Skeleton height="140px" borderRadius="8px" />
-          <Skeleton width="60%" height="1rem" style={{ marginTop: '0.75rem' }} />
-          <Skeleton width="40%" height="0.8rem" style={{ marginTop: '0.5rem' }} />
+          <Skeleton width="60%" height="1rem" />
+          <Skeleton width="40%" height="0.8rem" />
         </div>
       ))}
     </div>
@@ -31,14 +33,14 @@ export default function ScreenSkeleton() {
         <Skeleton width="180px" height="1.5rem" />
         <Skeleton width="100px" height="2rem" borderRadius="8px" />
       </div>
-      <Skeleton height="3rem" borderRadius="8px" style={{ marginBottom: '1rem' }} />
+      <Skeleton height="3rem" borderRadius="8px" />
       <div className="skeleton-list">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="skeleton-list-item">
             <Skeleton width="48px" height="48px" borderRadius="8px" />
             <div className="skeleton-list-item-lines">
               <Skeleton width="55%" height="1rem" />
-              <Skeleton width="35%" height="0.8rem" style={{ marginTop: '0.4rem' }} />
+              <Skeleton width="35%" height="0.8rem" />
             </div>
             <Skeleton width="80px" height="2rem" borderRadius="6px" />
           </div>

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import programService from '../services/programService';
 import './ProductsScreen.css';
 
@@ -124,7 +125,27 @@ const ProductsScreen = ({ noLayout = false, onNewClick = null }) => {
           {isError ? (
             <div className="products-loading" style={{ color: 'var(--text-secondary)' }}>Error al cargar programas. Intenta recargar la página.</div>
           ) : isLoading ? (
-            <div className="products-loading">Cargando programas...</div>
+            <div className="products-grid">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="products-card" style={{ pointerEvents: 'none' }}>
+                  <div className="products-card-header">
+                    <ShimmerSkeleton width="40px" height="40px" borderRadius="8px" />
+                    <ShimmerSkeleton width="70%" height="18px" borderRadius="6px" />
+                  </div>
+                  <div className="products-card-body">
+                    <ShimmerSkeleton width="100%" height="14px" borderRadius="4px" />
+                    <ShimmerSkeleton width="60%" height="14px" borderRadius="4px" />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <ShimmerSkeleton width="80px" height="22px" borderRadius="10px" />
+                      <ShimmerSkeleton width="60px" height="22px" borderRadius="10px" />
+                    </div>
+                  </div>
+                  <div className="products-card-footer">
+                    <ShimmerSkeleton width="90px" height="14px" borderRadius="4px" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : currentPrograms.length === 0 ? (
             <div className="products-empty">
               <div className="products-empty-icon">
