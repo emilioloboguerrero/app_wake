@@ -239,25 +239,25 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   3. Results: "Despues del evento, revisa quien asistio y descarga los datos."
 
 #### 2D. Availability Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Files:**
 - `apps/creator-dashboard/src/screens/AvailabilityCalendarScreen.jsx` + `.css`
 - `apps/creator-dashboard/src/screens/AvailabilityDayScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] Calendar: FullScreenError if availability query fails.
-- [ ] Day view: Toast on slot creation failure ("No pudimos crear el horario. Intenta de nuevo.").
-- [ ] Conflict detection: InlineError if slot overlaps with existing ("Ya tienes un horario en ese rango.").
+- [x] Calendar: FullScreenError if availability query fails.
+- [x] Day view: Toast on slot creation failure ("No pudimos crear el horario. Intenta de nuevo.").
+- [x] Conflict detection: InlineError if slot overlaps with existing ("Ya tienes un horario en ese rango.").
 
 **Tasks — Copy Pass:**
-- [ ] Empty calendar: "Tu calendario esta libre. Agrega horarios para que tus clientes puedan agendar llamadas."
-- [ ] Empty day: "Sin horarios para este dia. Agrega uno o usa la creacion por lotes."
-- [ ] Batch creation: "Crea varios horarios de una vez. Selecciona la duracion, los descansos y listo."
-- [ ] Booked slot: "Llamada con {nombre} — {hora}"
-- [ ] Available slot: "Disponible — {hora}"
+- [x] Empty calendar: "Tu calendario esta libre. Agrega horarios para que tus clientes puedan agendar llamadas."
+- [x] Empty day: "Sin horarios para este dia. Agrega uno o usa la creacion por lotes."
+- [x] Batch creation: "Crea varios horarios de una vez. Selecciona la duracion, los descansos y listo."
+- [x] Booked slot: "Llamada con {nombre} — {hora}"
+- [x] Available slot: "Disponible — {hora}"
 
 **Tasks — Tutorial:**
-- [ ] AvailabilityCalendarScreen (screenKey: "availability"):
+- [x] AvailabilityCalendarScreen (screenKey: "availability"):
   1. Calendar: "Tu calendario de disponibilidad. Los dias con puntos ya tienen horarios creados."
   2. Batch creation: "Usa la creacion por lotes para llenar tu semana rapido."
   3. Booked calls: "Las llamadas agendadas aparecen directamente en el calendario."
