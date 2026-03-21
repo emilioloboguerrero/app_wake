@@ -1,12 +1,13 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, validateDateFormat, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 // GET /progress/body-log — cursor paginated, 30/page
 router.get("/progress/body-log", async (req, res) => {
@@ -16,7 +17,7 @@ router.get("/progress/body-log", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const limit = 30;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("bodyLog")
@@ -110,7 +111,7 @@ router.put("/progress/body-log/:date", async (req, res) => {
     {
       ...body,
       date,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -207,13 +208,13 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
 
   await docRef.set(
     {
-      photos: admin.firestore.FieldValue.arrayUnion({
+      photos: FieldValue.arrayUnion({
         photoId,
         url: publicUrl,
         storagePath,
         uploaded_at: new Date().toISOString(),
       }),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -254,8 +255,8 @@ router.delete("/progress/body-log/:date/photos/:photoId", async (req, res) => {
 
   // Remove from array
   await docRef.update({
-    photos: admin.firestore.FieldValue.arrayRemove(photo),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    photos: FieldValue.arrayRemove(photo),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.status(204).send();
@@ -272,7 +273,7 @@ router.get("/progress/readiness", async (req, res) => {
   if (startDate) validateDateFormat(startDate, "startDate");
   if (endDate) validateDateFormat(endDate, "endDate");
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("readiness")
@@ -349,7 +350,7 @@ router.put("/progress/readiness/:date", async (req, res) => {
     {
       ...body,
       date,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );

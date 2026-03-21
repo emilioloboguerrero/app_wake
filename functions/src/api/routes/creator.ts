@@ -1,12 +1,13 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 function requireCreator(auth: { role: string }): void {
   if (auth.role !== "creator" && auth.role !== "admin") {
@@ -26,7 +27,7 @@ router.get("/creator/clients", async (req, res) => {
   if (programId) {
     // Server-side filtering: fetch all clients, look up each user's courses,
     // return only those enrolled in the requested program.
-    let query: admin.firestore.Query = db
+    let query: Query = db
       .collection("one_on_one_clients")
       .where("creatorId", "==", auth.userId)
       .orderBy("created_at", "desc");
@@ -55,7 +56,7 @@ router.get("/creator/clients", async (req, res) => {
   // Default: paginated list without filtering
   const limit = 50;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .orderBy("created_at", "desc")
@@ -98,7 +99,7 @@ router.post("/creator/clients", async (req, res) => {
     creatorId: auth.userId,
     userId: body.userId,
     status: "active",
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -130,7 +131,7 @@ router.get("/creator/programs", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const limit = 100;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("courses")
     .where("creatorId", "==", auth.userId)
     .orderBy("created_at", "desc")
@@ -190,8 +191,8 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.discipline !== undefined && { discipline: body.discipline }),
     creatorId: auth.userId,
     status: "draft",
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -223,7 +224,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
 
   await docRef.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -259,7 +260,7 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
 
   await docRef.update({
     status,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { status } });
@@ -298,8 +299,8 @@ router.post("/creator/programs/:programId/duplicate", async (req, res) => {
     ...sourceData,
     title: `${sourceData.title} (copia)`,
     status: "draft",
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({ data: { id: newDoc.id } });
@@ -354,7 +355,7 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
 
   await db.collection("courses").doc(req.params.programId).update({
     image_url: publicUrl,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { image_url: publicUrl } });
@@ -533,8 +534,8 @@ router.post("/creator/nutrition/meals", async (req, res) => {
     .collection("meals")
     .add({
       ...body,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -567,7 +568,7 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
 
   await docRef.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -647,8 +648,8 @@ router.post("/creator/nutrition/plans", async (req, res) => {
     .add({
       ...body,
       creatorId: auth.userId,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -701,7 +702,7 @@ router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
 
   await docRef.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -759,7 +760,7 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 
   for (const assignDoc of assignmentsSnap.docs) {
     const contentRef = db.collection("client_nutrition_plan_content").doc(assignDoc.id);
-    batch.set(contentRef, { ...planData, refreshed_at: admin.firestore.FieldValue.serverTimestamp() });
+    batch.set(contentRef, { ...planData, refreshed_at: FieldValue.serverTimestamp() });
     copiesDeleted++;
     batchCount++;
     if (batchCount >= batchSize) {
@@ -841,14 +842,14 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
     startDate: body.startDate ?? null,
     endDate: body.endDate ?? null,
     status: "active",
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
   });
 
   // Snapshot plan content
   await db.collection("client_nutrition_plan_content").doc(assignmentRef.id).set({
     ...planData,
     assignmentId: assignmentRef.id,
-    snapshot_at: admin.firestore.FieldValue.serverTimestamp(),
+    snapshot_at: FieldValue.serverTimestamp(),
   });
 
   // Pin on user if no existing pinned assignment
@@ -896,7 +897,7 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
 
   await assignRef.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -931,7 +932,7 @@ router.get("/creator/clients/:clientId/nutrition/diary", async (req, res) => {
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { date, startDate, endDate } = req.query as Record<string, string>;
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(req.params.clientId)
     .collection("diary");
@@ -964,8 +965,8 @@ router.post("/creator/plans", async (req, res) => {
   const planRef = await db.collection("plans").add({
     title: body.title,
     creatorId: auth.userId,
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   // Auto-create first module
@@ -976,7 +977,7 @@ router.post("/creator/plans", async (req, res) => {
     .add({
       title: "Semana 1",
       order: 0,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { planId: planRef.id, firstModuleId: moduleRef.id } });
@@ -1060,7 +1061,7 @@ router.patch("/creator/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await docRef.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { planId: doc.id, updated: true } });
 });
 
@@ -1129,7 +1130,7 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
   const ref = await db.collection("plans").doc(req.params.planId).collection("modules").add({
     title: body.title,
     order: body.order,
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    created_at: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({ data: { moduleId: ref.id } });
@@ -1158,7 +1159,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { moduleId: doc.id, updated: true } });
 });
 
@@ -1213,7 +1214,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
       title: body.title,
       order: body.order,
       ...(body.isRestDay !== undefined && { isRestDay: body.isRestDay }),
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { sessionId: ref.id } });
@@ -1286,7 +1287,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { sessionId: doc.id, updated: true } });
 });
 
@@ -1364,7 +1365,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     .collection("sessions")
     .doc(req.params.sessionId)
     .collection("exercises")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { exerciseId: ref.id } });
 });
@@ -1393,7 +1394,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
 });
 
@@ -1459,7 +1460,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { setId: ref.id } });
 });
@@ -1489,7 +1490,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { setId: req.params.setId, updated: true } });
 });
 
@@ -1584,7 +1585,7 @@ router.post("/creator/library/sessions", async (req, res) => {
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("sessions")
-    .add({ title: body.title, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { sessionId: ref.id } });
 });
@@ -1627,7 +1628,7 @@ router.patch("/creator/library/sessions/:sessionId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { updated: true } });
 });
 
@@ -1660,7 +1661,7 @@ router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) =
     .collection("creator_libraries").doc(auth.userId)
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { exerciseId: ref.id } });
 });
@@ -1682,7 +1683,7 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
 });
 
@@ -1719,7 +1720,7 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...body, created_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ ...body, created_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { setId: ref.id } });
 });
@@ -1742,7 +1743,7 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { setId: req.params.setId, updated: true } });
 });
 
@@ -1788,7 +1789,7 @@ router.post("/creator/library/modules", async (req, res) => {
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("modules")
-    .add({ title: body.title, created_at: admin.firestore.FieldValue.serverTimestamp(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+    .add({ title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
 
   res.status(201).json({ data: { moduleId: ref.id } });
 });
@@ -1820,7 +1821,7 @@ router.patch("/creator/library/modules/:moduleId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
   res.json({ data: { updated: true } });
 });
 
@@ -1983,7 +1984,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
       for (const sessionDoc of sessionsSnap.docs) {
         batch.update(sessionDoc.ref, {
           title: libSessionData.title ?? sessionDoc.data().title,
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
         batchCount++;
         if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
@@ -2003,13 +2004,13 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
 
         for (const ex of exercises) {
           const newExRef = sessionDoc.ref.collection("exercises").doc();
-          batch.set(newExRef, { ...ex.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+          batch.set(newExRef, { ...ex.data, created_at: FieldValue.serverTimestamp() });
           batchCount++;
           if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
           for (const setData of ex.sets) {
             const newSetRef = newExRef.collection("sets").doc();
-            batch.set(newSetRef, { ...setData, created_at: admin.firestore.FieldValue.serverTimestamp() });
+            batch.set(newSetRef, { ...setData, created_at: FieldValue.serverTimestamp() });
             batchCount++;
             if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
           }
@@ -2082,7 +2083,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
     for (const moduleDoc of modulesSnap.docs) {
       batch.update(moduleDoc.ref, {
         title: libModuleData.title ?? moduleDoc.data().title,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       });
       batchCount++;
       if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
@@ -2108,19 +2109,19 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
 
       for (const libSession of libSessions) {
         const newSessionRef = moduleDoc.ref.collection("sessions").doc();
-        batch.set(newSessionRef, { ...libSession.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+        batch.set(newSessionRef, { ...libSession.data, created_at: FieldValue.serverTimestamp() });
         batchCount++;
         if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
         for (const ex of libSession.exercises) {
           const newExRef = newSessionRef.collection("exercises").doc();
-          batch.set(newExRef, { ...ex.data, created_at: admin.firestore.FieldValue.serverTimestamp() });
+          batch.set(newExRef, { ...ex.data, created_at: FieldValue.serverTimestamp() });
           batchCount++;
           if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
           for (const setData of ex.sets) {
             const newSetRef = newExRef.collection("sets").doc();
-            batch.set(newSetRef, { ...setData, created_at: admin.firestore.FieldValue.serverTimestamp() });
+            batch.set(newSetRef, { ...setData, created_at: FieldValue.serverTimestamp() });
             batchCount++;
             if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
           }
@@ -2197,7 +2198,7 @@ router.delete("/creator/clients/:clientId/programs/:programId", async (req, res)
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   await db.collection("users").doc(req.params.clientId).update({
-    [`courses.${req.params.programId}`]: admin.firestore.FieldValue.delete(),
+    [`courses.${req.params.programId}`]: FieldValue.delete(),
   });
 
   res.status(204).send();
@@ -2235,7 +2236,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey"
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   await db.collection("courses").doc(req.params.programId).update({
-    [`planAssignments.${req.params.weekKey}`]: admin.firestore.FieldValue.delete(),
+    [`planAssignments.${req.params.weekKey}`]: FieldValue.delete(),
   });
 
   res.status(204).send();

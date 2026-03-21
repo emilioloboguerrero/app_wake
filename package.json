@@ -38,7 +38,9 @@
     "lint": "npm run lint --prefix apps/pwa",
     "setup:firebase": "echo 'Please configure Firebase manually using the documentation'",
     "seed:staging": "node scripts/seed-staging.js",
-    "validate:staging": "node scripts/validate-staging.js"
+    "test:api": "node scripts/test-api/runner.js",
+    "test:api:staging": "cross-env TEST_ENV=staging node scripts/test-api/runner.js",
+    "test:api:local": "cross-env TEST_ENV=local node scripts/test-api/runner.js"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

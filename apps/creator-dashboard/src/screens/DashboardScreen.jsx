@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { BentoGrid, BentoCard, SpotlightTutorial } from '../components/ui';
+import { BentoGrid, BentoCard, GlowingEffect, SpotlightTutorial } from '../components/ui';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import {
   ClientsWidget,
@@ -129,6 +129,7 @@ function SortableWidget({ id, span, className, children }) {
 
   return (
     <BentoCard ref={setNodeRef} span={span} className={`${className} ds-sortable-widget`} style={style}>
+      <GlowingEffect spread={24} borderWidth={1} />
       <DragHandle listeners={listeners} attributes={attributes} />
       {children}
     </BentoCard>
@@ -179,7 +180,7 @@ const DashboardScreen = () => {
 
   const bookingsQuery = useQuery({
     queryKey: ['bookings', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/bookings'),
+    queryFn: () => apiClient.get('/creator/bookings'),
     enabled: !!user?.uid,
     ...cacheConfig.events,
   });

@@ -12,7 +12,6 @@ function WidgetEmpty({ message }) {
 export default function ClientsWidget({ revenueQuery, oneOnOne }) {
   return (
     <>
-      <GlowingEffect />
       <div className="ds-widget-inner">
         <WidgetTitle>Clientes activos</WidgetTitle>
         {revenueQuery.isLoading ? (

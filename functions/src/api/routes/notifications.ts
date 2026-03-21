@@ -1,13 +1,12 @@
 import { Router } from "express";
-import * as admin from "firebase-admin";
 import * as webpush from "web-push";
 import { defineSecret } from "firebase-functions/params";
+import { db, FieldValue, Timestamp } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 const vapidPublicKey = defineSecret("VAPID_PUBLIC_KEY");
 const vapidPrivateKey = defineSecret("VAPID_PRIVATE_KEY");
@@ -66,7 +65,7 @@ router.post("/notifications/subscribe", async (req, res, next) => {
       keys: { p256dh: keys.p256dh, auth: keys.auth },
       userAgent: body.userAgent || null,
       isActive: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     res.status(201).json({ data: { id: subRef.id } });
@@ -182,9 +181,9 @@ router.post("/notifications/schedule-timer", async (req, res, next) => {
       userId: auth.userId,
       type: "rest_timer",
       metadata: body.metadata || {},
-      endAt: admin.firestore.Timestamp.fromDate(endAt),
+      endAt: Timestamp.fromDate(endAt),
       status: "pending",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     res.status(201).json({ data: { id: timerRef.id } });

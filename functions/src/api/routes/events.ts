@@ -1,13 +1,14 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
+import { db, FieldValue } from "../firestore.js";
+import type { Query, DocumentSnapshot } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit, checkIpRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 function requireCreator(auth: { role: string }): void {
   if (auth.role !== "creator" && auth.role !== "admin") {
@@ -18,7 +19,7 @@ function requireCreator(auth: { role: string }): void {
 async function verifyEventOwnership(
   eventId: string,
   userId: string
-): Promise<admin.firestore.DocumentSnapshot> {
+): Promise<DocumentSnapshot> {
   const doc = await db.collection("events").doc(eventId).get();
   if (!doc.exists || doc.data()?.creatorId !== userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
@@ -125,7 +126,7 @@ router.post("/events/:eventId/register", async (req, res) => {
           displayName: body.displayName ?? null,
           phoneNumber: body.phoneNumber ?? null,
           fieldValues: body.fieldValues ?? {},
-          created_at: admin.firestore.FieldValue.serverTimestamp(),
+          created_at: FieldValue.serverTimestamp(),
         });
 
       res.status(201).json({
@@ -152,7 +153,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       fieldValues: body.fieldValues ?? {},
       check_in_token: checkInToken,
       checked_in: false,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({
@@ -234,7 +235,7 @@ router.post("/creator/events", async (req, res) => {
     req.body
   );
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
   const docRef = await db.collection("events").add({
     ...body,
     creatorId: auth.userId,
@@ -279,7 +280,7 @@ router.patch("/creator/events/:eventId", async (req, res) => {
 
   await doc.ref.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   const updated = await doc.ref.get();
@@ -317,7 +318,7 @@ router.patch("/creator/events/:eventId/status", async (req, res) => {
   const docRef = db.collection("events").doc(req.params.eventId);
   await docRef.update({
     status,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { eventId: req.params.eventId, status } });
@@ -422,7 +423,7 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
 
   await eventDocRef.update({
     image_url: imageUrl,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { imageUrl } });
@@ -440,7 +441,7 @@ router.get("/creator/events/:eventId/registrations", async (req, res) => {
   const checkedInFilter = req.query.checkedIn as string | undefined;
   const limit = 50;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("event_signups")
     .doc(req.params.eventId)
     .collection("registrations")
@@ -514,7 +515,7 @@ router.post(
 
     await regRef.update({
       checked_in: true,
-      checked_in_at: admin.firestore.FieldValue.serverTimestamp(),
+      checked_in_at: FieldValue.serverTimestamp(),
     });
 
     const updated = await regRef.get();
@@ -577,7 +578,7 @@ router.post(
 
     await regDoc.ref.update({
       checked_in: true,
-      checked_in_at: admin.firestore.FieldValue.serverTimestamp(),
+      checked_in_at: FieldValue.serverTimestamp(),
     });
 
     const updated = await regDoc.ref.get();
@@ -694,7 +695,7 @@ router.post(
         check_in_token: checkInToken,
         checked_in: false,
         admitted_from_waitlist: true,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_at: FieldValue.serverTimestamp(),
       });
 
     await waitlistRef.delete();

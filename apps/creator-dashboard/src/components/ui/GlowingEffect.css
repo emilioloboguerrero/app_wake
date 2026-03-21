@@ -17,21 +17,18 @@
   content: '';
   position: absolute;
   border-radius: inherit;
-  inset: calc(-1 * var(--border-width, 1px));
-  border: var(--border-width, 1px) solid transparent;
+  inset: calc(-1 * var(--border-width, 2px));
+  border: var(--border-width, 2px) solid transparent;
 
   background:
-    radial-gradient(circle, #dd7bbb 10%, transparent 20%),
-    radial-gradient(circle at 40% 40%, rgba(255,255,255,0.15) 5%, transparent 15%),
-    radial-gradient(circle at 60% 60%, #5a922c 10%, transparent 20%),
-    radial-gradient(circle at 40% 60%, #4c7894 10%, transparent 20%),
     repeating-conic-gradient(
       from 236.84deg at 50% 50%,
-      #dd7bbb 0%,
-      rgba(255,255,255,0.15) calc(25% / 5),
-      #5a922c calc(50% / 5),
-      #4c7894 calc(75% / 5),
-      #dd7bbb calc(100% / 5)
+      #ff3f5e 0%,
+      #ff87a8 calc(20% / 5),
+      rgba(255,255,255,0.5) calc(40% / 5),
+      #ff8a3d calc(60% / 5),
+      #ff87a8 calc(80% / 5),
+      #ff3f5e calc(100% / 5)
     );
   background-attachment: fixed;
 
@@ -45,17 +42,61 @@
   -webkit-mask-image:
     linear-gradient(transparent, transparent),
     conic-gradient(
-      from calc((var(--start, 0) - var(--spread, 20)) * 1deg),
+      from calc((var(--start, 0) - var(--spread, 40)) * 1deg),
       transparent 0deg,
       white,
-      transparent calc(var(--spread, 20) * 2deg)
+      transparent calc(var(--spread, 40) * 2deg)
     );
   mask-image:
     linear-gradient(transparent, transparent),
     conic-gradient(
-      from calc((var(--start, 0) - var(--spread, 20)) * 1deg),
+      from calc((var(--start, 0) - var(--spread, 40)) * 1deg),
       transparent 0deg,
       white,
-      transparent calc(var(--spread, 20) * 2deg)
+      transparent calc(var(--spread, 40) * 2deg)
+    );
+}
+
+/* Outer glow halo */
+.glowing-effect-glow::before {
+  content: '';
+  position: absolute;
+  border-radius: inherit;
+  inset: -6px;
+  opacity: calc(var(--active, 0) * 0.7);
+  transition: opacity 300ms;
+  filter: blur(12px);
+
+  background:
+    repeating-conic-gradient(
+      from calc((var(--start, 0) - var(--spread, 40)) * 1deg) at 50% 50%,
+      transparent 0deg,
+      #ff3f5e calc(var(--spread, 40) * 0.4deg),
+      #ff87a8 calc(var(--spread, 40) * 0.8deg),
+      #ff8a3d calc(var(--spread, 40) * 1.2deg),
+      #ff3f5e calc(var(--spread, 40) * 1.6deg),
+      transparent calc(var(--spread, 40) * 2deg)
+    );
+  background-attachment: fixed;
+
+  -webkit-mask-clip: padding-box, border-box;
+  mask-clip: padding-box, border-box;
+  -webkit-mask-composite: intersect;
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(transparent, transparent),
+    conic-gradient(
+      from calc((var(--start, 0) - var(--spread, 40)) * 1deg),
+      transparent 0deg,
+      white,
+      transparent calc(var(--spread, 40) * 2deg)
+    );
+  mask-image:
+    linear-gradient(transparent, transparent),
+    conic-gradient(
+      from calc((var(--start, 0) - var(--spread, 40)) * 1deg),
+      transparent 0deg,
+      white,
+      transparent calc(var(--spread, 40) * 2deg)
     );
 }

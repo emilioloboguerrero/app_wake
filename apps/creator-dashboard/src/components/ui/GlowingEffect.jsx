@@ -3,10 +3,10 @@ import { animate } from 'motion';
 import './GlowingEffect.css';
 
 const GlowingEffect = memo(({
-  spread = 20,
-  proximity = 0,
-  inactiveZone = 0.7,
-  movementDuration = 2,
+  spread = 40,
+  proximity = 120,
+  inactiveZone = 0,
+  movementDuration = 1.5,
   borderWidth = 1,
   disabled = false,
 }) => {

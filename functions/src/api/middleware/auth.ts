@@ -1,6 +1,7 @@
 import type { Request } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
+import { db } from "../firestore.js";
 import { WakeApiServerError } from "../errors.js";
 
 export interface AuthResult {
@@ -19,8 +20,6 @@ declare global {
     }
   }
 }
-
-const db = admin.firestore();
 
 export async function validateAuth(req: Request): Promise<AuthResult> {
   // Return cached result if already validated in this request.

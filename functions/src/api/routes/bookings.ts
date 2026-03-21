@@ -1,12 +1,12 @@
 import { Router } from "express";
-import * as admin from "firebase-admin";
+import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 function requireCreator(auth: { role: string }): void {
   if (auth.role !== "creator" && auth.role !== "admin") {
@@ -143,7 +143,7 @@ router.post("/creator/availability/slots", async (req, res) => {
     await docRef.update({
       [`days.${body.date}`]: dayData,
       timezone: body.timezone,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
   } else {
     await docRef.set({
@@ -151,7 +151,7 @@ router.post("/creator/availability/slots", async (req, res) => {
       days: {
         [body.date]: { slots },
       },
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
   }
 
@@ -180,8 +180,8 @@ router.delete("/creator/availability/slots", async (req, res) => {
   if (!body.startLocal) {
     // Delete all slots for the day
     await docRef.update({
-      [`days.${body.date}`]: admin.firestore.FieldValue.delete(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      [`days.${body.date}`]: FieldValue.delete(),
+      updated_at: FieldValue.serverTimestamp(),
     });
   } else {
     // Delete specific slot
@@ -193,7 +193,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
       );
       await docRef.update({
         [`days.${body.date}`]: dayData,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       });
     }
   }
@@ -210,7 +210,7 @@ router.get("/creator/bookings", async (req, res) => {
   const { date, pageToken } = req.query as Record<string, string | undefined>;
   const limit = 20;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("call_bookings")
     .where("creatorId", "==", auth.userId)
     .orderBy("slotStartUtc", "asc")
@@ -419,7 +419,7 @@ router.post("/bookings", async (req, res) => {
     dayData.slots[slotIndex].booked = true;
     tx.update(availRef, {
       [`days.${slotDate}`]: dayData,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
 
     // Create booking within transaction
@@ -531,7 +531,7 @@ router.delete("/bookings/:bookingId", async (req, res) => {
         slot.booked = false;
         await availRef.update({
           [`days.${slotDate}`]: dayData,
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
       }
     }

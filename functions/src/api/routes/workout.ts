@@ -1,13 +1,13 @@
 import { Router } from "express";
-import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 // Max guards for unbounded reads
 const MAX_MODULES_PER_COURSE = 20;
@@ -546,7 +546,7 @@ router.post("/workout/complete", async (req, res) => {
     completedAt: body.completedAt,
     userNotes: body.userNotes ?? null,
     plannedSnapshot: body.plannedSnapshot ?? null,
-    completed_at: admin.firestore.FieldValue.serverTimestamp(),
+    completed_at: FieldValue.serverTimestamp(),
   });
 
   // 2. Exercise history + last performance + 1RM per exercise
@@ -592,12 +592,12 @@ router.post("/workout/complete", async (req, res) => {
     batch.set(
       historyRef,
       {
-        entries: admin.firestore.FieldValue.arrayUnion({
+        entries: FieldValue.arrayUnion({
           date: completionDate,
           sets: exercise.sets ?? [],
           completionId,
         }),
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -613,7 +613,7 @@ router.post("/workout/complete", async (req, res) => {
       sets: exercise.sets ?? [],
       completionId,
       estimate1RM: bestEstimate1RM > 0 ? Math.round(bestEstimate1RM * 100) / 100 : existingEstimate,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
   }
 
@@ -637,7 +637,7 @@ router.post("/workout/complete", async (req, res) => {
       lastActivityDate: completionDate,
       flameLevel,
     },
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   await batch.commit();
@@ -676,7 +676,7 @@ router.get("/workout/sessions", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const limit = 20;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("sessionHistory")
@@ -855,7 +855,7 @@ router.post("/workout/session/checkpoint", async (req, res) => {
       ...body,
       userId: auth.userId,
       savedAt: new Date().toISOString(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
 
   res.json({ data: { saved: true } });

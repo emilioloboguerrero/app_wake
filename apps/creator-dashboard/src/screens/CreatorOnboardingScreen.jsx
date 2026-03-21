@@ -2,18 +2,25 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../utils/apiClient';
-import profilePictureService from '../services/profilePictureService';
 import { GlowingEffect } from '../components/ui';
+import { ASSET_BASE } from '../config/assets';
 import './CreatorOnboardingScreen.css';
 
 // ─── Constants ──────────────────────────────────────────────────
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 6;
+
+// Horizontal winding path for the background progress line
+const PATH_D =
+  'M 0,450 C 120,450 180,250 330,250 C 480,250 540,550 690,550 C 840,550 900,300 1050,300 C 1200,300 1260,500 1400,500';
+
+const easeStandard = (t) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 const DISCIPLINE_OPTIONS = [
   {
     value: 'training',
     label: 'Entrenamiento',
-    sub: 'Programas de ejercicio, rutinas, fuerza, cardio',
+
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M6 4v16M18 4v16M3 8h3M18 8h3M3 16h3M18 16h3M6 12h12"
@@ -24,7 +31,7 @@ const DISCIPLINE_OPTIONS = [
   {
     value: 'nutrition',
     label: 'Nutrición',
-    sub: 'Planes alimenticios, recetas, hábitos',
+
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10M12 2c2.5 0 5 5 5 10s-2.5 10-5 10M12 2C9.5 2 7 7 7 12s2.5 10 5 10M2 12h20"
@@ -35,7 +42,7 @@ const DISCIPLINE_OPTIONS = [
   {
     value: 'both',
     label: 'Ambos',
-    sub: 'Transformación completa, cuerpo y mente',
+
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
@@ -48,8 +55,7 @@ const DISCIPLINE_OPTIONS = [
 const DELIVERY_OPTIONS = [
   {
     value: 'groups',
-    label: 'Grupos',
-    sub: 'Cursos y programas que múltiples clientes acceden',
+    label: 'Programas generales',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
@@ -60,7 +66,7 @@ const DELIVERY_OPTIONS = [
   {
     value: 'one_on_one',
     label: 'Uno a uno',
-    sub: 'Acompañamiento personalizado a cada cliente',
+
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"
@@ -71,7 +77,7 @@ const DELIVERY_OPTIONS = [
   {
     value: 'both',
     label: 'Ambos',
-    sub: 'Una combinación de los dos modelos',
+
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
@@ -97,7 +103,6 @@ const CreatorOnboardingScreen = () => {
   const [step,        setStep]        = useState(0);
   const [direction,   setDirection]   = useState('forward');
   const [isAnimating, setIsAnimating] = useState(false);
-  const [stepKey,     setStepKey]     = useState(0);
 
   // Collected data
   const [collected, setCollected] = useState({
@@ -107,23 +112,50 @@ const CreatorOnboardingScreen = () => {
     howTheyFoundUs:      '',
   });
 
-  // Profile picture
-  const [picPreview,  setPicPreview]  = useState(null);
-  const [picFile,     setPicFile]     = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadPct,   setUploadPct]   = useState(0);
-
   // Submission
   const [isCompleting, setIsCompleting] = useState(false);
   const [error,        setError]        = useState(null);
 
-  const fileInputRef = useRef(null);
+  // SVG progress path
+  const progressPathRef = useRef(null);
+  const [pathLength, setPathLength] = useState(0);
+  const [tipPoint, setTipPoint] = useState({ x: 0, y: 450 });
+  const animTipRef = useRef(null);
+
   const textareaRef  = useRef(null);
   const animTimerRef = useRef(null);
 
+  // Measure SVG path on mount
   useEffect(() => {
-    return () => { if (animTimerRef.current) clearTimeout(animTimerRef.current); };
+    if (progressPathRef.current) {
+      const len = progressPathRef.current.getTotalLength();
+      setPathLength(len);
+    }
+    return () => {
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      if (animTipRef.current) cancelAnimationFrame(animTipRef.current);
+    };
   }, []);
+
+  // ── Tip animation ────────────────────────────────────────────
+  const animateTip = useCallback((fromStep, toStep) => {
+    if (animTipRef.current) cancelAnimationFrame(animTipRef.current);
+    if (!progressPathRef.current || !pathLength) return;
+    const startTime = performance.now();
+    const duration = 700;
+    const tick = (now) => {
+      const t = Math.min((now - startTime) / duration, 1);
+      const eased = easeStandard(t);
+      const currentStep = fromStep + (toStep - fromStep) * eased;
+      const drawn = pathLength * (currentStep / TOTAL_STEPS);
+      try {
+        const pt = progressPathRef.current.getPointAtLength(drawn);
+        setTipPoint({ x: pt.x, y: pt.y });
+      } catch (_) { /* path not ready */ }
+      if (t < 1) animTipRef.current = requestAnimationFrame(tick);
+    };
+    animTipRef.current = requestAnimationFrame(tick);
+  }, [pathLength]);
 
   // ── Navigation ────────────────────────────────────────────────
   const goToStep = useCallback((next, dir) => {
@@ -131,12 +163,12 @@ const CreatorOnboardingScreen = () => {
     setDirection(dir);
     setIsAnimating(true);
     setError(null);
+    animateTip(step, next);
     animTimerRef.current = setTimeout(() => {
       setStep(next);
-      setStepKey(k => k + 1);
       setIsAnimating(false);
     }, 380);
-  }, [isAnimating]);
+  }, [isAnimating, step, animateTip]);
 
   const goNext = useCallback(() => {
     if (step < TOTAL_STEPS - 1) goToStep(step + 1, 'forward');
@@ -145,36 +177,6 @@ const CreatorOnboardingScreen = () => {
   const goBack = useCallback(() => {
     if (step > 0) goToStep(step - 1, 'back');
   }, [step, goToStep]);
-
-  // ── Profile picture ──────────────────────────────────────────
-  const readFile = (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    setPicFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setPicPreview(reader.result);
-    reader.readAsDataURL(file);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    readFile(e.dataTransfer?.files?.[0]);
-  };
-
-  const handleProfileNext = async () => {
-    if (!picFile) { goNext(); return; }
-    setIsUploading(true);
-    setUploadPct(0);
-    setError(null);
-    try {
-      await profilePictureService.uploadProfilePicture(user.uid, picFile, p => setUploadPct(p));
-      goNext();
-    } catch {
-      setError('No pudimos subir la foto. Puedes continuar sin ella.');
-    } finally {
-      setIsUploading(false);
-      setUploadPct(0);
-    }
-  };
 
   // ── Complete ─────────────────────────────────────────────────
   const handleComplete = async () => {
@@ -204,7 +206,7 @@ const CreatorOnboardingScreen = () => {
   };
 
   // ── Derived ──────────────────────────────────────────────────
-  const showBack = step >= 1 && step <= 5;
+  const showBack = step >= 1 && step <= 4;
 
   const stepPanelClass = `ob-step-panel ${isAnimating
     ? `ob-step-panel--exit-${direction}`
@@ -221,13 +223,12 @@ const CreatorOnboardingScreen = () => {
       <div className="ob-welcome-inner">
         <div className="ob-welcome-logo">
           <img
-            src="https://storage.googleapis.com/wolf-20b8b.appspot.com/app_resources/wake-logo-new.png"
+            src={`${ASSET_BASE}wake-logo-new.png`}
             alt="Wake"
             className="ob-welcome-logo-img"
           />
         </div>
-        <h1 className="ob-welcome-title">Tu negocio de fitness,<br />sin fricción.</h1>
-        <p className="ob-welcome-sub">Configura tu espacio en menos de 2 minutos.</p>
+        <h1 className="ob-welcome-title">Qué bacano tenerte acá.</h1>
         <button className="ob-cta ob-cta--primary" onClick={goNext}>
           Empecemos →
         </button>
@@ -235,79 +236,12 @@ const CreatorOnboardingScreen = () => {
     </div>
   );
 
-  // ── Step 1: Foto de perfil ───────────────────────────────────
-  const StepProfilePic = () => (
-    <div className="ob-step ob-step--center">
-      <h2 className="ob-step-title">Tu foto de perfil</h2>
-      <p className="ob-step-sub">Tu cara conecta con tus clientes. No es obligatoria.</p>
-
-      <div className="ob-avatar-card">
-        <GlowingEffect spread={28} borderWidth={1} />
-        <div
-          className={`ob-avatar-zone${picPreview ? ' ob-avatar-zone--filled' : ''}`}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={e => e.preventDefault()}
-          onDrop={handleDrop}
-          role="button"
-          tabIndex={0}
-          aria-label="Subir foto de perfil"
-          onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
-        >
-          {picPreview ? (
-            <img src={picPreview} alt="Tu foto de perfil" className="ob-avatar-img" />
-          ) : (
-            <div className="ob-avatar-placeholder" aria-hidden>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z"
-                  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span>Haz clic o arrastra aquí</span>
-            </div>
-          )}
-          {isUploading && (
-            <div className="ob-avatar-progress" aria-hidden>
-              <div className="ob-avatar-progress-bar" style={{ width: `${uploadPct}%` }} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={e => readFile(e.target.files?.[0])}
-        style={{ display: 'none' }}
-      />
-
-      {error && step === 1 && (
-        <p className="ob-inline-error" role="alert">{error}</p>
-      )}
-
-      <button
-        className={`ob-cta ob-cta--primary${isUploading ? ' ob-cta--loading' : ''}`}
-        onClick={handleProfileNext}
-        disabled={isUploading}
-      >
-        {isUploading
-          ? <><span className="ob-spinner" aria-hidden /> Subiendo {Math.round(uploadPct)}%</>
-          : error && step === 1
-            ? 'Reintentar →'
-            : 'Continuar →'}
-      </button>
-      <button className="ob-skip-link" onClick={() => { setError(null); goNext(); }}>
-        {error && step === 1 ? 'Continuar sin foto →' : 'Agrégala después →'}
-      </button>
-    </div>
-  );
-
-  // ── Steps 2–3: Choice cards ──────────────────────────────────
-  const StepChoiceCards = ({ title, sub, options, field }) => {
+  // ── Steps 1–2: Choice cards ──────────────────────────────────
+  const StepChoiceCards = ({ title, options, field }) => {
     const selected = collected[field];
     return (
       <div className="ob-step ob-step--center">
         <h2 className="ob-step-title">{title}</h2>
-        {sub && <p className="ob-step-sub">{sub}</p>}
         <div className="ob-choice-grid">
           {options.map((opt, i) => {
             const isSelected = selected === opt.value;
@@ -320,10 +254,7 @@ const CreatorOnboardingScreen = () => {
               >
                 <GlowingEffect disabled={!isSelected} spread={24} borderWidth={1} />
                 <span className="ob-choice-icon">{opt.icon}</span>
-                <span className="ob-choice-text">
-                  <span className="ob-choice-label">{opt.label}</span>
-                  <span className="ob-choice-sub">{opt.sub}</span>
-                </span>
+                <span className="ob-choice-label">{opt.label}</span>
                 {isSelected && (
                   <span className="ob-choice-check" aria-hidden>
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -353,7 +284,6 @@ const CreatorOnboardingScreen = () => {
     return (
       <div className="ob-step ob-step--center">
         <h2 className="ob-step-title">¿Cuántos clientes tienes ahora?</h2>
-        <p className="ob-step-sub">Un número aproximado está perfecto.</p>
         <div className="ob-chip-row">
           {CLIENT_RANGE_OPTIONS.map(opt => (
             <button
@@ -380,7 +310,6 @@ const CreatorOnboardingScreen = () => {
   const StepHowFound = () => (
     <div className="ob-step ob-step--center">
       <h2 className="ob-step-title">¿Cómo llegaste a Wake?</h2>
-      <p className="ob-step-sub">Es opcional. Nos ayuda a crecer como tú.</p>
       <textarea
         ref={textareaRef}
         className="ob-textarea"
@@ -426,27 +355,20 @@ const CreatorOnboardingScreen = () => {
 
   const renderStep = () => {
     switch (step) {
-      case 0: return <StepWelcome />;
-      case 1: return <StepProfilePic />;
-      case 2: return (
-        <StepChoiceCards
-          title="¿En qué te especializas?"
-          sub="Esto define cómo organizamos tu espacio."
-          options={DISCIPLINE_OPTIONS}
-          field="creatorDiscipline"
-        />
-      );
-      case 3: return (
-        <StepChoiceCards
-          title="¿Cómo trabajas con tus clientes?"
-          sub="Puedes cambiar esto más adelante."
-          options={DELIVERY_OPTIONS}
-          field="creatorDeliveryType"
-        />
-      );
-      case 4: return <StepClientRange />;
-      case 5: return <StepHowFound />;
-      case 6: return <StepFounderNote />;
+      case 0: return StepWelcome();
+      case 1: return StepChoiceCards({
+        title: '¿En qué te especializas?',
+        options: DISCIPLINE_OPTIONS,
+        field: 'creatorDiscipline',
+      });
+      case 2: return StepChoiceCards({
+        title: '¿Cómo trabajas con tus clientes?',
+        options: DELIVERY_OPTIONS,
+        field: 'creatorDeliveryType',
+      });
+      case 3: return StepClientRange();
+      case 4: return StepHowFound();
+      case 5: return StepFounderNote();
       default: return null;
     }
   };
@@ -454,6 +376,32 @@ const CreatorOnboardingScreen = () => {
   // ─── Render ──────────────────────────────────────────────────
   return (
     <div className="ob-root">
+      {/* SVG winding progress line */}
+      <svg
+        className="ob-svg-track"
+        viewBox="0 0 1400 900"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <path d={PATH_D} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" strokeLinecap="round" />
+        <path
+          ref={progressPathRef}
+          d={PATH_D}
+          fill="none"
+          stroke={step >= TOTAL_STEPS - 1 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.25)'}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeDasharray={pathLength}
+          strokeDashoffset={pathLength > 0 ? pathLength - pathLength * (step / TOTAL_STEPS) : pathLength}
+          style={{ transition: 'stroke-dashoffset 700ms cubic-bezier(0.4,0,0.2,1), stroke 600ms ease' }}
+        />
+        {step > 0 && pathLength > 0 && (
+          <>
+            <circle cx={tipPoint.x} cy={tipPoint.y} r="8" fill="rgba(255,255,255,0.08)" />
+            <circle cx={tipPoint.x} cy={tipPoint.y} r="3" fill="rgba(255,255,255,0.6)" />
+          </>
+        )}
+      </svg>
+
       {/* Top bar: back + progress dots */}
       <div className="ob-topbar">
         {showBack && (
@@ -480,7 +428,7 @@ const CreatorOnboardingScreen = () => {
       </div>
 
       {/* Step panel — absolutely positioned for slide transitions */}
-      <div className={stepPanelClass} key={stepKey}>
+      <div className={stepPanelClass} key={step}>
         {renderStep()}
       </div>
 

@@ -1,16 +1,15 @@
 import { Router } from "express";
 import type { Request } from "express";
-import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import * as functions from "firebase-functions";
 import { MercadoPagoConfig, Preference, Payment, PreApproval } from "mercadopago";
+import { db, FieldValue } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -252,8 +251,8 @@ router.post("/payments/subscription", async (req, res) => {
       currency_id: "COP",
       management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
       next_billing_date: nextBillingDate,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     }, { merge: true });
 
   res.json({ data: { init_point: result.init_point, subscription_id: result.id } });
@@ -365,7 +364,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
         reason: (preapprovalData?.reason as string | null) ?? null,
         management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${preapprovalId}`,
         next_billing_date: nextPaymentDate,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
         last_action: webhookAction,
       };
 
@@ -376,7 +375,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       if (payerEmail) updateData.payer_email = payerEmail;
 
       if (preapprovalData?.status === "cancelled") {
-        updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+        updateData.cancelled_at = FieldValue.serverTimestamp();
       }
 
       await db
@@ -489,7 +488,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       });
     } else {
       await processedRef.set({
-        processed_at: admin.firestore.FieldValue.serverTimestamp(),
+        processed_at: FieldValue.serverTimestamp(),
         status: "error",
         error_type: "payment_fetch_failed",
       });
@@ -505,7 +504,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       return;
     }
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: paymentData?.status || "unknown",
     });
     res.status(200).send("OK");
@@ -517,7 +516,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const doc = await tx.get(processedRef);
     if (doc.exists && doc.data()?.status === "approved") return true;
     tx.set(processedRef, {
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "processing",
       payment_id: paymentId,
     }, { merge: true });
@@ -532,7 +531,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const externalReference = paymentData.external_reference;
   if (!externalReference) {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "error",
       error_type: "missing_external_reference",
     });
@@ -545,7 +544,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     parsed = parseExternalReference(externalReference);
   } catch {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "error",
       error_type: "invalid_external_reference",
     });
@@ -560,7 +559,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const userDoc = await db.collection("users").doc(userId).get();
   if (!userDoc.exists) {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "error", error_type: "user_not_found",
     });
     res.status(200).send("OK");
@@ -570,7 +569,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const courseDoc = await db.collection("courses").doc(courseId).get();
   if (!courseDoc.exists) {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "error", error_type: "course_not_found",
     });
     res.status(200).send("OK");
@@ -617,12 +616,12 @@ router.post("/payments/webhook", async (req: Request, res) => {
         status: "authorized",
         last_payment_id: paymentId,
         last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       }, { merge: true });
     }
 
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
       payment_type: paymentType, courseTitle, state: "completed",
     });
@@ -633,7 +632,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   if (existingPurchase && !isSubscription) {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "already_owned", userId, courseId, state: "already_owned",
     });
     res.status(200).send("OK");
@@ -643,7 +642,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   // New purchase
   if (!courseAccessDuration) {
     await processedRef.set({
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "error", error_type: "missing_access_duration",
     });
     res.status(200).send("OK");
@@ -692,14 +691,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
           transaction_amount: paymentData.transaction_amount || null,
           currency_id: paymentData.currency_id || null,
           management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
     }
 
     tx.set(processedRef, {
-      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      processed_at: FieldValue.serverTimestamp(),
       status: "approved", userId, courseId, isSubscription, isRenewal: false,
       payment_type: paymentType, courseTitle, state: "completed",
     }, { merge: true });
@@ -739,8 +738,8 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
   await subscriptionRef.set({
     status: "cancelled",
     last_action: "cancel",
-    cancelled_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    cancelled_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
   // Record cancellation feedback if provided (validate size)
@@ -763,7 +762,7 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
         answers,
         source: (survey.source as string) ?? "in_app_cancel_flow_v1",
         statusAfter: "cancelled",
-        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+        submittedAt: FieldValue.serverTimestamp(),
       };
 
       const courseId =

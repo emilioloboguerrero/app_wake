@@ -1,8 +1,6 @@
 import type { Request } from "express";
-import * as admin from "firebase-admin";
+import { db } from "../firestore.js";
 import { WakeApiServerError } from "../errors.js";
-
-const db = admin.firestore();
 
 // TODO: Configure Firestore TTL policies on `rate_limit_windows` and
 // `rate_limit_first_party` collections using the `expires_at` field.

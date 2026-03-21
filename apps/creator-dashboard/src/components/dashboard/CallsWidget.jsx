@@ -12,7 +12,6 @@ function WidgetEmpty({ message }) {
 export default function CallsWidget({ bookingsQuery, callCountThisWeek, nextCallTime }) {
   return (
     <>
-      <GlowingEffect />
       <div className="ds-widget-inner">
         <WidgetTitle>Llamadas esta semana</WidgetTitle>
         {bookingsQuery.isLoading ? (

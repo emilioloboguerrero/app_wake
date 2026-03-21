@@ -12,7 +12,6 @@ function WidgetEmpty({ message }) {
 export default function AdherenceWidget({ adherenceQuery, overallAdherence, byProgram }) {
   return (
     <>
-      <GlowingEffect />
       <div className="ds-widget-inner ds-widget-inner--adherence">
         <WidgetTitle>Adherencia</WidgetTitle>
         {adherenceQuery.isLoading ? (

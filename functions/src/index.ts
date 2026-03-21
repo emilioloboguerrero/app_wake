@@ -12,11 +12,8 @@ import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {defineSecret} from "firebase-functions/params";
 import * as webpush from "web-push";
+import "./init.js";
 import {app} from "./api/app.js";
-
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
 
 const db = admin.firestore();
 

@@ -1,13 +1,13 @@
 import { Router } from "express";
-import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import { db, FieldValue, Timestamp } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 // GET /nutrition/diary
 router.get("/nutrition/diary", async (req, res) => {
@@ -21,7 +21,7 @@ router.get("/nutrition/diary", async (req, res) => {
   if (startDate) validateDateFormat(startDate, "startDate");
   if (endDate) validateDateFormat(endDate, "endDate");
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("diary");
@@ -69,8 +69,8 @@ router.post("/nutrition/diary", async (req, res) => {
     .collection("diary")
     .add({
       ...body,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -109,7 +109,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
 
   await docRef.update({
     ...updates,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -222,8 +222,8 @@ router.get("/nutrition/foods/search", async (req, res) => {
   cacheRef.set({
     results,
     query: q.trim().toLowerCase(),
-    cached_at: admin.firestore.FieldValue.serverTimestamp(),
-    expires_at: admin.firestore.Timestamp.fromDate(thirtyDays),
+    cached_at: FieldValue.serverTimestamp(),
+    expires_at: Timestamp.fromDate(thirtyDays),
   }).catch(() => {});
 
   res.json({ data: results });
@@ -340,7 +340,7 @@ router.get("/nutrition/saved-foods", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const limit = 200;
 
-  let query: admin.firestore.Query = db
+  let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("saved_foods")
@@ -409,7 +409,7 @@ router.post("/nutrition/saved-foods", async (req, res) => {
     .collection("saved_foods")
     .add({
       ...body,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id } });
@@ -443,7 +443,7 @@ router.get("/nutrition/assignment", async (req, res) => {
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
   if (req.query.date) validateDateFormat(date, "date");
 
-  let assignmentQuery: admin.firestore.Query = db
+  let assignmentQuery: Query = db
     .collection("nutrition_assignments")
     .where("userId", "==", auth.userId)
     .where("status", "==", "active");

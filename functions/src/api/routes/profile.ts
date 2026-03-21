@@ -1,12 +1,12 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import { db, FieldValue } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
-const db = admin.firestore();
 
 // GET /users/me
 router.get("/users/me", async (req, res) => {
@@ -41,6 +41,9 @@ router.get("/users/me", async (req, res) => {
       pinnedTrainingCourseId: data.pinnedTrainingCourseId ?? null,
       pinnedNutritionAssignmentId: data.pinnedNutritionAssignmentId ?? null,
       createdAt: data.created_at ?? null,
+      webOnboardingCompleted: data.webOnboardingCompleted ?? false,
+      profileCompleted: data.profileCompleted ?? false,
+      onboardingCompleted: data.onboardingCompleted ?? false,
     },
   });
 });
@@ -55,14 +58,21 @@ router.patch("/users/me", async (req, res) => {
     "height", "weight", "birthDate", "phoneNumber",
     "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
+    "webOnboardingCompleted",
+    "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
+    "howTheyFoundUs", "creatorOnboardingData",
   ];
 
   const stringFields = new Set([
     "displayName", "username", "country", "city", "gender",
     "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
+    "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
+    "howTheyFoundUs",
   ]);
   const numberFields = new Set(["height", "weight"]);
+  const booleanFields = new Set(["webOnboardingCompleted"]);
+  const objectFields = new Set(["creatorOnboardingData"]);
 
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {
@@ -84,6 +94,20 @@ router.patch("/users/me", async (req, res) => {
             `${field} debe ser un número entre 0 y 1000`, field
           );
         }
+      } else if (booleanFields.has(field)) {
+        if (typeof value !== "boolean") {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un booleano`, field
+          );
+        }
+      } else if (objectFields.has(field)) {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un objeto`, field
+          );
+        }
       }
 
       if (field === "weight") {
@@ -100,7 +124,7 @@ router.patch("/users/me", async (req, res) => {
     );
   }
 
-  updates.updated_at = admin.firestore.FieldValue.serverTimestamp();
+  updates.updated_at = FieldValue.serverTimestamp();
   await db.collection("users").doc(auth.userId).update(updates);
 
   res.json({ data: { userId: auth.userId, updatedAt: new Date().toISOString() } });
@@ -165,7 +189,7 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
 
   await db.collection("users").doc(auth.userId).update({
     profile_picture_url: publicUrl,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { profilePictureUrl: publicUrl } });
@@ -244,7 +268,7 @@ router.patch("/creator/profile", async (req, res) => {
 
   await db.collection("users").doc(auth.userId).update({
     cards,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updatedAt: new Date().toISOString() } });

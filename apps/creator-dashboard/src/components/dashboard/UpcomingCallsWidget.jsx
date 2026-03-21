@@ -46,7 +46,6 @@ function CallItem({ booking }) {
 export default function UpcomingCallsWidget({ bookingsQuery, upcomingBookings }) {
   return (
     <>
-      <GlowingEffect />
       <div className="ds-widget-inner">
         <WidgetTitle>Proximas llamadas</WidgetTitle>
         {bookingsQuery.isLoading ? (

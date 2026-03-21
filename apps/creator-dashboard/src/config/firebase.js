@@ -2,10 +2,10 @@
 // Reuses the same Firebase project as the mobile app
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 // Production Firebase project: wolf-20b8b
@@ -39,8 +39,10 @@ if (firebaseConfig.apiKey === 'TODO') {
 const app = initializeApp(firebaseConfig);
 
 // Initialize App Check immediately after app, before any other service is used
+// Skip in local dev — reCAPTCHA Enterprise is only configured for production
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY ?? '';
-const appCheck = RECAPTCHA_SITE_KEY
+const isDev = import.meta.env.DEV;
+const appCheck = (RECAPTCHA_SITE_KEY && !isDev)
   ? initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
@@ -54,6 +56,15 @@ const storage = getStorage(app);
 
 // Initialize Functions (us-central1 to match deployed functions)
 const functions = getFunctions(app, 'us-central1');
+
+// Connect to emulators in local dev — skip when pointing at a real project (staging/production)
+const useEmulators = import.meta.env.DEV && !firebaseEnv;
+if (useEmulators) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+}
 
 // Export Firebase services
 export { auth, firestore, storage, functions, appCheck };

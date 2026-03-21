@@ -51,8 +51,6 @@ const LoginScreen = () => {
       } else {
         navigate('/lab', { replace: true });
       }
-    } else if (!isCreator) {
-      window.location.href = '/';
     }
   }, [user, loading, userRole, isCreator, webOnboardingCompleted, navigate, location.pathname]);
 

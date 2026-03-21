@@ -809,7 +809,7 @@ const ProgramsAndClientsScreen = () => {
     refetch: refetchClients,
   } = useQuery({
     queryKey: ['clients', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/clients'),
+    queryFn: () => apiClient.get('/creator/clients'),
     ...cacheConfig.userProfile,
     enabled: !!user?.uid,
     select: (res) => res?.data ?? [],
@@ -824,7 +824,7 @@ const ProgramsAndClientsScreen = () => {
     refetch: refetchDetail,
   } = useQuery({
     queryKey: ['client', selectedClientId],
-    queryFn: () => apiClient.get('/clients/' + selectedClientId),
+    queryFn: () => apiClient.get('/creator/clients/' + selectedClientId),
     ...cacheConfig.userProfile,
     enabled: !!selectedClientId,
     select: (res) => res?.data ?? null,

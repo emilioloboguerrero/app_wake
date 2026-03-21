@@ -77,6 +77,16 @@
   to   { transform: translate(-18px,26px) scale(1.06); }
 }
 
+/* ─── SVG winding progress line ───────────────────────────────── */
+.ob-svg-track {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* ─── Top bar (back + dots) ──────────────────────────────────── */
 .ob-topbar {
   position: fixed;
@@ -239,7 +249,7 @@
   line-height: 1.15;
   color: var(--text-primary, #fff);
   text-align: center;
-  margin: 0 0 10px;
+  margin: 0 0 32px;
   animation: ob-enter-up 0.45s cubic-bezier(0.22,1,0.36,1) both;
 }
 
@@ -277,7 +287,7 @@
 }
 
 .ob-welcome-logo-img {
-  height: 80px;
+  height: 120px;
   width: auto;
   object-fit: contain;
   display: block;
@@ -289,7 +299,7 @@
   letter-spacing: -0.04em;
   line-height: 1.12;
   color: var(--text-primary, #fff);
-  margin: 0 0 14px;
+  margin: 0 0 60px;
   animation: ob-enter-up 0.6s 0.07s cubic-bezier(0.22,1,0.36,1) both;
 }
 

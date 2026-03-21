@@ -12,7 +12,6 @@ function WidgetEmpty({ message }) {
 export default function SessionsWidget({ adherenceQuery, sessionsCompleted }) {
   return (
     <>
-      <GlowingEffect />
       <div className="ds-widget-inner">
         <WidgetTitle>Sesiones completadas</WidgetTitle>
         {adherenceQuery.isLoading ? (

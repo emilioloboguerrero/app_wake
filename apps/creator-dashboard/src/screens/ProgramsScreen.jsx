@@ -295,14 +295,14 @@ const GrupalesTab = ({ userId }) => {
 
   const { data: programs = [], isLoading, error } = useQuery({
     queryKey: ['programs', 'creator', userId],
-    queryFn: () => apiClient.get('/programs').then((r) => r.data),
+    queryFn: () => apiClient.get('/creator/programs').then((r) => r.data),
     enabled: !!userId,
     ...cacheConfig.programStructure,
   });
 
   const createMutation = useMutation({
     mutationFn: ({ title, description }) =>
-      apiClient.post('/programs', { title, description }).then((r) => r.data),
+      apiClient.post('/creator/programs', { title, description }).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', userId] });
       setShowModal(false);
@@ -375,7 +375,7 @@ const IndividualesTab = ({ userId }) => {
 
   const { data: plans = [], isLoading, error } = useQuery({
     queryKey: ['plans', 'creator', userId],
-    queryFn: () => apiClient.get('/plans').then((r) => r.data),
+    queryFn: () => apiClient.get('/creator/plans').then((r) => r.data),
     enabled: !!userId,
     ...cacheConfig.programStructure,
   });
