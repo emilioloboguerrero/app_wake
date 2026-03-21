@@ -263,23 +263,23 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
   3. Booked calls: "Las llamadas agendadas aparecen directamente en el calendario."
 
 #### 2E. Profile Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/ProfileScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] Profile load: FullScreenError if profile query fails.
-- [ ] Profile picture upload: Toast on failure ("No pudimos subir la foto. Intenta con otra imagen o revisa tu conexion.").
-- [ ] Username check: InlineError when taken ("Ese nombre de usuario ya esta en uso."). Success indicator when available ("Disponible").
-- [ ] Save failures: Toast ("No pudimos guardar los cambios.").
+- [x] Profile load: FullScreenError if profile query fails.
+- [x] Profile picture upload: Toast on failure ("No pudimos subir la foto. Intenta con otra imagen o revisa tu conexion.").
+- [x] Username check: InlineError when taken ("Ese nombre de usuario ya esta en uso."). Success indicator when available ("Disponible").
+- [x] Save failures: Toast ("No pudimos guardar los cambios.").
 
 **Tasks — Copy Pass:**
-- [ ] Section titles: "Tu foto", "Informacion basica", "Ubicacion", "Tu bio", "Instagram", "Navegacion"
-- [ ] Username field helper: "Este es tu link unico: wake.co/{username}"
-- [ ] Instagram section: "Conecta tu Instagram para mostrar tu feed en tu perfil publico."
-- [ ] Nav preferences: "Escoge que secciones quieres ver en tu menu. Puedes cambiar esto cuando quieras."
+- [x] Section titles: "Tu foto", "Informacion basica", "Ubicacion", "Tu bio", "Instagram", "Navegacion"
+- [x] Username field helper: "Este es tu link unico: wake.co/{username}"
+- [x] Instagram section: "Conecta tu Instagram para mostrar tu feed en tu perfil publico."
+- [x] Nav preferences: "Escoge que secciones quieres ver en tu menu. Puedes cambiar esto cuando quieras."
 
 **Tasks — Tutorial:**
-- [ ] ProfileScreen (screenKey: "profile"):
+- [x] ProfileScreen (screenKey: "profile"):
   1. Profile picture: "Tu foto aparece en tu perfil publico y en el panel de tus clientes."
   2. Username: "Tu nombre de usuario es tu link unico. Compartelo con tus clientes."
   3. Instagram: "Conecta tu feed de Instagram para darle vida a tu perfil."

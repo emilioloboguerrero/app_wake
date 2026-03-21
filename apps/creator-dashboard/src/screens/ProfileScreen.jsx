@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import Input from '../components/Input';
-import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
+import { GlowingEffect, ShimmerSkeleton, SpotlightTutorial } from '../components/ui';
+import { InlineError, FullScreenError } from '../components/ui/ErrorStates';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import profilePictureService from '../services/profilePictureService';
 import userPreferencesService from '../services/userPreferencesService';
@@ -18,13 +19,36 @@ import logger from '../utils/logger';
 import InstagramCarousel from '../components/creator/InstagramCarousel';
 import './ProfileScreen.css';
 
+const TUTORIAL_STEPS = [
+  {
+    selector: '[data-tutorial="profile-photo"]',
+    title: 'Tu foto',
+    body: 'Tu foto aparece en tu perfil publico y en el panel de tus clientes.',
+  },
+  {
+    selector: '[data-tutorial="profile-username"]',
+    title: 'Tu usuario',
+    body: 'Tu nombre de usuario es tu link unico. Compartelo con tus clientes.',
+  },
+  {
+    selector: '[data-tutorial="profile-instagram"]',
+    title: 'Instagram',
+    body: 'Conecta tu feed de Instagram para darle vida a tu perfil.',
+  },
+  {
+    selector: '[data-tutorial="profile-nav"]',
+    title: 'Navegacion',
+    body: 'Puedes esconder secciones que no uses para mantener tu menu limpio.',
+  },
+];
+
 const ProfileScreen = () => {
   const { user, refreshUserData, isCreator } = useAuth();
   const navigate = useNavigate();
   const queryClientHook = useQueryClient();
   const { showToast } = useToast();
 
-  const { data: userData, isLoading: loading } = useQuery({
+  const { data: userData, isLoading: loading, isError: profileError, refetch: refetchProfile } = useQuery({
     queryKey: queryKeys.user.detail(user?.uid),
     queryFn: () => apiClient.get('/users/me').then((r) => r.data),
     enabled: !!user?.uid,
@@ -46,6 +70,7 @@ const ProfileScreen = () => {
   const [birthDate, setBirthDate] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
+  const [bio, setBio] = useState('');
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
 
@@ -202,6 +227,7 @@ const ProfileScreen = () => {
     const initialHeight = data?.height || '';
     const initialWeight = data?.weight || '';
     const initialBirthDate = data?.birthDate || '';
+    const initialBio = data?.bio || '';
 
     setDisplayName(initialDisplayName);
     setName(initialName);
@@ -213,6 +239,7 @@ const ProfileScreen = () => {
     setHeight(initialHeight);
     setWeight(initialWeight);
     setBirthDate(initialBirthDate);
+    setBio(initialBio);
 
     setOriginalValues({
       displayName: initialDisplayName,
@@ -224,6 +251,7 @@ const ProfileScreen = () => {
       height: initialHeight,
       weight: initialWeight,
       birthDate: initialBirthDate,
+      bio: initialBio,
       profilePictureUrl: data?.profilePictureUrl || null,
     });
 
@@ -278,11 +306,7 @@ const ProfileScreen = () => {
       showToast('Foto actualizada con éxito', 'success');
     } catch (error) {
       logger.error('Error uploading profile picture:', error);
-      let errorMessage = 'Error al subir la foto. Intenta de nuevo.';
-      if (error.code === 'storage/unauthorized') errorMessage = 'Sin permiso para subir archivos.';
-      else if (error.code === 'storage/canceled') errorMessage = 'Subida cancelada.';
-      else if (error.message) errorMessage = error.message;
-      showToast(errorMessage, 'error');
+      showToast('No pudimos subir la foto. Intenta con otra imagen o revisa tu conexion.', 'error');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -318,6 +342,7 @@ const ProfileScreen = () => {
       height !== originalValues.height ||
       weight !== originalValues.weight ||
       birthDate !== originalValues.birthDate ||
+      bio !== originalValues.bio ||
       profilePicture !== null
     );
   };
@@ -334,6 +359,7 @@ const ProfileScreen = () => {
     setHeight(originalValues.height);
     setWeight(originalValues.weight);
     setBirthDate(originalValues.birthDate);
+    setBio(originalValues.bio);
     setProfilePicture(null);
     setProfilePicturePreview(originalValues.profilePictureUrl);
 
@@ -370,6 +396,8 @@ const ProfileScreen = () => {
       updateData.weight = parseFloat(snapshot.weight) || null;
     if (snapshot.birthDate && snapshot.birthDate !== (userData?.birthDate || ''))
       updateData.birthDate = snapshot.birthDate;
+    if (snapshot.bio !== undefined && snapshot.bio.trim() !== (userData?.bio || ''))
+      updateData.bio = snapshot.bio.trim();
 
     if (Object.keys(updateData).length === 0) return;
 
@@ -384,7 +412,7 @@ const ProfileScreen = () => {
 
   const { trigger: autoSaveTrigger, flush: autoSaveFlush, isSaving: isAutoSaving } = useAutoSave(
     saveProfile,
-    { delay: 800, successMessage: 'Identidad guardada', errorMessage: 'No se pudo guardar' }
+    { delay: 800, successMessage: 'Cambios guardados', errorMessage: 'No pudimos guardar los cambios.' }
   );
 
   const getFormSnapshot = useCallback(() => ({
@@ -396,7 +424,8 @@ const ProfileScreen = () => {
     height,
     weight,
     birthDate,
-  }), [name, username, gender, city, country, height, weight, birthDate]);
+    bio,
+  }), [name, username, gender, city, country, height, weight, birthDate, bio]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -405,11 +434,7 @@ const ProfileScreen = () => {
       await autoSaveFlush(getFormSnapshot());
     } catch (error) {
       logger.error('Error saving profile:', error);
-      if (error?.code === 'CONFLICT' && error?.field === 'username') {
-        showToast('Ese usuario ya está tomado. Elige otro.', 'error');
-      } else {
-        showToast('Error al guardar el perfil. Intenta de nuevo.', 'error');
-      }
+      showToast('No pudimos guardar los cambios.', 'error');
     } finally {
       setSaving(false);
     }
@@ -482,6 +507,20 @@ const ProfileScreen = () => {
     );
   }
 
+  if (profileError) {
+    return (
+      <DashboardLayout screenName="Perfil">
+        <div className="profile-screen">
+          <FullScreenError
+            title="No pudimos cargar tu perfil"
+            message="Revisa tu conexion e intenta de nuevo."
+            onRetry={refetchProfile}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <DashboardLayout screenName="Perfil">
@@ -491,7 +530,7 @@ const ProfileScreen = () => {
             {/* ── Section 1: Foto de perfil ─────────────────── */}
             <div className="profile-card" style={{ animationDelay: '0ms' }}>
               <GlowingEffect />
-              <p className="profile-card__label">Foto de perfil</p>
+              <p className="profile-card__label" data-tutorial="profile-photo">Tu foto</p>
 
               <input
                 ref={fileInputRef}
@@ -561,7 +600,7 @@ const ProfileScreen = () => {
             <div className="profile-card" style={{ animationDelay: '60ms' }}>
               <GlowingEffect />
               <div className="profile-card__header">
-                <p className="profile-card__label">Identidad</p>
+                <p className="profile-card__label">Informacion basica</p>
                 {hasChanges() && (
                   <button className="profile-btn-ghost" onClick={handleCancel} disabled={saving}>
                     Cancelar
@@ -579,8 +618,9 @@ const ProfileScreen = () => {
                   />
                 </div>
 
-                <div className="profile-field">
+                <div className="profile-field" data-tutorial="profile-username">
                   <label className="profile-field__label">Usuario</label>
+                  <p className="profile-field__helper">Este es tu link unico: wake.co/{username || 'tu_usuario'}</p>
                   <div className="profile-username-wrap">
                     <Input
                       placeholder="tu_usuario"
@@ -588,9 +628,11 @@ const ProfileScreen = () => {
                       onChange={(e) => { const v = e.target.value.toLowerCase(); setUsername(v); autoSaveTrigger({ ...getFormSnapshot(), username: v }); }}
                     />
                     {isCheckingUsername && <span className="profile-username-badge profile-username-badge--checking">Verificando…</span>}
-                    {!isCheckingUsername && usernameAvailable === true && <span className="profile-username-badge profile-username-badge--ok">✓ Disponible</span>}
-                    {!isCheckingUsername && usernameAvailable === false && <span className="profile-username-badge profile-username-badge--taken">✗ No disponible</span>}
+                    {!isCheckingUsername && usernameAvailable === true && <span className="profile-username-badge profile-username-badge--ok">Disponible</span>}
                   </div>
+                  {!isCheckingUsername && usernameAvailable === false && (
+                    <InlineError message="Ese nombre de usuario ya esta en uso." field="username" />
+                  )}
                 </div>
 
                 <div className="profile-field">
@@ -645,6 +687,8 @@ const ProfileScreen = () => {
                   </div>
                 </div>
 
+                <p className="profile-section-divider">Ubicacion</p>
+
                 <div className="profile-form-row">
                   <div className="profile-form-field">
                     <label className="profile-form-label">País</label>
@@ -696,6 +740,19 @@ const ProfileScreen = () => {
                   </div>
                 </div>
 
+                <p className="profile-section-divider">Tu bio</p>
+                <div className="profile-field">
+                  <textarea
+                    className="profile-textarea"
+                    placeholder="Cuenta un poco sobre ti y tu enfoque como coach..."
+                    value={bio}
+                    onChange={(e) => { setBio(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), bio: e.target.value }); }}
+                    rows={3}
+                    maxLength={300}
+                  />
+                  <span className="profile-textarea-count">{bio.length}/300</span>
+                </div>
+
                 {isAutoSaving && !hasChanges() && (
                   <p className="profile-autosave-indicator">Guardando…</p>
                 )}
@@ -708,7 +765,7 @@ const ProfileScreen = () => {
             </div>
 
             {/* ── Section 3: Instagram ──────────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '120ms' }}>
+            <div className="profile-card" style={{ animationDelay: '120ms' }} data-tutorial="profile-instagram">
               <GlowingEffect />
               <p className="profile-card__label">Instagram</p>
 
@@ -727,7 +784,7 @@ const ProfileScreen = () => {
               ) : (
                 <div className="profile-instagram-setup">
                   <p className="profile-instagram-hint">
-                    Conecta tu Instagram para mostrar tu feed
+                    Conecta tu Instagram para mostrar tu feed en tu perfil publico.
                   </p>
                   <div className="profile-instagram-input-row">
                     <input
@@ -744,11 +801,11 @@ const ProfileScreen = () => {
               )}
             </div>
 
-            {/* ── Section 4: Navegación ─────────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '180ms' }}>
+            {/* ── Section 4: Navegacion ─────────────────────── */}
+            <div className="profile-card" style={{ animationDelay: '180ms' }} data-tutorial="profile-nav">
               <GlowingEffect />
-              <p className="profile-card__label">Navegación</p>
-              <p className="profile-card__sub">Elige qué secciones aparecen en tu menú lateral.</p>
+              <p className="profile-card__label">Navegacion</p>
+              <p className="profile-card__sub">Escoge que secciones quieres ver en tu menu. Puedes cambiar esto cuando quieras.</p>
 
               <div className="profile-nav-toggles">
                 <div className="profile-nav-toggle-row">
@@ -804,6 +861,7 @@ const ProfileScreen = () => {
 
           </div>
         </div>
+        <SpotlightTutorial screenKey="profile" steps={TUTORIAL_STEPS} />
       </DashboardLayout>
     </ErrorBoundary>
   );
