@@ -15,6 +15,7 @@ import useAutoSave from '../hooks/useAutoSave';
 import { useToast } from '../contexts/ToastContext';
 import { GetCountries, GetState, GetCity } from 'react-country-state-city';
 import logger from '../utils/logger';
+import InstagramCarousel from '../components/creator/InstagramCarousel';
 import './ProfileScreen.css';
 
 const ProfileScreen = () => {
@@ -415,12 +416,12 @@ const ProfileScreen = () => {
   };
 
   // Instagram
-  const feedId = userData?.instagramBeholdFeedId;
+  const feedId = userData?.beholdFeedId;
 
   const handleInstagramSave = async () => {
     if (!instagramInput.trim()) return;
     try {
-      await apiClient.patch('/users/me', { instagramBeholdFeedId: instagramInput.trim() });
+      await apiClient.patch('/users/me', { beholdFeedId: instagramInput.trim() });
       await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
       showToast('Instagram conectado', 'success');
     } catch (error) {
@@ -721,16 +722,12 @@ const ProfileScreen = () => {
                     </svg>
                     <span className="profile-instagram-id__text">{feedId}</span>
                   </div>
-                  <div className="profile-instagram-grid">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="profile-instagram-tile" />
-                    ))}
-                  </div>
+                  <InstagramCarousel feedId={feedId} />
                 </div>
               ) : (
                 <div className="profile-instagram-setup">
                   <p className="profile-instagram-hint">
-                    Conecta tu feed de Behold.so para mostrarlo en tu perfil público.
+                    Conecta tu Instagram para mostrar tu feed
                   </p>
                   <div className="profile-instagram-input-row">
                     <input

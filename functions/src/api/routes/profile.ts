@@ -54,11 +54,13 @@ router.patch("/users/me", async (req, res) => {
     "displayName", "username", "country", "city", "gender",
     "height", "weight", "birthDate", "phoneNumber",
     "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
+    "beholdFeedId",
   ];
 
   const stringFields = new Set([
     "displayName", "username", "country", "city", "gender",
     "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
+    "beholdFeedId",
   ]);
   const numberFields = new Set(["height", "weight"]);
 

@@ -186,25 +186,29 @@ function SortableWidget({ id, span, className, children }) {
 
 // ── Static Widget Content (used in both sortable + drag overlay) ─────────────
 
-function WidgetClients({ clientsQuery, clientCount }) {
+function WidgetClients({ revenueQuery, oneOnOne }) {
   return (
     <>
       <GlowingEffect />
       <div className="ds-widget-inner">
-        <WidgetTitle>Clientes activos</WidgetTitle>
-        {clientsQuery.isLoading ? (
+        <WidgetTitle>One-on-one</WidgetTitle>
+        {revenueQuery.isLoading ? (
           <SkeletonCard />
-        ) : clientsQuery.isError ? (
-          <WidgetEmpty message="No se pudieron cargar los clientes." />
+        ) : revenueQuery.isError ? (
+          <WidgetEmpty message="No se pudieron cargar los datos." />
+        ) : oneOnOne.clientCount === 0 ? (
+          <WidgetEmpty message="Aún no tienes clientes one-on-one. ¡A conseguir el primero!" />
         ) : (
           <>
             <p className="ds-widget-number">
-              <NumberTicker value={clientCount} />
+              <NumberTicker value={oneOnOne.clientCount} />
             </p>
-            {clientCount === 0
-              ? <WidgetEmpty message="Aún no tienes clientes. ¡A conseguir el primero!" />
-              : <WidgetLabel>{clientCount === 1 ? 'cliente activo' : 'clientes activos'}</WidgetLabel>
-            }
+            <WidgetLabel>
+              {oneOnOne.clientCount === 1 ? 'cliente activo' : 'clientes activos'}
+              {oneOnOne.callCount > 0 && (
+                <> · {oneOnOne.callCount} {oneOnOne.callCount === 1 ? 'llamada' : 'llamadas'}</>
+              )}
+            </WidgetLabel>
           </>
         )}
       </div>
@@ -245,25 +249,34 @@ function WidgetCalls({ bookingsQuery, callCountThisWeek, nextCallTime }) {
   );
 }
 
-function WidgetRevenue({ revenueQuery, totalRevenue }) {
+function formatCOP(value) {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function WidgetRevenue({ revenueQuery, lowTicket }) {
   return (
     <>
       <GlowingEffect />
       <div className="ds-widget-inner">
-        <WidgetTitle>Ingresos recientes</WidgetTitle>
+        <WidgetTitle>Ventas low-ticket</WidgetTitle>
         {revenueQuery.isLoading ? (
           <SkeletonCard />
         ) : revenueQuery.isError ? (
           <WidgetEmpty message="No se pudieron cargar los ingresos." />
+        ) : lowTicket.netRevenue === 0 && lowTicket.salesCount === 0 ? (
+          <WidgetEmpty message="Aquí verás tus ingresos cuando empiecen a llegar." />
         ) : (
           <>
             <p className="ds-widget-number ds-widget-number--revenue">
-              <NumberTicker value={totalRevenue} prefix="$" />
+              {formatCOP(lowTicket.netRevenue)}
             </p>
-            {totalRevenue === 0
-              ? <WidgetEmpty message="Aquí verás tus ingresos cuando empiecen a llegar." />
-              : <WidgetLabel>COP este período</WidgetLabel>
-            }
+            <WidgetLabel>
+              <NumberTicker value={lowTicket.salesCount} /> {lowTicket.salesCount === 1 ? 'venta' : 'ventas'}
+            </WidgetLabel>
           </>
         )}
       </div>
@@ -271,7 +284,7 @@ function WidgetRevenue({ revenueQuery, totalRevenue }) {
   );
 }
 
-function WidgetAdherence({ adherenceQuery, adherenceRate }) {
+function WidgetAdherence({ adherenceQuery, overallAdherence, byProgram }) {
   return (
     <>
       <GlowingEffect />
@@ -281,21 +294,30 @@ function WidgetAdherence({ adherenceQuery, adherenceRate }) {
           <SkeletonCard />
         ) : adherenceQuery.isError ? (
           <WidgetEmpty message="No se pudieron cargar los datos de adherencia." />
+        ) : overallAdherence === 0 && byProgram.length === 0 ? (
+          <WidgetEmpty message="Sin datos de adherencia aún. Los verás cuando tus clientes completen sesiones." />
         ) : (
           <>
             <div className="ds-adherence-ring">
               <ProgressRing
-                percent={adherenceRate}
+                percent={overallAdherence}
                 size={96}
                 strokeWidth={6}
                 color="rgba(255,255,255,0.85)"
-                label={`${Math.round(adherenceRate)}%`}
+                label={`${Math.round(overallAdherence)}%`}
               />
             </div>
-            {adherenceRate === 0
-              ? <WidgetEmpty message="Sin datos de adherencia aún. Los verás cuando tus clientes completen sesiones." />
-              : <WidgetLabel>de adherencia promedio</WidgetLabel>
-            }
+            <WidgetLabel>de adherencia promedio</WidgetLabel>
+            {byProgram.length > 0 && (
+              <div className="ds-adherence-breakdown">
+                {byProgram.map(p => (
+                  <div key={p.programId} className="ds-adherence-breakdown__item">
+                    <span className="ds-adherence-breakdown__title">{p.title || 'Programa'}</span>
+                    <span className="ds-adherence-breakdown__value">{p.adherence}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -401,13 +423,6 @@ const DashboardScreen = () => {
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
-  const clientsQuery = useQuery({
-    queryKey: ['clients', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/clients'),
-    enabled: !!user?.uid,
-    ...cacheConfig.userProfile,
-  });
-
   const bookingsQuery = useQuery({
     queryKey: ['bookings', 'creator', user?.uid],
     queryFn: () => apiClient.get('/bookings'),
@@ -430,11 +445,6 @@ const DashboardScreen = () => {
   });
 
   // ── Derived values ────────────────────────────────────────────────────────
-
-  const clientCount = useMemo(
-    () => clientsQuery.data?.data?.length ?? clientsQuery.data?.length ?? 0,
-    [clientsQuery.data]
-  );
 
   const upcomingBookings = useMemo(() => {
     const raw = bookingsQuery.data?.data ?? bookingsQuery.data ?? [];
@@ -476,19 +486,29 @@ const DashboardScreen = () => {
     return t ? `${formatDate(t)} · ${formatTime(t)}` : null;
   }, [upcomingBookings]);
 
-  const totalRevenue = useMemo(
-    () => revenueQuery.data?.data?.totalRevenue ?? revenueQuery.data?.totalRevenue ?? 0,
-    [revenueQuery.data]
+  const lowTicket = useMemo(() => {
+    const lt = revenueQuery.data?.data?.lowTicket;
+    return { salesCount: lt?.salesCount ?? 0, netRevenue: lt?.netRevenue ?? 0 };
+  }, [revenueQuery.data]);
+
+  const oneOnOne = useMemo(() => {
+    const oo = revenueQuery.data?.data?.oneOnOne;
+    return { clientCount: oo?.clientCount ?? 0, callCount: oo?.callCount ?? 0 };
+  }, [revenueQuery.data]);
+
+  const overallAdherence = useMemo(
+    () => adherenceQuery.data?.data?.overallAdherence ?? 0,
+    [adherenceQuery.data]
   );
 
-  const adherenceRate = useMemo(
-    () => adherenceQuery.data?.data?.adherenceRate ?? adherenceQuery.data?.adherenceRate ?? 0,
+  const byProgram = useMemo(
+    () => adherenceQuery.data?.data?.byProgram ?? [],
     [adherenceQuery.data]
   );
 
   const sessionsCompleted = useMemo(
-    () => adherenceQuery.data?.data?.sessionsCompleted ?? adherenceQuery.data?.sessionsCompleted ?? 0,
-    [adherenceQuery.data]
+    () => byProgram.reduce((sum, p) => sum + (p.completedSessions ?? 0), 0),
+    [byProgram]
   );
 
   const isWide = layout === 'wide';
@@ -496,17 +516,16 @@ const DashboardScreen = () => {
   // ── Widget config map ────────────────────────────────────────────────────
 
   const widgetProps = useMemo(() => ({
-    clients: { clientsQuery, clientCount },
+    clients: { revenueQuery, oneOnOne },
     calls: { bookingsQuery, callCountThisWeek, nextCallTime },
-    revenue: { revenueQuery, totalRevenue },
-    adherence: { adherenceQuery, adherenceRate },
+    revenue: { revenueQuery, lowTicket },
+    adherence: { adherenceQuery, overallAdherence, byProgram },
     sessions: { adherenceQuery, sessionsCompleted },
     'upcoming-calls': { bookingsQuery, upcomingBookings },
   }), [
-    clientsQuery, clientCount,
+    revenueQuery, oneOnOne, lowTicket,
     bookingsQuery, callCountThisWeek, nextCallTime, upcomingBookings,
-    revenueQuery, totalRevenue,
-    adherenceQuery, adherenceRate, sessionsCompleted,
+    adherenceQuery, overallAdherence, byProgram, sessionsCompleted,
   ]);
 
   const WIDGET_CONFIG = {

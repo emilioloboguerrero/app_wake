@@ -109,6 +109,43 @@
   margin: 8px 0 4px;
 }
 
+/* ─── Adherence breakdown ───────────────────────────────────────── */
+.ds-adherence-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.ds-adherence-breakdown__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ds-adherence-breakdown__item:last-child {
+  border-bottom: none;
+}
+
+.ds-adherence-breakdown__title {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.ds-adherence-breakdown__value {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Upcoming calls list ────────────────────────────────────────── */
 .ds-upcoming-list {
   display: flex;
