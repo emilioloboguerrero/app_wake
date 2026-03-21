@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useDraggable } from '@dnd-kit/core';
 import Input from './Input';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
@@ -11,6 +12,45 @@ const LIBRARY_TAB_PLANS = 'plans';
 
 const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
 const DRAG_TYPE_PLAN = 'planning/plan';
+
+const DraggableSessionItem = ({ session }) => {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `library-session-${session.id}`,
+    data: { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesión' },
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, opacity: isDragging ? 0.5 : 1 }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`planning-sidebar-program-item plan-structure-library-item ${isDragging ? 'plan-structure-item-dragging' : ''}`}
+      style={style}
+      {...listeners}
+      {...attributes}
+    >
+      <div className="planning-sidebar-program-content">
+        <div
+          className="planning-sidebar-program-image-placeholder"
+          style={{ width: 28, height: 28, fontSize: 12 }}
+        >
+          {session.title?.charAt(0) || 'S'}
+        </div>
+        <div className="planning-sidebar-program-info">
+          <span className="planning-sidebar-program-name">
+            {session.title || `Sesión ${session.id?.slice(0, 8)}`}
+          </span>
+        </div>
+      </div>
+      <div className="plan-structure-drag-hint">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 5L15 5M9 12L15 12M9 19L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    </div>
+  );
+};
 
 /**
  * Left sidebar for client planning: toggle between Sessions library and Plans library,
@@ -60,14 +100,6 @@ const PlanningLibrarySidebar = ({
         (p.description || '').toLowerCase().includes(q)
       )
     : plans;
-
-  const handleSessionDragStart = (e, session) => {
-    const payload = { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesión' };
-    e.dataTransfer.effectAllowed = 'all';
-    e.dataTransfer.setData('application/json', JSON.stringify(payload));
-    e.dataTransfer.setData('text/plain', JSON.stringify(payload));
-    e.currentTarget.classList.add('plan-structure-item-dragging');
-  };
 
   const handlePlanDragStart = (e, plan) => {
     const payload = { type: DRAG_TYPE_PLAN, planId: plan.id, planTitle: plan.title };
@@ -151,43 +183,7 @@ const PlanningLibrarySidebar = ({
               <h4 className="planning-sidebar-section-title">{dragHint}</h4>
               <div className="planning-sidebar-programs-list">
                 {filteredSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="planning-sidebar-program-item plan-structure-library-item"
-                    draggable
-                    onDragStart={(e) => handleSessionDragStart(e, session)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div className="planning-sidebar-program-content">
-                      <div
-                        className="planning-sidebar-program-image-placeholder"
-                        style={{ width: 28, height: 28, fontSize: 12 }}
-                      >
-                        {session.title?.charAt(0) || 'S'}
-                      </div>
-                      <div className="planning-sidebar-program-info">
-                        <span className="planning-sidebar-program-name">
-                          {session.title || `Sesión ${session.id?.slice(0, 8)}`}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="plan-structure-drag-hint">
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M9 5L15 5M9 12L15 12M9 19L15 19"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </div>
-                  </div>
+                  <DraggableSessionItem key={session.id} session={session} />
                 ))}
               </div>
             </div>

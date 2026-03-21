@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useDroppable } from '@dnd-kit/core';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
@@ -15,6 +16,25 @@ import './ProgramWeeksGrid.css';
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
+
+const DroppableDayCell = ({ moduleId, slotIndex, children, className = '', onNativeDragOver, onNativeDragLeave, onNativeDrop }) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `day-cell-${moduleId}-${slotIndex}`,
+    data: { moduleId, slotIndex },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isOver ? 'plan-weeks-cell-dndkit-over' : ''}`}
+      onDragOver={onNativeDragOver}
+      onDragLeave={onNativeDragLeave}
+      onDrop={onNativeDrop}
+    >
+      {children}
+    </div>
+  );
+};
 
 /**
  * Weeks grid for low-ticket program content: rows = weeks (modules), columns = position 1-7.
@@ -596,15 +616,17 @@ const ProgramWeeksGrid = ({
                     }
                   };
                   return (
-                    <div
+                    <DroppableDayCell
                       key={slotIndex}
+                      moduleId={mod.id}
+                      slotIndex={slotIndex}
                       className="plan-weeks-day-cell"
-                      onDragOver={handleCellDragOver}
-                      onDragLeave={(e) => {
-                    handleDragLeave(e);
-                    setDragOverWeekId(null);
-                  }}
-                      onDrop={handleCellDrop}
+                      onNativeDragOver={handleCellDragOver}
+                      onNativeDragLeave={(e) => {
+                        handleDragLeave(e);
+                        setDragOverWeekId(null);
+                      }}
+                      onNativeDrop={handleCellDrop}
                     >
                       {session ? (
                         <div className="plan-weeks-session-card">
@@ -665,7 +687,7 @@ const ProgramWeeksGrid = ({
                           +
                         </button>
                       )}
-                    </div>
+                    </DroppableDayCell>
                   );
                 })}
               </div>

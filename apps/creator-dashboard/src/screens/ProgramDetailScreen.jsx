@@ -47,11 +47,13 @@ import {
 import { getAccessDurationLabel, getAccessTypeLabel, getStatusLabel, getDurationLabel } from '../utils/durationHelper';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  pointerWithin,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -61,7 +63,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import PlanningLibrarySidebar from '../components/PlanningLibrarySidebar';
+import PlanningLibrarySidebar, { DRAG_TYPE_LIBRARY_SESSION } from '../components/PlanningLibrarySidebar';
 import ProgramWeeksGrid from '../components/ProgramWeeksGrid';
 import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
@@ -639,6 +641,9 @@ const SortableSessionCard = ({ session, isSessionEditMode, onSessionClick, onDel
       <div className="session-card-header">
         <h3 className="session-card-title">
           {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
+          {!session.librarySessionRef && (
+            <span className="session-desvinculado-badge">Desvinculado</span>
+          )}
         </h3>
       </div>
     </div>
@@ -760,6 +765,7 @@ const ProgramDetailScreen = () => {
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [structureSearchQuery, setStructureSearchQuery] = useState('');
   const [isAddingWeek, setIsAddingWeek] = useState(false);
+  const [activeDragSession, setActiveDragSession] = useState(null);
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
   const [newExerciseDraft, setNewExerciseDraft] = useState(null);
   const [newExerciseSets, setNewExerciseSets] = useState([]);
@@ -1373,6 +1379,52 @@ const ProgramDetailScreen = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Library → grid cross-panel drag sensors (activation distance prevents accidental drags)
+  const librarySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleLibraryDragStart = useCallback((event) => {
+    const { active } = event;
+    if (active?.data?.current?.type === DRAG_TYPE_LIBRARY_SESSION) {
+      setActiveDragSession(active.data.current);
+    }
+  }, []);
+
+  const handleLibraryDragEnd = useCallback(async (event) => {
+    setActiveDragSession(null);
+    const { active, over } = event;
+    if (!active || !over) return;
+
+    const dragData = active.data.current;
+    const dropData = over.data.current;
+    if (dragData?.type !== DRAG_TYPE_LIBRARY_SESSION || !dropData?.moduleId) return;
+
+    const { librarySessionRef, title } = dragData;
+    const { moduleId, slotIndex } = dropData;
+
+    try {
+      const libSession = await libraryService.getLibrarySessionById(user?.uid, librarySessionRef);
+      const sessionTitle = libSession?.title || title || 'Sesión';
+      const imageUrl = libSession?.image_url ?? null;
+
+      const created = await programService.createSession(
+        programId, moduleId, sessionTitle, null, imageUrl, librarySessionRef
+      );
+
+      if (created?.id && slotIndex >= 0 && slotIndex <= 6) {
+        await programService.updateSessionOrder(programId, moduleId, [
+          { sessionId: created.id, order: slotIndex },
+        ]);
+      }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+    } catch (err) {
+      showToast(err.message || 'Error al asignar la sesión', 'error');
+    }
+  }, [programId, user?.uid, queryClient, showToast]);
 
   useEffect(() => {
     libraryDataCacheRef.current = libraryDataCache;
@@ -6359,6 +6411,9 @@ const ProgramDetailScreen = () => {
                             <div className="session-card-header">
                               <h3 className="session-card-title">
                                 {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
+                                {!session.librarySessionRef && (
+                                  <span className="session-desvinculado-badge">Desvinculado</span>
+                                )}
                               </h3>
                               {session.description && (
                                 <p className="session-card-description">{session.description}</p>
@@ -6401,38 +6456,60 @@ const ProgramDetailScreen = () => {
           return (
             <div className="program-tab-content">
               <h1 className="program-page-title">Contenido</h1>
-              <div className="plan-structure-layout client-program-planning-layout">
-                <div className="plan-structure-sidebars client-program-planning-left">
-                  <PlanningLibrarySidebar
-                    creatorId={user?.uid}
-                    searchQuery={structureSearchQuery}
-                    onSearchChange={setStructureSearchQuery}
-                  />
-                </div>
-                <div className="plan-structure-main client-program-planning-main">
-                  {isLoadingGridModules ? (
-                    <div className="modules-loading"><p>Cargando semanas...</p></div>
-                  ) : (
-                    <ProgramWeeksGrid
-                      programId={programId}
-                      modules={gridModulesData}
-                      onAddWeek={handleAddWeekForGrid}
-                      onDeleteWeek={() => {
-                        queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
-                        queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
-                      }}
-                      onSessionClick={handleSessionClickFromGrid}
-                      onOpenWeekVolume={openWeekVolumeDrawer}
-                      libraryService={libraryService}
-                      plansService={plansService}
+              <DndContext
+                sensors={librarySensors}
+                collisionDetection={pointerWithin}
+                onDragStart={handleLibraryDragStart}
+                onDragEnd={handleLibraryDragEnd}
+              >
+                <div className="plan-structure-layout client-program-planning-layout">
+                  <div className="plan-structure-sidebars client-program-planning-left">
+                    <PlanningLibrarySidebar
                       creatorId={user?.uid}
-                      isAddingWeek={isAddingWeek}
-                      queryClient={queryClient}
-                      queryKeys={queryKeys}
+                      searchQuery={structureSearchQuery}
+                      onSearchChange={setStructureSearchQuery}
                     />
-                  )}
+                  </div>
+                  <div className="plan-structure-main client-program-planning-main">
+                    {isLoadingGridModules ? (
+                      <div className="modules-loading"><p>Cargando semanas...</p></div>
+                    ) : (
+                      <ProgramWeeksGrid
+                        programId={programId}
+                        modules={gridModulesData}
+                        onAddWeek={handleAddWeekForGrid}
+                        onDeleteWeek={() => {
+                          queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+                          queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+                        }}
+                        onSessionClick={handleSessionClickFromGrid}
+                        onOpenWeekVolume={openWeekVolumeDrawer}
+                        libraryService={libraryService}
+                        plansService={plansService}
+                        creatorId={user?.uid}
+                        isAddingWeek={isAddingWeek}
+                        queryClient={queryClient}
+                        queryKeys={queryKeys}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+                <DragOverlay dropAnimation={{
+                  duration: 350,
+                  easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                }}>
+                  {activeDragSession ? (
+                    <div className="library-drag-overlay-card">
+                      <div className="library-drag-overlay-avatar">
+                        {activeDragSession.title?.charAt(0) || 'S'}
+                      </div>
+                      <span className="library-drag-overlay-title">
+                        {activeDragSession.title || 'Sesión'}
+                      </span>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
               <WeekVolumeDrawer
                 isOpen={weekVolumeDrawerOpen}
                 onClose={() => setWeekVolumeDrawerOpen(false)}
@@ -6553,7 +6630,7 @@ const ProgramDetailScreen = () => {
       default:
         return null;
     }
-  }, [loading, error, program, currentTabIndex, isLoadingAnalytics, analyticsError, analytics, selectedModule, selectedSession, modules, sessions, exercises, isModuleEditMode, isSessionEditMode, isExerciseEditMode, moduleIncompleteMap, sessionIncompleteMap, handleModuleClick, handleSessionClick, handleExerciseClick, handleCreateModule, handleCreateSession, handleCreateNewExercise, handleDeleteModule, handleDeleteSession, handleDeleteExercise, handleSaveModuleOrder, handleSaveSessionOrder, handleSaveExerciseOrder, isExerciseIncomplete]);
+  }, [loading, error, program, currentTabIndex, isLoadingAnalytics, analyticsError, analytics, selectedModule, selectedSession, modules, sessions, exercises, isModuleEditMode, isSessionEditMode, isExerciseEditMode, moduleIncompleteMap, sessionIncompleteMap, handleModuleClick, handleSessionClick, handleExerciseClick, handleCreateModule, handleCreateSession, handleCreateNewExercise, handleDeleteModule, handleDeleteSession, handleDeleteExercise, handleSaveModuleOrder, handleSaveSessionOrder, handleSaveExerciseOrder, isExerciseIncomplete, librarySensors, handleLibraryDragStart, handleLibraryDragEnd, activeDragSession]);
 
   const getScreenName = () => {
     if (selectedSession && currentTabIndex === effectiveTabConfig.findIndex(tab => tab.key === 'contenido')) {

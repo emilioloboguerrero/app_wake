@@ -54,6 +54,28 @@
   color: var(--text-secondary);
 }
 
+/* @dnd-kit droppable: subtle glow border on drag-over */
+.plan-weeks-day-cell.plan-weeks-cell-dndkit-over {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  outline: 1px solid rgba(255, 255, 255, 0.25);
+  outline-offset: -1px;
+  box-shadow: 0 0 12px 2px rgba(255, 255, 255, 0.08);
+  transition: background 0.15s cubic-bezier(0.22, 1, 0.36, 1),
+              outline-color 0.15s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Spring animation on session card after drop */
+@keyframes sessionDropIn {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.plan-weeks-session-card {
+  animation: sessionDropIn 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Overlay shown while async operations are in flight */
 .plan-weeks-grid-overlay {
   border-radius: var(--radius-lg);
