@@ -139,12 +139,12 @@ export async function getAssignmentById(assignmentId) {
   return result?.data ?? null;
 }
 
-export async function updateAssignment(assignmentId, data) {
+export async function updateAssignment(clientId, assignmentId, data) {
   const body = {};
   if (data.planId !== undefined) body.planId = data.planId;
   if (data.startDate !== undefined) body.startDate = data.startDate;
   if (data.endDate !== undefined) body.endDate = data.endDate;
-  await apiClient.patch(`/creator/nutrition/assignments/${assignmentId}`, body);
+  await apiClient.patch(`/creator/clients/${clientId}/nutrition/assignments/${assignmentId}`, body);
 }
 
 // ─── User diary (creator reading client diary) ────────────────────────────────
