@@ -7,11 +7,29 @@ import availabilityService from '../services/availabilityService';
 import { getBookingsForCreator, updateBookingCallLink } from '../services/callBookingService';
 import apiClient from '../utils/apiClient';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
+import { GlowingEffect, ShimmerSkeleton, SpotlightTutorial, InlineError, FullScreenError } from '../components/ui';
 import '../components/CalendarView.css';
 import './AvailabilityCalendarScreen.css';
 import '../components/PropagateChangesModal.css';
 import logger from '../utils/logger';
+
+const TUTORIAL_STEPS = [
+  {
+    selector: '.availability-calendar-panel',
+    title: 'Calendario',
+    body: 'Tu calendario de disponibilidad. Los dias con puntos ya tienen horarios creados.',
+  },
+  {
+    selector: '.availability-add-block-batch',
+    title: 'Creacion por lotes',
+    body: 'Usa la creacion por lotes para llenar tu semana rapido.',
+  },
+  {
+    selector: '.availability-week-panel',
+    title: 'Llamadas agendadas',
+    body: 'Las llamadas agendadas aparecen directamente en el calendario.',
+  },
+];
 
 const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -134,7 +152,7 @@ export default function AvailabilityCalendarScreen() {
   const [weekAnchor, setWeekAnchor] = useState(() => new Date());
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
 
-  const { data: availability = { timezone: '', days: {} } } = useQuery({
+  const { data: availability = { timezone: '', days: {} }, error: availabilityError, refetch: refetchAvailability } = useQuery({
     queryKey: queryKeys.availability.byCreator(user?.uid),
     queryFn: () => availabilityService.getAvailability(user.uid),
     enabled: !!user?.uid,
@@ -221,7 +239,7 @@ export default function AvailabilityCalendarScreen() {
     for (const ns of newSlots) {
       for (const existing of slots) {
         if (slotsOverlap(ns, existing)) {
-          setError('Una o más franjas coinciden con horarios ya existentes. Ajusta la hora de inicio o el número de franjas.');
+          setError('Ya tienes un horario en ese rango.');
           return;
         }
       }
@@ -275,7 +293,7 @@ export default function AvailabilityCalendarScreen() {
       };
       for (const existing of slots) {
         if (slotsOverlap(newSlot, existing)) {
-          setError('Esta franja coincide con un horario ya existente.');
+          setError('Ya tienes un horario en ese rango.');
           return;
         }
       }
@@ -422,6 +440,18 @@ export default function AvailabilityCalendarScreen() {
     return `${first.getDate()} ${MONTHS[first.getMonth()]} – ${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`;
   }, [weekDates]);
 
+  if (availabilityError) {
+    return (
+      <DashboardLayout screenName="Disponibilidad para llamadas">
+        <FullScreenError
+          title="No pudimos cargar tu disponibilidad"
+          message="Hubo un problema al traer tus horarios. Revisa tu conexion e intenta de nuevo."
+          onRetry={refetchAvailability}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout screenName="Disponibilidad para llamadas">
       <div className="availability-container">
@@ -440,16 +470,12 @@ export default function AvailabilityCalendarScreen() {
             {!selectedDateStr ? (
               <div className="availability-sidebar-content">
                 <p className="availability-empty-hint">
-                  Selecciona un día en el calendario para añadir franjas horarias y gestionar las reservas.
+                  Tu calendario esta libre. Agrega horarios para que tus clientes puedan agendar llamadas.
                 </p>
               </div>
             ) : (
               <div className="availability-sidebar-content">
-                {(error || slotsError) && (
-                  <div className="availability-day-error">
-                    {error || slotsError?.message || 'Error al cargar los horarios'}
-                  </div>
-                )}
+                <InlineError message={error || slotsError?.message || null} />
 
                 <div className="availability-add-block availability-add-block-single">
                   <span className="availability-add-block-title">Añadir una franja</span>
@@ -527,7 +553,7 @@ export default function AvailabilityCalendarScreen() {
                 </div>
 
                 <div className="availability-add-block availability-add-block-batch">
-                  <span className="availability-add-block-title">Varias franjas (con pausas)</span>
+                  <span className="availability-add-block-title">Crea varios horarios de una vez. Selecciona la duracion, los descansos y listo.</span>
                   <div className="availability-add-fields">
                     <label className="availability-field">
                       <span className="availability-field-label">Hora de inicio</span>
@@ -748,7 +774,7 @@ export default function AvailabilityCalendarScreen() {
                       ))}
                     </div>
                   ) : slots.length === 0 ? (
-                    <p className="availability-empty-hint">Sin horarios — arrastra una franja desde la izquierda.</p>
+                    <p className="availability-empty-hint">Sin horarios para este dia. Agrega uno o usa la creacion por lotes.</p>
                   ) : (
                     <div
                       ref={timelineWrapRef}
@@ -777,6 +803,11 @@ export default function AvailabilityCalendarScreen() {
                             const { top, height } = slotToPosition(slot);
                             const isReserved = isSlotReserved(slot);
                             const reservedClass = isReserved ? getSlotReservedClass(slot) : null;
+                            const booking = isReserved ? getBookingForSlot(slot) : null;
+                            const slotTime = `${formatSlotTime(slot.startUtc)} – ${formatSlotTime(slot.endUtc)}`;
+                            const slotLabel = booking
+                              ? `Llamada con ${booking.clientDisplayName || 'cliente'} — ${formatSlotTime(slot.startUtc)}`
+                              : `Disponible — ${formatSlotTime(slot.startUtc)}`;
                             return (
                               <div
                                 key={index}
@@ -787,12 +818,12 @@ export default function AvailabilityCalendarScreen() {
                                   top: `${top}%`,
                                   height: `${height}%`,
                                 }}
-                                title={`${formatSlotTime(slot.startUtc)} – ${formatSlotTime(slot.endUtc)}${isReserved ? ' (Reservado)' : ''} – Clic para ver detalles`}
+                                title={`${slotTime}${isReserved ? ' (Reservado)' : ''}`}
                                 onClick={(e) => handleSlotClick(slot, e)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSlotClick(slot, e); } }}
                               >
                                 <span className="availability-timeline-slot-label">
-                                  {formatSlotTime(slot.startUtc)} – {formatSlotTime(slot.endUtc)}
+                                  {slotLabel}
                                 </span>
                               </div>
                             );
@@ -1173,6 +1204,7 @@ export default function AvailabilityCalendarScreen() {
           </div>
         )}
       </Modal>
+      <SpotlightTutorial screenKey="availability" steps={TUTORIAL_STEPS} />
     </DashboardLayout>
   );
 }

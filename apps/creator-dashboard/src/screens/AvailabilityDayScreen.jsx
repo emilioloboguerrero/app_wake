@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import availabilityService from '../services/availabilityService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { GlowingEffect, AnimatedList, ShimmerSkeleton } from '../components/ui';
+import { GlowingEffect, AnimatedList, ShimmerSkeleton, InlineError } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 import './AvailabilityDayScreen.css';
 
 
@@ -30,6 +31,7 @@ export default function AvailabilityDayScreen() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
   const [mutationError, setMutationError] = useState(null);
 
@@ -61,7 +63,7 @@ export default function AvailabilityDayScreen() {
     const startMinutes = sh * 60 + sm;
     const endMinutes = eh * 60 + em;
     if (startMinutes >= endMinutes) {
-      setMutationError('La hora de inicio debe ser anterior a la de fin.');
+      setMutationError('La hora de inicio debe ser antes de la hora de fin.');
       return;
     }
     setSaving(true);
@@ -72,7 +74,7 @@ export default function AvailabilityDayScreen() {
       setAddStart(addEnd);
       setAddEnd(addEnd === '12:00' ? '13:00' : String(eh + 1).padStart(2, '0') + ':00');
     } catch (e) {
-      setMutationError(e?.message || 'Error al añadir');
+      showToast('No pudimos crear el horario. Intenta de nuevo.', 'error');
     } finally {
       setSaving(false);
     }
@@ -87,7 +89,7 @@ export default function AvailabilityDayScreen() {
       await availabilityService.setDaySlots(user.uid, dateStr, newSlots, timezone);
       await queryClient.invalidateQueries({ queryKey: queryKeys.availability.day(user?.uid, dateStr) });
     } catch (e) {
-      setMutationError(e?.message || 'Error al eliminar');
+      showToast('No pudimos eliminar el horario. Intenta de nuevo.', 'error');
     } finally {
       setSaving(false);
     }
@@ -129,7 +131,7 @@ export default function AvailabilityDayScreen() {
           </button>
         </div>
 
-        {error && <div className="avday-error">{error}</div>}
+        <InlineError message={error} />
 
         {/* Slot list card */}
         <div className="avday-card avday-card--slots">
@@ -143,7 +145,7 @@ export default function AvailabilityDayScreen() {
               <ShimmerSkeleton height="54px" width="70%" borderRadius="12px" />
             </div>
           ) : slots.length === 0 ? (
-            <p className="avday-empty">Aún no hay franjas. Añade horarios abajo.</p>
+            <p className="avday-empty">Sin horarios para este dia. Agrega uno o usa la creacion por lotes.</p>
           ) : (
             <ul className="avday-slot-list" role="list">
               <AnimatedList stagger={55} initialDelay={40}>
@@ -176,7 +178,7 @@ export default function AvailabilityDayScreen() {
           <GlowingEffect spread={26} borderWidth={1} />
           <p className="avday-card-label">Añadir franjas</p>
           <p className="avday-card-desc">
-            Elige hora de inicio y fin, y la duración de cada franja. Se crearán todas las franjas posibles en ese rango.
+            Crea varios horarios de una vez. Selecciona la duracion, los descansos y listo.
           </p>
           <div className="avday-add-fields">
             <label className="avday-field">
