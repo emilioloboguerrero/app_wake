@@ -43,15 +43,15 @@ These fix broken functionality. Each touches different files, run all simultaneo
 - [ ] Test: type username → debounce fires → shows available/taken indicator
 
 ### 0C. Fix `updateAssignment` — Wrong API Path
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **Problem:** `nutritionFirestoreService.js` (line 147) calls `PATCH /creator/nutrition/assignments/:assignmentId` but the actual API route is `PATCH /creator/clients/:clientId/nutrition/assignments/:assignmentId` (line 866 of `creator.ts`). Missing `clientId` in path.
 **Files:**
 - `apps/creator-dashboard/src/services/nutritionFirestoreService.js` — fix service method signature and path
 - `apps/creator-dashboard/src/screens/ClientProgramScreen.jsx` — pass `clientId` to service call
 **Tasks:**
-- [ ] Update `nutritionFirestoreService.updateAssignment(assignmentId, data)` → `updateAssignment(clientId, assignmentId, data)`
-- [ ] Fix API path to `/creator/clients/${clientId}/nutrition/assignments/${assignmentId}`
-- [ ] Update all callers in `ClientProgramScreen.jsx` to pass `clientId`
+- [x] Update `nutritionFirestoreService.updateAssignment(assignmentId, data)` → `updateAssignment(clientId, assignmentId, data)`
+- [x] Fix API path to `/creator/clients/${clientId}/nutrition/assignments/${assignmentId}`
+- [x] Update all callers in `ClientProgramScreen.jsx` to pass `clientId`
 - [ ] Test: update nutrition assignment for a client → changes saved → no 404
 
 ---
