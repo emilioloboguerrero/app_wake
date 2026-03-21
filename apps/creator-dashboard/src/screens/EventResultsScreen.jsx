@@ -19,7 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import { GlowingEffect, TubelightNavBar, SkeletonCard } from '../components/ui';
+import { GlowingEffect, TubelightNavBar, SkeletonCard, FullScreenError, InlineError } from '../components/ui';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
   DEFAULT_FIELD_IDS, DEFAULT_FIELDS,
@@ -302,7 +302,7 @@ export default function EventResultsScreen() {
   const [imageUrl, setImageUrl] = useState('');
   const [uploadProgress, setUploadProgress] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const imageInputRef = useRef(null);
@@ -430,9 +430,13 @@ export default function EventResultsScreen() {
   }
 
   async function handleSave(targetStatus = eventStatus) {
-    if (!title.trim()) { setSaveError('El título es obligatorio'); return; }
+    const errors = {};
+    if (!title.trim()) errors.title = 'El titulo es obligatorio';
+    if (!eventDate) errors.date = 'La fecha es obligatoria';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setFieldErrors({});
     setSaving(true);
-    setSaveError(null);
     try {
       const finalImageUrl = await uploadImage();
 
@@ -485,7 +489,7 @@ export default function EventResultsScreen() {
       };
     } catch (err) {
       logger.error('[EventResults] save failed', err);
-      setSaveError('Error al guardar. Intenta de nuevo.');
+      showToast('Error al guardar el evento. Intenta de nuevo.', 'error');
       setUploadProgress(null);
     } finally {
       setSaving(false);
@@ -629,9 +633,14 @@ export default function EventResultsScreen() {
             <SkeletonCard />
           </div>
         ) : eventError ? (
-          <div className="er-skeleton-wrap" style={{ textAlign: 'center', padding: '48px 0', opacity: 0.6 }}>
-            <p>No se pudo cargar el evento. Verifica tu conexión e intenta de nuevo.</p>
-          </div>
+          <FullScreenError
+            title="No pudimos cargar este evento"
+            message="Verifica tu conexion e intenta de nuevo."
+            onRetry={() => {
+              queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+              queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+            }}
+          />
         ) : (
           <>
             {/* Header */}
@@ -732,7 +741,7 @@ export default function EventResultsScreen() {
 
                 {filteredRegs.length === 0 ? (
                   <div className="event-results-empty">
-                    {search ? 'Sin resultados para esa búsqueda.' : 'Aún no hay registros.'}
+                    {search ? 'Sin resultados para esa busqueda.' : 'Nadie se ha registrado todavia. Comparte el link de tu evento.'}
                   </div>
                 ) : (
                   <div className="event-results-table-wrap">
@@ -967,8 +976,6 @@ export default function EventResultsScreen() {
                   ))}
                 </div>
 
-                {saveError && <p className="ee-save-error">{saveError}</p>}
-
                 {/* Two-panel layout */}
                 <div className="ee-panels">
                   {/* ── Left: Metadata ── */}
@@ -1023,8 +1030,9 @@ export default function EventResultsScreen() {
                         className="ee-input"
                         placeholder="Ej. Run Club Marzo 2026"
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
+                        onChange={e => { setTitle(e.target.value); setFieldErrors(prev => ({ ...prev, title: undefined })); }}
                       />
+                      <InlineError message={fieldErrors.title} field="title" />
                     </div>
 
                     <div className="ee-field-group">
@@ -1039,13 +1047,14 @@ export default function EventResultsScreen() {
                     </div>
 
                     <div className="ee-field-group">
-                      <label className="ee-label">Fecha</label>
+                      <label className="ee-label">Fecha <span className="ee-required">*</span></label>
                       <DatePicker
                         value={eventDate}
-                        onChange={e => setEventDate(e.target.value)}
+                        onChange={e => { setEventDate(e.target.value); setFieldErrors(prev => ({ ...prev, date: undefined })); }}
                         placeholder="Selecciona la fecha del evento"
                         allowFuture
                       />
+                      <InlineError message={fieldErrors.date} field="date" />
                     </div>
 
                     <div className="ee-field-group">
@@ -1062,10 +1071,11 @@ export default function EventResultsScreen() {
                       <label className="ee-label">Cupos máximos</label>
                       <NumberStepper
                         value={maxRegistrations}
-                        onChange={setMaxRegistrations}
+                        onChange={(v) => { setMaxRegistrations(v); setFieldErrors(prev => ({ ...prev, capacity: undefined })); }}
                         placeholder="Ilimitado"
                         min={1}
                       />
+                      <InlineError message={fieldErrors.capacity} field="capacity" />
                     </div>
 
                     <div className="ee-field-group">
