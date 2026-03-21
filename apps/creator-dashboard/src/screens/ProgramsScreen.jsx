@@ -12,6 +12,7 @@ import {
   ProgressRing,
   AnimatedList,
   SpotlightTutorial,
+  FullScreenError,
 } from '../components/ui';
 import apiClient from '../utils/apiClient';
 import { cacheConfig } from '../config/queryClient';
@@ -27,19 +28,19 @@ const TABS = [
 
 const TUTORIAL_STEPS = [
   {
+    selector: '.ps-nav-wrap',
+    title: 'Tipos de programa',
+    body: 'Los programas grupales son los que vendes a multiples clientes. Los planes individuales se personalizan por persona.',
+  },
+  {
     selector: '.programs-fab',
     title: 'Crea un programa',
-    body: 'Pulsa aquí para crear tu primer programa grupal.',
+    body: 'Empieza con la estructura basica. Despues puedes arrastrar sesiones desde tu biblioteca.',
   },
   {
     selector: '.program-card',
     title: 'Tu programa',
-    body: 'Cada programa muestra la adherencia de tus clientes en tiempo real.',
-  },
-  {
-    selector: '.tab-planes',
-    title: 'Planes individuales',
-    body: 'Diseña planes semana a semana para clientes uno a uno.',
+    body: 'Cada programa muestra cuantos clientes estan inscritos y su tasa de completitud.',
   },
 ];
 
@@ -72,14 +73,6 @@ const EmptyState = ({ text, cta, onClick }) => (
     </div>
     <p className="ps-empty__text">{text}</p>
     <button className="ps-empty__cta" onClick={onClick}>{cta}</button>
-  </div>
-);
-
-// ─── Error state ──────────────────────────────────────────────────────────────
-
-const ErrorState = ({ message }) => (
-  <div className="ps-error-state">
-    <p>{message}</p>
   </div>
 );
 
@@ -329,11 +322,15 @@ const GrupalesTab = ({ userId }) => {
       {isLoading ? (
         <GridSkeleton />
       ) : error ? (
-        <ErrorState message="No se pudieron cargar los programas. Por favor, intenta de nuevo." />
+        <FullScreenError
+          title="No pudimos cargar tus programas"
+          message="Revisa tu conexion e intenta de nuevo."
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['programs', 'creator', userId] })}
+        />
       ) : programs.length === 0 ? (
         <EmptyState
-          text="Aún no tienes programas. ¡Crea el primero!"
-          cta="Crea tu primer programa →"
+          text="Todavia no tienes programas grupales. Crea uno y empieza a vender."
+          cta="Nuevo programa"
           onClick={() => setShowModal(true)}
         />
       ) : (
@@ -352,7 +349,7 @@ const GrupalesTab = ({ userId }) => {
       <button
         className="ps-fab programs-fab"
         onClick={() => setShowModal(true)}
-        aria-label="Crear programa"
+        aria-label="Nuevo programa"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/>
@@ -373,6 +370,7 @@ const GrupalesTab = ({ userId }) => {
 // ─── Individuales tab ─────────────────────────────────────────────────────────
 
 const IndividualesTab = ({ userId }) => {
+  const queryClient = useQueryClient();
   const [expandedIds, setExpandedIds] = useState({});
 
   const { data: plans = [], isLoading, error } = useQuery({
@@ -391,11 +389,15 @@ const IndividualesTab = ({ userId }) => {
       {isLoading ? (
         <ListSkeleton />
       ) : error ? (
-        <ErrorState message="No se pudieron cargar los planes. Por favor, intenta de nuevo." />
+        <FullScreenError
+          title="No pudimos cargar tus planes"
+          message="Revisa tu conexion e intenta de nuevo."
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] })}
+        />
       ) : plans.length === 0 ? (
         <EmptyState
-          text="Aún no tienes planes individuales. ¡Crea el primero!"
-          cta="Crea tu primer plan individual →"
+          text="Sin planes individuales. Crea un plan base y personalizalo por cliente."
+          cta="Nuevo plan"
           onClick={() => {}}
         />
       ) : (

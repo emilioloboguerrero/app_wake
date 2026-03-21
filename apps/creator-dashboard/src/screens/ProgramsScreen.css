@@ -295,17 +295,6 @@
   transform: translateY(-1px);
 }
 
-/* ── Error state ─────────────────────────────────────────────────────────────── */
-
-.ps-error-state {
-  padding: 60px 24px;
-  text-align: center;
-  color: rgba(224, 84, 84, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
-  animation: ps-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 /* ── FAB ─────────────────────────────────────────────────────────────────────── */
 
 .ps-fab {

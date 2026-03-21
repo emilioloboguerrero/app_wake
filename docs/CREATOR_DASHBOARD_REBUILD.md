@@ -288,23 +288,23 @@ Each screen gets: visual polish, all 3 error levels, fun copy, SpotlightTutorial
 ### Parallel Group B (independent screens)
 
 #### 2F. Programs Screen
-**Status:** [ ] Not started
+**Status:** [x] Complete
 **File:** `apps/creator-dashboard/src/screens/ProgramsScreen.jsx` + `.css`
 
 **Tasks — Error States:**
-- [ ] FullScreenError if programs query fails.
-- [ ] Per-tab errors if only one program type fails to load.
-- [ ] Toast on program creation failure.
+- [x] FullScreenError if programs query fails.
+- [x] Per-tab errors if only one program type fails to load.
+- [x] Toast on program creation failure.
 
 **Tasks — Copy Pass:**
-- [ ] Empty states:
+- [x] Empty states:
   - No group programs: "Todavia no tienes programas grupales. Crea uno y empieza a vender."
   - No one-on-one plans: "Sin planes individuales. Crea un plan base y personalizalo por cliente."
-- [ ] Tabs: "Programas grupales", "Planes individuales"
-- [ ] Create CTAs: "Nuevo programa", "Nuevo plan"
+- [x] Tabs: "Programas grupales", "Planes individuales"
+- [x] Create CTAs: "Nuevo programa", "Nuevo plan"
 
 **Tasks — Tutorial:**
-- [ ] ProgramsScreen (screenKey: "programs"):
+- [x] ProgramsScreen (screenKey: "programs"):
   1. Tabs: "Los programas grupales son los que vendes a multiples clientes. Los planes individuales se personalizan por persona."
   2. Create button: "Empieza con la estructura basica. Despues puedes arrastrar sesiones desde tu biblioteca."
   3. Program card: "Cada programa muestra cuantos clientes estan inscritos y su tasa de completitud."
