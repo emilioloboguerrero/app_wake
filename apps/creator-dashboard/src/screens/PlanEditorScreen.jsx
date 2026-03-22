@@ -216,8 +216,8 @@ export default function PlanEditorScreen() {
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
   useEffect(() => {
-    if (!planId || !creatorId) navigate('/nutrition', { replace: true });
-    else if (isAssignmentScope && !assignmentId) navigate(returnTo || '/nutrition', { replace: true });
+    if (!planId || !creatorId) navigate('/biblioteca?domain=nutricion', { replace: true });
+    else if (isAssignmentScope && !assignmentId) navigate(returnTo || '/biblioteca?domain=nutricion', { replace: true });
   }, [planId, creatorId, isAssignmentScope, assignmentId, navigate, returnTo]);
 
   const { data: mealsData } = useQuery({
@@ -395,7 +395,7 @@ export default function PlanEditorScreen() {
     } else if (returnTo) {
       navigate(returnTo, { state: returnState });
     } else {
-      navigate('/nutrition');
+      navigate('/biblioteca?domain=nutricion');
     }
   };
 
@@ -435,13 +435,13 @@ export default function PlanEditorScreen() {
     await handlePropagateNutrition();
     setIsNavigateModalOpen(false);
     if (returnTo) navigate(returnTo, { state: returnState });
-    else navigate('/nutrition');
+    else navigate('/biblioteca?domain=nutricion');
   };
 
   const handleNavigateLeaveWithoutPropagate = () => {
     setIsNavigateModalOpen(false);
     if (returnTo) navigate(returnTo, { state: returnState });
-    else navigate('/nutrition');
+    else navigate('/biblioteca?domain=nutricion');
   };
 
   async function handleFoodSearch() {

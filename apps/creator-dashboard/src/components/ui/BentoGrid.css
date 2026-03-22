@@ -1,23 +1,39 @@
-/* ─── Bento Grid ──────────────────────────────────────────────── */
+/* ─── Bento Grid base ────────────────────────────────────────── */
 .bento-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: 140px;
   gap: 12px;
   width: 100%;
 }
 
-/* ─── Span variants ───────────────────────────────────────────── */
-.bento-card--1x1 { grid-column: span 1; grid-row: span 1; }
-.bento-card--2x1 { grid-column: span 2; grid-row: span 1; }
-.bento-card--3x1 { grid-column: span 3; grid-row: span 1; }
-.bento-card--4x1 { grid-column: span 4; grid-row: span 1; }
-.bento-card--1x2 { grid-column: span 1; grid-row: span 2; }
-.bento-card--2x2 { grid-column: span 2; grid-row: span 2; }
-.bento-card--3x2 { grid-column: span 3; grid-row: span 2; }
-.bento-card--4x2 { grid-column: span 4; grid-row: span 2; }
+/* ─── 5-panel layout (3 col × 3 row) ────────────────────────── */
+/*  A = col1 rows1-2  |  B = col2 row1     |  E = col3 rows1-3  */
+/*  D = col1 row3     |  C = col2 rows2-3   |                    */
+.bento-grid--5-panel {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(160px, auto));
+  grid-template-areas:
+    "A B E"
+    "A C E"
+    "D C E";
+}
 
-/* ─── Card base ───────────────────────────────────────────────── */
+/* ─── 7-panel layout (3 col × 3 row) ────────────────────────── */
+/*  A = col1 row1     |  B = cols2-3 row1   |                    */
+/*  E = col1 row2     |  C = col2 row2      |  D = col3 rows2-3  */
+/*  G = col1 row3     |  F = col2 row3      |                    */
+.bento-grid--7-panel {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(160px, auto));
+  grid-template-areas:
+    "A B B"
+    "E C D"
+    "G F D";
+}
+
+/* ─── Legacy span variants (used by standalone cards) ────────── */
+.bento-card--2x1 { grid-column: span 2; }
+
+/* ─── Card base ──────────────────────────────────────────────── */
 .bento-card {
   position: relative;
   background: var(--surface-1, #222);
@@ -51,28 +67,18 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ─── Responsive ──────────────────────────────────────────────── */
+/* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .bento-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .bento-grid--5-panel,
+  .bento-grid--7-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
-  .bento-card--3x1,
-  .bento-card--4x1,
-  .bento-card--3x2,
-  .bento-card--4x2 {
-    grid-column: span 2;
-  }
-  .bento-card--2x2 {
-    grid-column: span 2;
-  }
-}
 
-@media (max-width: 560px) {
-  .bento-grid {
-    grid-template-columns: 1fr;
-  }
-  [class*="bento-card--"] {
-    grid-column: span 1;
-    grid-row: span 1;
+  .bento-grid--5-panel > *,
+  .bento-grid--7-panel > * {
+    grid-area: unset !important;
+    min-height: 140px;
   }
 }

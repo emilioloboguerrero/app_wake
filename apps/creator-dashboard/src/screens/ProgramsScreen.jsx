@@ -15,8 +15,9 @@ import {
   FullScreenError,
 } from '../components/ui';
 import apiClient from '../utils/apiClient';
+import plansService from '../services/plansService';
+import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import { cacheConfig } from '../config/queryClient';
-import logger from '../utils/logger';
 import './ProgramsScreen.css';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ const EmptyState = ({ text, cta, onClick }) => (
       </svg>
     </div>
     <p className="ps-empty__text">{text}</p>
-    <button className="ps-empty__cta" onClick={onClick}>{cta}</button>
+    {cta && <button className="ps-empty__cta" onClick={onClick}>{cta}</button>}
   </div>
 );
 
@@ -148,9 +149,22 @@ const ProgramCard = ({ program, index, onClick }) => {
 
 // ─── Plan row ─────────────────────────────────────────────────────────────────
 
-const PlanRow = ({ plan, expanded, onToggle }) => (
+const PlanRow = ({ plan, expanded, onToggle, isEditing, onDelete }) => (
   <div className={`ps-plan-row ${expanded ? 'ps-plan-row--expanded' : ''}`}>
     <GlowingEffect spread={20} proximity={48} inactiveZone={0.6} disabled={!expanded} />
+
+    {isEditing && (
+      <button
+        type="button"
+        className="ps-plan-row__delete"
+        onClick={(e) => { e.stopPropagation(); onDelete(plan.id, plan.title); }}
+        aria-label="Eliminar plan"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+    )}
 
     <button
       className="ps-plan-row__header"
@@ -202,115 +216,16 @@ const PlanRow = ({ plan, expanded, onToggle }) => (
   </div>
 );
 
-// ─── Create program modal ─────────────────────────────────────────────────────
-
-const CreateProgramModal = ({ onClose, onSubmit, isPending }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    onSubmit({ title: title.trim(), description: description.trim() });
-  };
-
-  return (
-    <div className="ps-modal-backdrop" onClick={onClose}>
-      <div
-        className="ps-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ps-modal-title"
-      >
-        <div className="ps-modal__header">
-          <h2 className="ps-modal__title" id="ps-modal-title">Nuevo programa</h2>
-          <button className="ps-modal__close" onClick={onClose} aria-label="Cerrar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
-
-        <form className="ps-modal__form" onSubmit={handleSubmit}>
-          <div className="ps-modal__field">
-            <label className="ps-modal__label" htmlFor="ps-program-title">
-              Nombre del programa <span className="ps-modal__required">*</span>
-            </label>
-            <input
-              id="ps-program-title"
-              className="ps-modal__input"
-              type="text"
-              placeholder="Ej: Fuerza avanzada 12 semanas"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              autoFocus
-            />
-          </div>
-
-          <div className="ps-modal__field">
-            <label className="ps-modal__label" htmlFor="ps-program-desc">
-              Descripción
-            </label>
-            <textarea
-              id="ps-program-desc"
-              className="ps-modal__textarea"
-              placeholder="Describe el objetivo y características de este programa..."
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="ps-modal__actions">
-            <button
-              type="button"
-              className="ps-modal__btn-cancel"
-              onClick={onClose}
-              disabled={isPending}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="ps-modal__btn-create"
-              disabled={!title.trim() || isPending}
-            >
-              {isPending ? 'Creando…' : 'Crear'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
 // ─── Grupales tab ─────────────────────────────────────────────────────────────
 
 const GrupalesTab = ({ userId }) => {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
-  const [showModal, setShowModal] = useState(false);
 
   const { data: programs = [], isLoading, error } = useQuery({
     queryKey: ['programs', 'creator', userId],
     queryFn: () => apiClient.get('/creator/programs').then((r) => r.data),
     enabled: !!userId,
     ...cacheConfig.programStructure,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: ({ title, description }) =>
-      apiClient.post('/creator/programs', { title, description }).then((r) => r.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['programs', 'creator', userId] });
-      setShowModal(false);
-    },
-    onError: (err) => {
-      logger.error('[ProgramsScreen] create program failed', err);
-      showToast('No se pudo crear el programa. Intenta de nuevo.', 'error');
-    },
   });
 
   const handleCardClick = useCallback((program) => {
@@ -325,13 +240,12 @@ const GrupalesTab = ({ userId }) => {
         <FullScreenError
           title="No pudimos cargar tus programas"
           message="Revisa tu conexion e intenta de nuevo."
-          onRetry={() => queryClient.invalidateQueries({ queryKey: ['programs', 'creator', userId] })}
+          onRetry={() => window.location.reload()}
         />
       ) : programs.length === 0 ? (
         <EmptyState
-          text="Todavia no tienes programas grupales. Crea uno y empieza a vender."
-          cta="Nuevo programa"
-          onClick={() => setShowModal(true)}
+          text="Todavia no tienes programas grupales. Usa el botón + de arriba para crear uno."
+          cta={null}
         />
       ) : (
         <div className="ps-grid">
@@ -345,32 +259,16 @@ const GrupalesTab = ({ userId }) => {
           ))}
         </div>
       )}
-
-      <button
-        className="ps-fab programs-fab"
-        onClick={() => setShowModal(true)}
-        aria-label="Nuevo programa"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/>
-        </svg>
-      </button>
-
-      {showModal && (
-        <CreateProgramModal
-          onClose={() => setShowModal(false)}
-          onSubmit={(data) => createMutation.mutate(data)}
-          isPending={createMutation.isPending}
-        />
-      )}
     </div>
   );
 };
 
 // ─── Individuales tab ─────────────────────────────────────────────────────────
 
-const IndividualesTab = ({ userId }) => {
+const IndividualesTab = ({ userId, isEditing }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const [expandedIds, setExpandedIds] = useState({});
 
   const { data: plans = [], isLoading, error } = useQuery({
@@ -379,6 +277,30 @@ const IndividualesTab = ({ userId }) => {
     enabled: !!userId,
     ...cacheConfig.programStructure,
   });
+
+  const createPlanMutation = useMutation({
+    mutationFn: () => plansService.createPlan(userId, null, { title: 'Nuevo plan' }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] });
+      const planId = res?.id;
+      if (planId) navigate(`/plans/${planId}`);
+    },
+    onError: () => showToast('No pudimos crear el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const deletePlanMutation = useMutation({
+    mutationFn: (planId) => plansService.deletePlan(planId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] });
+      showToast('Plan eliminado.', 'success');
+    },
+    onError: () => showToast('No pudimos eliminar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const handleDeletePlan = useCallback((planId, title) => {
+    if (!window.confirm(`¿Eliminar "${title || 'este plan'}"? Esta acción no se puede deshacer.`)) return;
+    deletePlanMutation.mutate(planId);
+  }, [deletePlanMutation]);
 
   const toggleExpanded = useCallback((id) => {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -398,7 +320,7 @@ const IndividualesTab = ({ userId }) => {
         <EmptyState
           text="Sin planes individuales. Crea un plan base y personalizalo por cliente."
           cta="Nuevo plan"
-          onClick={() => {}}
+          onClick={() => createPlanMutation.mutate()}
         />
       ) : (
         <div className="ps-plan-list">
@@ -409,6 +331,8 @@ const IndividualesTab = ({ userId }) => {
                 plan={plan}
                 expanded={!!expandedIds[plan.id]}
                 onToggle={() => toggleExpanded(plan.id)}
+                isEditing={isEditing}
+                onDelete={handleDeletePlan}
               />
             ))}
           </AnimatedList>
@@ -422,7 +346,29 @@ const IndividualesTab = ({ userId }) => {
 
 const ProgramsScreen = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('grupales');
+  const [isEditing, setIsEditing] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const handleTabChange = useCallback((tab) => {
+    setActiveTab(tab);
+    setIsEditing(false);
+  }, []);
+
+  const handleCreated = useCallback(({ id, type }) => {
+    setShowCreate(false);
+    if (type === 'program') {
+      queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
+      if (id) navigate(`/programs/${id}`);
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', user?.uid] });
+      if (id) navigate(`/plans/${id}`);
+    }
+  }, [navigate, queryClient, user?.uid]);
+
+  const createType = activeTab === 'grupales' ? 'program' : 'plan';
 
   return (
     <DashboardLayout screenName="Programas">
@@ -432,8 +378,29 @@ const ProgramsScreen = () => {
             <TubelightNavBar
               items={TABS}
               activeId={activeTab}
-              onSelect={setActiveTab}
+              onSelect={handleTabChange}
             />
+            <div className="ps-nav-actions">
+              <button
+                type="button"
+                className="ps-nav-action ps-nav-action--plus"
+                onClick={() => setShowCreate(true)}
+                aria-label={activeTab === 'grupales' ? 'Nuevo programa' : 'Nuevo plan'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </button>
+              {activeTab === 'individuales' && (
+                <button
+                  type="button"
+                  className={`ps-nav-action ${isEditing ? 'ps-nav-action--active' : ''}`}
+                  onClick={() => setIsEditing(prev => !prev)}
+                >
+                  {isEditing ? 'Listo' : 'Editar'}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="ps-content">
@@ -441,7 +408,7 @@ const ProgramsScreen = () => {
               <GrupalesTab userId={user?.uid} />
             ) : (
               <div className="tab-planes">
-                <IndividualesTab userId={user?.uid} />
+                <IndividualesTab userId={user?.uid} isEditing={isEditing} />
               </div>
             )}
           </div>
@@ -450,6 +417,13 @@ const ProgramsScreen = () => {
         <SpotlightTutorial
           screenKey="programs"
           steps={TUTORIAL_STEPS}
+        />
+
+        <CreateFlowOverlay
+          isOpen={showCreate}
+          onClose={() => setShowCreate(false)}
+          type={createType}
+          onCreated={handleCreated}
         />
       </ErrorBoundary>
     </DashboardLayout>

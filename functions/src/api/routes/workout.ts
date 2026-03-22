@@ -387,7 +387,7 @@ router.get("/workout/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const isCreator = courseDoc.data()?.creatorId === auth.userId;
+  const isCreator = courseDoc.data()?.creator_id === auth.userId;
 
   if (!hasAccess && !isCreator) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");

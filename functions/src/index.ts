@@ -2559,3 +2559,271 @@ export const api = onRequest(
   },
   app
 );
+
+// ─── Scheduled: expand weekly availability templates into concrete slots ───
+export const expandWeeklyAvailability = onSchedule(
+  {
+    schedule: "every day 03:00",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const snapshot = await db.collection("creator_availability").get();
+    let totalExpanded = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const template = data.weeklyTemplate;
+      if (!template || typeof template !== "object") continue;
+
+      const hasAnySlots = Object.values(template).some(
+        (slots) => Array.isArray(slots) && (slots as unknown[]).length > 0
+      );
+      if (!hasAnySlots) continue;
+
+      const creatorId = doc.id;
+      const disabledDates = new Set<string>(
+        Array.isArray(data.disabledDates) ? data.disabledDates : []
+      );
+      const existingDays: Record<string, unknown> = data.days ?? {};
+
+      const updates: Record<string, unknown> = {};
+      const today = new Date();
+
+      // Generate slots for the next 14 days
+      for (let offset = 0; offset < 14; offset++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        const dateStr = d.toISOString().slice(0, 10);
+
+        if (disabledDates.has(dateStr)) continue;
+        if (existingDays[dateStr]) continue;
+
+        // JS getDay: 0=Sun..6=Sat → template key: 1=Mon..7=Sun
+        const jsDay = d.getDay();
+        const templateKey = String(jsDay === 0 ? 7 : jsDay);
+        const dayTemplate = template[templateKey];
+        if (!Array.isArray(dayTemplate) || dayTemplate.length === 0) continue;
+
+        const slots: Array<{
+          startLocal: string;
+          endLocal: string;
+          durationMinutes: number;
+          booked: boolean;
+        }> = [];
+
+        for (const entry of dayTemplate as Array<{startTime: string; durationMinutes: number}>) {
+          const [h, m] = entry.startTime.split(":").map(Number);
+          const endMinutes = h * 60 + m + entry.durationMinutes;
+          const endH = Math.floor(endMinutes / 60);
+          const endM = endMinutes % 60;
+
+          const startLocal = `${dateStr}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`;
+          const endLocal = `${dateStr}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00.000Z`;
+
+          slots.push({
+            startLocal,
+            endLocal,
+            durationMinutes: entry.durationMinutes,
+            booked: false,
+          });
+        }
+
+        if (slots.length > 0) {
+          updates[`days.${dateStr}`] = {slots};
+          totalExpanded += slots.length;
+        }
+      }
+
+      // Prune days older than 30 days
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      for (const dateKey of Object.keys(existingDays)) {
+        if (dateKey < cutoffStr) {
+          updates[`days.${dateKey}`] = admin.firestore.FieldValue.delete();
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates["updated_at"] = admin.firestore.FieldValue.serverTimestamp();
+        await db.collection("creator_availability").doc(creatorId).update(updates);
+      }
+    }
+
+    functions.logger.info("expandWeeklyAvailability: done", {totalExpanded});
+  }
+);
+
+// ─── Scheduled: send call reminders (24h and 1h before) ───────────────────
+export const sendCallReminders = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    region: "us-central1",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    secrets: [resendApiKeyV2],
+  },
+  async () => {
+    const now = Date.now();
+    const h25FromNow = new Date(now + 25 * 60 * 60 * 1000).toISOString();
+
+    const snapshot = await db
+      .collection("call_bookings")
+      .where("status", "==", "scheduled")
+      .where("slotStartUtc", "<=", h25FromNow)
+      .orderBy("slotStartUtc", "asc")
+      .get();
+
+    if (snapshot.empty) return;
+
+    let sent24h = 0;
+    let sent1h = 0;
+
+    // Cache user lookups
+    const userCache = new Map<string, {email: string; displayName: string}>();
+    async function getUser(userId: string) {
+      if (userCache.has(userId)) return userCache.get(userId)!;
+      const doc = await db.collection("users").doc(userId).get();
+      const data = doc.data();
+      const entry = {
+        email: data?.email || "",
+        displayName: data?.displayName || "",
+      };
+      userCache.set(userId, entry);
+      return entry;
+    }
+
+    function buildReminderHtml(
+      recipientName: string,
+      otherName: string,
+      callLink: string,
+      dateTimeStr: string,
+      isCreator: boolean
+    ): string {
+      const bodyText = isCreator
+        ? `Tienes una llamada con ${otherName}.`
+        : `Tienes una llamada con ${otherName}.`;
+      const greeting = recipientName
+        ? `¡Hola, ${recipientName.split(" ")[0]}!`
+        : "¡Hola!";
+
+      return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
+        <tr><td style="background:#1a1a1a;padding:52px 36px 44px;text-align:center;">
+          <p style="margin:0 0 18px;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Wake Coaching</p>
+          <h1 style="margin:0 0 10px;font-size:1.75rem;font-weight:800;color:#fff;line-height:1.2;">${escapeHtml(greeting)}</h1>
+          <p style="margin:0;font-size:1rem;color:rgba(255,255,255,0.78);line-height:1.55;">${escapeHtml(bodyText)}</p>
+        </td></tr>
+        <tr><td style="background:#1e1e1e;padding:32px 36px 28px;text-align:center;">
+          <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:18px 24px;margin-bottom:24px;">
+            <p style="margin:0 0 4px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);">Fecha y hora</p>
+            <p style="margin:0;font-size:1.1rem;font-weight:700;color:#fff;">${escapeHtml(dateTimeStr)}</p>
+          </div>
+          ${callLink ? `<a href="${escapeHtml(callLink)}" style="display:inline-block;padding:14px 32px;background:rgba(255,255,255,0.12);color:#fff;font-size:0.95rem;font-weight:600;text-decoration:none;border-radius:10px;border:1px solid rgba(255,255,255,0.15);">Unirse a la llamada</a>` : ""}
+        </td></tr>
+        <tr><td style="background:#1e1e1e;padding:16px 36px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
+          <p style="margin:0;font-size:0.75rem;color:rgba(255,255,255,0.22);">Enviado automáticamente por Wake · <a href="https://wakelab.co" style="color:rgba(255,255,255,0.22);text-decoration:none;">wakelab.co</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    }
+
+    async function sendReminderEmail(to: string, subject: string, html: string) {
+      if (!to) return;
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: "Wake Coaching <coaching@wakelab.co>",
+          to,
+          subject,
+          html,
+          headers: {
+            "List-Unsubscribe": "<mailto:soporte@wakelab.co?subject=unsubscribe>",
+          },
+        });
+      } catch (err) {
+        functions.logger.error("sendCallReminders: email failed", {to, error: String(err)});
+      }
+    }
+
+    function formatDateTime(isoUtc: string): string {
+      const d = new Date(isoUtc);
+      return d.toLocaleString("es-CO", {
+        timeZone: "America/Bogota",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+
+    for (const doc of snapshot.docs) {
+      const booking = doc.data();
+      const slotStart = new Date(booking.slotStartUtc).getTime();
+      const msUntilCall = slotStart - now;
+
+      // 24h reminder: 23-25h window
+      if (
+        msUntilCall >= 23 * 60 * 60 * 1000 &&
+        msUntilCall <= 25 * 60 * 60 * 1000 &&
+        !booking.reminderSent24h
+      ) {
+        const client = await getUser(booking.clientUserId);
+        const creator = await getUser(booking.creatorId);
+        const dateTimeStr = formatDateTime(booking.slotStartUtc);
+        const callLink = booking.callLink || "";
+
+        if (client.email) {
+          const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
+          await sendReminderEmail(client.email, "Tu llamada es mañana", html);
+        }
+        if (creator.email) {
+          const html = buildReminderHtml(creator.displayName, client.displayName || "tu cliente", callLink, dateTimeStr, true);
+          await sendReminderEmail(creator.email, "Llamada mañana", html);
+        }
+
+        await doc.ref.update({reminderSent24h: true});
+        sent24h++;
+      }
+
+      // 1h reminder: 45min-75min window
+      if (
+        msUntilCall >= 45 * 60 * 1000 &&
+        msUntilCall <= 75 * 60 * 1000 &&
+        !booking.reminderSent1h
+      ) {
+        const client = await getUser(booking.clientUserId);
+        const creator = await getUser(booking.creatorId);
+        const dateTimeStr = formatDateTime(booking.slotStartUtc);
+        const callLink = booking.callLink || "";
+
+        if (client.email) {
+          const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
+          await sendReminderEmail(client.email, "Tu llamada es en 1 hora", html);
+        }
+        if (creator.email) {
+          const html = buildReminderHtml(creator.displayName, client.displayName || "tu cliente", callLink, dateTimeStr, true);
+          await sendReminderEmail(creator.email, "Llamada en 1 hora", html);
+        }
+
+        await doc.ref.update({reminderSent1h: true});
+        sent1h++;
+      }
+    }
+
+    functions.logger.info("sendCallReminders: done", {total: snapshot.size, sent24h, sent1h});
+  }
+);

@@ -4,6 +4,10 @@
 # Claude Code
 .claude/
 
+# Firestore exports (production data — never commit)
+firestore-dump.json
+**/serviceAccountKey*.json
+
 # ============================================
 # Dependencies
 # ============================================

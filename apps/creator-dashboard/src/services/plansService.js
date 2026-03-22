@@ -3,13 +3,12 @@ import apiClient from '../utils/apiClient';
 class PlansService {
   async getPlansByCreator(_creatorId) {
     const result = await apiClient.get('/creator/plans');
-    return (result?.data ?? []).map((p) => ({ id: p.planId, ...p }));
+    return result?.data ?? [];
   }
 
   async getPlanById(planId) {
     const result = await apiClient.get(`/creator/plans/${planId}`);
-    if (!result?.data) return null;
-    return { id: result.data.planId, ...result.data };
+    return result?.data ?? null;
   }
 
   async createPlan(_creatorId, _creatorName, planData) {

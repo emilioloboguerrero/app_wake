@@ -1,70 +1,71 @@
 .auth-loading {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: var(--canvas);
-  gap: 28px;
-}
-
-.auth-loading__logo {
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
-  animation: auth-loading-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.auth-loading__spinner {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.08);
-  border-top-color: rgba(255, 255, 255, 0.5);
-  animation:
-    auth-loading-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both,
-    auth-loading-spin 0.9s linear infinite;
-}
-
-@keyframes auth-loading-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes auth-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.auth-loading__logo-wrap {
+  background-color: #1a1a1a;
   position: relative;
   overflow: hidden;
-  display: inline-block;
 }
 
-.auth-loading__logo-wrap::after {
-  content: '';
+/* ─── Ambient orbs ─────────────────────────────────────────────────────── */
+.auth-loading__orb {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%);
-  transform: translateX(-100%);
-  animation: logo-shine 2.4s cubic-bezier(0.22,1,0.36,1) 0.6s forwards, logo-shine-loop 6s ease 3.2s infinite;
+  border-radius: 50%;
+  filter: blur(72px);
   pointer-events: none;
+  background: rgba(255, 255, 255, 0.13);
 }
 
-@keyframes logo-shine {
-  to { transform: translateX(100%); }
+.auth-loading__orb--1 {
+  width: 320px;
+  height: 320px;
+  top: -80px;
+  right: -60px;
+  animation: auth-orb-1 13s ease-in-out infinite alternate;
 }
 
-@keyframes logo-shine-loop {
-  0%, 70% { transform: translateX(-100%); opacity: 0; }
-  72% { opacity: 1; }
-  100% { transform: translateX(100%); opacity: 0; }
+.auth-loading__orb--2 {
+  width: 260px;
+  height: 260px;
+  bottom: 5%;
+  left: -70px;
+  opacity: 0.85;
+  animation: auth-orb-2 17s ease-in-out infinite alternate;
+}
+
+.auth-loading__orb--3 {
+  width: 200px;
+  height: 200px;
+  top: 38%;
+  right: 8%;
+  opacity: 0.65;
+  animation: auth-orb-3 21s ease-in-out infinite alternate;
+}
+
+@keyframes auth-orb-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-28px, 44px) scale(1.08); }
+}
+
+@keyframes auth-orb-2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(38px, -32px) scale(0.92); }
+}
+
+@keyframes auth-orb-3 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-18px, 26px) scale(1.06); }
+}
+
+/* ─── Logo shimmer ─────────────────────────────────────────────────────── */
+.auth-loading__logo-wrap {
+  position: relative;
+  z-index: 1;
+  animation: auth-fade-in 0.4s ease forwards;
+}
+
+@keyframes auth-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

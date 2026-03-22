@@ -121,7 +121,7 @@ export default function MealEditorScreen() {
     ...cacheConfig.otherPrograms,
   });
   useEffect(() => {
-    if (!mealId || mealId === 'new') navigate('/nutrition', { replace: true });
+    if (!mealId || mealId === 'new') navigate('/biblioteca?domain=nutricion', { replace: true });
   }, [mealId, navigate]);
   useEffect(() => {
     if (mealData && !seededRef.current) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './MenuDropdown.css';
 
 export default function MenuDropdown({ trigger, items }) {
@@ -49,7 +50,7 @@ export default function MenuDropdown({ trigger, items }) {
     <div ref={containerRef} className="menu-dropdown-trigger" onClick={() => setOpen(v => !v)}>
       {trigger}
 
-      {open && (
+      {open && createPortal(
         <div
           ref={menuRef}
           className="menu-dropdown"
@@ -80,7 +81,8 @@ export default function MenuDropdown({ trigger, items }) {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

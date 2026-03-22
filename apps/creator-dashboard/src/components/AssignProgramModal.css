@@ -1,198 +1,166 @@
-/* AssignProgramModal - same structure as PropagateChangesModal + exercise modal card feel */
-
-/* Left column fixed width (like Propagate right), right column takes remaining space */
-.assign-program-modal-layout .propagate-modal-left {
-  flex: 0 0 240px;
-  width: 240px;
-}
-
-.assign-program-modal-layout .propagate-modal-right.assign-program-right {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-}
-
-@media (max-width: 700px) {
-  .assign-program-modal-layout .propagate-modal-right.assign-program-right {
-    min-height: 280px;
-  }
-}
-
-/* Left card: single user block (like one item from propagate list) */
-.assign-program-user-block {
-  padding: 4px 0;
-  flex: 1;
-}
-
-.assign-program-user-name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0 0 4px 0;
-}
-
-.assign-program-user-email {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.72);
-  margin: 0 0 12px 0;
-}
-
-.assign-program-user-details {
-  margin: 0;
-  padding: 0;
+/* ─── Assign Program Modal ────────────────────────────────────── */
+.apm {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
 }
 
-.assign-program-user-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0;
-}
-
-.assign-program-user-row dt {
-  flex-shrink: 0;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.55);
-  margin: 0;
-  font-weight: 500;
-}
-
-.assign-program-user-row dd {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.88);
-  margin: 0;
-}
-
-.assign-program-user-no-data {
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 0;
-  padding: 8px 0 0 0;
-  line-height: 1.4;
-}
-
-/* Program list: vertical list (same scrollbar as propagate-modal-users-list) */
-.assign-program-list {
-  list-style: none;
-  padding-left: 0;
-  padding-right: 4px;
-  margin: 0;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.assign-program-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.assign-program-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 3px;
-}
-
-.assign-program-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-}
-
-.assign-program-item,
-.assign-program-item-new {
-  margin-bottom: 8px;
-}
-
-.assign-program-item:last-child,
-.assign-program-item-new:last-child {
-  margin-bottom: 0;
-}
-
-/* Program row - exercise-implements-card style (card with border, rounded) */
-.assign-program-item-btn {
+/* ─── Client summary ─────────────────────────────────────────── */
+.apm__client {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
-  padding: 12px 14px;
-  text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  color: inherit;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
 }
 
-.assign-program-item-btn:hover {
+.apm__client-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.assign-program-item-btn-selected {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-.assign-program-item-btn-selected:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.assign-program-item-thumb {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  width: 48px;
-  height: 36px;
-  border-radius: 6px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.2);
 }
 
-.assign-program-item-thumb img {
+.apm__client-avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.assign-program-item-placeholder {
+.apm__client-avatar-initial {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.apm__client-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.apm__client-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0;
+}
+
+.apm__client-email {
+  font-size: 0.76rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  margin: 2px 0 0;
+}
+
+/* ─── Section ────────────────────────────────────────────────── */
+.apm__section-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  margin: 0 0 8px;
+}
+
+/* ─── Program list ───────────────────────────────────────────── */
+.apm__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.apm__list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.apm__list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 3px;
+}
+
+.apm__program {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.apm__program:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.apm__program--selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.apm__program--selected:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.apm__program-thumb {
+  width: 44px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
   flex-shrink: 0;
-  width: 48px;
-  height: 36px;
-  border-radius: 6px;
+}
+
+.apm__program-placeholder {
+  width: 44px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.2);
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
 }
 
-.assign-program-item-info {
+.apm__program-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-.assign-program-item-title {
-  font-size: 0.9rem;
+.apm__program-title {
+  font-size: 0.84rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.assign-program-item-discipline {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+.apm__program-sub {
+  font-size: 0.72rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
 }
 
-.assign-program-item-check {
+.apm__check {
   flex-shrink: 0;
   width: 22px;
   height: 22px;
@@ -202,68 +170,59 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(11px, 2.5vw, 12px);
-  font-weight: 700;
+  animation: fum-result-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Create new program row - dashed style like exercise modal */
-.assign-program-item-new-btn {
+/* ─── Create new button ──────────────────────────────────────── */
+.apm__create-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 16px;
-  border: 1px dashed rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.8);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  padding: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.82rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: all 0.18s ease;
 }
 
-.assign-program-item-new-btn:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.95);
+.apm__create-btn:hover {
+  border-color: rgba(255, 255, 255, 0.30);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
 }
 
-.assign-program-item-new-icon {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+.apm__create-btn:active {
+  transform: scale(0.98);
 }
 
-.assign-program-item-new-label {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.assign-program-loading {
-  flex: 1;
+/* ─── States ─────────────────────────────────────────────────── */
+.apm__loading {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: clamp(13px, 3vw, 14px);
+  gap: 10px;
+  padding: 20px 0;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  font-size: 0.82rem;
 }
 
-.assign-program-empty {
-  flex: 1;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: clamp(13px, 3vw, 14px);
+.apm__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.apm__empty p {
+  font-size: 0.82rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
   margin: 0;
-  padding: 16px 0;
-}
-
-.assign-program-error {
-  padding: 14px 24px;
-  margin: 0 24px 16px 24px;
-  background-color: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.35);
-  border-radius: 10px;
-  color: #FF6B6B;
-  font-size: clamp(13px, 3vw, 14px);
-  line-height: 1.4;
+  line-height: 1.5;
 }

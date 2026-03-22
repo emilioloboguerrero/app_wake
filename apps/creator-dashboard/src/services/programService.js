@@ -65,7 +65,7 @@ class ProgramService {
   }
 
   async deleteProgramImage(programId) {
-    await apiClient.patch(`/creator/programs/${programId}`, { imageUrl: null });
+    await apiClient.patch(`/creator/programs/${programId}`, { image_url: null, image_path: null });
   }
 
   getWeekCount(programData) {

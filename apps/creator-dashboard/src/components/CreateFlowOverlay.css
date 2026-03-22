@@ -1,0 +1,720 @@
+/* ═══════════════════════════════════════════════════════════
+   CreateFlowOverlay — dark cinematic creation experience
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Overlay ────────────────────────────────────────────── */
+.cfo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: cfo-fade-in 0.25s ease both;
+}
+
+@keyframes cfo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Card ───────────────────────────────────────────────── */
+.cfo-card {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface-2, rgba(26, 26, 26, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow:
+    0 40px 120px rgba(0, 0, 0, 0.7),
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  animation: cfo-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  overflow: visible;
+}
+
+@keyframes cfo-card-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Top bar ────────────────────────────────────────────── */
+.cfo-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+
+.cfo-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.cfo-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Progress bar ───────────────────────────────────────── */
+.cfo-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.cfo-progress__track {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cfo-progress__fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 2px;
+  transition: width 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cfo-progress__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Body ───────────────────────────────────────────────── */
+.cfo-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Step ───────────────────────────────────────────────── */
+.cfo-step {
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px 24px;
+  animation: cfo-step-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cfo-step--center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 280px;
+}
+
+@keyframes cfo-step-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Step header */
+.cfo-step__header {
+  margin-bottom: 28px;
+}
+
+.cfo-step__title {
+  font-size: clamp(18px, 4.5vw, 22px);
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0 0 6px;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+
+.cfo-step__desc {
+  font-size: clamp(13px, 3vw, 14px);
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Step content */
+.cfo-step__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ─── Name input ─────────────────────────────────────────── */
+.cfo-name-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  outline: none;
+  color: var(--text-primary, #fff);
+  font-size: clamp(15px, 3.5vw, 17px);
+  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  caret-color: rgba(255, 255, 255, 0.6);
+  box-sizing: border-box;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+.cfo-name-input::placeholder {
+  color: rgba(255, 255, 255, 0.18);
+  font-weight: 400;
+}
+
+.cfo-name-input:focus {
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Link button */
+.cfo-link-btn {
+  padding: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: color 140ms ease;
+}
+
+.cfo-link-btn:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Description */
+.cfo-desc-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  outline: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  resize: none;
+  box-sizing: border-box;
+  caret-color: rgba(255, 255, 255, 0.5);
+  transition: border-color 200ms ease;
+  animation: cfo-step-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cfo-desc-input::placeholder {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+.cfo-desc-input:focus {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ─── Discipline grid ────────────────────────────────────── */
+.cfo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.cfo-grid-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cfo-grid-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cfo-grid-item--active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cfo-grid-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.cfo-grid-item--active .cfo-grid-item__icon {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cfo-grid-item__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 160ms ease;
+}
+
+.cfo-grid-item--active .cfo-grid-item__label {
+  color: var(--text-primary, #fff);
+}
+
+/* ─── Binary choice cards ────────────────────────────────── */
+.cfo-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cfo-choice-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cfo-choice-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cfo-choice-card--active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cfo-choice-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.cfo-choice-card--active .cfo-choice-card__icon {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cfo-choice-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cfo-choice-card__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 160ms ease;
+}
+
+.cfo-choice-card--active .cfo-choice-card__label {
+  color: var(--text-primary, #fff);
+}
+
+.cfo-choice-card__desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+  transition: color 160ms ease;
+}
+
+.cfo-choice-card--active .cfo-choice-card__desc {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── Check toggle (library selector) ────────────────────── */
+.cfo-check-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  color: transparent;
+}
+
+.cfo-check-toggle--on {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: rgba(74, 222, 128, 0.5);
+  color: rgba(74, 222, 128, 0.9);
+}
+
+/* ─── Library empty state ────────────────────────────────── */
+.cfo-lib-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 16px;
+  color: rgba(255, 255, 255, 0.25);
+  text-align: center;
+}
+
+.cfo-lib-empty p {
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+  max-width: 260px;
+}
+
+/* ─── Footer (nav buttons) ───────────────────────────────── */
+.cfo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px 24px;
+  gap: 12px;
+}
+
+.cfo-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.cfo-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cfo-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.90);
+  border: none;
+  border-radius: 12px;
+  color: #111;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cfo-next-btn:hover:not(:disabled) {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(255, 255, 255, 0.12);
+}
+
+.cfo-next-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cfo-next-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.cfo-next-btn--final {
+  background: rgba(74, 222, 128, 0.85);
+  color: #0a0a0a;
+}
+
+.cfo-next-btn--final:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 1);
+  box-shadow: 0 6px 24px rgba(74, 222, 128, 0.2);
+}
+
+/* ─── Media hint (info step) ────────────────────────────── */
+.cfo-media-hint {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+.cfo-media-hint__items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cfo-media-hint__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cfo-media-hint__item svg {
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+/* ─── Duration row (access step) ────────────────────────── */
+.cfo-duration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  animation: cfo-step-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cfo-duration-row__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cfo-duration-row__input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfo-duration-row__input {
+  width: 56px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  outline: none;
+  color: var(--text-primary, #fff);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  text-align: center;
+  -moz-appearance: textfield;
+  transition: border-color 200ms ease;
+}
+
+.cfo-duration-row__input::-webkit-inner-spin-button,
+.cfo-duration-row__input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cfo-duration-row__input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cfo-duration-row__unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ─── Price field ───────────────────────────────────────── */
+.cfo-price-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  transition: border-color 200ms ease;
+}
+
+.cfo-price-field:focus-within {
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cfo-price-field__currency {
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.cfo-price-field__input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary, #fff);
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  caret-color: rgba(255, 255, 255, 0.6);
+  min-width: 0;
+}
+
+.cfo-price-field__input::placeholder {
+  color: rgba(255, 255, 255, 0.15);
+  font-weight: 400;
+}
+
+.cfo-price-field__hint {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.cfo-price-warning {
+  font-size: 12px;
+  color: rgba(239, 68, 68, 0.8);
+  margin: 4px 0 0;
+}
+
+.cfo-price-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+  margin: 4px 0 0;
+}
+
+/* ─── Creating state ─────────────────────────────────────── */
+.cfo-spinner {
+  width: 40px;
+  height: 40px;
+  border: 2.5px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.65);
+  border-radius: 50%;
+  animation: cfo-spin 0.7s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes cfo-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cfo-status-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  animation: cfo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes cfo-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Success state ──────────────────────────────────────── */
+.cfo-check-wrap {
+  margin-bottom: 20px;
+}
+
+.cfo-check-circle {
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
+  animation: cfo-draw-circle 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+}
+
+.cfo-check-path {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: cfo-draw-check 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
+}
+
+@keyframes cfo-draw-circle {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes cfo-draw-check {
+  to { stroke-dashoffset: 0; }
+}
+
+.cfo-success-title {
+  font-size: clamp(18px, 4.5vw, 22px);
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  animation: cfo-step-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+}
+
+.cfo-success-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  animation: cfo-step-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
+}
+
+/* ─── Responsive ─────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .cfo-overlay {
+    padding: 16px;
+  }
+
+  .cfo-card {
+    max-width: none;
+    border-radius: 16px;
+  }
+
+  .cfo-step {
+    padding: 24px 20px 20px;
+  }
+
+  .cfo-footer {
+    padding: 16px 20px 20px;
+  }
+
+  .cfo-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .cfo-grid-item {
+    padding: 12px;
+    gap: 8px;
+  }
+}

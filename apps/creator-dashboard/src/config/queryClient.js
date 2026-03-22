@@ -97,6 +97,12 @@ export const cacheConfig = {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
+  bookings: {
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  },
 };
 
 // Query keys factory
@@ -141,7 +147,6 @@ export const queryKeys = {
   },
   availability: {
     byCreator: (creatorId) => ['availability', creatorId],
-    day: (creatorId, dateStr) => ['availability', creatorId, dateStr],
   },
   bookings: {
     byCreator: (creatorId) => ['bookings', creatorId],

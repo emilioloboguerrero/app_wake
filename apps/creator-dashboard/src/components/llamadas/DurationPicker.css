@@ -1,0 +1,46 @@
+.dur-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dur-label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dur-options {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.dur-option {
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  flex: 1;
+  text-align: center;
+}
+
+.dur-option:hover {
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dur-option--active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 600;
+}

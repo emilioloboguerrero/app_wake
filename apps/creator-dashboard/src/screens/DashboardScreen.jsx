@@ -1,23 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutGrid, Columns3, GripVertical } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  rectSortingStrategy,
-  useSortable,
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { LayoutGrid, Grid3X3, Pencil, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -30,150 +13,221 @@ import {
   AdherenceWidget,
   SessionsWidget,
   UpcomingCallsWidget,
+  ClientActivityWidget,
+  ClientTrendWidget,
+  ProgramsSoldWidget,
+  RevenueTrendWidget,
+  CalendarPreviewWidget,
+  ExpiringAccessWidget,
 } from '../components/dashboard';
 import { cacheConfig } from '../config/queryClient';
 import apiClient from '../utils/apiClient';
 import '../components/creator/RevenueCard.css';
 import './DashboardScreen.css';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Layout definitions ──────────────────────────────────────────────────────
 
 const LAYOUT_KEY = 'wake_dashboard_layout';
-const WIDGET_ORDER_KEY = 'wake_dashboard_widget_order';
+const SLOT_KEY = 'wake_dashboard_slots';
 
-const DEFAULT_WIDGET_ORDER = [
-  'revenue',
-  'clients',
-  'calls',
-  'adherence',
-  'sessions',
-  'upcoming-calls',
+const LAYOUTS = {
+  '5-panel': { slots: ['A', 'B', 'C', 'D', 'E'], count: 5 },
+  '7-panel': { slots: ['A', 'B', 'C', 'D', 'E', 'F', 'G'], count: 7 },
+};
+
+const WIDGET_LIST = [
+  { id: 'revenue',          Component: RevenueWidget,        label: 'Ingresos' },
+  { id: 'clients',          Component: ClientsWidget,        label: 'Clientes' },
+  { id: 'calls',            Component: CallsWidget,          label: 'Llamadas' },
+  { id: 'adherence',        Component: AdherenceWidget,      label: 'Adherencia' },
+  { id: 'sessions',         Component: SessionsWidget,       label: 'Sesiones' },
+  { id: 'upcoming-calls',   Component: UpcomingCallsWidget,  label: 'Próximas llamadas' },
+  { id: 'client-activity',  Component: ClientActivityWidget, label: 'Actividad clientes' },
+  { id: 'client-trend',     Component: ClientTrendWidget,    label: 'Tendencia clientes' },
+  { id: 'programs-sold',    Component: ProgramsSoldWidget,   label: 'Programas vendidos' },
+  { id: 'revenue-trend',    Component: RevenueTrendWidget,   label: 'Tendencia ingresos' },
+  { id: 'calendar-preview', Component: CalendarPreviewWidget,label: 'Agenda' },
+  { id: 'expiring-access',  Component: ExpiringAccessWidget, label: 'Accesos por vencer' },
 ];
+
+const WIDGETS = Object.fromEntries(WIDGET_LIST.map(w => [w.id, w]));
+
+const DEFAULT_SLOTS = {
+  '5-panel': {
+    A: 'revenue',
+    B: 'calls',
+    C: 'client-activity',
+    D: 'sessions',
+    E: 'upcoming-calls',
+  },
+  '7-panel': {
+    A: 'revenue-trend',
+    B: 'clients',
+    C: 'calls',
+    D: 'client-activity',
+    E: 'adherence',
+    F: 'sessions',
+    G: 'expiring-access',
+  },
+};
 
 const TUTORIAL_STEPS = [
   {
-    selector: '.ds-bento--compact, .ds-bento--wide',
+    selector: '.bento-grid',
     title: 'Tu centro de control',
-    body: 'Este es tu centro de control. Puedes arrastrar las tarjetas para organizar tu dashboard.',
-  },
-  {
-    selector: '.widget-revenue',
-    title: 'Tus ingresos',
-    body: 'Aqui ves tus ingresos. Toca para ver el desglose completo.',
-  },
-  {
-    selector: '.widget-clients',
-    title: 'Tus clientes',
-    body: 'Tu roster de clientes activos. Clickea cualquier avatar para ir a su perfil.',
+    body: 'Este es tu centro de control. Cada tarjeta muestra una métrica importante de tu negocio.',
   },
   {
     selector: '.spt-fab',
     title: 'Feedback',
-    body: 'Algo que no funcione o que quieras ver? Mandanos feedback directo desde aca.',
+    body: 'Algo que no funcione o que quieras ver? Mandanos feedback directo desde acá.',
   },
 ];
 
-const WIDGET_CONFIG = {
-  revenue: { span: '2x1', className: 'widget-revenue', Component: RevenueWidget },
-  clients: { span: '2x1', className: 'widget-clients', Component: ClientsWidget },
-  calls: { span: '1x1', className: 'widget-calls', Component: CallsWidget },
-  adherence: { span: '1x1', className: 'widget-adherence', Component: AdherenceWidget },
-  sessions: { span: '1x1', className: 'widget-sessions', Component: SessionsWidget },
-  'upcoming-calls': { span: '1x1', className: 'widget-upcoming-calls', Component: UpcomingCallsWidget },
-};
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getStoredLayout() {
   try {
     const v = localStorage.getItem(LAYOUT_KEY);
-    return v === 'wide' ? 'wide' : 'compact';
+    return v === '7-panel' ? '7-panel' : '5-panel';
   } catch {
-    return 'compact';
+    return '5-panel';
   }
 }
 
-function getStoredWidgetOrder() {
+function getStoredSlots(layout) {
   try {
-    const v = localStorage.getItem(WIDGET_ORDER_KEY);
-    if (!v) return DEFAULT_WIDGET_ORDER;
-    const parsed = JSON.parse(v);
-    if (!Array.isArray(parsed) || parsed.length !== DEFAULT_WIDGET_ORDER.length) {
-      return DEFAULT_WIDGET_ORDER;
-    }
-    return DEFAULT_WIDGET_ORDER.every(id => parsed.includes(id)) ? parsed : DEFAULT_WIDGET_ORDER;
+    const raw = localStorage.getItem(SLOT_KEY);
+    if (!raw) return DEFAULT_SLOTS[layout];
+    const all = JSON.parse(raw);
+    return all[layout] ?? DEFAULT_SLOTS[layout];
   } catch {
-    return DEFAULT_WIDGET_ORDER;
+    return DEFAULT_SLOTS[layout];
   }
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+function persistSlots(layout, slots) {
+  try {
+    const raw = localStorage.getItem(SLOT_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    all[layout] = slots;
+    localStorage.setItem(SLOT_KEY, JSON.stringify(all));
+  } catch { /* noop */ }
+}
 
-function DragHandle({ listeners, attributes }) {
+const WIDGET_CLASSNAMES = {
+  revenue: 'widget-revenue',
+  clients: 'widget-clients',
+  calls: 'widget-calls',
+  adherence: 'widget-adherence',
+  sessions: 'widget-sessions',
+  'upcoming-calls': 'widget-upcoming-calls',
+  'client-activity': 'widget-client-activity',
+  'client-trend': 'widget-client-trend',
+  'programs-sold': 'widget-programs-sold',
+  'revenue-trend': 'widget-revenue-trend',
+  'calendar-preview': 'widget-calendar-preview',
+  'expiring-access': 'widget-expiring-access',
+};
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+function SlotPicker({ slot, currentWidgetId, assignedWidgetIds, onSelect, onClear }) {
   return (
-    <button className="ds-drag-handle" aria-label="Arrastrar widget" {...listeners} {...attributes}>
-      <GripVertical size={14} />
-    </button>
+    <div className="ds-slot-picker">
+      <p className="ds-slot-picker__label">Panel {slot}</p>
+      <div className="ds-slot-picker__options">
+        {WIDGET_LIST.map(w => {
+          const isAssigned = assignedWidgetIds.includes(w.id) && w.id !== currentWidgetId;
+          return (
+            <button
+              key={w.id}
+              className={`ds-slot-picker__option ${w.id === currentWidgetId ? 'ds-slot-picker__option--active' : ''}`}
+              disabled={isAssigned}
+              onClick={() => onSelect(slot, w.id)}
+            >
+              {w.label}
+            </button>
+          );
+        })}
+        {currentWidgetId && (
+          <button className="ds-slot-picker__option ds-slot-picker__option--clear" onClick={() => onClear(slot)}>
+            <X size={12} /> Vaciar
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
-function SortableWidget({ id, span, className, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+// ── Main Component ──────────────────────────────────────────────────────────
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 10 : 'auto',
-  };
-
-  return (
-    <BentoCard ref={setNodeRef} span={span} className={`${className} ds-sortable-widget`} style={style}>
-      <GlowingEffect spread={24} borderWidth={1} />
-      <DragHandle listeners={listeners} attributes={attributes} />
-      {children}
-    </BentoCard>
-  );
+function useGreeting(displayName) {
+  const firstName = displayName?.split(' ')[0];
+  const h = new Date().getHours();
+  if (h < 12) return firstName ? `Buenos días, ${firstName}` : 'Buenos días';
+  if (h < 19) return firstName ? `Buenas tardes, ${firstName}` : 'Buenas tardes';
+  return firstName ? `Buenas noches, ${firstName}` : 'Buenas noches';
 }
-
-// ── Main Component ────────────────────────────────────────────────────────────
 
 const DashboardScreen = () => {
   const { user } = useAuth();
+  const greeting = useGreeting(user?.displayName);
   const [layout, setLayout] = useState(getStoredLayout);
-  const [widgetOrder, setWidgetOrder] = useState(getStoredWidgetOrder);
-  const [activeId, setActiveId] = useState(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const isWide = layout === 'wide';
+  const [slotAssignments, setSlotAssignments] = useState(() => getStoredSlots(getStoredLayout()));
+  const [editing, setEditing] = useState(false);
+  const [editingSlot, setEditingSlot] = useState(null);
+  const [draftSlots, setDraftSlots] = useState(null);
 
   const toggleLayout = useCallback(() => {
+    setEditing(false);
+    setEditingSlot(null);
     setLayout(prev => {
-      const next = prev === 'compact' ? 'wide' : 'compact';
+      const next = prev === '5-panel' ? '7-panel' : '5-panel';
       try { localStorage.setItem(LAYOUT_KEY, next); } catch { /* noop */ }
+      const nextSlots = getStoredSlots(next);
+      setSlotAssignments(nextSlots);
       return next;
     });
   }, []);
 
-  const handleDragStart = useCallback((e) => setActiveId(e.active.id), []);
-  const handleDragCancel = useCallback(() => setActiveId(null), []);
+  const startEditing = useCallback(() => {
+    setDraftSlots({ ...slotAssignments });
+    setEditing(true);
+    setEditingSlot(null);
+  }, [slotAssignments]);
 
-  const handleDragEnd = useCallback((event) => {
-    setActiveId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setWidgetOrder(prev => {
-      const oldIndex = prev.indexOf(active.id);
-      const newIndex = prev.indexOf(over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      const next = arrayMove(prev, oldIndex, newIndex);
-      try { localStorage.setItem(WIDGET_ORDER_KEY, JSON.stringify(next)); } catch { /* noop */ }
+  const cancelEditing = useCallback(() => {
+    setEditing(false);
+    setEditingSlot(null);
+    setDraftSlots(null);
+  }, []);
+
+  const saveEditing = useCallback(() => {
+    if (draftSlots) {
+      setSlotAssignments(draftSlots);
+      persistSlots(layout, draftSlots);
+    }
+    setEditing(false);
+    setEditingSlot(null);
+    setDraftSlots(null);
+  }, [draftSlots, layout]);
+
+  const handleSlotSelect = useCallback((slot, widgetId) => {
+    setDraftSlots(prev => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key] === widgetId) next[key] = null;
+      }
+      next[slot] = widgetId;
       return next;
     });
+    setEditingSlot(null);
+  }, []);
+
+  const handleSlotClear = useCallback((slot) => {
+    setDraftSlots(prev => ({ ...prev, [slot]: null }));
+    setEditingSlot(null);
   }, []);
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -197,6 +251,41 @@ const DashboardScreen = () => {
     queryFn: () => apiClient.get('/analytics/adherence'),
     enabled: !!user?.uid,
     ...cacheConfig.analytics,
+  });
+
+  const activityQuery = useQuery({
+    queryKey: ['analytics', 'client-activity', user?.uid],
+    queryFn: () => apiClient.get('/analytics/client-activity'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  const trendQuery = useQuery({
+    queryKey: ['analytics', 'client-trend', user?.uid],
+    queryFn: () => apiClient.get('/analytics/client-trend'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  const revenueTrendQuery = useQuery({
+    queryKey: ['analytics', 'revenue-trend', user?.uid],
+    queryFn: () => apiClient.get('/analytics/revenue-trend'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  const expiringQuery = useQuery({
+    queryKey: ['analytics', 'expiring-access', user?.uid],
+    queryFn: () => apiClient.get('/analytics/expiring-access'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
+
+  const calendarQuery = useQuery({
+    queryKey: ['analytics', 'calendar-preview', user?.uid],
+    queryFn: () => apiClient.get('/analytics/calendar-preview'),
+    enabled: !!user?.uid,
+    ...cacheConfig.events,
   });
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -278,7 +367,7 @@ const DashboardScreen = () => {
     [revenueQuery.data]
   );
 
-  // ── All queries failed → FullScreenError ────────────────────────────────
+  // ── All queries failed → FullScreenError ──────────────────────────────────
 
   const allFailed = bookingsQuery.isError && revenueQuery.isError && adherenceQuery.isError;
 
@@ -286,7 +375,12 @@ const DashboardScreen = () => {
     bookingsQuery.refetch();
     revenueQuery.refetch();
     adherenceQuery.refetch();
-  }, [bookingsQuery, revenueQuery, adherenceQuery]);
+    activityQuery.refetch();
+    trendQuery.refetch();
+    revenueTrendQuery.refetch();
+    expiringQuery.refetch();
+    calendarQuery.refetch();
+  }, [bookingsQuery, revenueQuery, adherenceQuery, activityQuery, trendQuery, revenueTrendQuery, expiringQuery, calendarQuery]);
 
   if (allFailed) {
     return (
@@ -302,7 +396,7 @@ const DashboardScreen = () => {
     );
   }
 
-  // ── Widget props ────────────────────────────────────────────────────────
+  // ── Widget props ──────────────────────────────────────────────────────────
 
   const widgetProps = {
     revenue: { revenueQuery, lowTicket, oneOnOne, programs },
@@ -311,62 +405,96 @@ const DashboardScreen = () => {
     adherence: { adherenceQuery, overallAdherence, byProgram },
     sessions: { adherenceQuery, sessionsCompleted },
     'upcoming-calls': { bookingsQuery, upcomingBookings },
+    'client-activity': { activityQuery },
+    'client-trend': { trendQuery },
+    'programs-sold': { trendQuery },
+    'revenue-trend': { revenueTrendQuery },
+    'calendar-preview': { calendarQuery },
+    'expiring-access': { expiringQuery },
   };
 
-  function renderOverlayContent() {
-    if (!activeId) return null;
-    const config = WIDGET_CONFIG[activeId];
-    if (!config) return null;
-    const { Component } = config;
-    return (
-      <BentoCard span={config.span} className={`${config.className} ds-drag-overlay`}>
-        <Component {...widgetProps[activeId]} />
-      </BentoCard>
-    );
-  }
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const slots = LAYOUTS[layout].slots;
+  const currentSlots = editing ? draftSlots : slotAssignments;
+  const assignedWidgetIds = Object.values(currentSlots).filter(Boolean);
+  const panelCount = LAYOUTS[layout].count;
 
   return (
     <ErrorBoundary>
-      <DashboardLayout screenName="Inicio">
-        <div className={`ds-canvas ds-canvas--${layout}`}>
+      <DashboardLayout screenName={greeting}>
+        <div className="ds-canvas">
           <div className="ds-toolbar">
-            <button
-              className="ds-layout-toggle"
-              onClick={toggleLayout}
-              aria-label={isWide ? 'Vista compacta' : 'Vista amplia'}
-              title={isWide ? 'Vista compacta' : 'Vista amplia'}
-            >
-              {isWide ? <LayoutGrid size={14} /> : <Columns3 size={14} />}
-              <span>{isWide ? 'Compacto' : 'Amplio'}</span>
-            </button>
+            <div className="ds-greeting" />
+            <div className="ds-toolbar__actions">
+              {editing ? (
+                <>
+                  <button className="ds-toolbar-btn ds-toolbar-btn--cancel" onClick={cancelEditing}>
+                    <X size={14} />
+                    <span>Cancelar</span>
+                  </button>
+                  <button className="ds-toolbar-btn ds-toolbar-btn--save" onClick={saveEditing}>
+                    <Check size={14} />
+                    <span>Guardar</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="ds-toolbar-btn" onClick={startEditing}>
+                    <Pencil size={14} />
+                    <span>Editar</span>
+                  </button>
+                  <button
+                    className="ds-toolbar-btn"
+                    onClick={toggleLayout}
+                    aria-label={`Cambiar a ${layout === '5-panel' ? '7' : '5'} paneles`}
+                  >
+                    {layout === '5-panel' ? <Grid3X3 size={14} /> : <LayoutGrid size={14} />}
+                    <span>{panelCount} paneles</span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
-          >
-            <SortableContext items={widgetOrder} strategy={rectSortingStrategy}>
-              <BentoGrid className={`ds-bento--${layout}`}>
-                {widgetOrder.map(id => {
-                  const config = WIDGET_CONFIG[id];
-                  if (!config) return null;
-                  const { Component } = config;
-                  return (
-                    <SortableWidget key={id} id={id} span={config.span} className={config.className}>
-                      <Component {...widgetProps[id]} />
-                    </SortableWidget>
-                  );
-                })}
-              </BentoGrid>
-            </SortableContext>
+          <BentoGrid key={layout} layout={layout} className={editing ? 'ds-bento--editing' : ''}>
+            {slots.map((slot, index) => {
+              const widgetId = currentSlots[slot];
+              const widget = widgetId ? WIDGETS[widgetId] : null;
+              const widgetClass = widgetId ? (WIDGET_CLASSNAMES[widgetId] ?? '') : '';
+              const isPickerOpen = editing && editingSlot === slot;
 
-            <DragOverlay dropAnimation={{ duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
-              {renderOverlayContent()}
-            </DragOverlay>
-          </DndContext>
+              return (
+                <BentoCard
+                  key={slot}
+                  area={slot}
+                  className={`${widgetClass} ds-widget-stagger ${editing ? 'ds-card--editing' : ''}`}
+                  style={{ animationDelay: `${index * 80}ms` }}
+                  onClick={editing ? () => setEditingSlot(isPickerOpen ? null : slot) : undefined}
+                >
+                  <GlowingEffect spread={40} proximity={140} borderWidth={1} disabled={editing} />
+                  {isPickerOpen ? (
+                    <SlotPicker
+                      slot={slot}
+                      currentWidgetId={widgetId}
+                      assignedWidgetIds={assignedWidgetIds}
+                      onSelect={handleSlotSelect}
+                      onClear={handleSlotClear}
+                    />
+                  ) : widget ? (
+                    <>
+                      {editing && <div className="ds-card-edit-badge">{widget.label}</div>}
+                      <widget.Component {...widgetProps[widgetId]} />
+                    </>
+                  ) : (
+                    <div className="ds-widget-inner ds-slot-empty">
+                      <p className="ds-widget-empty">{editing ? 'Toca para elegir widget' : 'Panel vacío'}</p>
+                    </div>
+                  )}
+                </BentoCard>
+              );
+            })}
+          </BentoGrid>
 
           <SpotlightTutorial screenKey="dashboard" steps={TUTORIAL_STEPS} />
         </div>

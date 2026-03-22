@@ -240,7 +240,7 @@ const PlanDetailScreen = () => {
     if (hasMadeChanges && propagateAffectedCount > 0) {
       setIsNavigateModalOpen(true);
     } else {
-      navigate('/content', { state: contentReturnState });
+      navigate('/biblioteca', { state: contentReturnState });
     }
   };
 
@@ -312,13 +312,13 @@ const PlanDetailScreen = () => {
   const handleNavigatePropagate = async () => {
     await handlePropagatePlan();
     setIsNavigateModalOpen(false);
-    navigate('/content', { state: contentReturnState });
+    navigate('/biblioteca', { state: contentReturnState });
   };
 
   const handleNavigateLeaveWithoutPropagate = () => {
     setIsNavigateModalOpen(false);
     setHasMadeChanges(false);
-    navigate('/content', { state: contentReturnState });
+    navigate('/biblioteca', { state: contentReturnState });
   };
 
   if (!user) {

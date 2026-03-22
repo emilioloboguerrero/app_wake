@@ -2,27 +2,21 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { MediaUploadProvider } from './contexts/MediaUploadContext';
 import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
-import LibraryModuleDetailScreen from './screens/LibraryModuleDetailScreen';
-import ProgramsScreen from './screens/ProgramsScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
 import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
-import LabScreen from './screens/LabScreen';
+
 import ProfileScreen from './screens/ProfileScreen';
 import ClientProgramScreen from './screens/ClientProgramScreen';
-import LibraryManagementScreen from './screens/LibraryManagementScreen';
 import PlanDetailScreen from './screens/PlanDetailScreen';
 import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
-import ProgramsAndClientsScreen from './screens/ProgramsAndClientsScreen';
-import AvailabilityCalendarScreen from './screens/AvailabilityCalendarScreen';
-import NutritionScreen from './screens/NutritionScreen';
 import MealEditorScreen from './screens/MealEditorScreen';
 import PlanEditorScreen from './screens/PlanEditorScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
-import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
 import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
 import EventEditorScreen from './screens/EventEditorScreen';
@@ -30,6 +24,12 @@ import EventCheckinScreen from './screens/EventCheckinScreen';
 import ApiKeysScreen from './screens/ApiKeysScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
+
+// New IA screens
+import BibliotecaScreen from './screens/BibliotecaScreen';
+import ProgramasScreen from './screens/ProgramasScreen';
+import ClientesScreen from './screens/ClientesScreen';
+
 import './App.css';
 
 const RedirectLibrarySessionEdit = () => {
@@ -65,7 +65,7 @@ function AppContent() {
               path="/libraries"
               element={
                 <ProtectedRoute>
-                  <Navigate to="/content" replace />
+                  <Navigate to="/biblioteca" replace />
                 </ProtectedRoute>
               }
             />
@@ -85,14 +85,7 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/content/modules/:moduleId"
-              element={
-                <ProtectedRoute>
-                  <LibraryModuleDetailScreen />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/content/modules/:moduleId" element={<Navigate to="/biblioteca" replace />} />
             <Route
               path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit"
               element={
@@ -117,70 +110,55 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
+            {/* ── New IA screens ──────────────────────────────── */}
             <Route
-              path="/content"
+              path="/biblioteca"
               element={
                 <ProtectedRoute>
-                  <LibraryManagementScreen />
+                  <BibliotecaScreen />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/products"
+              path="/programas"
               element={
                 <ProtectedRoute>
-                  <ProgramsAndClientsScreen />
+                  <ProgramasScreen />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/products/new"
+              path="/clientes"
               element={
                 <ProtectedRoute>
-                  <ProgramsScreen />
+                  <ClientesScreen />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/programs"
+              path="/clientes/programa/:programId"
               element={
                 <ProtectedRoute>
-                  <ProgramsScreen />
+                  <ProgramDetailScreen backTo="/clientes?tab=asesorias" />
                 </ProtectedRoute>
               }
             />
+            {/* ── Legacy redirects ─────────────────────────────── */}
+            <Route path="/content" element={<Navigate to="/biblioteca" replace />} />
+            <Route path="/products" element={<Navigate to="/clientes" replace />} />
+            <Route path="/products/new" element={<Navigate to="/programas" replace />} />
+            <Route path="/programs" element={<Navigate to="/programas" replace />} />
             <Route
               path="/programs/:programId"
               element={
                 <ProtectedRoute>
-                  <ProgramDetailScreen />
+                  <ProgramDetailScreen backTo="/programas" />
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/lab"
-              element={
-                <ProtectedRoute>
-                  <LabScreen />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/clients"
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/products?tab=clientes" replace />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/one-on-one"
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/products?tab=clientes" replace />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/lab" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/clients" element={<Navigate to="/clientes" replace />} />
+            <Route path="/one-on-one" element={<Navigate to="/clientes" replace />} />
             <Route
               path="/clients/:clientId"
               element={
@@ -197,22 +175,8 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/availability"
-              element={
-                <ProtectedRoute>
-                  <AvailabilityCalendarScreen />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/nutrition"
-              element={
-                <ProtectedRoute>
-                  <NutritionScreen />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/availability" element={<Navigate to="/clientes?tab=llamadas" replace />} />
+            <Route path="/nutrition" element={<Navigate to="/biblioteca?domain=nutricion" replace />} />
             <Route
               path="/nutrition/meals/new"
               element={
@@ -269,14 +233,7 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/library/modules/new"
-              element={
-                <ProtectedRoute>
-                  <CreateLibraryModuleScreen />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/library/modules/new" element={<Navigate to="/biblioteca" replace />} />
             <Route
               path="/library/content"
               element={
@@ -360,7 +317,9 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <MediaUploadProvider>
+          <AppContent />
+        </MediaUploadProvider>
       </ToastProvider>
     </AuthProvider>
   );

@@ -22,6 +22,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import { cacheConfig } from '../config/queryClient';
+import FindUserModal from '../components/FindUserModal';
+import AssignProgramModal from '../components/AssignProgramModal';
+import oneOnOneService from '../services/oneOnOneService';
 import './ProgramsAndClientsScreen.css';
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -141,17 +144,24 @@ function RosterSkeleton() {
   );
 }
 
-function EmptyRoster() {
+function EmptyRoster({ onAddClient }) {
   return (
     <div className="clientes-empty-state">
       <div className="clientes-empty-state__icon" aria-hidden="true">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <circle cx="24" cy="18" r="8" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
-          <path d="M6 42c0-9.941 8.059-18 18-18s18 8.059 18 18" stroke="rgba(255,255,255,0.2)" strokeWidth="2" strokeLinecap="round" />
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+          <circle cx="28" cy="20" r="10" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+          <path d="M8 50c0-11.046 8.954-20 20-20s20 8.954 20 20" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M38 18l4 4m0-4l-4 4" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </div>
-      <p className="clientes-empty-state__title">Todavia no tienes clientes</p>
-      <p className="clientes-empty-state__body">Invita a tu primer cliente desde el boton de arriba.</p>
+      <p className="clientes-empty-state__title">Tu lista está vacía</p>
+      <p className="clientes-empty-state__body">Agrega tu primer cliente para empezar a gestionar sus programas, nutrición y progreso.</p>
+      <button type="button" className="clientes-empty-state__cta" onClick={onAddClient}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        Agregar primer cliente
+      </button>
     </div>
   );
 }
@@ -797,10 +807,80 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, re
 
 const ProgramsAndClientsScreen = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const [mobileView, setMobileView] = useState('roster'); // 'roster' | 'profile'
   const rosterWrapRef = useRef(null);
   const [rosterHeight, setRosterHeight] = useState(400);
+
+  // ── Add client flow ────────────────────────────────────────
+  const [isFindUserOpen, setIsFindUserOpen] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [findUserError, setFindUserError] = useState(null);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [lookedUpUser, setLookedUpUser] = useState(null);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignError, setAssignError] = useState(null);
+
+  const handleOpenAddClient = useCallback(() => {
+    setIsFindUserOpen(true);
+    setFindUserError(null);
+  }, []);
+
+  const handleCloseFindUser = useCallback(() => {
+    setIsFindUserOpen(false);
+    setFindUserError(null);
+  }, []);
+
+  const handleLookupUser = useCallback(async (emailOrUsername) => {
+    if (!emailOrUsername?.trim()) return null;
+    try {
+      setIsLookingUp(true);
+      setFindUserError(null);
+      const found = await oneOnOneService.lookupUserByEmailOrUsername(emailOrUsername.trim());
+      return found;
+    } catch (err) {
+      setFindUserError(err.message || 'No se encontró ningún usuario');
+      return null;
+    } finally {
+      setIsLookingUp(false);
+    }
+  }, []);
+
+  const handleUserFound = useCallback((userInfo) => {
+    setLookedUpUser(userInfo);
+    setIsFindUserOpen(false);
+    setIsAssignOpen(true);
+    setAssignError(null);
+  }, []);
+
+  const handleCloseAssign = useCallback(() => {
+    setIsAssignOpen(false);
+    setLookedUpUser(null);
+    setAssignError(null);
+  }, []);
+
+  const handleAssign = useCallback(async (clientUserId, programId) => {
+    if (!clientUserId || !programId || !user) return;
+    try {
+      setIsAssigning(true);
+      setAssignError(null);
+      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      await queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
+      setSelectedClientId(clientUserId);
+      handleCloseAssign();
+    } catch (err) {
+      setAssignError(err.message || 'Error al agregar el cliente');
+    } finally {
+      setIsAssigning(false);
+    }
+  }, [user, queryClient, handleCloseAssign]);
+
+  const handleViewClientFromModal = useCallback((clientId) => {
+    handleCloseFindUser();
+    setSelectedClientId(clientId);
+  }, [handleCloseFindUser]);
 
   const {
     data: clientsData,
@@ -848,6 +928,7 @@ const ProgramsAndClientsScreen = () => {
   const handleSelectClient = useCallback((client) => {
     const id = client.id || client.clientUserId;
     setSelectedClientId((prev) => (prev === id ? null : id));
+    setMobileView('profile');
   }, []);
 
   const handleClearSearch = useCallback(() => setSearch(''), []);
@@ -880,34 +961,55 @@ const ProgramsAndClientsScreen = () => {
     );
   }, [selectedClientId, handleSelectClient]);
 
+  const handleMobileBack = useCallback(() => {
+    setMobileView('roster');
+    setSelectedClientId(null);
+  }, []);
+
   return (
     <DashboardLayout screenName="Clientes">
-      <div className="clientes-screen">
+      <div className={`clientes-screen clientes-screen--${mobileView}`}>
 
         <aside className="clientes-roster">
-          <div className="roster-search-wrap">
-            <svg className="roster-search__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            <input
-              type="text"
-              className="roster-search__input"
-              placeholder="Buscar cliente..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Buscar cliente"
-            />
-            {search && (
+          <div className="roster-header">
+            <div className="roster-search-wrap">
+              <svg className="roster-search__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                className="roster-search__input"
+                placeholder="Buscar cliente..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Buscar cliente"
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="roster-search__clear"
+                  onClick={handleClearSearch}
+                  aria-label="Limpiar busqueda"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div className="roster-header__row">
+              <span className="roster-count">{clients.length} {clients.length === 1 ? 'cliente' : 'clientes'}</span>
               <button
                 type="button"
-                className="roster-search__clear"
-                onClick={handleClearSearch}
-                aria-label="Limpiar busqueda"
+                className="roster-add-btn"
+                onClick={handleOpenAddClient}
+                aria-label="Agregar cliente"
               >
-                ✕
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Agregar
               </button>
-            )}
+            </div>
           </div>
 
           <div className="roster-list-wrap" ref={rosterWrapRef}>
@@ -920,7 +1022,7 @@ const ProgramsAndClientsScreen = () => {
                 onRetry={refetchClients}
               />
             ) : showEmptyState ? (
-              <EmptyRoster />
+              <EmptyRoster onAddClient={handleOpenAddClient} />
             ) : filteredClients.length === 0 ? (
               <p className="roster-no-match">Sin coincidencias.</p>
             ) : useVirtualList ? (
@@ -949,6 +1051,14 @@ const ProgramsAndClientsScreen = () => {
         </aside>
 
         <main className="clientes-profile">
+          {/* Mobile back button */}
+          <button type="button" className="clientes-mobile-back" onClick={handleMobileBack}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Clientes
+          </button>
+
           {!selectedClient && !isLoadingClients && clients.length > 0 && (
             <div className="profile-placeholder">
               <div className="profile-placeholder__inner">
@@ -957,7 +1067,7 @@ const ProgramsAndClientsScreen = () => {
                   <path d="M6 52c0-12.15 9.85-22 22-22s22 9.85 22 22" stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <p className="profile-placeholder__title">Selecciona un cliente</p>
-                <p className="profile-placeholder__sub">Selecciona un cliente de la lista para ver su perfil completo.</p>
+                <p className="profile-placeholder__sub">Elige un cliente de la lista para ver su perfil, programa y métricas.</p>
               </div>
             </div>
           )}
@@ -975,6 +1085,27 @@ const ProgramsAndClientsScreen = () => {
       </div>
 
       <SpotlightTutorial screenKey="clients" steps={TUTORIAL_STEPS} />
+
+      <FindUserModal
+        isOpen={isFindUserOpen}
+        onClose={handleCloseFindUser}
+        onUserFound={handleUserFound}
+        onLookup={handleLookupUser}
+        onViewClient={handleViewClientFromModal}
+        clients={clients}
+        isLookingUp={isLookingUp}
+        error={findUserError}
+      />
+
+      <AssignProgramModal
+        isOpen={isAssignOpen}
+        onClose={handleCloseAssign}
+        onAssign={handleAssign}
+        clientUser={lookedUpUser}
+        isAssigning={isAssigning}
+        error={assignError}
+        creatorId={user?.uid}
+      />
     </DashboardLayout>
   );
 };

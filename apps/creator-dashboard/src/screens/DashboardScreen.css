@@ -5,14 +5,22 @@
   box-sizing: border-box;
 }
 
-/* ─── Toolbar (layout toggle row) ──────────────────────────────── */
+/* ─── Toolbar (greeting + actions) ─────────────────────────────── */
 .ds-toolbar {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
 }
 
-.ds-layout-toggle {
+.ds-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Toolbar buttons (shared style for edit, layout, save, cancel) */
+.ds-toolbar-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -28,23 +36,170 @@
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
-.ds-layout-toggle:hover {
+.ds-toolbar-btn:hover {
   background: var(--surface-3);
   border-color: var(--border-default);
   color: var(--text-primary);
 }
 
-.ds-layout-toggle:active {
+.ds-toolbar-btn:active {
   transform: scale(0.97);
 }
 
-/* ─── BentoGrid overrides per layout mode ───────────────────────── */
-.ds-bento--compact {
-  grid-template-columns: repeat(2, 1fr) !important;
+.ds-toolbar-btn--save {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: var(--text-primary);
 }
 
-.ds-bento--wide {
-  grid-template-columns: repeat(3, 1fr) !important;
+.ds-toolbar-btn--save:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+.ds-toolbar-btn--cancel {
+  color: var(--text-tertiary);
+}
+
+/* ─── Greeting ──────────────────────────────────────────────────── */
+.ds-greeting {
+  animation: ds-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ds-greeting__text {
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.ds-greeting__sub {
+  font-size: 0.82rem;
+  color: var(--text-tertiary);
+  margin: 4px 0 0;
+}
+
+/* ─── Staggered widget entrance ─────────────────────────────────── */
+.ds-widget-stagger {
+  animation: ds-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ds-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Edit mode ─────────────────────────────────────────────────── */
+.ds-bento--editing .bento-card {
+  cursor: pointer;
+}
+
+.ds-card--editing {
+  border-style: dashed !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ds-card--editing:hover {
+  border-color: rgba(255, 255, 255, 0.30) !important;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.10);
+}
+
+/* ─── Edit badge (widget label overlay in edit mode) ─────────────── */
+.ds-card-edit-badge {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 5;
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* ─── Slot picker (dropdown inside card) ──────────────────────────── */
+.ds-slot-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  height: 100%;
+  box-sizing: border-box;
+  animation: ds-picker-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ds-picker-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.ds-slot-picker__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.ds-slot-picker__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ds-slot-picker__option {
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.ds-slot-picker__option:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.ds-slot-picker__option:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ds-slot-picker__option--active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+}
+
+.ds-slot-picker__option--clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  border-color: transparent;
+  background: transparent;
+}
+
+.ds-slot-picker__option--clear:hover {
+  color: rgba(255, 120, 120, 0.9);
+  background: rgba(255, 120, 120, 0.08);
+  border-color: rgba(255, 120, 120, 0.15);
 }
 
 /* ─── Widget inner layout ────────────────────────────────────────── */
@@ -55,10 +210,17 @@
   padding: 20px;
   height: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .ds-widget-inner--adherence {
   align-items: flex-start;
+}
+
+/* ─── Empty slot ─────────────────────────────────────────────────── */
+.ds-slot-empty {
+  align-items: center;
+  justify-content: center;
 }
 
 /* ─── Widget typography ──────────────────────────────────────────── */
@@ -204,73 +366,333 @@
   letter-spacing: 0.03em;
 }
 
-/* ─── Drag handle ────────────────────────────────────────────────── */
-.ds-sortable-widget {
-  position: relative;
+/* ─── Widget link button ─────────────────────────────────────────── */
+.ds-widget-link {
+  display: inline-block;
+  margin-top: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.18s ease;
+  text-align: left;
 }
 
-.ds-drag-handle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 5;
+.ds-widget-link:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ─── "hoy" badge ────────────────────────────────────────────────── */
+.ds-call-item__badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* ─── Adherence "more" text ──────────────────────────────────────── */
+.ds-adherence-breakdown__more {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin: 4px 0 0;
+}
+
+/* ─── Chart container ────────────────────────────────────────────── */
+.ds-widget-chart {
+  margin-top: auto;
+  width: 100%;
+  min-height: 80px;
+}
+
+/* ─── Chart tooltip ──────────────────────────────────────────────── */
+.ds-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  backdrop-filter: blur(8px);
+}
+
+.ds-chart-tooltip strong {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.ds-chart-tooltip__new,
+.ds-chart-tooltip__sub {
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+}
+
+/* ─── Client activity widget ─────────────────────────────────────── */
+.ds-activity-summary {
+  display: flex;
+  gap: 16px;
+  margin: 4px 0 8px;
+}
+
+.ds-activity-stat {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
+  gap: 6px;
+}
+
+.ds-activity-stat__num {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-activity-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ds-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.ds-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ds-activity-row:last-child {
+  border-bottom: none;
+}
+
+.ds-activity-row__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-activity-row__count {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-activity-more {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin: 4px 0 0;
+}
+
+/* ─── Programs sold widget ───────────────────────────────────────── */
+.ds-programs-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 8px;
+}
+
+.ds-programs-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ds-programs-stat__num {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-programs-stat__label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ds-programs-stat__divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border-subtle);
+}
+
+/* ─── Calendar preview (timeline) ────────────────────────────────── */
+.ds-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.ds-timeline__section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  margin: 8px 0 4px;
+}
+
+.ds-timeline__section-label:first-child {
+  margin-top: 0;
+}
+
+.ds-timeline-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.ds-timeline-event__time {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.ds-timeline-event__line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 5px;
+}
+
+.ds-timeline-event__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+}
+
+.ds-timeline-event__info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ds-timeline-event__name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-timeline-event__range {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+}
+
+/* ─── Expiring access widget ─────────────────────────────────────── */
+.ds-expiring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ds-expiring-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ds-expiring-row:last-child {
+  border-bottom: none;
+}
+
+.ds-expiring-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ds-expiring-row__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-expiring-row__course {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-expiring-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
   border-radius: 6px;
-  color: rgba(255,255,255,0.25);
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 0.18s ease, background 0.18s ease, color 0.18s ease;
-}
-
-.ds-sortable-widget:hover .ds-drag-handle {
-  opacity: 1;
-}
-
-.ds-drag-handle:hover {
-  background: rgba(255,255,255,0.10);
-  color: rgba(255,255,255,0.5);
-}
-
-.ds-drag-handle:active {
-  cursor: grabbing;
-}
-
-/* ─── Drag overlay ───────────────────────────────────────────────── */
-.ds-drag-overlay {
-  border: 1px solid rgba(255,255,255,0.15);
-  box-shadow:
-    0 16px 48px rgba(0,0,0,0.6),
-    0 0 0 1px rgba(255,255,255,0.15),
-    0 0 24px rgba(255,255,255,0.06);
-  animation: none;
+  border: 1px solid;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .ds-bento--compact,
-  .ds-bento--wide {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-
   .ds-canvas {
     padding: 16px 16px 32px;
   }
 }
 
 @media (max-width: 560px) {
-  .ds-bento--compact,
-  .ds-bento--wide {
-    grid-template-columns: 1fr !important;
+  .ds-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
-  .ds-toolbar {
-    margin-bottom: 12px;
+  .ds-toolbar__actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

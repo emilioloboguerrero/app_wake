@@ -40,9 +40,11 @@
     "seed:staging": "node scripts/seed-staging.js",
     "test:api": "node scripts/test-api/runner.js",
     "test:api:staging": "cross-env TEST_ENV=staging node scripts/test-api/runner.js",
-    "test:api:local": "cross-env TEST_ENV=local node scripts/test-api/runner.js"
+    "test:api:local": "cross-env TEST_ENV=local node scripts/test-api/runner.js",
+    "creator:dev": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wake-staging\" \"cross-env VITE_FIREBASE_ENV=staging npm run dev --prefix apps/creator-dashboard\""
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "firebase-tools": "^15.5.1",
     "http-proxy": "^1.18.1"

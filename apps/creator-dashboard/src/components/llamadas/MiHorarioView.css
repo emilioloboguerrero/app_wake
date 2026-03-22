@@ -1,0 +1,439 @@
+.mi-horario {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── Loading ── */
+.mi-horario-loading {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+}
+
+.mi-horario-col-skeleton {
+  height: 200px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ── Recurring banner ── */
+.mi-horario-recurring {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  animation: miEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mi-horario-recurring-icon {
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.mi-horario-recurring-text {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.4;
+}
+
+@keyframes miEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 7-column grid ── */
+.mi-horario-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 1100px) {
+  .mi-horario-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (max-width: 700px) {
+  .mi-horario-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Day column (GlowingEffect parent) ── */
+.mi-horario-col {
+  position: relative;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 160px;
+  animation: miColEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--col-index, 0) * 50ms);
+}
+
+@keyframes miColEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mi-horario-col-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mi-horario-col-day {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mi-horario-col-count {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+/* ── Slots ── */
+.mi-horario-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.mi-horario-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 10px;
+  animation: miSlotEnter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--slot-index, 0) * 40ms);
+}
+
+@keyframes miSlotEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mi-horario-slot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mi-horario-slot-time {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}
+
+.mi-horario-slot-dur {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.mi-horario-slot-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.mi-horario-slot-remove:hover {
+  color: rgba(255, 80, 80, 0.9);
+  background: rgba(255, 80, 80, 0.1);
+}
+
+/* ── Add form ── */
+.mi-horario-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  animation: miSlotEnter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mi-horario-add-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.mi-horario-add-confirm {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.mi-horario-add-confirm:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.mi-horario-add-cancel {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.mi-horario-add-cancel:hover {
+  background: rgba(255, 80, 80, 0.1);
+  color: rgba(255, 80, 80, 0.9);
+}
+
+/* ── Add button ── */
+.mi-horario-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: none;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 8px;
+  font-size: 0.78rem;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.mi-horario-add-btn:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Blocked dates (GlowingEffect parent) ── */
+.mi-horario-blocked {
+  position: relative;
+  display: flex;
+  gap: 28px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 24px;
+  animation: miEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 200ms;
+}
+
+@media (max-width: 800px) {
+  .mi-horario-blocked {
+    flex-direction: column;
+  }
+}
+
+.mi-horario-blocked-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mi-horario-blocked-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mi-horario-blocked-icon {
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.mi-horario-blocked-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mi-horario-blocked-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.45;
+}
+
+.mi-horario-blocked-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.2);
+  font-style: italic;
+}
+
+.mi-horario-blocked-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mi-horario-blocked-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 80, 80, 0.08);
+  border: 1px solid rgba(255, 80, 80, 0.15);
+  border-radius: 8px;
+  padding: 5px 8px 5px 10px;
+  animation: miSlotEnter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mi-horario-blocked-pill-text {
+  font-size: 0.78rem;
+  color: rgba(255, 150, 150, 0.85);
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.mi-horario-blocked-pill-x {
+  background: none;
+  border: none;
+  color: rgba(255, 150, 150, 0.4);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.mi-horario-blocked-pill-x:hover {
+  color: rgba(255, 80, 80, 0.9);
+}
+
+.mi-horario-blocked-right {
+  flex-shrink: 0;
+}
+
+/* ── Save bar ── */
+.mi-horario-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  padding: 16px 0;
+  animation: miSaveEnter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes miSaveEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mi-horario-save-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 14px 20px;
+}
+
+.mi-horario-save-summary {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mi-horario-save-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  padding: 10px 24px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.mi-horario-save-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.mi-horario-save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Inline toast ── */
+.mi-horario-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  animation: miToastEnter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  pointer-events: none;
+}
+
+.mi-horario-toast--success {
+  background: rgba(40, 167, 69, 0.15);
+  border: 1px solid rgba(40, 167, 69, 0.3);
+  color: rgba(130, 230, 150, 0.9);
+}
+
+.mi-horario-toast--error {
+  background: rgba(220, 53, 69, 0.15);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: rgba(255, 130, 130, 0.9);
+}
+
+@keyframes miToastEnter {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

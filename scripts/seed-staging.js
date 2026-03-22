@@ -92,7 +92,7 @@ async function seed() {
     title: 'Programa Test',
     deliveryType: 'low_ticket',
     weekly: true,
-    createdAt: now,
+    created_at: now,
   });
   console.log('  courses/seed-course-001 done');
 

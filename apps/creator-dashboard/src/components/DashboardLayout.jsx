@@ -13,9 +13,7 @@ import {
   Users,
   Dumbbell,
   BookOpen,
-  Utensils,
   CalendarCheck,
-  Clock,
   KeyRound,
 } from 'lucide-react';
 
@@ -30,48 +28,41 @@ const NAV_ITEMS = [
     key: 'inicio',
     label: 'Inicio',
     path: '/dashboard',
-    match: (p) => p === '/dashboard' || p === '/lab',
+    match: (p) => p === '/dashboard',
     icon: <LayoutDashboard size={ICON_SIZE} />,
   },
   {
     key: 'clientes',
     label: 'Clientes',
-    path: '/products',
+    path: '/clientes',
     match: (p) =>
-      p === '/products' ||
-      p.startsWith('/clients') ||
-      p.startsWith('/one-on-one'),
+      p === '/clientes' ||
+      p === '/availability' ||
+      p.startsWith('/clients/') ||
+      p.startsWith('/clientes/'),
     icon: <Users size={ICON_SIZE} />,
   },
   {
     key: 'programas',
-    label: 'Programas',
-    path: '/programs',
+    label: 'Generales',
+    path: '/programas',
     match: (p) =>
-      p === '/programs' ||
-      p.startsWith('/programs/') ||
-      p === '/products/new',
+      p === '/programas' ||
+      p.startsWith('/programs/'),
     icon: <Dumbbell size={ICON_SIZE} />,
   },
   {
     key: 'biblioteca',
     label: 'Biblioteca',
-    path: '/content',
+    path: '/biblioteca',
     match: (p) =>
-      p === '/content' ||
+      p === '/biblioteca' ||
       p.startsWith('/plans/') ||
       p.startsWith('/libraries') ||
       p.startsWith('/content/') ||
-      p === '/library/sessions/new' ||
-      p === '/library/modules/new',
+      p.startsWith('/library/') ||
+      p.startsWith('/nutrition/'),
     icon: <BookOpen size={ICON_SIZE} />,
-  },
-  {
-    key: 'nutricion',
-    label: 'Nutrición',
-    path: '/nutrition',
-    match: (p) => p === '/nutrition' || p.startsWith('/nutrition'),
-    icon: <Utensils size={ICON_SIZE} />,
   },
   {
     key: 'events',
@@ -81,15 +72,6 @@ const NAV_ITEMS = [
     hideable: true,
     firestoreKey: 'eventos',
     icon: <CalendarCheck size={ICON_SIZE} />,
-  },
-  {
-    key: 'availability',
-    label: 'Disponibilidad',
-    path: '/availability',
-    match: (p) => p === '/availability',
-    hideable: true,
-    firestoreKey: 'disponibilidad',
-    icon: <Clock size={ICON_SIZE} />,
   },
 ];
 
@@ -128,6 +110,7 @@ const DashboardLayout = ({
   backState = null,
   headerIcon = null,
   headerImageIcon = null,
+  headerRight = null,
   tutorialScreenKey = null,
 }) => {
   const { user } = useAuth();
@@ -440,6 +423,7 @@ const DashboardLayout = ({
           showMenuButton={isMobile}
           icon={headerIcon}
           headerImageIcon={headerImageIcon}
+          headerRight={headerRight}
         />
         {children}
       </main>

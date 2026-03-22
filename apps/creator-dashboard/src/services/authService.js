@@ -24,16 +24,17 @@ class AuthService {
   async signInUser(email, password) {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
+    logger.debug('[AuthService] Firebase sign-in successful for:', user.uid);
 
     // Sync displayName from API if Firebase Auth profile is missing it
     if (!user.displayName) {
       try {
-        const { data } = await apiClient.get('/creator/profile');
+        const { data } = await apiClient.get('/users/me');
         const fallbackName = data?.displayName || email.trim().split('@')[0];
         await updateProfile(user, { displayName: fallbackName });
         await user.reload();
       } catch (syncError) {
-        logger.warn('Failed to sync displayName:', syncError);
+        logger.warn('[AuthService] Failed to sync displayName (non-fatal):', syncError?.message || syncError);
       }
     }
 

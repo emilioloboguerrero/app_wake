@@ -14,8 +14,8 @@ class OneOnOneService {
   }
 
   async addClient(_creatorId, clientUserId) {
-    const res = await apiClient.post('/creator/clients/invite', {
-      email: clientUserId,
+    const res = await apiClient.post('/creator/clients', {
+      userId: clientUserId,
     });
     return res.data;
   }
@@ -28,7 +28,7 @@ class OneOnOneService {
   async addClientToProgram(_creatorId, clientUserId, programId) {
     const client = await this.addClient(_creatorId, clientUserId);
     const clientProgramService = (await import('./clientProgramService')).default;
-    await clientProgramService.assignProgramToClient(programId, client.clientId);
+    await clientProgramService.assignProgramToClient(programId, clientUserId);
     return client;
   }
 

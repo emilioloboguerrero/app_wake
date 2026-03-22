@@ -2,14 +2,6 @@ import { useState, useMemo, useCallback } from 'react';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
-const DATE_RANGE_OPTIONS = [
-  { value: '7d', label: 'Ultimos 7 dias' },
-  { value: '30d', label: 'Ultimos 30 dias' },
-  { value: '90d', label: 'Ultimos 90 dias' },
-  { value: 'year', label: 'Este ano' },
-  { value: 'all', label: 'Todo' },
-];
-
 const WAKE_FEE = 0.15;
 
 function ChevronIcon({ open }) {
@@ -57,8 +49,6 @@ function formatCurrency(amount) {
 
 export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, programs = [] }) {
   const [expanded, setExpanded] = useState(false);
-  const [dateRange, setDateRange] = useState('30d');
-  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
 
   const revenueData = revenueQuery.data?.data ?? {};
   const grossRevenue = revenueData.gross ?? 0;
@@ -77,16 +67,6 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
   }, [revenueData.byProgram]);
 
   const toggleExpanded = useCallback(() => setExpanded(prev => !prev), []);
-
-  const handleDateSelect = useCallback((value) => {
-    setDateRange(value);
-    setDateDropdownOpen(false);
-  }, []);
-
-  const currentDateLabel = useMemo(
-    () => DATE_RANGE_OPTIONS.find(o => o.value === dateRange)?.label ?? dateRange,
-    [dateRange]
-  );
 
   if (revenueQuery.isLoading) {
     return (
@@ -125,35 +105,9 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
         <span className="revenue-card__label">
           {hasLowTicket ? 'Ingresos netos' : 'Clientes activos'}
         </span>
-        <div className="revenue-card__actions">
-          <div className="revenue-date-selector">
-            <button
-              className="revenue-date-selector__trigger"
-              onClick={e => { e.stopPropagation(); setDateDropdownOpen(prev => !prev); }}
-              type="button"
-            >
-              {currentDateLabel}
-              <ChevronIcon open={dateDropdownOpen} />
-            </button>
-            {dateDropdownOpen && (
-              <div className="revenue-date-selector__dropdown">
-                {DATE_RANGE_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    className={`revenue-date-selector__option ${opt.value === dateRange ? 'revenue-date-selector__option--active' : ''}`}
-                    onClick={e => { e.stopPropagation(); handleDateSelect(opt.value); }}
-                    type="button"
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <span className="revenue-card__info-icon">
-            <InfoIcon />
-          </span>
-        </div>
+        <span className="revenue-card__info-icon">
+          <InfoIcon />
+        </span>
       </div>
 
       {/* Main number */}

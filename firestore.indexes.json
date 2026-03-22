@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
@@ -46,6 +54,14 @@
       "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
         {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "call_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
       ]
     },
     {
@@ -144,15 +160,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "DESCENDING"}
+        {"fieldPath": "created_at", "order": "DESCENDING"}
       ]
     },
     {
       "collectionGroup": "courses",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "creatorId", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "DESCENDING"}
+        {"fieldPath": "creator_id", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
       ]
     },
     {
@@ -232,7 +248,7 @@
         {"fieldPath": "course_id", "order": "ASCENDING"},
         {"fieldPath": "completed_at", "order": "DESCENDING"}
       ]
-    }
+    },
     {
       "collectionGroup": "workout_timers",
       "queryScope": "COLLECTION",

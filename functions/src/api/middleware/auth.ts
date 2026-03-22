@@ -119,8 +119,10 @@ async function validateFirebaseToken(
   req: Request
 ): Promise<AuthResult> {
   let decoded: admin.auth.DecodedIdToken;
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
   try {
-    decoded = await admin.auth().verifyIdToken(token, true);
+    // Skip checkRevoked in emulator — requires ADC with project access
+    decoded = await admin.auth().verifyIdToken(token, !isEmulator);
   } catch {
     throw new WakeApiServerError(
       "UNAUTHENTICATED",
@@ -134,7 +136,6 @@ async function validateFirebaseToken(
   // An attacker can omit it entirely to bypass verification. This is
   // intentional until enforcement is enabled across all clients. When ready,
   // reject requests missing the header outside emulator mode.
-  const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
   if (!isEmulator) {
     const appCheckToken = req.headers["x-firebase-appcheck"] as
       | string

@@ -177,7 +177,6 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md, 10px);
   margin-bottom: 8px;
-  overflow: hidden;
   background: rgba(255, 255, 255, 0.03);
   transition:
     border-color 180ms cubic-bezier(0.22, 1, 0.36, 1),

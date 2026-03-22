@@ -20,8 +20,6 @@ export async function getBookingsForCreator(_creatorId, opts = {}) {
   return list;
 }
 
-export async function updateBookingCallLink(bookingId, callLink) {
-  await apiClient.patch(`/creator/bookings/${bookingId}`, {
-    callLink: callLink?.trim() || null,
-  });
+export async function cancelBookingAsCreator(bookingId) {
+  await apiClient.delete(`/creator/bookings/${bookingId}`);
 }

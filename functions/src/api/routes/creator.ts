@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
+import * as crypto from "node:crypto";
 import { db, FieldValue } from "../firestore.js";
 import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
@@ -38,12 +39,16 @@ router.get("/creator/clients", async (req, res) => {
     for (const d of snapshot.docs) {
       const clientData = d.data();
       const userDoc = await db.collection("users").doc(clientData.userId).get();
-      const courses = userDoc.data()?.courses ?? {};
+      const userData = userDoc.data();
+      const courses = userData?.courses ?? {};
       const enrollment = courses[programId];
       if (enrollment && enrollment.deliveryType === "one_on_one") {
         results.push({
           id: d.id,
           ...clientData,
+          clientName: userData?.displayName ?? userData?.name ?? null,
+          clientEmail: userData?.email ?? null,
+          avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
           enrolledProgram: { courseId: programId, ...enrollment },
         });
       }
@@ -53,7 +58,7 @@ router.get("/creator/clients", async (req, res) => {
     return;
   }
 
-  // Default: paginated list without filtering
+  // Default: paginated list with enrolled programs enrichment
   const limit = 50;
 
   let query: Query = db
@@ -71,10 +76,158 @@ router.get("/creator/clients", async (req, res) => {
   const docs = snapshot.docs.slice(0, limit);
   const hasMore = snapshot.docs.length > limit;
 
+  // Enrich each client with their one_on_one enrolled programs
+  const clientDocs = docs.map((d) => ({ id: d.id, ...d.data() }));
+  const userIds = [...new Set(clientDocs.map((c) => (c as Record<string, unknown>).userId as string).filter(Boolean))];
+
+  const userDocsMap: Record<string, Record<string, unknown>> = {};
+  if (userIds.length > 0) {
+    const batchSize = 10;
+    for (let i = 0; i < userIds.length; i += batchSize) {
+      const batch = userIds.slice(i, i + batchSize);
+      const userDocs = await db.getAll(...batch.map((uid) => db.collection("users").doc(uid)));
+      for (const uDoc of userDocs) {
+        if (uDoc.exists) {
+          userDocsMap[uDoc.id] = uDoc.data() as Record<string, unknown>;
+        }
+      }
+    }
+  }
+
+  const enriched = clientDocs.map((client) => {
+    const userId = (client as Record<string, unknown>).userId as string;
+    const userData = userDocsMap[userId];
+    const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    const enrolledPrograms = Object.entries(courses)
+      .filter(([, v]) => v.deliveryType === "one_on_one")
+      .map(([courseId, v]) => ({ courseId, title: v.title, status: v.status }));
+
+    return {
+      ...client,
+      clientName: userData?.displayName ?? userData?.name ?? null,
+      clientEmail: userData?.email ?? null,
+      avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
+      enrolledPrograms,
+    };
+  });
+
   res.json({
-    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: enriched,
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
+  });
+});
+
+// POST /creator/clients/lookup
+router.post("/creator/clients/lookup", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { emailOrUsername } = req.body as { emailOrUsername?: string };
+  if (!emailOrUsername?.trim()) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email o username requerido");
+  }
+
+  const query = emailOrUsername.trim().toLowerCase();
+
+  // Search by email first
+  let userSnap = await db.collection("users")
+    .where("email", "==", query)
+    .limit(1)
+    .get();
+
+  // If not found, try by username
+  if (userSnap.empty) {
+    userSnap = await db.collection("users")
+      .where("username", "==", query)
+      .limit(1)
+      .get();
+  }
+
+  if (userSnap.empty) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "No se encontró ningún usuario con ese email o username");
+  }
+
+  const userDoc = userSnap.docs[0];
+  const userData = userDoc.data();
+
+  res.json({
+    data: {
+      userId: userDoc.id,
+      email: userData.email ?? null,
+      displayName: userData.displayName ?? null,
+      photoURL: userData.photoURL ?? null,
+      username: userData.username ?? null,
+    },
+  });
+});
+
+// POST /creator/clients/invite — lookup by email + create client in one step
+router.post("/creator/clients/invite", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { email } = req.body as { email?: string };
+  if (!email?.trim()) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email requerido");
+  }
+
+  const query = email.trim().toLowerCase();
+
+  // Look up user by email
+  let userSnap = await db.collection("users")
+    .where("email", "==", query)
+    .limit(1)
+    .get();
+
+  // Try by username as fallback
+  if (userSnap.empty) {
+    userSnap = await db.collection("users")
+      .where("username", "==", query)
+      .limit(1)
+      .get();
+  }
+
+  if (userSnap.empty) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "No se encontró ningún usuario con ese email");
+  }
+
+  const userDoc = userSnap.docs[0];
+  const userId = userDoc.id;
+
+  // Check if already a client
+  const existing = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", auth.userId)
+    .where("userId", "==", userId)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
+    const existingDoc = existing.docs[0];
+    res.status(200).json({
+      data: {
+        clientId: existingDoc.id,
+        userId,
+        alreadyExisted: true,
+      },
+    });
+    return;
+  }
+
+  const docRef = await db.collection("one_on_one_clients").add({
+    creatorId: auth.userId,
+    userId,
+    status: "active",
+    created_at: FieldValue.serverTimestamp(),
+  });
+
+  res.status(201).json({
+    data: {
+      clientId: docRef.id,
+      userId,
+    },
   });
 });
 
@@ -102,7 +255,7 @@ router.post("/creator/clients", async (req, res) => {
     created_at: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({ data: { id: docRef.id, clientId: docRef.id } });
 });
 
 // DELETE /creator/clients/:clientId
@@ -133,7 +286,7 @@ router.get("/creator/programs", async (req, res) => {
 
   let query: Query = db
     .collection("courses")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .orderBy("created_at", "desc")
     .limit(limit + 1);
 
@@ -146,11 +299,36 @@ router.get("/creator/programs", async (req, res) => {
   const docs = snapshot.docs.slice(0, limit);
   const hasMore = snapshot.docs.length > limit;
 
+  const programs = docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      imageUrl: data.image_url ?? null,
+    };
+  });
+
   res.json({
-    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: programs,
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
+});
+
+// GET /creator/programs/:programId
+router.get("/creator/programs/:programId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db.collection("courses").doc(req.params.programId).get();
+
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const programData = doc.data()!;
+  res.json({ data: { id: doc.id, ...programData, imageUrl: programData.image_url ?? null } });
 });
 
 // POST /creator/programs
@@ -168,6 +346,8 @@ router.post("/creator/programs", async (req, res) => {
     price?: number;
     access_duration?: string;
     discipline?: string;
+    weight_suggestions?: boolean;
+    duration?: string;
   }>(
     {
       title: "string",
@@ -177,9 +357,14 @@ router.post("/creator/programs", async (req, res) => {
       price: "optional_number",
       access_duration: "optional_string",
       discipline: "optional_string",
+      weight_suggestions: "optional_boolean",
+      duration: "optional_string",
     },
     req.body
   );
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const creatorName = userDoc.data()?.displayName || userDoc.data()?.name || "";
 
   const docRef = await db.collection("courses").add({
     title: body.title,
@@ -189,8 +374,22 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.price !== undefined && { price: body.price }),
     ...(body.access_duration !== undefined && { access_duration: body.access_duration }),
     ...(body.discipline !== undefined && { discipline: body.discipline }),
-    creatorId: auth.userId,
+    ...(body.weight_suggestions !== undefined && { weight_suggestions: body.weight_suggestions }),
+    ...(body.duration !== undefined && { duration: body.duration }),
+    availableLibraries: Array.isArray(req.body.availableLibraries)
+      ? req.body.availableLibraries.filter((id: unknown) => typeof id === "string")
+      : [],
+    creator_id: auth.userId,
+    creatorName,
     status: "draft",
+    image_url: null,
+    image_path: null,
+    video_intro_url: null,
+    tutorials: {},
+    free_trial: req.body.free_trial && typeof req.body.free_trial === "object"
+      ? { active: !!req.body.free_trial.active, duration_days: Math.max(0, parseInt(req.body.free_trial.duration_days, 10) || 0) }
+      : { active: false, duration_days: 0 },
+    version: `${new Date().getFullYear()}-01`,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   });
@@ -207,14 +406,16 @@ router.patch("/creator/programs/:programId", async (req, res) => {
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  // Allowlist fields — never allow creatorId, status overwrite
+  // Allowlist fields — never allow creator_id, status overwrite
   const allowedFields = [
     "title", "description", "deliveryType", "weekly", "price",
-    "access_duration", "discipline", "image_url", "creatorName",
+    "access_duration", "discipline", "image_url", "image_path",
+    "creatorName", "weight_suggestions", "free_trial", "duration",
+    "video_intro_url", "tutorials", "availableLibraries",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -242,7 +443,7 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
   );
 
   // Validate status against allowlist
-  const allowedStatuses = ["draft", "active", "archived"];
+  const allowedStatuses = ["draft", "published", "active", "archived"];
   if (!allowedStatuses.includes(status)) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
@@ -254,7 +455,7 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
@@ -275,7 +476,7 @@ router.delete("/creator/programs/:programId", async (req, res) => {
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
@@ -290,7 +491,7 @@ router.post("/creator/programs/:programId/duplicate", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sourceDoc = await db.collection("courses").doc(req.params.programId).get();
-  if (!sourceDoc.exists || sourceDoc.data()?.creatorId !== auth.userId) {
+  if (!sourceDoc.exists || sourceDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
@@ -355,10 +556,11 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
 
   await db.collection("courses").doc(req.params.programId).update({
     image_url: publicUrl,
+    image_path: storagePath,
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { image_url: publicUrl } });
+  res.json({ data: { image_url: publicUrl, image_path: storagePath } });
 });
 
 // GET /creator/clients/:clientId/sessions
@@ -956,18 +1158,25 @@ router.post("/creator/plans", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ title: string }>(
-    { title: "string" },
-    req.body
-  );
+  const { title, description, discipline } = req.body as {
+    title?: string;
+    description?: string;
+    discipline?: string;
+  };
+  if (!title || typeof title !== "string") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "title es requerido");
+  }
 
-  // Only use validated title field
-  const planRef = await db.collection("plans").add({
-    title: body.title,
+  const planData: Record<string, unknown> = {
+    title,
     creatorId: auth.userId,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
-  });
+  };
+  if (description) planData.description = description;
+  if (discipline) planData.discipline = discipline;
+
+  const planRef = await db.collection("plans").add(planData);
 
   // Auto-create first module
   const moduleRef = await db
@@ -980,7 +1189,7 @@ router.post("/creator/plans", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { planId: planRef.id, firstModuleId: moduleRef.id } });
+  res.status(201).json({ data: { id: planRef.id, firstModuleId: moduleRef.id } });
 });
 
 // GET /creator/plans
@@ -1038,7 +1247,7 @@ router.get("/creator/plans/:planId", async (req, res) => {
     })
   );
 
-  res.json({ data: { planId: planDoc.id, ...planDoc.data(), modules } });
+  res.json({ data: { id: planDoc.id, ...planDoc.data(), modules } });
 });
 
 // PATCH /creator/plans/:planId
@@ -1878,7 +2087,7 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
   // Check programs (courses) that reference this library session
   const coursesSnap = await db
     .collection("courses")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .limit(100)
     .get();
 
@@ -2164,7 +2373,7 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
-  if (!courseDoc.exists || courseDoc.data()?.creatorId !== auth.userId) {
+  if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
@@ -2262,6 +2471,277 @@ router.get("/creator/username-check", async (req, res) => {
   const taken = snapshot.docs.some((doc) => doc.id !== auth.userId);
 
   res.json({ data: { available: !taken } });
+});
+
+// ---------------------------------------------------------------------------
+// Creator Media Folder
+// ---------------------------------------------------------------------------
+
+// GET /creator/media — list all media files for the authenticated creator
+router.get("/creator/media", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const snapshot = await db
+    .collection("creator_media")
+    .doc(auth.userId)
+    .collection("files")
+    .orderBy("created_at", "desc")
+    .limit(200)
+    .get();
+
+  const bucket = admin.storage().bucket();
+  const data = snapshot.docs.map((d) => {
+    const file = d.data();
+    let publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.storagePath)}?alt=media`;
+    if (file.downloadToken) {
+      publicUrl += `&token=${file.downloadToken}`;
+    }
+    return {
+      fileId: d.id,
+      name: file.name,
+      contentType: file.contentType,
+      storagePath: file.storagePath,
+      url: publicUrl,
+      created_at: file.created_at,
+    };
+  });
+
+  res.json({ data });
+});
+
+// POST /creator/media/upload-url — generate upload target for direct Storage upload
+router.post("/creator/media/upload-url", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { filename, contentType } = validateBody<{
+    filename: string;
+    contentType: string;
+  }>(
+    { filename: "string", contentType: "string" },
+    req.body
+  );
+
+  if (!contentType.startsWith("image/") && !contentType.startsWith("video/")) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Solo se permiten imágenes y videos");
+  }
+
+  const ext = filename.split(".").pop() || "bin";
+  const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const storagePath = `creator_media/${auth.userId}/${uniqueName}`;
+  const downloadToken = crypto.randomUUID();
+
+  const bucket = admin.storage().bucket();
+  const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o?uploadType=media&name=${encodeURIComponent(storagePath)}`;
+
+  res.json({
+    data: {
+      uploadUrl,
+      storagePath,
+      downloadToken,
+      contentType,
+    },
+  });
+});
+
+// POST /creator/media/upload-url/confirm — confirm upload and save metadata
+router.post("/creator/media/upload-url/confirm", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { storagePath, filename, contentType, downloadToken } = validateBody<{
+    storagePath: string;
+    filename: string;
+    contentType: string;
+    downloadToken: string;
+  }>(
+    { storagePath: "string", filename: "string", contentType: "string", downloadToken: "string" },
+    req.body
+  );
+
+  // Validate the path belongs to this creator
+  const expectedPrefix = `creator_media/${auth.userId}/`;
+  validateStoragePath(storagePath, expectedPrefix);
+
+  // Verify the file exists in Storage and set download token
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "El archivo no se encontró en almacenamiento");
+  }
+
+  await file.setMetadata({
+    metadata: { firebaseStorageDownloadTokens: downloadToken },
+  });
+
+  const docRef = await db
+    .collection("creator_media")
+    .doc(auth.userId)
+    .collection("files")
+    .add({
+      name: filename,
+      contentType,
+      storagePath,
+      downloadToken,
+      created_at: FieldValue.serverTimestamp(),
+    });
+
+  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`;
+
+  res.status(201).json({
+    data: {
+      storagePath,
+      fileId: docRef.id,
+      url: publicUrl,
+      name: filename,
+      contentType,
+    },
+  });
+});
+
+// DELETE /creator/media/:fileId — delete a media file
+router.delete("/creator/media/:fileId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const fileDoc = await db
+    .collection("creator_media")
+    .doc(auth.userId)
+    .collection("files")
+    .doc(req.params.fileId)
+    .get();
+
+  if (!fileDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado");
+  }
+
+  const fileData = fileDoc.data()!;
+
+  // Delete from Storage
+  const bucket = admin.storage().bucket();
+  try {
+    await bucket.file(fileData.storagePath).delete();
+  } catch {
+    // File may already be deleted from storage — continue
+  }
+
+  // Delete Firestore record
+  await db
+    .collection("creator_media")
+    .doc(auth.userId)
+    .collection("files")
+    .doc(req.params.fileId)
+    .delete();
+
+  res.json({ data: { deleted: true } });
+});
+
+// GET /creator/programs/:programId/demographics
+router.get("/creator/programs/:programId/demographics", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { programId } = req.params;
+
+  // Verify creator owns this program
+  const programDoc = await db.collection("courses").doc(programId).get();
+  if (!programDoc.exists || programDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  // Find all users who purchased this program
+  const usersSnap = await db
+    .collection("users")
+    .where("purchased_courses", "array-contains", programId)
+    .get();
+
+  const ageBuckets: Record<string, number> = {
+    "18-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55+": 0, "desconocido": 0,
+  };
+  const genderCounts: Record<string, number> = {};
+  const cityCounts: Record<string, number> = {};
+  const goalCounts: Record<string, number> = {};
+  const experienceCounts: Record<string, number> = {};
+  const equipmentCounts: Record<string, number> = {};
+  let totalEnrolled = 0;
+  let activeCount = 0;
+
+  const now = new Date();
+
+  for (const userDoc of usersSnap.docs) {
+    const data = userDoc.data();
+    totalEnrolled++;
+
+    // Check if still active
+    const courseData = data.courses?.[programId];
+    if (courseData?.status === "active") activeCount++;
+
+    // Age from birthDate
+    if (data.birthDate) {
+      try {
+        const birth = new Date(data.birthDate);
+        let age = now.getFullYear() - birth.getFullYear();
+        const monthDiff = now.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age--;
+        if (age >= 18 && age <= 24) ageBuckets["18-24"]++;
+        else if (age >= 25 && age <= 34) ageBuckets["25-34"]++;
+        else if (age >= 35 && age <= 44) ageBuckets["35-44"]++;
+        else if (age >= 45 && age <= 54) ageBuckets["45-54"]++;
+        else if (age >= 55) ageBuckets["55+"]++;
+        else ageBuckets["desconocido"]++;
+      } catch {
+        ageBuckets["desconocido"]++;
+      }
+    } else {
+      ageBuckets["desconocido"]++;
+    }
+
+    // Gender
+    const gender = data.gender || "no_especificado";
+    genderCounts[gender] = (genderCounts[gender] || 0) + 1;
+
+    // City
+    const city = data.city;
+    if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
+
+    // Onboarding data
+    const onboarding = data.onboardingData;
+    if (onboarding?.primaryGoal) {
+      goalCounts[onboarding.primaryGoal] = (goalCounts[onboarding.primaryGoal] || 0) + 1;
+    }
+    if (onboarding?.trainingExperience) {
+      experienceCounts[onboarding.trainingExperience] = (experienceCounts[onboarding.trainingExperience] || 0) + 1;
+    }
+    if (onboarding?.equipment) {
+      equipmentCounts[onboarding.equipment] = (equipmentCounts[onboarding.equipment] || 0) + 1;
+    }
+  }
+
+  // Sort cities by count descending, top 10
+  const topCities = Object.entries(cityCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([city, count]) => ({ city, count }));
+
+  res.json({
+    data: {
+      totalEnrolled,
+      activeCount,
+      age: ageBuckets,
+      gender: genderCounts,
+      cities: topCities,
+      goals: goalCounts,
+      experience: experienceCounts,
+      equipment: equipmentCounts,
+    },
+  });
 });
 
 export default router;

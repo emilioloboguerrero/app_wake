@@ -17,7 +17,45 @@
 /* ── Tab nav ─────────────────────────────────────────────────────────────────── */
 
 .ps-nav-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 32px;
+  gap: 12px;
+}
+
+.ps-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ps-nav-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.ps-nav-action:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text-primary, #fff);
+}
+
+.ps-nav-action--active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary, #fff);
 }
 
 /* ── Content ─────────────────────────────────────────────────────────────────── */
@@ -60,7 +98,6 @@
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 16px);
-  overflow: hidden;
   cursor: pointer;
   box-shadow:
     0 32px 80px rgba(0, 0, 0, 0.65),
@@ -100,6 +137,7 @@
   aspect-ratio: 16 / 10;
   overflow: hidden;
   flex-shrink: 0;
+  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
 }
 
 .ps-card__img {
@@ -295,47 +333,16 @@
   transform: translateY(-1px);
 }
 
-/* ── FAB ─────────────────────────────────────────────────────────────────────── */
+/* ── Plus button in nav ──────────────────────────────────────────────────────── */
 
-.ps-fab {
-  position: fixed;
-  bottom: 36px;
-  right: 36px;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid var(--border-default);
-  color: var(--text-primary);
+.ps-nav-action--plus {
+  width: 32px;
+  height: 32px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.5),
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.07);
-  transition:
-    background 0.18s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 40;
-  animation: ps-fab-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
-}
-
-@keyframes ps-fab-in {
-  from { opacity: 0; transform: scale(0.88) translateY(12px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.ps-fab:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: var(--border-strong);
-  transform: scale(1.06);
-}
-
-.ps-fab:active {
-  transform: scale(0.97);
+  border-radius: 10px;
 }
 
 /* ── Plan list ───────────────────────────────────────────────────────────────── */
@@ -365,6 +372,37 @@
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+/* Delete button in edit mode */
+.ps-plan-row__delete {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.20);
+  border-radius: 8px;
+  color: rgba(248, 113, 113, 0.8);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  animation: ps-enter 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ps-plan-row__delete:hover {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: rgba(248, 113, 113, 0.95);
+}
+
+.ps-plan-row__delete:active {
+  transform: scale(0.93);
 }
 
 .ps-plan-row__header {
