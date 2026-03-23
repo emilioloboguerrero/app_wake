@@ -31,14 +31,14 @@ router.get("/creator/clients", async (req, res) => {
     let query: Query = db
       .collection("one_on_one_clients")
       .where("creatorId", "==", auth.userId)
-      .orderBy("created_at", "desc");
+      .orderBy("createdAt", "desc");
 
     const snapshot = await query.get();
 
     const results: Record<string, unknown>[] = [];
     for (const d of snapshot.docs) {
       const clientData = d.data();
-      const userDoc = await db.collection("users").doc(clientData.userId).get();
+      const userDoc = await db.collection("users").doc(clientData.clientUserId).get();
       const userData = userDoc.data();
       const courses = userData?.courses ?? {};
       const enrollment = courses[programId];
@@ -64,7 +64,7 @@ router.get("/creator/clients", async (req, res) => {
   let query: Query = db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
-    .orderBy("created_at", "desc")
+    .orderBy("createdAt", "desc")
     .limit(limit + 1);
 
   if (pageToken) {
@@ -78,7 +78,7 @@ router.get("/creator/clients", async (req, res) => {
 
   // Enrich each client with their one_on_one enrolled programs
   const clientDocs = docs.map((d) => ({ id: d.id, ...d.data() }));
-  const userIds = [...new Set(clientDocs.map((c) => (c as Record<string, unknown>).userId as string).filter(Boolean))];
+  const userIds = [...new Set(clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean))];
 
   const userDocsMap: Record<string, Record<string, unknown>> = {};
   if (userIds.length > 0) {
@@ -95,7 +95,7 @@ router.get("/creator/clients", async (req, res) => {
   }
 
   const enriched = clientDocs.map((client) => {
-    const userId = (client as Record<string, unknown>).userId as string;
+    const userId = (client as Record<string, unknown>).clientUserId as string;
     const userData = userDocsMap[userId];
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
     const enrolledPrograms = Object.entries(courses)
@@ -200,7 +200,7 @@ router.post("/creator/clients/invite", async (req, res) => {
   // Check if already a client
   const existing = await db.collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
-    .where("userId", "==", userId)
+    .where("clientUserId", "==", userId)
     .limit(1)
     .get();
 
@@ -216,11 +216,15 @@ router.post("/creator/clients/invite", async (req, res) => {
     return;
   }
 
+  const invitedUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
     creatorId: auth.userId,
-    userId,
-    status: "active",
-    created_at: FieldValue.serverTimestamp(),
+    clientUserId: userId,
+    clientName: invitedUserData?.displayName ?? invitedUserData?.name ?? null,
+    clientEmail: invitedUserData?.email ?? null,
+    courseId: [],
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({
@@ -248,14 +252,58 @@ router.post("/creator/clients", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
+  const targetUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
     creatorId: auth.userId,
-    userId: body.userId,
-    status: "active",
-    created_at: FieldValue.serverTimestamp(),
+    clientUserId: body.userId,
+    clientName: targetUserData?.displayName ?? targetUserData?.name ?? null,
+    clientEmail: targetUserData?.email ?? null,
+    courseId: [],
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({ data: { id: docRef.id, clientId: docRef.id } });
+});
+
+// GET /creator/clients/:clientId — single client detail
+router.get("/creator/clients/:clientId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
+  const doc = await docRef.get();
+
+  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+  }
+
+  const clientData = doc.data()!;
+  const clientUserId = clientData.clientUserId ?? clientData.userId;
+
+  // Enrich with user data
+  const userDoc = await db.collection("users").doc(clientUserId).get();
+  const userData = userDoc.exists ? userDoc.data()! : {};
+  const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
+  const enrolledPrograms = Object.entries(courses)
+    .filter(([, v]) => v.deliveryType === "one_on_one")
+    .map(([courseId, v]) => ({ courseId, title: v.title, status: v.status }));
+
+  res.json({
+    data: {
+      id: doc.id,
+      clientId: doc.id,
+      ...clientData,
+      clientName: userData.displayName ?? userData.name ?? clientData.clientName ?? null,
+      clientEmail: userData.email ?? clientData.clientEmail ?? null,
+      avatarUrl: userData.profilePictureUrl ?? userData.photoURL ?? null,
+      enrolledPrograms,
+      country: userData.country ?? null,
+      city: userData.city ?? null,
+      gender: userData.gender ?? null,
+    },
+  });
 });
 
 // DELETE /creator/clients/:clientId
@@ -575,7 +623,7 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
   }
 
-  const clientUserId = clientDoc.data()!.userId;
+  const clientUserId = clientDoc.data()!.clientUserId ?? clientDoc.data()!.userId;
 
   const snapshot = await db
     .collection("users")
@@ -601,7 +649,7 @@ router.get("/creator/clients/:clientId/activity", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
   }
 
-  const clientUserId = clientDoc.data()!.userId;
+  const clientUserId = clientDoc.data()!.clientUserId ?? clientDoc.data()!.userId;
   const userDoc = await db.collection("users").doc(clientUserId).get();
   const userData = userDoc.data() ?? {};
 
@@ -676,7 +724,7 @@ router.get("/creator/nutrition/meals", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ id: d.id, mealId: d.id, ...d.data() })),
   });
 });
 
@@ -697,7 +745,7 @@ router.get("/creator/nutrition/meals/:mealId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { id: doc.id, mealId: doc.id, ...doc.data() } });
 });
 
 // POST /creator/nutrition/meals
@@ -740,7 +788,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({ data: { id: docRef.id, mealId: docRef.id } });
 });
 
 // PATCH /creator/nutrition/meals/:mealId
@@ -811,7 +859,7 @@ router.get("/creator/nutrition/plans", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ id: d.id, planId: d.id, ...d.data() })),
   });
 });
 
@@ -854,7 +902,7 @@ router.post("/creator/nutrition/plans", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({ data: { id: docRef.id, planId: docRef.id } });
 });
 
 // GET /creator/nutrition/plans/:planId
@@ -874,7 +922,7 @@ router.get("/creator/nutrition/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { id: doc.id, planId: doc.id, ...doc.data() } });
 });
 
 // PATCH /creator/nutrition/plans/:planId
@@ -952,7 +1000,7 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   const assignmentsSnap = await db
     .collection("nutrition_assignments")
     .where("planId", "==", req.params.planId)
-    .where("creatorId", "==", auth.userId)
+    .where("assignedBy", "==", auth.userId)
     .get();
 
   let copiesDeleted = 0;
@@ -986,7 +1034,7 @@ async function verifyClientAccess(
   const snap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", creatorId)
-    .where("userId", "==", clientId)
+    .where("clientUserId", "==", clientId)
     .limit(1)
     .get();
   if (snap.empty) {
@@ -1005,11 +1053,11 @@ router.get("/creator/clients/:clientId/nutrition/assignments", async (req, res) 
   const snap = await db
     .collection("nutrition_assignments")
     .where("userId", "==", req.params.clientId)
-    .where("creatorId", "==", auth.userId)
-    .orderBy("created_at", "desc")
+    .where("assignedBy", "==", auth.userId)
+    .orderBy("createdAt", "desc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ id: d.id, assignmentId: d.id, ...d.data() })) });
 });
 
 // POST /creator/clients/:clientId/nutrition/assignments
@@ -1038,19 +1086,27 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
   const planData = planDoc.data()!;
   const assignmentRef = await db.collection("nutrition_assignments").add({
     userId: req.params.clientId,
-    creatorId: auth.userId,
+    assignedBy: auth.userId,
     planId: body.planId,
     planName: planData.name ?? "",
+    plan: planData,
     startDate: body.startDate ?? null,
     endDate: body.endDate ?? null,
     status: "active",
-    created_at: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   // Snapshot plan content
   await db.collection("client_nutrition_plan_content").doc(assignmentRef.id).set({
-    ...planData,
-    assignmentId: assignmentRef.id,
+    source_plan_id: body.planId,
+    assignment_id: assignmentRef.id,
+    name: planData.name ?? "",
+    description: planData.description ?? "",
+    daily_calories: planData.dailyCalories ?? planData.daily_calories ?? null,
+    daily_protein_g: planData.dailyProteinG ?? planData.daily_protein_g ?? null,
+    daily_carbs_g: planData.dailyCarbsG ?? planData.daily_carbs_g ?? null,
+    daily_fat_g: planData.dailyFatG ?? planData.daily_fat_g ?? null,
+    categories: planData.categories ?? [],
     snapshot_at: FieldValue.serverTimestamp(),
   });
 
@@ -1074,7 +1130,7 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
 
   const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
   const assignDoc = await assignRef.get();
-  if (!assignDoc.exists || assignDoc.data()?.creatorId !== auth.userId) {
+  if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
 
@@ -1099,7 +1155,7 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
 
   await assignRef.update({
     ...updates,
-    updated_at: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   res.json({ data: { updated: true } });
@@ -1114,7 +1170,7 @@ router.delete("/creator/clients/:clientId/nutrition/assignments/:assignmentId", 
 
   const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
   const assignDoc = await assignRef.get();
-  if (!assignDoc.exists || assignDoc.data()?.creatorId !== auth.userId) {
+  if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
 
@@ -1167,9 +1223,14 @@ router.post("/creator/plans", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "title es requerido");
   }
 
+  // Look up creator's displayName
+  const creatorDoc = await db.collection("users").doc(auth.userId).get();
+  const creatorName = creatorDoc.data()?.displayName ?? "";
+
   const planData: Record<string, unknown> = {
     title,
-    creatorId: auth.userId,
+    creator_id: auth.userId,
+    creatorName,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   };
@@ -1200,7 +1261,7 @@ router.get("/creator/plans", async (req, res) => {
 
   const snap = await db
     .collection("plans")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .orderBy("created_at", "desc")
     .get();
 
@@ -1214,7 +1275,7 @@ router.get("/creator/plans/:planId", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1258,7 +1319,7 @@ router.patch("/creator/plans/:planId", async (req, res) => {
 
   const docRef = db.collection("plans").doc(req.params.planId);
   const doc = await docRef.get();
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1282,7 +1343,7 @@ router.delete("/creator/plans/:planId", async (req, res) => {
 
   const docRef = db.collection("plans").doc(req.params.planId);
   const doc = await docRef.get();
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1327,7 +1388,7 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1352,7 +1413,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1379,7 +1440,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1404,7 +1465,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1436,7 +1497,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1473,7 +1534,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1507,7 +1568,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", as
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1545,7 +1606,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1585,7 +1646,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1613,7 +1674,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1638,7 +1699,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1680,7 +1741,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -1709,7 +1770,7 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
-  if (!planDoc.exists || planDoc.data()?.creatorId !== auth.userId) {
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
@@ -2061,7 +2122,7 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
   // Check plans that reference this library session
   const plansSnap = await db
     .collection("plans")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .limit(100)
     .get();
 
@@ -2170,7 +2231,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
   // Find all plan sessions that reference this library session — guard at 100 plans max
   const plansSnap = await db
     .collection("plans")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .limit(100)
     .get();
 
@@ -2271,7 +2332,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
   // Guard at 100 plans max
   const plansSnap = await db
     .collection("plans")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .limit(100)
     .get();
 

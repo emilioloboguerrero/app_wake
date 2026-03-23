@@ -210,7 +210,7 @@ async function verifyCreatorOwnsClient(
   const snap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", creatorId)
-    .where("userId", "==", clientId)
+    .where("clientUserId", "==", clientId)
     .limit(1)
     .get();
   if (snap.empty) {
@@ -276,7 +276,7 @@ router.get("/analytics/adherence", async (req, res) => {
     .where("creatorId", "==", auth.userId)
     .get();
 
-  const clientUserIds = clientsSnap.docs.map((d) => d.data().userId as string);
+  const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string);
 
   interface WeeklyPoint {
     week: string;
@@ -447,7 +447,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       db.collection("users").doc(clientId).collection("readiness")
         .where("date", ">=", sevenDaysAgoStr).orderBy("date", "desc").get(),
       db.collection("nutrition_assignments")
-        .where("userId", "==", clientId)
+        .where("clientUserId", "==", clientId)
         .where("creatorId", "==", auth.userId)
         .where("status", "==", "active").limit(1).get(),
       db.collection("users").doc(clientId).collection("diary")
@@ -781,7 +781,7 @@ router.get("/analytics/expiring-access", async (req, res) => {
     .where("creatorId", "==", auth.userId)
     .get();
 
-  const clientUserIds = clientsSnap.docs.map(d => d.data().userId as string);
+  const clientUserIds = clientsSnap.docs.map(d => (d.data().clientUserId ?? d.data().userId) as string);
 
   interface ExpiringAccess {
     userId: string;

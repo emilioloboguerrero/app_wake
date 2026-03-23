@@ -79,9 +79,17 @@ if (isEmulator) {
 }
 
 // ─── Auth + Scope enforcement + Daily rate limit (all /v1/* except health) ─
+const PUBLIC_PATHS = [
+  /^\/health$/,
+  /^\/events\/[^/]+$/, // GET /events/:eventId
+  /^\/events\/[^/]+\/register$/, // POST /events/:eventId/register
+  /^\/events\/[^/]+\/waitlist$/, // POST /events/:eventId/waitlist
+  /^\/app-resources/, // GET /app-resources
+];
+
 app.use("/v1", async (req: Request, _res: Response, next: NextFunction) => {
-  // Skip auth for health endpoint (already handled above) and OPTIONS
-  if (req.path === "/health" || req.method === "OPTIONS") {
+  // Skip auth for public endpoints and OPTIONS
+  if (req.method === "OPTIONS" || PUBLIC_PATHS.some((p) => p.test(req.path))) {
     next();
     return;
   }

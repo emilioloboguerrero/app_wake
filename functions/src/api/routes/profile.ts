@@ -36,7 +36,7 @@ router.get("/users/me", async (req, res) => {
       height: data.height ?? null,
       weight: data.bodyweight ?? data.weight ?? null,
       birthDate: data.birthDate ?? null,
-      profilePictureUrl: data.profile_picture_url ?? null,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
       phoneNumber: data.phoneNumber ?? null,
       pinnedTrainingCourseId: data.pinnedTrainingCourseId ?? null,
       pinnedNutritionAssignmentId: data.pinnedNutritionAssignmentId ?? null,
@@ -58,9 +58,11 @@ router.patch("/users/me", async (req, res) => {
     "height", "weight", "birthDate", "phoneNumber",
     "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
-    "webOnboardingCompleted",
+    "webOnboardingCompleted", "profileCompleted", "onboardingCompleted",
+    "onboardingData",
     "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
     "howTheyFoundUs", "creatorOnboardingData",
+    "goalWeight", "weightUnit",
   ];
 
   const stringFields = new Set([
@@ -68,11 +70,11 @@ router.patch("/users/me", async (req, res) => {
     "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
     "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
-    "howTheyFoundUs",
+    "howTheyFoundUs", "weightUnit",
   ]);
-  const numberFields = new Set(["height", "weight"]);
-  const booleanFields = new Set(["webOnboardingCompleted"]);
-  const objectFields = new Set(["creatorOnboardingData"]);
+  const numberFields = new Set(["height", "weight", "goalWeight"]);
+  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted"]);
+  const objectFields = new Set(["creatorOnboardingData", "onboardingData"]);
 
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {
@@ -188,7 +190,7 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
 
   await db.collection("users").doc(auth.userId).update({
-    profile_picture_url: publicUrl,
+    profilePictureUrl: publicUrl,
     updated_at: FieldValue.serverTimestamp(),
   });
 
@@ -215,7 +217,7 @@ router.get("/users/:userId/public-profile", async (req, res) => {
       userId: req.params.userId,
       displayName: data.displayName ?? data.name ?? null,
       username: data.username ?? null,
-      profilePictureUrl: data.profile_picture_url ?? null,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
     },
   });
 });

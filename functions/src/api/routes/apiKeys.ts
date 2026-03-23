@@ -19,19 +19,19 @@ router.get("/api-keys", async (req, res) => {
 
   const snapshot = await db
     .collection("api_keys")
-    .where("creatorId", "==", auth.userId)
+    .where("owner_id", "==", auth.userId)
     .get();
 
-  // Never return keyHash
+  // Never return key_hash
   const keys = snapshot.docs.map((d) => {
     const data = d.data();
     return {
       keyId: d.id,
       name: data.name,
-      scope: data.scope,
-      status: data.status,
-      createdAt: data.createdAt,
-      lastUsedAt: data.lastUsedAt ?? null,
+      scope: data.scopes ?? data.scope,
+      revoked: data.revoked ?? false,
+      createdAt: data.created_at ?? data.createdAt,
+      lastUsedAt: data.last_used_at ?? data.lastUsedAt ?? null,
       ...(data.useCase ? { useCase: data.useCase } : {}),
     };
   });
@@ -87,14 +87,15 @@ router.post("/api-keys", async (req, res) => {
   const useCase = body.useCase?.trim() || null;
 
   const docData: Record<string, unknown> = {
-    creatorId: auth.userId,
+    owner_id: auth.userId,
     name: body.name,
-    scope: body.scope,
-    keyHash,
-    status,
-    createdAt: new Date().toISOString(),
-    lastUsedAt: null,
-    revokedAt: null,
+    scopes: body.scope,
+    key_hash: keyHash,
+    key_prefix: rawKey.slice(0, 12),
+    revoked: needsApproval ? false : false,
+    created_at: new Date().toISOString(),
+    last_used_at: null,
+    revoked_at: null,
   };
   if (useCase) docData.useCase = useCase;
 
@@ -124,13 +125,13 @@ router.delete("/api-keys/:keyId", async (req, res) => {
   const docRef = db.collection("api_keys").doc(req.params.keyId);
   const doc = await docRef.get();
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+  if (!doc.exists || doc.data()?.owner_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "API key no encontrada");
   }
 
   await docRef.update({
-    status: "revoked",
-    revokedAt: new Date().toISOString(),
+    revoked: true,
+    revoked_at: new Date().toISOString(),
   });
 
   res.json({ data: { revoked: true } });

@@ -208,12 +208,14 @@ const SubscriptionsScreen = ({ navigation }) => {
     try {
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
 
+      const idToken = await user.getIdToken();
       const response = await fetch(
         'https://us-central1-wolf-20b8b.cloudfunctions.net/updateSubscriptionStatus',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             userId: user.uid,
@@ -226,8 +228,8 @@ const SubscriptionsScreen = ({ navigation }) => {
 
       const result = await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Error al procesar la acción');
+      if (!response.ok || result?.error) {
+        throw new Error(result?.error?.message || result?.error || 'Error al procesar la acción');
       }
 
       Alert.alert('Éxito', 'La suscripción ha sido actualizada correctamente');

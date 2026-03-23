@@ -227,13 +227,14 @@ class PurchaseService {
         };
       }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Error creating subscription checkout");
+      const initPoint = result?.data?.init_point || result?.init_point;
+      if (!response.ok || !initPoint) {
+        throw new Error(result?.error?.message || result?.error || "Error creating subscription checkout");
       }
 
       return {
         success: true,
-        checkoutURL: result.init_point,
+        checkoutURL: initPoint,
       };
     } catch (error) {
       logger.error('❌ [prepareSubscription] Exception:', error.message);
@@ -279,13 +280,14 @@ class PurchaseService {
 
         const result = await response.json();
 
-        if (!result.success) {
-          throw new Error(result.error || "Error creating payment");
+        const initPoint = result?.data?.init_point || result?.init_point;
+        if (!response.ok || !initPoint) {
+          throw new Error(result?.error?.message || result?.error || "Error creating payment");
         }
 
         return {
           success: true,
-          checkoutURL: result.init_point,
+          checkoutURL: initPoint,
         };
       }
     } catch (error) {

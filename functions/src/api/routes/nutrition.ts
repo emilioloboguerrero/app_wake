@@ -39,6 +39,7 @@ router.get("/nutrition/diary", async (req, res) => {
 
   const entries = snapshot.docs.map((doc) => ({
     id: doc.id,
+    entryId: doc.id,
     ...doc.data(),
   }));
 
@@ -73,7 +74,7 @@ router.post("/nutrition/diary", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({ data: { id: docRef.id, entryId: docRef.id } });
 });
 
 // PATCH /nutrition/diary/:entryId
@@ -215,18 +216,27 @@ router.get("/nutrition/foods/search", async (req, res) => {
     );
   }
 
-  const results = await fsRes.json();
+  const rawResults = await fsRes.json();
+
+  // Transform raw FatSecret response into the shape clients expect
+  const foodsArray = rawResults?.foods_search?.results?.food ?? rawResults?.foods ?? [];
+  const totalResults = parseInt(rawResults?.foods_search?.total_results ?? "0", 10);
+  const transformed = {
+    foods: Array.isArray(foodsArray) ? foodsArray : [foodsArray],
+    totalResults,
+    pageNumber: page,
+  };
 
   // Cache for 30 days
   const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   cacheRef.set({
-    results,
+    results: transformed,
     query: q.trim().toLowerCase(),
     cached_at: FieldValue.serverTimestamp(),
     expires_at: Timestamp.fromDate(thirtyDays),
   }).catch(() => {});
 
-  res.json({ data: results });
+  res.json({ data: transformed });
 });
 
 // GET /nutrition/foods/:foodId
@@ -270,8 +280,10 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
     );
   }
 
-  const result = await fsRes.json();
-  res.json({ data: result });
+  const rawResult = await fsRes.json();
+  // Return the food object directly (unwrap {food: {...}} wrapper)
+  const foodData = rawResult?.food ?? rawResult;
+  res.json({ data: foodData });
 });
 
 // GET /nutrition/foods/barcode/:barcode
@@ -328,8 +340,9 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
     );
   }
 
-  const result = await fsRes.json();
-  res.json({ data: result });
+  const rawResult = await fsRes.json();
+  const foodData = rawResult?.food_id ? rawResult : rawResult?.food ?? rawResult;
+  res.json({ data: foodData });
 });
 
 // GET /nutrition/saved-foods — paginated with limit
@@ -364,7 +377,7 @@ router.get("/nutrition/saved-foods", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    data: docs.map((doc) => ({ id: doc.id, savedFoodId: doc.id, ...doc.data() })),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -412,7 +425,7 @@ router.post("/nutrition/saved-foods", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({ data: { id: docRef.id, savedFoodId: docRef.id } });
 });
 
 // DELETE /nutrition/saved-foods/:savedFoodId
@@ -443,15 +456,21 @@ router.get("/nutrition/assignment", async (req, res) => {
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
   if (req.query.date) validateDateFormat(date, "date");
 
+  // Production assignments may not have a status field — query without status filter
   let assignmentQuery: Query = db
     .collection("nutrition_assignments")
-    .where("userId", "==", auth.userId)
-    .where("status", "==", "active");
+    .where("userId", "==", auth.userId);
 
-  const snapshot = await assignmentQuery.limit(1).get();
+  const snapshot = await assignmentQuery.limit(5).get();
+
+  // Filter to active-or-no-status in code (production docs lack status field)
+  const activeDocs = snapshot.docs.filter((doc) => {
+    const s = doc.data().status;
+    return !s || s === "active";
+  });
 
   // Filter by date range if assignment has startDate/endDate
-  const matchingDocs = snapshot.docs.filter((doc) => {
+  const matchingDocs = activeDocs.filter((doc) => {
     const d = doc.data();
     if (d.startDate && date < d.startDate) return false;
     if (d.endDate && date > d.endDate) return false;
@@ -473,7 +492,7 @@ router.get("/nutrition/assignment", async (req, res) => {
     .doc(assignment.id)
     .get();
 
-  const planContent = contentDoc.exists ? contentDoc.data() : assignmentData.planSnapshot ?? null;
+  const planContent = contentDoc.exists ? contentDoc.data() : assignmentData.planSnapshot ?? assignmentData.plan ?? null;
 
   // Build categories array from plan content
   const categories: unknown[] = [];
@@ -520,10 +539,14 @@ router.get("/nutrition/assignment", async (req, res) => {
       endDate: assignmentData.endDate ?? null,
       plan: {
         name: planContent?.name ?? assignmentData.planName ?? "",
-        dailyCalories: planContent?.dailyCalories ?? null,
-        dailyProteinG: planContent?.dailyProteinG ?? null,
-        dailyCarbsG: planContent?.dailyCarbsG ?? null,
-        dailyFatG: planContent?.dailyFatG ?? null,
+        daily_calories: planContent?.daily_calories ?? planContent?.dailyCalories ?? null,
+        daily_protein_g: planContent?.daily_protein_g ?? planContent?.dailyProteinG ?? null,
+        daily_carbs_g: planContent?.daily_carbs_g ?? planContent?.dailyCarbsG ?? null,
+        daily_fat_g: planContent?.daily_fat_g ?? planContent?.dailyFatG ?? null,
+        dailyCalories: planContent?.daily_calories ?? planContent?.dailyCalories ?? null,
+        dailyProteinG: planContent?.daily_protein_g ?? planContent?.dailyProteinG ?? null,
+        dailyCarbsG: planContent?.daily_carbs_g ?? planContent?.dailyCarbsG ?? null,
+        dailyFatG: planContent?.daily_fat_g ?? planContent?.dailyFatG ?? null,
         categories,
       },
     },

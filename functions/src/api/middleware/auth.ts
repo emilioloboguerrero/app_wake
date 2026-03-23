@@ -86,8 +86,7 @@ async function validateApiKey(key: string): Promise<AuthResult> {
 
   const snapshot = await db
     .collection("api_keys")
-    .where("keyHash", "==", hash)
-    .where("status", "==", "active")
+    .where("key_hash", "==", hash)
     .limit(1)
     .get();
 
@@ -102,14 +101,23 @@ async function validateApiKey(key: string): Promise<AuthResult> {
   const doc = snapshot.docs[0];
   const data = doc.data();
 
-  // Update lastUsedAt (fire-and-forget)
-  doc.ref.update({ lastUsedAt: new Date().toISOString() }).catch(() => {});
+  // Production uses `revoked` boolean instead of `status`
+  if (data.revoked === true) {
+    throw new WakeApiServerError(
+      "UNAUTHENTICATED",
+      401,
+      "API key inválida o revocada"
+    );
+  }
+
+  // Update last_used_at (fire-and-forget)
+  doc.ref.update({ last_used_at: new Date().toISOString() }).catch(() => {});
 
   return {
-    userId: data.creatorId,
+    userId: data.owner_id,
     role: "creator",
     authType: "apikey",
-    scope: data.scope || ["read"],
+    scope: data.scopes || data.scope || ["read"],
     keyId: doc.id,
   };
 }

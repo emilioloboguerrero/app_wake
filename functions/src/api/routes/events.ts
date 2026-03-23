@@ -21,7 +21,8 @@ async function verifyEventOwnership(
   userId: string
 ): Promise<DocumentSnapshot> {
   const doc = await db.collection("events").doc(eventId).get();
-  if (!doc.exists || doc.data()?.creatorId !== userId) {
+  const data = doc.data();
+  if (!doc.exists || (data?.creator_id !== userId && data?.creatorId !== userId)) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
   }
   return doc;
@@ -41,15 +42,16 @@ router.get("/events/:eventId", async (req, res) => {
 
   const event = doc.data()!;
 
+  const maxRegs = event.max_registrations ?? event.maxRegistrations ?? event.capacity ?? null;
   let spotsRemaining: number | null = null;
-  if (event.maxRegistrations) {
+  if (maxRegs) {
     const regsSnap = await db
       .collection("event_signups")
       .doc(req.params.eventId)
       .collection("registrations")
       .count()
       .get();
-    spotsRemaining = Math.max(0, event.maxRegistrations - regsSnap.data().count);
+    spotsRemaining = Math.max(0, maxRegs - regsSnap.data().count);
   }
 
   res.json({
@@ -61,8 +63,10 @@ router.get("/events/:eventId", async (req, res) => {
       date: event.date || null,
       location: event.location || null,
       status: event.status,
+      max_registrations: maxRegs,
       spotsRemaining,
       fields: event.fields || [],
+      settings: event.settings || null,
     },
   });
 });
@@ -148,8 +152,10 @@ router.post("/events/:eventId/register", async (req, res) => {
     .collection("registrations")
     .add({
       email: body.email ?? null,
+      nombre: body.displayName ?? null,
       displayName: body.displayName ?? null,
       phoneNumber: body.phoneNumber ?? null,
+      responses: body.fieldValues ?? {},
       fieldValues: body.fieldValues ?? {},
       check_in_token: checkInToken,
       checked_in: false,
@@ -161,6 +167,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       registrationId: regRef.id,
       status: "registered",
       waitlistPosition: null,
+      checkInToken,
     },
   });
 });
@@ -175,7 +182,7 @@ router.get("/creator/events", async (req, res) => {
 
   const snapshot = await db
     .collection("events")
-    .where("creatorId", "==", auth.userId)
+    .where("creator_id", "==", auth.userId)
     .orderBy("created_at", "desc")
     .get();
 
@@ -189,18 +196,22 @@ router.get("/creator/events", async (req, res) => {
         .count()
         .get();
 
+      const regCount = regsSnap.data().count;
       return {
         eventId: d.id,
+        id: d.id,
         title: data.title,
         description: data.description || null,
-        imageUrl: data.image_url || null,
+        image_url: data.image_url || null,
         date: data.date || null,
         location: data.location || null,
         status: data.status,
-        maxRegistrations: data.maxRegistrations || null,
-        registrationCount: regsSnap.data().count,
+        max_registrations: data.max_registrations ?? data.maxRegistrations ?? null,
+        registration_count: regCount,
         fields: data.fields || [],
-        createdAt: data.created_at,
+        settings: data.settings || null,
+        access: data.access || null,
+        created_at: data.created_at,
       };
     })
   );
@@ -236,13 +247,20 @@ router.post("/creator/events", async (req, res) => {
   );
 
   const now = FieldValue.serverTimestamp();
-  const docRef = await db.collection("events").add({
-    ...body,
-    creatorId: auth.userId,
+  const docData: Record<string, unknown> = {
+    title: body.title,
+    creator_id: auth.userId,
     status: "draft",
     created_at: now,
     updated_at: now,
-  });
+  };
+  if (body.description) docData.description = body.description;
+  if (body.date) docData.date = body.date;
+  if (body.location) docData.location = body.location;
+  if (body.maxRegistrations != null) docData.max_registrations = body.maxRegistrations;
+  if (body.capacity != null) docData.max_registrations = body.capacity;
+  if (body.fields) docData.fields = body.fields;
+  const docRef = await db.collection("events").add(docData);
 
   const created = await docRef.get();
 
@@ -250,6 +268,45 @@ router.post("/creator/events", async (req, res) => {
     data: {
       eventId: docRef.id,
       createdAt: created.data()?.created_at,
+    },
+  });
+});
+
+// GET /creator/events/:eventId — single event detail for creator
+router.get("/creator/events/:eventId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await verifyEventOwnership(req.params.eventId, auth.userId);
+  const data = doc.data()!;
+
+  const regsSnap = await db
+    .collection("event_signups")
+    .doc(req.params.eventId)
+    .collection("registrations")
+    .count()
+    .get();
+
+  const regCount = regsSnap.data().count;
+
+  res.json({
+    data: {
+      eventId: doc.id,
+      id: doc.id,
+      title: data.title,
+      description: data.description || null,
+      image_url: data.image_url || null,
+      date: data.date || null,
+      location: data.location || null,
+      status: data.status,
+      max_registrations: data.max_registrations ?? data.maxRegistrations ?? null,
+      registration_count: regCount,
+      fields: data.fields || [],
+      settings: data.settings || null,
+      access: data.access || null,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
     },
   });
 });
@@ -271,7 +328,7 @@ router.patch("/creator/events/:eventId", async (req, res) => {
   }
 
   // Allowlist editable fields
-  const allowedFields = ["title", "description", "date", "location", "maxRegistrations", "fields", "capacity", "image_url"];
+  const allowedFields = ["title", "description", "date", "location", "max_registrations", "maxRegistrations", "fields", "capacity", "image_url", "settings", "access"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -399,7 +456,8 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
 
   const eventDocRef = db.collection("events").doc(req.params.eventId);
   const eventDoc = await eventDocRef.get();
-  if (!eventDoc.exists || eventDoc.data()?.creatorId !== auth.userId) {
+  const evData = eventDoc.data();
+  if (!eventDoc.exists || (evData?.creator_id !== auth.userId && evData?.creatorId !== auth.userId)) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
   }
 
@@ -474,13 +532,16 @@ router.get("/creator/events/:eventId/registrations", async (req, res) => {
       const data = d.data();
       return {
         registrationId: d.id,
+        id: d.id,
         clientUserId: data.clientUserId || null,
         email: data.email || null,
-        displayName: data.displayName || null,
-        checkedIn: data.checked_in || false,
-        checkedInAt: data.checked_in_at || null,
-        fieldValues: data.fieldValues || {},
-        createdAt: data.created_at,
+        nombre: data.nombre ?? data.displayName ?? null,
+        displayName: data.nombre ?? data.displayName ?? null,
+        checked_in: data.checked_in || false,
+        checked_in_at: data.checked_in_at || null,
+        responses: data.responses ?? data.fieldValues ?? {},
+        fieldValues: data.responses ?? data.fieldValues ?? {},
+        created_at: data.created_at,
       };
     }),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,

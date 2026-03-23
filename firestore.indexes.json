@@ -160,7 +160,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
-        {"fieldPath": "created_at", "order": "DESCENDING"}
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "one_on_one_clients",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "clientUserId", "order": "ASCENDING"}
       ]
     },
     {
