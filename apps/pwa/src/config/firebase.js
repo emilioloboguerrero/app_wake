@@ -19,8 +19,9 @@ const productionConfig = {
 };
 
 // Staging Firebase project: wake-staging
+// API key read from env to avoid committing secrets to the repo.
 const stagingConfig = {
-  apiKey: "AIzaSyDFd0v35FQhWefCmROGeX9B8SqbYN6GFlk",
+  apiKey: process.env.EXPO_PUBLIC_STAGING_FIREBASE_API_KEY || '',
   authDomain: "wake-staging.firebaseapp.com",
   projectId: "wake-staging",
   storageBucket: "wake-staging.firebasestorage.app",
@@ -31,8 +32,8 @@ const stagingConfig = {
 const firebaseEnv = process.env.EXPO_PUBLIC_FIREBASE_ENV;
 const firebaseConfig = firebaseEnv === 'staging' ? stagingConfig : productionConfig;
 
-if (firebaseConfig.apiKey === 'TODO') {
-  throw new Error(`Firebase ${firebaseEnv} config has placeholder values. Fill in real values before using.`);
+if (!firebaseConfig.apiKey) {
+  throw new Error(`Firebase ${firebaseEnv || 'production'} API key is missing. Set EXPO_PUBLIC_STAGING_FIREBASE_API_KEY in .env for staging.`);
 }
 
 // Initialize Firebase
